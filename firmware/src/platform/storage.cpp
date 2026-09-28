@@ -10,6 +10,17 @@ namespace storage {
 static const char* kConfig = "/miblo/config.json";
 static const char* kTokens = "/miblo/pairs.json";
 static const char* kBoot = "/miblo/boot.cnt";
+// Root markers, outside /miblo so that factory reset (which empties /miblo) never touches them.
+static const char* kFsMarker = "/.miblo_fs";      // this LittleFS was initialised by Miblo
+static const char* kConfigured = "/.configured";  // the unit was configured at least once
+static bool configured = false;
+
+static void touch(const char* path) {
+  File f = LittleFS.open(path, "w");
+  if (!f) return;
+  f.write((uint8_t)'1');
+  f.close();
+}
 
 bool begin() {
 #if defined(ESP32)
@@ -20,14 +31,31 @@ bool begin() {
     LittleFS.format();
     if (!LittleFS.begin()) return false;
   }
-  if (!LittleFS.exists("/miblo")) {
-    // First Miblo boot over another firmware's LittleFS: start from a clean filesystem so no
-    // foreign files eat the 1 MB partition (and nothing stale is ever read as ours).
-    LittleFS.format();
-    if (!LittleFS.begin()) return false;
-    LittleFS.mkdir("/miblo");
+  if (!LittleFS.exists(kFsMarker)) {
+    if (LittleFS.exists("/miblo")) {
+      // Filesystem of an older Miblo build (before the root markers): keep it. Conservatively
+      // treat a unit that already holds pairings or a saved network as configured.
+      if (LittleFS.exists(kTokens) || WiFi.SSID().length() > 0) touch(kConfigured);
+    } else {
+      // First Miblo boot over another firmware's LittleFS: start from a clean filesystem so no
+      // foreign files eat the 1 MB partition (and nothing stale is ever read as ours). Keyed on
+      // the root marker, not on /miblo, so a factory reset (which empties /miblo) never formats.
+      LittleFS.format();
+      if (!LittleFS.begin()) return false;
+    }
+    touch(kFsMarker);
   }
+  if (!LittleFS.exists("/miblo")) LittleFS.mkdir("/miblo");
+  configured = LittleFS.exists(kConfigured);
   return true;
+}
+
+bool everConfigured() { return configured; }
+
+void markConfigured() {
+  if (configured) return;
+  touch(kConfigured);
+  configured = LittleFS.exists(kConfigured);
 }
 
 bool loadConfig(miblo::Config& cfg) {
@@ -116,6 +144,7 @@ void writeBootCount(uint8_t n) {
 }
 
 void factoryReset() {
+  // Only the files under /miblo: the root markers (kFsMarker, kConfigured) must survive.
   LittleFS.remove(kConfig);
   LittleFS.remove(kTokens);
   LittleFS.remove(kBoot);

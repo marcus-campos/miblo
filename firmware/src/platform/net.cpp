@@ -6,6 +6,7 @@
 #include "../context.h"
 #include "miblo_tz.h"
 #include "platform.h"
+#include "storage.h"
 
 namespace net {
 
@@ -111,6 +112,7 @@ void loop(uint32_t nowMs) {
       strlcpy(savedPass, pendingPass, sizeof(savedPass));
       WiFi.persistent(true);
       WiFi.begin(pendingSsid, pendingPass);
+      storage::markConfigured();  // first network joined from the portal: never codeless OTA again
     } else if (curLink == miblo::LinkStatus::WrongPassword ||
                nowMs - trialStartMs >= miblo::NetPolicy::kFallbackMs) {
       // Wrong password or timed out: drop the attempt and go back to the network that was

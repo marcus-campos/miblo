@@ -25,14 +25,19 @@ notes.
    not fit the stock firmware's OTA space: "Not Enough Space"). Expected: the device reboots and
    shows "Miblo installer", the version and `http://<ip>/update`; `GET http://<ip>/info` returns
    `{"app":"miblo-loader",...}`. Then open that `/update` and upload
-   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin` (the installer screen shows no progress; the
-   browser's upload finishes with "Update Success"), then the device reboots and shows the blinking mascot (boot screen) with the firmware version near the bottom.
+   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin` (the installer screen shows "Installing Miblo..." without
+   progress; the browser's upload finishes with "OK"), then the device reboots and shows the blinking mascot (boot screen) with the firmware version near the bottom.
+   After installation the unit boots in Miblo-Setup mode: the installer erased the bench Wi-Fi
+   after the verified upload, so `Miblo-Setup-XXXX` and its QR code appear. Uploading to
+   `/update?keepwifi=1` keeps the Wi-Fi instead; a failed upload (e.g. a truncated or wrong file:
+   "Update error: ...") erases nothing and the installer stays up.
    Also verify once with the router off: after ~20 s the installer shows the open
    `Miblo-Installer-XXXX` network and `http://192.168.4.1/update`; a phone joined to that network
    stays connected (no automatic station retries), and with nobody on the AP it rejoins the saved
    Wi-Fi within ~3 min of the router coming back.
    Bench shortcut: `python3 firmware/scripts/flash-fleet.py --host <ip>` runs both stages and checks `/api/info` (one flash per release is still done by hand as above).
-2. **Saved Wi-Fi:** with no interaction, the boot screen gives way to the "Wi-Fi connected"
+2. **Saved Wi-Fi:** after joining a network through the portal (or installing with
+   `?keepwifi=1`), reboot: with no interaction, the boot screen gives way to the "Wi-Fi connected"
    welcome screen, which shows a QR code pointing to `https://github.com/marcus-campos/miblo`
    (the repo README has the install commands) above the `/plugin install miblo@miblo` label, the
    4-digit pairing code, and the IP — the SDK's saved Wi-Fi credentials were reused; no
@@ -75,7 +80,10 @@ notes.
     own `/update` requires the on-screen presence code, including when a Bearer token is also
     sent.
 12. **OTA on the setup network:** with the gadget on the `Miblo-Setup-XXXX` AP,
-    `http://192.168.4.1/update` also works, with the same code-based flow; unconfigured units accept OTA from their own setup AP without the code.
+    `http://192.168.4.1/update` also works, with the same code-based flow; only a never-configured unit (never joined a Wi-Fi submitted through the portal, never paired;
+    no saved Wi-Fi and no pairings) accepts OTA from its own setup AP without the code. After a
+    factory reset (web page, `/api/reset` or six quick power-ons) a unit that was configured once
+    still requires the code on its setup AP.
 13. **Extended-use health check:** after using the device normally for at least 10 minutes
     (receiving snapshots, switching modes, triggering a couple of alerts), request
     `GET http://<ip>/api/info` again and inspect the heap fields. Confirm free heap and max

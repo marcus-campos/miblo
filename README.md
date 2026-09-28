@@ -33,8 +33,8 @@ Installing from the stock GeekMagic firmware takes two uploads: its update page 
 
 1. Download `miblo-loader-geekmagic_ultra-<version>.bin` and `miblo-geekmagic_ultra-<version>.bin` from the [latest release](https://github.com/marcus-campos/miblo/releases/latest).
 2. Open your clock's web page (`http://<clock-ip>/`), go to its firmware update page and upload `miblo-loader-geekmagic_ultra-<version>.bin`.
-3. The clock reboots showing "Miblo installer" and an address like `http://<ip>/update`. (If it cannot reach your Wi‑Fi within 20 s it also opens an open network `Miblo-Installer-XXXX`; join it and use the address on screen.) Open that address and upload `miblo-geekmagic_ultra-<version>.bin` (the installer screen shows no progress; wait for the browser to report "Update Success").
-4. The clock reboots into Miblo. If it already knew your Wi‑Fi it connects right away; otherwise join the `Miblo-Setup-XXXX` network with your phone (scan the QR code on screen) and pick your Wi‑Fi.
+3. The clock reboots showing "Miblo installer" and an address like `http://<ip>/update`. (If it cannot reach your Wi‑Fi within 20 s it also opens an open network `Miblo-Installer-XXXX`; join it and use the address on screen.) Open that address and upload `miblo-geekmagic_ultra-<version>.bin` (the screen shows "Installing Miblo..." without progress; wait for the browser to show "OK").
+4. The clock reboots into Miblo in setup mode: after a successful install the installer erases the Wi‑Fi the clock was using (so a unit never ships with the bench or shop network), so join the `Miblo-Setup-XXXX` network with your phone (scan the QR code on screen) and pick your Wi‑Fi. (To keep the current Wi‑Fi instead, upload to `http://<ip>/update?keepwifi=1`.) A failed upload erases nothing.
 
 Keep the official GeekMagic firmware file around if you ever want to go back — Miblo's own `/update` page (`http://miblo-xxxx.local/update`) accepts it; it shows a 4-digit code on the gadget's screen that you type in the page. The boot screen shows the firmware version and build (e.g. `v0.1.0 (4534fb8)`); `/api/info` reports the same plus free heap. See the [on-device checklist](docs/firmware-checklist.md).
 
@@ -61,7 +61,7 @@ Units ship clean: the installer erases the bench Wi‑Fi after the full image is
 
 - stock GeekMagic network (`GIFTV`, `SmallTV`, `GeekMagic`…; change with `--stock-ssid REGEX`, add `--stock-pass` if yours has a password) → installer upload → joins the new `Miblo-Installer-XXXX` → full image → joins `Miblo-Setup-XXXX` and checks the version;
 - `Miblo-Installer-XXXX` → full image, then the same check;
-- `Miblo-Setup-XXXX` (installed, not configured) → skipped when up to date, otherwise updated right away (no `--update` needed): without a code when the unit allows it, else it asks for the 4‑digit code on the screen (units that need a code are skipped when the script is not run from a terminal).
+- `Miblo-Setup-XXXX` (installed, not configured) → skipped when up to date, otherwise updated right away (no `--update` needed): without a code only when the unit was never configured (never joined a Wi‑Fi from its portal and never paired — a factory reset does not bring that back), else it asks for the 4‑digit code on the screen (units that need a code are skipped when the script is not run from a terminal).
 
 ```sh
 python3 firmware/scripts/flash-fleet.py --via-ap --dry-run   # scan and show the plan, join nothing

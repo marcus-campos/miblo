@@ -122,10 +122,18 @@ class PresenceGate {
   EscalatingLockout lock_;
 };
 
-// Does OTA (/update) need the on-screen presence code? It does NOT only for an unconfigured unit
-// (no saved Wi-Fi credentials AND no pairings) reached over its own setup AP — so shelf units can
-// be updated in bulk. Any saved network, any pairing, or a request from another interface
-// (the home LAN) keeps the code (and its escalating lockout) mandatory.
-bool otaCodeRequired(bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
+// Does OTA (/update) need the on-screen presence code? It does NOT only for a unit that was NEVER
+// configured (no Wi-Fi joined from the portal and no pairing, ever — a marker that survives
+// factory reset), that also has no saved Wi-Fi credentials and no pairings right now, reached over
+// its own setup AP — so fresh shelf units can be updated in bulk. A unit that was configured once
+// keeps requiring the code even after a factory reset (a reset unit in the field must not become
+// updatable without physical presence). Any saved network, any pairing, or a request from another
+// interface (the home LAN) also keeps the code (and its escalating lockout) mandatory.
+bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
+
+// Did this request arrive over the unit's own setup AP? true only when the soft AP is up, its IP
+// is in 192.168.4.0/24, the client (remote) IP is in that same /24 and the local address the
+// request was accepted on is the soft-AP IP. IPv4 addresses as 4 octets, most significant first.
+bool viaSoftApSubnet(bool apActive, const uint8_t remote[4], const uint8_t local[4], const uint8_t softAp[4]);
 
 }  // namespace miblo

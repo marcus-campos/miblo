@@ -6,6 +6,7 @@
 #include "../web.h"
 #include "miblo_version.h"
 #include "net.h"
+#include "storage.h"
 
 namespace ota {
 
@@ -24,12 +25,20 @@ static bool endedOk = false;  // Update.end(true) succeeded (image written and v
 static size_t expected = 0;
 static uint8_t lastPct = 255;
 
-// Evaluated per request: codeless only for an unconfigured unit (no saved Wi-Fi, no pairings)
-// reached over its own setup AP (see miblo::otaCodeRequired).
+static void octets(const IPAddress& ip, uint8_t out[4]) {
+  for (int i = 0; i < 4; i++) out[i] = ip[i];
+}
+
+// Evaluated per request: codeless only for a never-configured unit (no saved Wi-Fi, no pairings,
+// no "ever configured" marker) reached over its own setup AP (see miblo::otaCodeRequired).
 static bool codeRequired() {
   const bool hasWifiCreds = WiFi.SSID().length() > 0;  // SDK station config, as in net::begin
-  const bool viaSoftAp = net::apActive() && srv->client().localIP() == WiFi.softAPIP();
-  return miblo::otaCodeRequired(hasWifiCreds, ctx.tokens.count(), viaSoftAp);
+  uint8_t remote[4], local[4], softAp[4];
+  octets(srv->client().remoteIP(), remote);
+  octets(srv->client().localIP(), local);
+  octets(WiFi.softAPIP(), softAp);
+  const bool viaSoftAp = miblo::viaSoftApSubnet(net::apActive(), remote, local, softAp);
+  return miblo::otaCodeRequired(storage::everConfigured(), hasWifiCreds, ctx.tokens.count(), viaSoftAp);
 }
 
 static void resetState() {
@@ -44,7 +53,7 @@ static void resetState() {
 static void openGate() {
   if (!web::requireJson(*srv)) return;  // 415: CSRF guard
   if (!codeRequired()) {
-    // Unconfigured unit on its own AP: no gate, no code on screen.
+    // Never-configured unit on its own AP: no gate, no code on screen.
     web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
     return;
   }
@@ -100,7 +109,7 @@ static void upload() {
   HTTPUpload& up = srv->upload();
   if (up.status == UPLOAD_FILE_START) {
     uploadRan = true;
-    // Codeless only for an unconfigured unit on its own AP; otherwise the code check (and its
+    // Codeless only for a never-configured unit on its own AP; otherwise the code check (and its
     // escalating lockout) applies exactly as before.
     rejected = codeRequired() &&
                !ctx.presence.check(PresenceGate::Purpose::Update, srv->arg(F("code")).c_str(), millis());

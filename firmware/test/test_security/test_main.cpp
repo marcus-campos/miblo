@@ -267,16 +267,35 @@ static void test_presence_gate() {
 }
 
 static void test_ota_code_required() {
-  // Only the fully unconfigured unit on its own setup AP skips the code.
-  TEST_ASSERT_FALSE(otaCodeRequired(false, 0, true));
-  TEST_ASSERT_TRUE(otaCodeRequired(true, 0, true));    // saved Wi-Fi
-  TEST_ASSERT_TRUE(otaCodeRequired(false, 1, true));   // paired
-  TEST_ASSERT_TRUE(otaCodeRequired(false, 4, true));
-  TEST_ASSERT_TRUE(otaCodeRequired(false, 0, false));  // not via the soft AP
-  TEST_ASSERT_TRUE(otaCodeRequired(true, 2, false));
-  TEST_ASSERT_TRUE(otaCodeRequired(true, 0, false));
-  TEST_ASSERT_TRUE(otaCodeRequired(false, 3, false));
-  TEST_ASSERT_TRUE(otaCodeRequired(true, 1, true));
+  // (everConfigured, hasWifiCreds, tokenCount, viaSoftAp)
+  // Never-configured shelf unit, empty, on its own setup AP: codeless.
+  TEST_ASSERT_FALSE(otaCodeRequired(false, false, 0, true));
+  // Configured once, then factory reset (no Wi-Fi, no pairings, on the setup AP): code required.
+  TEST_ASSERT_TRUE(otaCodeRequired(true, false, 0, true));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, true, 0, true));    // saved Wi-Fi
+  TEST_ASSERT_TRUE(otaCodeRequired(false, false, 1, true));   // paired
+  TEST_ASSERT_TRUE(otaCodeRequired(false, false, 4, true));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, false, 0, false));  // not via the soft AP
+  TEST_ASSERT_TRUE(otaCodeRequired(false, true, 2, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, true, 0, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, false, 3, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, true, 1, true));
+  TEST_ASSERT_TRUE(otaCodeRequired(true, true, 1, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(true, false, 0, false));
+}
+
+static void test_via_soft_ap_subnet() {
+  const uint8_t ap[4] = {192, 168, 4, 1};
+  const uint8_t phone[4] = {192, 168, 4, 2};
+  const uint8_t lanLocal[4] = {192, 168, 1, 50};
+  const uint8_t lanPeer[4] = {192, 168, 1, 10};
+  const uint8_t otherAp[4] = {10, 0, 0, 1};
+  TEST_ASSERT_TRUE(viaSoftApSubnet(true, phone, ap, ap));
+  TEST_ASSERT_FALSE(viaSoftApSubnet(false, phone, ap, ap));         // AP not up
+  TEST_ASSERT_FALSE(viaSoftApSubnet(true, lanPeer, lanLocal, ap));  // came in over the LAN
+  TEST_ASSERT_FALSE(viaSoftApSubnet(true, lanPeer, ap, ap));        // peer outside 192.168.4.0/24
+  TEST_ASSERT_FALSE(viaSoftApSubnet(true, phone, lanLocal, ap));    // accepted on another interface
+  TEST_ASSERT_FALSE(viaSoftApSubnet(true, phone, otherAp, otherAp));  // soft AP not on 192.168.4.x
 }
 
 int main() {
@@ -298,5 +317,6 @@ int main() {
   RUN_TEST(test_presence_failures_survive_reopen);
   RUN_TEST(test_presence_lockout_clock_wrap);
   RUN_TEST(test_ota_code_required);
+  RUN_TEST(test_via_soft_ap_subnet);
   return UNITY_END();
 }

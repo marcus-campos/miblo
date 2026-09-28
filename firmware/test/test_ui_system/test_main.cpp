@@ -76,7 +76,10 @@ static void test_setup_and_welcome_content() {
   screens::reset();
   fc.clearLog();
   screens::welcome(Lang::En, "4827", "192.168.0.42");
-  TEST_ASSERT_TRUE(fc.drew("/plugin install miblo@miblo"));
+  // Addendum D: a QR to the repository (both install commands live in its README).
+  TEST_ASSERT_TRUE(fc.drew("github.com/marcus-campos/miblo"));
+  TEST_ASSERT_FALSE(fc.drew("/plugin install miblo@miblo"));
+  TEST_ASSERT_TRUE(fc.calls > 100);  // QR modules
   TEST_ASSERT_TRUE(fc.drew("4827"));
   TEST_ASSERT_TRUE(fc.drew("192.168.0.42"));
 }

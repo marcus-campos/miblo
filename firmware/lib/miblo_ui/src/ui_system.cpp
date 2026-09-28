@@ -17,6 +17,10 @@ namespace color = ui::color;
 
 static ui::Canvas& C() { return canvas(); }
 
+// Project repository (install instructions), shown as a QR code on the welcome screen.
+static const char kRepoUrl[] = "https://github.com/marcus-campos/miblo";
+static const char* const kRepoLabel = kRepoUrl + 8;  // without "https://"
+
 void boot(Lang lang, uint8_t frame) {
   if (region(0, hashInt(kHashSeed, frame % 3), X(74), Y(54), Sz(92), Sz(92))) mascot(X(120), Y(100), frame);
   if (region(1, hashInt(kHashSeed, (uint32_t)lang), 0, Y(150), X(240), Y(70))) {
@@ -54,14 +58,17 @@ void welcome(Lang lang, const char* pairCode, const char* ip) {
   if (!region(0, h, 0, 0, X(240), Y(240))) return;
   const char* ok = t(lang, S::WifiConnected);
   const int w = C().textWidth(ok, Font::BodyBold);
-  check(X(120) - w / 2 - Sz(4), Y(22), Sz(14), color::GREEN);
-  C().text(X(120) + Sz(8), Y(28), ok, Font::BodyBold, color::GREEN, Align::Center, X(200));
-  C().text(X(12), Y(58), t(lang, S::RunInClaude), Font::Small, color::MUTED, Align::Left, X(216));
-  C().fillRoundRect(X(12), Y(66), X(216), Y(30), Sz(4), color::CMD_BG);
-  C().text(X(20), Y(86), "/plugin install miblo@miblo", Font::Small, color::CORAL, Align::Left, X(200));
-  C().text(X(120), Y(128), t(lang, S::PairingCode), Font::Small, color::MUTED, Align::Center, X(232));
-  C().text(X(120), Y(176), pairCode, Font::NumL, color::TEXT, Align::Center, X(232));
-  C().text(X(120), Y(228), ip, Font::Small, color::FAINT, Align::Center, X(232));
+  check(X(120) - w / 2 - Sz(4), Y(16), Sz(14), color::GREEN);
+  C().text(X(120) + Sz(8), Y(22), ok, Font::BodyBold, color::GREEN, Align::Center, X(200));
+  // Installing takes two commands (marketplace add + plugin install): the QR points to the
+  // repository README, which has both.
+  const int scale = Sz(3) < 2 ? 2 : Sz(3);
+  const int size = (29 + 4) * scale;  // QR version 3 (29 modules) + 2-module quiet zone
+  qr(kRepoUrl, (X(240) - size) / 2, Y(32), scale);
+  C().text(X(120), Y(148), kRepoLabel, Font::Small, color::MUTED, Align::Center, X(232));
+  C().text(X(120), Y(170), t(lang, S::PairingCode), Font::Small, color::MUTED, Align::Center, X(232));
+  C().text(X(120), Y(208), pairCode, Font::NumL, color::TEXT, Align::Center, X(232));
+  C().text(X(120), Y(232), ip, Font::Small, color::FAINT, Align::Center, X(232));
 }
 
 void paired(Lang lang, const char* host, const char* modeName, const char* mdnsHost) {

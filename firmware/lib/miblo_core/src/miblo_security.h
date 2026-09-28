@@ -122,4 +122,10 @@ class PresenceGate {
   EscalatingLockout lock_;
 };
 
+// Does OTA (/update) need the on-screen presence code? It does NOT only for an unconfigured unit
+// (no saved Wi-Fi credentials AND no pairings) reached over its own setup AP — so shelf units can
+// be updated in bulk. Any saved network, any pairing, or a request from another interface
+// (the home LAN) keeps the code (and its escalating lockout) mandatory.
+bool otaCodeRequired(bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
+
 }  // namespace miblo

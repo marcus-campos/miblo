@@ -75,7 +75,7 @@ notes.
     own `/update` requires the on-screen presence code, including when a Bearer token is also
     sent.
 12. **OTA on the setup network:** with the gadget on the `Miblo-Setup-XXXX` AP,
-    `http://192.168.4.1/update` also works, with the same code-based flow.
+    `http://192.168.4.1/update` also works, with the same code-based flow; unconfigured units accept OTA from their own setup AP without the code.
 13. **Extended-use health check:** after using the device normally for at least 10 minutes
     (receiving snapshots, switching modes, triggering a couple of alerts), request
     `GET http://<ip>/api/info` again and inspect the heap fields. Confirm free heap and max

@@ -6,6 +6,8 @@
 // (field "firmware") only flashes with
 // ?code=<code on the screen>. The code is required even with a Bearer token (the token travels
 // in plain text on the local network).
+// Exception: an unconfigured unit (no saved Wi-Fi, no pairings) reached over its own setup AP
+// flashes without a code; /update/open then answers {"ok":true,"codeRequired":false}.
 namespace ota {
 
 using ProgressHook = void (*)(uint8_t pct);

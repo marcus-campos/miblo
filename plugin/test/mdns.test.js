@@ -93,7 +93,37 @@ function fakeSocket(kind, log, { bindError = false, onSend } = {}) {
   return s;
 }
 
-test('discover queries every interface on both sockets and dedupes by id', async () => {
+test('discover sends the outgoing query on a dedicated socket per interface', async () => {
+  // Regression test for the bug where a single shared socket looped "setMulticastInterface(addr),
+  // send()" across every interface: setMulticastInterface applies immediately but send() to an IP
+  // only actually goes out a tick later, so every query ended up leaving on whichever interface
+  // was set *last*. Recording the interface set on each socket, per socket, before its own send
+  // catches that: it fails if interfaces share a socket (too few sockets created, or one socket
+  // recording more than one interface) even though this fake's `send` is synchronous and would
+  // not otherwise reproduce the tick-timing symptom.
+  const created = [];
+  await discover({
+    timeoutMs: 50,
+    interfaces: ['192.168.0.158', '10.8.0.2', '10.0.1.5'],
+    socketFactory: (kind) => {
+      const s = new EventEmitter();
+      s.kind = kind;
+      s.ifBeforeSend = [];
+      let currentIf;
+      s.bind = (port, cb) => setImmediate(cb);
+      s.setMulticastInterface = (a) => { currentIf = a; };
+      s.addMembership = () => {};
+      s.send = () => { s.ifBeforeSend.push(currentIf); };
+      s.close = () => {};
+      if (kind === 'unicast') created.push(s);
+      return s;
+    },
+  });
+  assert.equal(created.length, 3);
+  assert.deepEqual(created.map((s) => s.ifBeforeSend), [['192.168.0.158'], ['10.8.0.2'], ['10.0.1.5']]);
+});
+
+test('discover queries every interface via its own socket and dedupes by id', async () => {
   const log = [];
   const found = await discover({
     timeoutMs: 50,
@@ -108,15 +138,17 @@ test('discover queries every interface on both sockets and dedupes by id', async
   assert.deepEqual(found, [{ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.42:80' }]);
   for (const a of ['192.168.0.158', '10.8.0.2']) {
     assert.ok(log.includes(`multicast:join:224.0.0.251@${a}`), a);
-    assert.ok(log.includes(`unicast:if:${a}`) && log.includes(`multicast:if:${a}`), a);
+    assert.ok(log.includes(`unicast:if:${a}`), a);
   }
   assert.ok(log.includes('unicast:bind:0') && log.includes('multicast:bind:5353'));
   assert.equal(log.filter((l) => l === 'unicast:send:224.0.0.251:5353:QU').length, 2);
-  assert.equal(log.filter((l) => l === 'multicast:send:224.0.0.251:5353:QM').length, 2);
+  // The 5353 socket is now a listener only; it never sends its own query.
+  assert.equal(log.filter((l) => l.startsWith('multicast:send')).length, 0);
 });
 
-test('discover merges records split across unicast and multicast answers', async () => {
-  // PTR+SRV+TXT arrive by unicast, the A record only by multicast.
+test('discover merges records split across a unicast reply and a later multicast answer', async () => {
+  // PTR+SRV+TXT arrive as a reply to the per-interface query; the A record arrives separately as a
+  // multicast announcement picked up by the shared 5353 listener.
   const inst = 'Miblo-4F2A._miblo._tcp.local';
   const firstPart = response([
     rr('_miblo._tcp.local', 12, enc(inst)),
@@ -127,9 +159,11 @@ test('discover merges records split across unicast and multicast answers', async
   const found = await discover({
     timeoutMs: 50,
     interfaces: ['192.168.0.158'],
-    socketFactory: (kind) => fakeSocket(kind, [], {
-      onSend: (s) => setTimeout(() => s.emit('message', kind === 'unicast' ? firstPart : secondPart), 5),
-    }),
+    socketFactory: (kind) => {
+      const s = fakeSocket(kind, [], { onSend: (sock) => setTimeout(() => sock.emit('message', firstPart), 5) });
+      if (kind === 'multicast') setTimeout(() => s.emit('message', secondPart), 8);
+      return s;
+    },
   });
   assert.deepEqual(found, [{ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.42:80' }]);
 });
@@ -145,7 +179,7 @@ test('discover still works when port 5353 cannot be bound', async () => {
     }),
   });
   assert.deepEqual(found.map((d) => d.id), ['miblo-4f2a']);
-  assert.ok(!log.some((l) => l.startsWith('multicast:send')));
+  assert.ok(log.includes('unicast:send:224.0.0.251:5353:QU'));
 });
 
 test('discover falls back to the default interface when none is listed', async () => {

@@ -1,5 +1,8 @@
+#include <stdio.h>
 #include <math.h>
 #include <unity.h>
+
+#include <string>
 
 #include "../support/fake_canvas.h"
 #include "miblo_version.h"
@@ -155,7 +158,16 @@ class BoxCanvas : public FakeCanvas {
     check(cx - r, cy - r, 2 * r + 1, 2 * r + 1);
     FakeCanvas::fillCircle(cx, cy, r, c);
   }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) override {
+    const int lx = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
+    const int hx = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+    const int ly = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2);
+    const int hy = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+    check(lx, ly, hx - lx + 1, hy - ly + 1);
+    FakeCanvas::fillTriangle(x0, y0, x1, y1, x2, y2, c);
+  }
   void wideLine(int x0, int y0, int x1, int y1, int w, uint16_t c, uint16_t bg) override {
+    lines++;
     const int hw = (w + 1) / 2;
     check((x0 < x1 ? x0 : x1) - hw, (y0 < y1 ? y0 : y1) - hw, abs(x1 - x0) + 2 * hw, abs(y1 - y0) + 2 * hw);
     FakeCanvas::wideLine(x0, y0, x1, y1, w, c, bg);
@@ -173,8 +185,10 @@ class BoxCanvas : public FakeCanvas {
       if (i == 0 || py > y1) y1 = py;
     }
     check(x0 - 1, y0 - 1, x1 - x0 + 2, y1 - y0 + 2);
+    arcs_++;
     FakeCanvas::arc(cx, cy, r, ir, a0, a1, fg, bg);
   }
+  int lines = 0, arcs_ = 0;  // anti-aliased primitives (not allowed in the mascot)
 
  private:
   void check(int x, int y, int w, int h) {
@@ -183,8 +197,9 @@ class BoxCanvas : public FakeCanvas {
   }
 };
 
-// The Sphynx mascot must stay inside its box (Sz(96) square, or Sz(48) for the small variant)
-// on every frame and tested resolution, with a small primitive budget (redrawn on pose changes).
+// The simplified Sphynx mascot must stay inside its box (2 * Sz(48) square, or 2 * Sz(24) for the
+// small variant) on every frame and tested resolution, with at most ~10 flat primitives (no
+// anti-aliased lines or arcs, which a 16-colour off-screen layer can't blend).
 static void test_mascot_stays_in_its_box() {
   const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
   for (const auto& sp : specs) {
@@ -199,28 +214,100 @@ static void test_mascot_stays_in_its_box() {
         bc.prims = 0;
         screens::mascot(cx, cy, (uint8_t)f, small != 0);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, bc.escaped, "mascot escaped its bounding box");
-        TEST_ASSERT_TRUE(bc.prims > 0 && bc.prims <= (small ? 16 : 22));
+        TEST_ASSERT_TRUE(bc.prims > 0 && bc.prims <= (small ? 9 : 11));
       }
+      TEST_ASSERT_EQUAL_INT(0, bc.lines + bc.arcs_);
       TEST_ASSERT_EQUAL_INT(0, bc.outOfBounds);
     }
   }
 }
 
-// It animates (idle, blink, ear twitch, glance); boot() redraws the mascot only on pose changes.
-static void test_mascot_animates_and_boot_redraws_only_on_pose_change() {
-  bool seen[4] = {false, false, false, false};
-  for (int f = 0; f < 256; f++) seen[screens::mascotPose((uint8_t)f)] = true;
-  TEST_ASSERT_TRUE(seen[0] && seen[1] && seen[2] && seen[3]);
+// Records the primitive sequence (kind + geometry) of one mascot frame, to compare poses.
+class TraceCanvas : public FakeCanvas {
+ public:
+  using FakeCanvas::FakeCanvas;
+  std::string trace;
+  void fillRect(int x, int y, int w, int h, uint16_t c) override { add('r', x, y, w, h, c); }
+  void fillRoundRect(int x, int y, int w, int h, int, uint16_t c) override { add('R', x, y, w, h, c); }
+  void fillCircle(int cx, int cy, int r, uint16_t c) override { add('c', cx, cy, r, 0, c); }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) override {
+    add('t', x0, y0, x1 + x2, y1 + y2, c);
+  }
 
+ private:
+  void add(char k, int a, int b, int c, int d, uint16_t col) {
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%c%d,%d,%d,%d,%u;", k, a, b, c, d, (unsigned)col);
+    trace += buf;
+  }
+};
+
+static std::string traceOf(uint8_t frame) {
+  TraceCanvas tc({240, 240});
+  screens::bind(tc);
+  screens::mascot(120, 100, frame);
+  return tc.trace;
+}
+
+// It animates (idle, blink, hop, glance), each pose drawing differently; frames with the same
+// pose draw the same thing.
+static void test_mascot_poses_differ() {
+  bool seen[4] = {false, false, false, false};
+  uint8_t first[4] = {0, 0, 0, 0};
+  for (int f = 0; f < 256; f++) {
+    const uint8_t p = screens::mascotPose((uint8_t)f);
+    TEST_ASSERT_TRUE(p < 4);
+    if (!seen[p]) first[p] = (uint8_t)f;
+    seen[p] = true;
+  }
+  TEST_ASSERT_TRUE(seen[0] && seen[1] && seen[2] && seen[3]);
+  for (int a = 0; a < 4; a++) {
+    for (int b = a + 1; b < 4; b++) TEST_ASSERT_TRUE(traceOf(first[a]) != traceOf(first[b]));
+  }
+  for (int f = 0; f < 32; f++) {
+    TEST_ASSERT_TRUE(traceOf((uint8_t)f) == traceOf(first[screens::mascotPose((uint8_t)f)]));
+  }
+}
+
+// boot() composes the mascot on the canvas's off-screen layer (one begin/end pair around all
+// of its primitives, covering the mascot box) and only on pose changes; reset() frees it.
+static void test_boot_draws_mascot_on_a_layer_only_on_pose_change() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
   screens::reset();
-  screens::boot(Lang::En, 0);
   fc.clearLog();
-  screens::boot(Lang::En, 1);  // same idle pose: nothing to redraw
+  screens::boot(Lang::En, 0);
+  TEST_ASSERT_EQUAL_INT(1, fc.layerBegins);
+  TEST_ASSERT_EQUAL_INT(1, fc.layerEnds);
+  TEST_ASSERT_FALSE(fc.inLayer);
+  TEST_ASSERT_EQUAL_INT(120 - 48, fc.lastLayer[0]);
+  TEST_ASSERT_EQUAL_INT(100 - 48, fc.lastLayer[1]);
+  TEST_ASSERT_EQUAL_INT(96, fc.lastLayer[2]);
+  TEST_ASSERT_EQUAL_INT(96, fc.lastLayer[3]);
+  TEST_ASSERT_TRUE(fc.layerCalls > 0 && fc.layerCalls <= 11);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+
+  fc.clearLog();
+  screens::boot(Lang::En, 1);  // same idle pose: nothing to redraw, no layer
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
-  screens::boot(Lang::En, 2);  // blink
-  TEST_ASSERT_TRUE(fc.calls > 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.layerBegins);
+  screens::boot(Lang::En, 2);  // blink: only the mascot, all of it on the layer
+  TEST_ASSERT_EQUAL_INT(1, fc.layerBegins);
+  TEST_ASSERT_EQUAL_INT(1, fc.layerEnds);
+  TEST_ASSERT_EQUAL_INT(fc.calls, fc.layerCalls);
+
+  fc.clearLog();
+  screens::reset();  // leaving the boot screen frees the layer
+  TEST_ASSERT_EQUAL_INT(1, fc.layerReleases);
+
+  // No layer available (allocation failed): the mascot is still drawn, directly.
+  fc.layerSupported = false;
+  fc.clearLog();
+  screens::boot(Lang::En, 2);
+  TEST_ASSERT_EQUAL_INT(1, fc.layerBegins);
+  TEST_ASSERT_EQUAL_INT(0, fc.layerEnds);
+  TEST_ASSERT_EQUAL_INT(0, fc.layerCalls);
+  TEST_ASSERT_TRUE(fc.calls > 3);
 }
 
 int main() {
@@ -230,7 +317,8 @@ int main() {
   RUN_TEST(test_regions_only_redraw_on_change);
   RUN_TEST(test_boot_shows_firmware_version);
   RUN_TEST(test_mascot_stays_in_its_box);
-  RUN_TEST(test_mascot_animates_and_boot_redraws_only_on_pose_change);
+  RUN_TEST(test_mascot_poses_differ);
+  RUN_TEST(test_boot_draws_mascot_on_a_layer_only_on_pose_change);
   RUN_TEST(test_hard_reset_countdown_content);
   return UNITY_END();
 }

@@ -16,6 +16,13 @@ class FakeCanvas : public ui::Canvas {
   void fillRoundRect(int x, int y, int w, int h, int, uint16_t) override { box(x, y, w, h); }
   void drawRect(int x, int y, int w, int h, uint16_t) override { box(x, y, w, h); }
   void fillCircle(int cx, int cy, int r, uint16_t) override { box(cx - r, cy - r, 2 * r, 2 * r); }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t) override {
+    const int lx = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
+    const int hx = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+    const int ly = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2);
+    const int hy = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+    box(lx, ly, hx - lx + 1, hy - ly + 1);
+  }
   void wideLine(int x0, int y0, int x1, int y1, int, uint16_t, uint16_t) override {
     box(x0 < x1 ? x0 : x1, y0 < y1 ? y0 : y1, abs(x1 - x0), abs(y1 - y0));
   }
@@ -33,6 +40,20 @@ class FakeCanvas : public ui::Canvas {
     return w;
   }
   int textWidth(const char* s, ui::Font) override { return 6 * (int)miblo::utf8Length(s ? s : ""); }
+  // Layers: recorded (a layer is "available" unless layerSupported = false); primitives drawn
+  // while a layer is open are counted in layerCalls.
+  bool beginLayer(int x, int y, int w, int h) override {
+    layerBegins++;
+    lastLayer[0] = x, lastLayer[1] = y, lastLayer[2] = w, lastLayer[3] = h;
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > spec_.w || y + h > spec_.h) outOfBounds++;
+    inLayer = layerSupported;
+    return layerSupported;
+  }
+  void endLayer() override {
+    if (inLayer) layerEnds++;
+    inLayer = false;
+  }
+  void releaseLayer() override { layerReleases++; }
 
   bool drew(const std::string& needle) const {
     for (const auto& t : texts) {
@@ -44,6 +65,8 @@ class FakeCanvas : public ui::Canvas {
     texts.clear();
     arcs.clear();
     calls = 0;
+    layerCalls = 0;
+    layerBegins = layerEnds = layerReleases = 0;
   }
 
   ui::ScreenSpec spec_;
@@ -51,10 +74,16 @@ class FakeCanvas : public ui::Canvas {
   std::vector<int> arcs;
   int calls = 0;
   int outOfBounds = 0;
+  bool layerSupported = true;
+  bool inLayer = false;
+  int layerCalls = 0;
+  int layerBegins = 0, layerEnds = 0, layerReleases = 0;
+  int lastLayer[4] = {0, 0, 0, 0};
 
  private:
   void box(int x, int y, int w, int h) {
     calls++;
+    if (inLayer) layerCalls++;
     if (x < 0 || y < 0 || x + w > spec_.w || y + h > spec_.h) outOfBounds++;
   }
 };

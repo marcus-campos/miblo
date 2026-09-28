@@ -4,6 +4,63 @@
 
 namespace {
 constexpr uint32_t kEllipsis = 0x2026;  // "…" doesn't exist in the fonts: becomes "..."
+
+// 16-colour palette of 4-bit layers: the mascot's colours first, then common UI colours.
+const uint16_t kLayerPalette[16] = {
+    ui::color::BG,    ui::color::SKIN,  ui::color::EAR_IN, ui::color::NOSE,  ui::color::PUPIL, ui::color::EYE_GREEN,
+    ui::color::WHITE, ui::color::WRINKLE, ui::color::BLACK, ui::color::TEXT, ui::color::MUTED, ui::color::FAINT,
+    ui::color::AMBER, ui::color::GREEN, ui::color::CORAL,  ui::color::RED,
+};
+// Free heap that must remain after allocating a layer (Wi-Fi, web server, JSON parsing).
+constexpr uint32_t kLayerHeapReserve = 16 * 1024;
+}  // namespace
+
+uint8_t TftCanvas::idx(uint16_t c) {
+  uint8_t best = 0;
+  uint32_t bestD = UINT32_MAX;
+  for (uint8_t i = 0; i < 16; i++) {
+    const uint16_t p = kLayerPalette[i];
+    if (p == c) return i;
+    const int dr = ((p >> 11) & 31) - ((c >> 11) & 31);
+    const int dg = ((p >> 5) & 63) / 2 - ((c >> 5) & 63) / 2;
+    const int db = (p & 31) - (c & 31);
+    const uint32_t d = (uint32_t)(dr * dr + dg * dg + db * db);
+    if (d < bestD) {
+      bestD = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+bool TftCanvas::beginLayer(int x, int y, int w, int h) {
+  if (w <= 0 || h <= 0) return false;
+  if (!spr_.getPointer() || w != lw_ || h != lh_) {
+    releaseLayer();
+    const uint32_t bytes = (uint32_t)((w + 1) & ~1) * h / 2 + 64;  // 4 bpp + palette/overhead
+    if (ESP.getFreeHeap() < bytes + kLayerHeapReserve || ESP.getMaxFreeBlockSize() < bytes) return false;
+    spr_.setColorDepth(4);
+    if (!spr_.createSprite(w, h)) return false;  // out of memory: caller draws directly
+    spr_.createPalette(kLayerPalette, 16);
+    lw_ = w;
+    lh_ = h;
+  }
+  lx_ = x;
+  ly_ = y;
+  layer_ = true;
+  return true;
+}
+
+void TftCanvas::endLayer() {
+  if (!layer_) return;
+  layer_ = false;
+  spr_.pushSprite(lx_, ly_);
+}
+
+void TftCanvas::releaseLayer() {
+  layer_ = false;
+  if (spr_.getPointer()) spr_.deleteSprite();
+  lw_ = lh_ = 0;
 }
 
 void TftCanvas::begin() {

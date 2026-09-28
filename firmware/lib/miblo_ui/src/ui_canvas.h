@@ -52,6 +52,7 @@ class Canvas {
   virtual void fillRoundRect(int x, int y, int w, int h, int r, uint16_t c) = 0;
   virtual void drawRect(int x, int y, int w, int h, uint16_t c) = 0;
   virtual void fillCircle(int cx, int cy, int r, uint16_t c) = 0;
+  virtual void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) = 0;
   virtual void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) = 0;
   // Anti-aliased arc: angles in degrees, 0 = 6 o'clock, clockwise (TFT_eSPI convention).
   virtual void arc(int cx, int cy, int r, int ir, int a0, int a1, uint16_t fg, uint16_t bg) = 0;
@@ -59,6 +60,20 @@ class Canvas {
   // Missing glyph in the fonts → rectangle, never crashes.
   virtual int text(int x, int y, const char* s, Font f, uint16_t fg, Align a, int maxW) = 0;
   virtual int textWidth(const char* s, Font f) = 0;
+
+  // Optional off-screen layer, used to animate small areas without flicker. beginLayer() asks
+  // the board to redirect the shape primitives (fillRect, fillRoundRect, drawRect, fillCircle,
+  // fillTriangle) inside the screen rectangle (x, y, w, h) to an off-screen buffer; endLayer()
+  // pushes that buffer to the panel in one go. Coordinates stay screen-absolute. Returns false
+  // when the board has no layer (or no memory for it): the caller then just draws directly.
+  // Layers may reduce colours to a small palette: keep them to flat, non-anti-aliased shapes.
+  virtual bool beginLayer(int x, int y, int w, int h) {
+    (void)x, (void)y, (void)w, (void)h;
+    return false;
+  }
+  virtual void endLayer() {}
+  // Frees any memory held for layers (called on every screen switch).
+  virtual void releaseLayer() {}
 };
 
 }  // namespace ui

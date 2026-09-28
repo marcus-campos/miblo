@@ -22,8 +22,13 @@ static const char kRepoUrl[] = "https://github.com/marcus-campos/miblo";
 static const char* const kRepoLabel = kRepoUrl + 8;  // without "https://"
 
 void boot(Lang lang, uint8_t frame) {
-  if (region(0, hashInt(kHashSeed, mascotPose(frame)), X(120) - Sz(48), Y(100) - Sz(48), Sz(96), Sz(96))) {
+  // The mascot repaints its own background, so it is composed on an off-screen layer when the
+  // board has one and pushed in one go (no black flash); otherwise it is drawn directly.
+  if (dirty(0, hashInt(kHashSeed, mascotPose(frame)))) {
+    const int half = Sz(48);
+    const bool layered = C().beginLayer(X(120) - half, Y(100) - half, 2 * half, 2 * half);
     mascot(X(120), Y(100), frame);
+    if (layered) C().endLayer();
   }
   if (region(1, hashInt(kHashSeed, (uint32_t)lang), 0, Y(150), X(240), Y(70))) {
     C().text(X(120), Y(176), "Miblo", Font::Title, color::TEXT, Align::Center, X(240));

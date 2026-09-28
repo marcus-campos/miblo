@@ -50,7 +50,7 @@
   <p class="lede">
     Three directions to replace the placeholder coral blob. Every shape below is drawn through a tiny
     JS mirror of <code>ui::Canvas</code> (<code>fillRect</code>, <code>fillRoundRect</code>,
-    <code>fillCircle</code>, <code>wideLine</code>, <code>arc</code>, <code>text</code>), with no paths, curves or gradients,
+    <code>fillCircle</code>, <code>fillTriangle</code>, <code>wideLine</code>, <code>arc</code>, <code>text</code>), with no paths, curves or gradients,
     so whichever option wins ports 1:1 to <code>screens::mascot()</code>. Coordinates are integer offsets &times; <code>u</code>
     from the mascot centre, inside the same ~96&nbsp;px cleared region the boot screen already uses.
     The big screens animate through the loading frames.
@@ -98,6 +98,7 @@ class SvgCanvas {
   fillRect(x, y, w, h, c) { this.count.fill++; this.out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${c}"/>`); }
   fillRoundRect(x, y, w, h, r, c) { this.count.fill++; this.out.push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="${r}" fill="${c}"/>`); }
   fillCircle(cx, cy, r, c) { this.count.fill++; this.out.push(`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${c}"/>`); }
+  fillTriangle(x0, y0, x1, y1, x2, y2, c) { this.count.fill++; this.out.push(`<polygon points="${x0},${y0} ${x1},${y1} ${x2},${y2}" fill="${c}"/>`); }
   wideLine(x0, y0, x1, y1, w, c) {
     this.count.line++;
     this.out.push(`<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`);
@@ -125,6 +126,7 @@ function scaler(g, cx, cy, u) {
     rect: (x, y, w, h, c) => g.fillRect(cx + S(x), cy + S(y), W(w), W(h), c),
     rrect: (x, y, w, h, r, c) => g.fillRoundRect(cx + S(x), cy + S(y), W(w), W(h), S(r), c),
     circle: (x, y, r, c) => g.fillCircle(cx + S(x), cy + S(y), W(r), c),
+    tri: (x0, y0, x1, y1, x2, y2, c) => g.fillTriangle(cx + S(x0), cy + S(y0), cx + S(x1), cy + S(y1), cx + S(x2), cy + S(y2), c),
     line: (x0, y0, x1, y1, w, c) => g.wideLine(cx + S(x0), cy + S(y0), cx + S(x1), cy + S(y1), W(w), c),
     arc: (x, y, r, ir, a0, a1, c) => g.arc(cx + S(x), cy + S(y), S(r), Math.min(S(ir), S(r) - 1), a0, a1, c),
   };
@@ -259,8 +261,37 @@ function mascotC(g, cx, cy, frame, u, small) {
   d.rrect(15, -10, 4, 3, 1, C.NOSE);
 }
 
-// ---- Option A+B (chosen): A's head with B's eyes -----------------------------------------
+// ---- Shipped (simplified) ----------------------------------------------------------------
 // This is exactly what screens::mascot() draws in the firmware (lib/miblo_ui/src/ui_base.cpp).
+// Flat shapes only (no anti-aliased lines or arcs), about ten per frame, so each frame is
+// composed on a 16-colour off-screen layer and pushed to the panel in one go (no flicker).
+// frames: 0 idle, 1 blink (thin-line eyes), 2 hop (whole cat up 4 units), 3 glance
+function mascotShipped(g, cx, cy, frame, u, small) {
+  const d = scaler(g, cx, cy, u);
+  const b = frame === 2 ? -4 : 0;
+  d.rect(-48, -48, 96, 96, C.BG);
+  d.tri(-36, -42 + b, -32, -4 + b, -8, -18 + b, C.SKIN);
+  d.tri(36, -42 + b, 32, -4 + b, 8, -18 + b, C.SKIN);
+  if (!small) {
+    d.tri(-31, -33 + b, -28, -10 + b, -14, -17 + b, C.EAR_IN);
+    d.tri(31, -33 + b, 28, -10 + b, 14, -17 + b, C.EAR_IN);
+  }
+  d.rrect(-32, -20 + b, 64, 52, 24, C.SKIN);
+  if (frame === 1) {
+    d.rect(-22, 5 + b, 16, 3, C.PUPIL);
+    d.rect(6, 5 + b, 16, 3, C.PUPIL);
+  } else {
+    const gx = frame === 3 ? 3 : 0;
+    d.circle(-14, 6 + b, 8, C.EYE_GREEN);
+    d.circle(14, 6 + b, 8, C.EYE_GREEN);
+    d.circle(-14 + gx, 6 + b, 4, C.PUPIL);
+    d.circle(14 + gx, 6 + b, 4, C.PUPIL);
+  }
+  d.rrect(-4, 17 + b, 8, 5, 2, C.NOSE);
+}
+
+// ---- Option A+B (shipped in v0.2.1, replaced): A's head with B's eyes -------------------
+// ~22 primitives drawn straight to the panel flickered on the real device.
 // frames: 0 idle, 1 blink (happy ^^ eyes), 2 ear twitch, 3 glance
 function mascotAB(g, cx, cy, frame, u, small) {
   const d = scaler(g, cx, cy, u);
@@ -298,8 +329,10 @@ function mascotAB(g, cx, cy, frame, u, small) {
 
 // ---- Page assembly ------------------------------------------------------------------------
 const OPTIONS = [
-  { key: 'A+B', name: 'Glyph with Pip eyes (chosen)', fn: mascotAB, frames: ['idle', 'blink', 'ear twitch', 'glance'],
-    caption: 'What ships: A\'s geometric head, fanned ears, forehead wrinkles, nose and mouth, with B\'s round green eyes and happy ^^ blink.' },
+  { key: 'Shipped', name: 'Simplified Sphynx (shipped)', fn: mascotShipped, frames: ['idle', 'blink', 'hop', 'glance'],
+    caption: 'What ships now: the A+B look cut down to flat shapes: triangle ears with pink insides, a round peach head, round green eyes, pink nose. Composed off-screen and pushed in one go, so no flicker.' },
+  { key: 'A+B', name: 'Glyph with Pip eyes (v0.2.1)', fn: mascotAB, frames: ['idle', 'blink', 'ear twitch', 'glance'],
+    caption: 'Shipped in v0.2.1, then replaced: too many primitives drawn straight to the panel made it flash black and build up piece by piece on the device.' },
   { key: 'A', name: 'Glyph', fn: mascotA, frames: ['idle', 'blink', 'ear twitch', 'glance'],
     caption: 'Minimal geometric head: big fanned ears, amber almond eyes with slit pupils, three forehead wrinkles. Reads like an icon.' },
   { key: 'B', name: 'Pip', fn: mascotB, frames: ['idle', 'blink', 'tail sway', 'bounce'],

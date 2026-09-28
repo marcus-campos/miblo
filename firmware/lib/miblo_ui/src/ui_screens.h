@@ -17,10 +17,12 @@ using miblo::Lang;
 // Binds the layouts to a Canvas (once, at boot).
 void bind(ui::Canvas& canvas);
 ui::Canvas& canvas();
-// Screen switch: clears everything and invalidates the region cache.
+// Screen switch: clears everything, invalidates the region cache and frees any canvas layer.
 void reset();
 // If the region's hash changed, clears the rectangle (coordinates already scaled) and returns true.
 bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg = ui::color::BG);
+// Like region() but without clearing: for areas that repaint their own background.
+bool dirty(uint8_t id, uint32_t hash);
 // Translated text (4 rotating buffers).
 const char* t(Lang lang, miblo::S id);
 // Scale from the 240 grid: X for horizontal widths/positions, Y for vertical, Sz for sizes.
@@ -31,11 +33,11 @@ int Sz(int v);
 // Composite primitives.
 void bar(int x, int y, int w, int h, uint8_t pct, uint16_t fg);
 void check(int cx, int cy, int size, uint16_t c);
-// Miblo mascot: geometric Sphynx cat (docs/mascot/options.html, "A+B"), drawn only inside the
-// square (cx - Sz(48), cy - Sz(48), Sz(96), Sz(96)), background included; `small` draws the
-// 48 px variant inside (cx - Sz(24), cy - Sz(24), Sz(48), Sz(48)).
+// Miblo mascot: simplified flat Sphynx cat (docs/mascot/options.html, "shipped"), about ten
+// flat primitives, drawn only inside the square (cx - Sz(48), cy - Sz(48), 2 * Sz(48)),
+// background included; `small` draws the 48 px variant inside (cx - Sz(24), cy - Sz(24), 2 * Sz(24)).
 void mascot(int cx, int cy, uint8_t frame, bool small = false);
-// Pose of a frame (0 idle, 1 blink, 2 ear twitch, 3 glance); frames with equal poses draw the same.
+// Pose of a frame (0 idle, 1 blink, 2 hop, 3 glance); frames with equal poses draw the same.
 uint8_t mascotPose(uint8_t frame);
 void qr(const char* payload, int x, int y, int scale);
 

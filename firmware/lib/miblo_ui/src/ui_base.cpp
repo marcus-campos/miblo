@@ -25,12 +25,15 @@ int Y(int v) { return v * g_h / 240; }
 int Sz(int v) { return v * (g_w < g_h ? g_w : g_h) / 240; }
 
 void reset() {
+  g_canvas->releaseLayer();
   g_canvas->fillRect(0, 0, g_w, g_h, color::BG);
   g_cache.invalidate();
 }
 
+bool dirty(uint8_t id, uint32_t hash) { return g_cache.changed(id, hash); }
+
 bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg) {
-  if (!g_cache.changed(id, hash)) return false;
+  if (!dirty(id, hash)) return false;
   g_canvas->fillRect(x, y, w, h, bg);
   return true;
 }
@@ -81,60 +84,41 @@ struct MascotPen {
     g.fillRoundRect(cx + s(x), cy + s(y), w(ww), w(h), s(r), c);
   }
   void circle(int x, int y, int r, uint16_t c) { g.fillCircle(cx + s(x), cy + s(y), w(r), c); }
-  void line(int x0, int y0, int x1, int y1, int ww, uint16_t c, uint16_t bg) {
-    g.wideLine(cx + s(x0), cy + s(y0), cx + s(x1), cy + s(y1), w(ww), c, bg);
-  }
-  void arc(int x, int y, int r, int ir, int a0, int a1, uint16_t c) {
-    const int sr = s(r), sir = s(ir) < sr - 1 ? s(ir) : sr - 1;
-    g.arc(cx + s(x), cy + s(y), sr, sir, a0, a1, c, color::SKIN);
-  }
-  // Triangular ear: three fanned round-capped lines from the tip to the base, plus the inner ear.
-  void ear(int tx, int ty, int b0x, int b0y, int b1x, int b1y, int ix0, int iy0, int ix1, int iy1) {
-    line(tx, ty, b0x, b0y, 10, color::SKIN, color::BG);
-    line(tx, ty, b1x, b1y, 10, color::SKIN, color::BG);
-    line(tx, ty, (b0x + b1x) / 2, (b0y + b1y) / 2, 10, color::SKIN, color::BG);
-    line(ix0, iy0, ix1, iy1, 5, color::EAR_IN, color::SKIN);
+  void tri(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+    g.fillTriangle(cx + s(x0), cy + s(y0), cx + s(x1), cy + s(y1), cx + s(x2), cy + s(y2), c);
   }
 };
 }  // namespace
 
 void mascot(int cx, int cy, uint8_t frame, bool small) {
-  // Option "A+B" of docs/mascot/options.html: A's geometric Sphynx head (big fanned ears,
-  // forehead wrinkles, nose, "w" mouth) with B's round green eyes and happy ^^ blink.
-  // Poses: 0 idle, 1 blink, 2 ear twitch, 3 glance. `small` = 48 px variant (no wrinkles,
-  // mouth or eye highlights).
+  // Simplified Sphynx (docs/mascot/options.html, "shipped"): flat shapes only, so a frame is
+  // cheap and renders the same on an off-screen 16-colour layer. Big triangular ears with pink
+  // insides, a round peach head, round green eyes with dark pupils and a small pink nose.
+  // Poses: 0 idle, 1 blink (eyes become thin lines), 2 hop (whole cat up a bit), 3 glance
+  // (pupils to the side). `small` = 48 px variant (no inner ears).
   const int m = g_w < g_h ? g_w : g_h;
   MascotPen d{*g_canvas, cx, cy, m, small ? 480 : 240};
   const uint8_t pose = mascotPose(frame);
+  const int b = pose == 2 ? -4 : 0;  // hop
   d.rect(-48, -48, 96, 96, color::BG);
-  if (pose == 2) d.ear(-42, -32, -28, 0, -8, -14, -36, -26, -18, -8);
-  else d.ear(-34, -40, -28, 0, -8, -14, -30, -32, -18, -8);
-  d.ear(34, -40, 28, 0, 8, -14, 30, -32, 18, -8);
-  d.rrect(-30, -18, 60, 52, 22, color::SKIN);
+  d.tri(-36, -42 + b, -32, -4 + b, -8, -18 + b, color::SKIN);  // ears
+  d.tri(36, -42 + b, 32, -4 + b, 8, -18 + b, color::SKIN);
   if (!small) {
-    d.arc(0, 24, 36, 34, 167, 193, color::WRINKLE);  // forehead wrinkles, concentric
-    d.arc(0, 24, 32, 30, 164, 196, color::WRINKLE);
-    d.arc(0, 24, 28, 26, 160, 200, color::WRINKLE);
+    d.tri(-31, -33 + b, -28, -10 + b, -14, -17 + b, color::EAR_IN);
+    d.tri(31, -33 + b, 28, -10 + b, 14, -17 + b, color::EAR_IN);
   }
+  d.rrect(-32, -20 + b, 64, 52, 24, color::SKIN);  // head
   if (pose == 1) {
-    d.arc(-14, 10, 6, 4, 120, 240, color::PUPIL);  // happy closed eyes
-    d.arc(14, 10, 6, 4, 120, 240, color::PUPIL);
+    d.rect(-22, 5 + b, 16, 3, color::PUPIL);  // closed eyes
+    d.rect(6, 5 + b, 16, 3, color::PUPIL);
   } else {
     const int gx = pose == 3 ? 3 : 0;
-    d.circle(-14, 8, 7, color::EYE_GREEN);
-    d.circle(14, 8, 7, color::EYE_GREEN);
-    d.rrect(-16 + gx, 3, 4, 10, 2, color::PUPIL);  // slit pupils
-    d.rrect(12 + gx, 3, 4, 10, 2, color::PUPIL);
-    if (!small) {
-      d.circle(-11, 5, 2, color::WHITE);
-      d.circle(17, 5, 2, color::WHITE);
-    }
+    d.circle(-14, 6 + b, 8, color::EYE_GREEN);
+    d.circle(14, 6 + b, 8, color::EYE_GREEN);
+    d.circle(-14 + gx, 6 + b, 4, color::PUPIL);
+    d.circle(14 + gx, 6 + b, 4, color::PUPIL);
   }
-  d.rrect(-4, 18, 8, 5, 2, color::NOSE);
-  if (!small) {
-    d.arc(-3, 23, 4, 2, 300, 60, color::WRINKLE);  // "w" mouth
-    d.arc(3, 23, 4, 2, 300, 60, color::WRINKLE);
-  }
+  d.rrect(-4, 17 + b, 8, 5, 2, color::NOSE);
 }
 
 void qr(const char* payload, int x, int y, int scale) {

@@ -7,17 +7,38 @@
 // Canvas on top of TFT_eSPI + u8g2 fonts (UTF-8). Works for any board with TFT_eSPI; the board
 // supplies the screen size and, for each ui::Font, a stack of u8g2 fonts (nullptr-terminated):
 // the first one that has the glyph draws the character; none → rectangle.
+// Layers (ui::Canvas::beginLayer): a 4-bit TFT_eSprite with a 16-colour palette of the UI
+// colours (w * h / 2 bytes, 4.6 KB for the 96x96 mascot), created on demand and freed by
+// releaseLayer() on every screen switch. Only the flat shape primitives go to the layer; text,
+// wide lines and arcs always draw straight to the panel.
 class TftCanvas : public ui::Canvas {
  public:
   using FontStack = const uint8_t* const*;
-  TftCanvas(TFT_eSPI& tft, ui::ScreenSpec spec, const FontStack* stacks) : tft_(tft), spec_(spec), stacks_(stacks) {}
+  TftCanvas(TFT_eSPI& tft, ui::ScreenSpec spec, const FontStack* stacks)
+      : tft_(tft), spr_(&tft), spec_(spec), stacks_(stacks) {}
   void begin();
 
   ui::ScreenSpec spec() const override { return spec_; }
-  void fillRect(int x, int y, int w, int h, uint16_t c) override { tft_.fillRect(x, y, w, h, c); }
-  void fillRoundRect(int x, int y, int w, int h, int r, uint16_t c) override { tft_.fillRoundRect(x, y, w, h, r, c); }
-  void drawRect(int x, int y, int w, int h, uint16_t c) override { tft_.drawRect(x, y, w, h, c); }
-  void fillCircle(int cx, int cy, int r, uint16_t c) override { tft_.fillCircle(cx, cy, r, c); }
+  void fillRect(int x, int y, int w, int h, uint16_t c) override {
+    if (layer_) spr_.fillRect(x - lx_, y - ly_, w, h, idx(c));
+    else tft_.fillRect(x, y, w, h, c);
+  }
+  void fillRoundRect(int x, int y, int w, int h, int r, uint16_t c) override {
+    if (layer_) spr_.fillRoundRect(x - lx_, y - ly_, w, h, r, idx(c));
+    else tft_.fillRoundRect(x, y, w, h, r, c);
+  }
+  void drawRect(int x, int y, int w, int h, uint16_t c) override {
+    if (layer_) spr_.drawRect(x - lx_, y - ly_, w, h, idx(c));
+    else tft_.drawRect(x, y, w, h, c);
+  }
+  void fillCircle(int cx, int cy, int r, uint16_t c) override {
+    if (layer_) spr_.fillCircle(cx - lx_, cy - ly_, r, idx(c));
+    else tft_.fillCircle(cx, cy, r, c);
+  }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) override {
+    if (layer_) spr_.fillTriangle(x0 - lx_, y0 - ly_, x1 - lx_, y1 - ly_, x2 - lx_, y2 - ly_, idx(c));
+    else tft_.fillTriangle(x0, y0, x1, y1, x2, y2, c);
+  }
   void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) override {
     tft_.drawWideLine(x0, y0, x1, y1, width, c, bg);
   }
@@ -26,13 +47,20 @@ class TftCanvas : public ui::Canvas {
   }
   int text(int x, int y, const char* s, ui::Font f, uint16_t fg, ui::Align a, int maxW) override;
   int textWidth(const char* s, ui::Font f) override;
+  bool beginLayer(int x, int y, int w, int h) override;
+  void endLayer() override;
+  void releaseLayer() override;
 
  private:
   TFT_eSPI& tft_;
+  TFT_eSprite spr_;
+  bool layer_ = false;  // drawing into spr_
+  int lx_ = 0, ly_ = 0, lw_ = 0, lh_ = 0;
   ui::ScreenSpec spec_;
   const FontStack* stacks_;
   U8g2_for_TFT_eSPI u8_;
 
+  static uint8_t idx(uint16_t c);  // RGB565 -> nearest layer palette index
   const uint8_t* fontFor(ui::Font f, uint32_t cp);
   int glyphAdvance(ui::Font f, uint32_t cp, const uint8_t** font);
   int ascent(ui::Font f);

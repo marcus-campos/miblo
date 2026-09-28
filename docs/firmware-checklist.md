@@ -20,9 +20,16 @@ notes.
 
 ## Checklist
 
-1. **First flash (reference firmware):** open `http://<ip>/update` in the browser, choose
-   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin`, submit. Expected: the device reboots and shows
-   the blinking mascot (boot screen), then the firmware version near the bottom of the screen.
+1. **First flash (two-stage, from the stock firmware):** open `http://<ip>/update` in the
+   browser and upload `firmware/dist/miblo-loader-geekmagic_ultra-0.1.0.bin` (the full image does
+   not fit the stock firmware's OTA space: "Not Enough Space"). Expected: the device reboots and
+   shows "Miblo installer", the version and `http://<ip>/update`; `GET http://<ip>/info` returns
+   `{"app":"miblo-loader",...}`. Then open that `/update` and upload
+   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin`: a progress bar fills on screen, then the device
+   reboots and shows the blinking mascot (boot screen) with the firmware version near the bottom.
+   Also verify once with the router off: after ~20 s the installer shows the open
+   `Miblo-Installer-XXXX` network and `http://192.168.4.1/update`, and it still joins the saved
+   Wi-Fi when the router comes back.
 2. **Saved Wi-Fi:** with no interaction, the boot screen gives way to the "Wi-Fi connected"
    welcome screen, which shows a QR code pointing to `https://github.com/marcus-campos/miblo`
    (the repo README has the install commands) above the `/plugin install miblo@miblo` label, the

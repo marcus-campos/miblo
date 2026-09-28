@@ -7,6 +7,9 @@ import { fileURLToPath } from 'node:url';
 import { PORT, HOST } from '../lib/constants.js';
 import { findClaudePid } from '../lib/proc.js';
 
+// Hard cap: a hook must never hang Claude Code.
+setTimeout(() => process.exit(0), 3000).unref();
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 async function readStdin() {
@@ -26,13 +29,16 @@ async function post(body) {
 }
 
 function startBridge() {
-  const dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(here, '..', '.data');
-  const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', dataDir], {
-    detached: true,
-    stdio: 'ignore',
-    windowsHide: true,
-  });
-  child.unref();
+  try {
+    const dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(here, '..', '.data');
+    const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', dataDir], {
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    child.on('error', () => {});
+    child.unref();
+  } catch {}
 }
 
 async function main() {

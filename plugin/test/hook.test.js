@@ -49,3 +49,19 @@ test('exits 0 silently on invalid input', () => {
   assert.equal(r.status, 0);
   assert.equal(r.stdout.toString(), '');
 });
+
+test('exits 0 within the watchdog when stdin never closes', async () => {
+  const t0 = Date.now();
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [hook], { env: { ...process.env, MIBLO_PORT: '1', MIBLO_NO_SPAWN: '1' } });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('close', (code) => {
+      assert.equal(code, 0);
+      assert.equal(out, '');
+      assert.ok(Date.now() - t0 < 5000);
+      resolve();
+    });
+    // Intentionally do NOT end stdin, forcing the watchdog to trigger
+  });
+});

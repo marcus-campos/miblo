@@ -25,7 +25,7 @@ constexpr uint16_t AMBER = 0xF524;       // #f5a524 needs you
 constexpr uint16_t GREEN = 0x4EF0;       // #4ade80 running
 constexpr uint16_t BLUE = 0x653F;        // #60a5fa finished
 constexpr uint16_t FLASH_BLUE = 0x3C1E;  // #3b82f6 blue flash
-constexpr uint16_t CORAL = 0xDBAA;       // #d97757 5h window / mascot
+constexpr uint16_t CORAL = 0xDBAA;       // #d97757 5h window
 constexpr uint16_t VIOLET = 0x8C5E;      // #8b8bf5 week
 constexpr uint16_t RED = 0xEA28;         // #ef4444 limit >= 95%
 constexpr uint16_t TRACK = 0x2125;       // #262629 bar background
@@ -33,6 +33,13 @@ constexpr uint16_t DIVIDER = 0x2104;     // #222222
 constexpr uint16_t CARD = 0x10A3;        // #16161a
 constexpr uint16_t CARD_AMBER = 0x18A1;  // #1c160a
 constexpr uint16_t CMD_BG = 0x18C3;      // #1a1a1e
+// Sphynx mascot (docs/mascot/options.html, option "A+B").
+constexpr uint16_t SKIN = 0xF5D5;        // #f2b8a8 warm peach skin
+constexpr uint16_t WRINKLE = 0xBB8F;     // #b8707c forehead wrinkles, mouth
+constexpr uint16_t EAR_IN = 0xE473;      // #e48f9c inner ears
+constexpr uint16_t NOSE = 0xCB2F;        // #cf6479
+constexpr uint16_t PUPIL = 0x1882;       // #1a1014 pupils, closed eyes
+constexpr uint16_t EYE_GREEN = 0x9EC9;   // #9bd84e iris
 constexpr uint16_t BLACK = 0x0000;
 constexpr uint16_t WHITE = 0xFFFF;
 }  // namespace color

@@ -22,7 +22,9 @@ static const char kRepoUrl[] = "https://github.com/marcus-campos/miblo";
 static const char* const kRepoLabel = kRepoUrl + 8;  // without "https://"
 
 void boot(Lang lang, uint8_t frame) {
-  if (region(0, hashInt(kHashSeed, frame % 3), X(74), Y(54), Sz(92), Sz(92))) mascot(X(120), Y(100), frame);
+  if (region(0, hashInt(kHashSeed, mascotPose(frame)), X(120) - Sz(48), Y(100) - Sz(48), Sz(96), Sz(96))) {
+    mascot(X(120), Y(100), frame);
+  }
   if (region(1, hashInt(kHashSeed, (uint32_t)lang), 0, Y(150), X(240), Y(70))) {
     C().text(X(120), Y(176), "Miblo", Font::Title, color::TEXT, Align::Center, X(240));
     C().text(X(120), Y(204), t(lang, S::Connecting), Font::Small, color::MUTED, Align::Center, X(232));

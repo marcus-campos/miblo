@@ -31,7 +31,12 @@ int Sz(int v);
 // Composite primitives.
 void bar(int x, int y, int w, int h, uint8_t pct, uint16_t fg);
 void check(int cx, int cy, int size, uint16_t c);
-void mascot(int cx, int cy, uint8_t frame);  // Miblo mascot placeholder (3 frames)
+// Miblo mascot: geometric Sphynx cat (docs/mascot/options.html, "A+B"), drawn only inside the
+// square (cx - Sz(48), cy - Sz(48), Sz(96), Sz(96)), background included; `small` draws the
+// 48 px variant inside (cx - Sz(24), cy - Sz(24), Sz(48), Sz(48)).
+void mascot(int cx, int cy, uint8_t frame, bool small = false);
+// Pose of a frame (0 idle, 1 blink, 2 ear twitch, 3 glance); frames with equal poses draw the same.
+uint8_t mascotPose(uint8_t frame);
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens (§4.5) ----

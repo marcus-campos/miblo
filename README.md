@@ -228,6 +228,8 @@ Miblo's own update page (`http://miblo-xxxx.local/update`, with the on-screen co
 
 ## Development
 
+**Commits:** no AI attribution. Commits, pull requests, tags and release notes must never carry `Co-Authored-By` trailers or "Generated with ..." lines for AI assistants. AI assistants working in this repository follow [`CLAUDE.md`](CLAUDE.md) (also [`AGENTS.md`](AGENTS.md)).
+
 ### Repository layout
 
 ```
@@ -248,6 +250,7 @@ firmware/              ESP8266 firmware (PlatformIO / Arduino)
   test/                native unit tests
 fixtures/snapshots/    protocol fixtures shared by plugin and firmware tests
 docs/                  on-device release checklist
+CLAUDE.md, AGENTS.md   rules for AI coding assistants (no AI attribution in commits)
 ```
 
 ### Running tests

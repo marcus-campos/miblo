@@ -148,7 +148,8 @@ void loop() {
     storage::factoryReset();
   }
   if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) ESP.restart();
-  ctx.presence.update(now);  // expire an old brute-force lockout before the clock can wrap
+  ctx.presence.update(now);  // expire old brute-force lockouts before the clock can wrap
+  ctx.pairing.update(now);
   if (ctx.showPairCode && now - ctx.pairCodeAtMs >= miblo::kPairCodeScreenMs) ctx.showPairCode = false;
 
   if (now - lastFrameMs < 100) return;  // ~10 frames/s

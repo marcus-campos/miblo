@@ -81,6 +81,9 @@ static void handlePair() {
   ctx.justPaired = true;
   ctx.pairedAtMs = now;
   ctx.showPairCode = false;
+  char next[5];
+  miblo::formatCode(hwRandom(), next);  // rotate: a code seen once on screen pairs only one computer
+  ctx.pairing.setCode(next);
   String out = String(F("{\"token\":\"")) + token + F("\"}");
   json(200, out.c_str());
 }

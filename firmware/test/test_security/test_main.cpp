@@ -63,6 +63,46 @@ static void test_success_resets_failure_count() {
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("1234", 0));
 }
 
+static void failPairing(PairingGuard& g, uint32_t nowMs) {
+  for (int i = 0; i < 5; i++) TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", nowMs));
+}
+
+static void test_pairing_lockout_escalates_and_success_clears() {
+  PairingGuard g;
+  g.setCode("4827");
+  failPairing(g, 0);  // 1st lockout: 60 s
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(0));
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 59999));
+  failPairing(g, 60000);  // 2nd lockout: 120 s
+  TEST_ASSERT_EQUAL_UINT32(120000, g.lockRemainingMs(60000));
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 179999));
+  failPairing(g, 180000);  // 3rd lockout: 240 s
+  TEST_ASSERT_EQUAL_UINT32(240000, g.lockRemainingMs(180000));
+  // Keep failing: the lockout caps at 1 h.
+  uint32_t t = 420000;
+  for (int i = 0; i < 6; i++) {
+    failPairing(g, t);
+    t += g.lockRemainingMs(t);
+  }
+  failPairing(g, t);
+  TEST_ASSERT_EQUAL_UINT32(3600000, g.lockRemainingMs(t));
+  t += 3600000;
+  // A correct code clears the escalation: the next lockout is back to 60 s.
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", t));
+  failPairing(g, t);
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(t));
+}
+
+static void test_pairing_lockout_clock_wrap() {
+  PairingGuard g;
+  g.setCode("4827");
+  failPairing(g, 1000);
+  g.update(62000);  // the app calls update() every frame: the expired lockout is cleared
+  // ~49.7 days later the clock wraps back near the old lock time: still unlocked.
+  TEST_ASSERT_EQUAL_UINT32(0, g.lockRemainingMs(1500));
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", 1500));
+}
+
 static void test_token_store_up_to_four_replacing_oldest() {
   TokenStore s;
   s.add("t1", "mac");
@@ -220,6 +260,8 @@ int main() {
   RUN_TEST(test_constant_time_equals);
   RUN_TEST(test_pairing_lockout_after_five_bad_codes);
   RUN_TEST(test_success_resets_failure_count);
+  RUN_TEST(test_pairing_lockout_escalates_and_success_clears);
+  RUN_TEST(test_pairing_lockout_clock_wrap);
   RUN_TEST(test_token_store_up_to_four_replacing_oldest);
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);

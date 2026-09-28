@@ -186,3 +186,166 @@ test('sweep drops sessions with no event for 12 h, even without a pid', () => {
   assert.equal(tracker.sweep(), true);
   assert.deepEqual(tracker.sessions().map((s) => s.id), ['recent']);
 });
+
+// --- background work: subagents and background tasks ---
+
+const agent = (id, type = 'general-purpose') => ({ agent_id: id, agent_type: type });
+const bg = (...types) => ({ background_tasks: types.map((type) => ({ type, status: 'running' })) });
+
+test('Stop while background work is in flight keeps the session running, no alert', () => {
+  const table = [
+    // [label, events before Stop, Stop payload, expected det]
+    ['2 agents via background_tasks', [], bg('subagent', 'subagent'), 'waiting 2 agents'],
+    ['1 agent via background_tasks', [], bg('subagent'), 'waiting 1 agent'],
+    ['shell + agent via background_tasks', [], bg('shell', 'subagent'), 'waiting 2 tasks'],
+    ['2 agents tracked, no background_tasks (older Claude Code)',
+      [['SubagentStart', agent('a1')], ['SubagentStart', agent('a2')]], {}, 'waiting 2 agents'],
+  ];
+  for (const [label, before, stop, det] of table) {
+    const { tracker, ev } = setup();
+    ev('s1', 'UserPromptSubmit');
+    for (const [name, extra] of before) ev('s1', name, extra);
+    ev('s1', 'Stop', stop);
+    const [s] = tracker.sessions();
+    assert.equal(s.st, 'running', label);
+    assert.equal(s.tool, 'Agent', label);
+    assert.equal(s.det, det, label);
+    assert.deepEqual(tracker.alerts(), [], label);
+  }
+});
+
+test('Stop with an empty or all-finished background_tasks is done, even with tracked agents', () => {
+  for (const stop of [{ background_tasks: [] }, { background_tasks: [{ type: 'subagent', status: 'completed' }] }]) {
+    const { tracker, ev } = setup();
+    ev('s1', 'SubagentStart', agent('a1'));
+    ev('s1', 'Stop', stop);
+    assert.equal(tracker.sessions()[0].st, 'done');
+    assert.deepEqual(tracker.alerts().map((a) => a.kind), ['done']);
+  }
+});
+
+test('subagent events never flip the main session state', () => {
+  const table = [
+    ['PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } }],
+    ['PreToolUse', { tool_name: 'AskUserQuestion', tool_input: {} }],
+    ['PostToolUse', { tool_name: 'Read', tool_input: {} }],
+    ['Notification', { notification_type: 'elicitation_dialog' }],
+    ['Stop', {}],
+    ['SubagentStop', {}],
+  ];
+  for (const [name, extra] of table) {
+    // Main session waiting on the agent: stays running, detail untouched.
+    let { tracker, ev } = setup();
+    ev('s1', 'SubagentStart', agent('a1'));
+    ev('s1', 'Stop', bg('subagent'));
+    ev('s1', name, { ...agent('a1'), ...extra });
+    let [s] = tracker.sessions();
+    assert.deepEqual([s.st, s.tool, s.det], ['running', 'Agent', 'waiting 1 agent'], name);
+    assert.deepEqual(tracker.alerts(), [], name);
+
+    // Main session already done: a straggling subagent event neither revives nor re-alerts it.
+    ({ tracker, ev } = setup());
+    ev('s1', 'Stop', { background_tasks: [] });
+    const alerts = tracker.alerts();
+    ev('s1', name, { ...agent('a1'), ...extra });
+    [s] = tracker.sessions();
+    assert.equal(s.st, 'done', name);
+    assert.deepEqual(tracker.alerts(), alerts, name);
+  }
+});
+
+test('last SubagentStop keeps it running; only the next main Stop with nothing pending is done', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'SubagentStart', agent('a2'));
+  ev('s1', 'Stop', bg('subagent', 'subagent'));
+  ev('s1', 'SubagentStop', agent('a1'));
+  ev('s1', 'SubagentStop', agent('a2'));
+  assert.equal(tracker.sessions()[0].st, 'running');
+  assert.deepEqual(tracker.alerts(), []);
+  // Woken by the task notifications, the main agent works and stops again.
+  ev('s1', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/a/b.js' } });
+  assert.equal(tracker.sessions()[0].det, 'b.js');
+  ev('s1', 'Stop', { background_tasks: [] });
+  assert.equal(tracker.sessions()[0].st, 'done');
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['done']);
+});
+
+test('fallback counting (no background_tasks) follows SubagentStart/Stop', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'SubagentStart', agent('a2'));
+  ev('s1', 'SubagentStop', agent('a1'));
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].det, 'waiting 1 agent');
+  ev('s1', 'SubagentStop', agent('a2'));
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].st, 'done');
+});
+
+test('internal agents (empty agent_type) are not counted as background work', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('sugg', ''));
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].st, 'done');
+});
+
+test('tracked agents silent for 30 min expire', () => {
+  const { tracker, clock, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'SubagentStart', agent('a2'));
+  clock.advance(20 * 60_000);
+  ev('s1', 'PreToolUse', { ...agent('a2'), tool_name: 'Bash', tool_input: {} }); // a2 heartbeat
+  clock.advance(10 * 60_000 + 1);
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].det, 'waiting 1 agent');
+  clock.advance(30 * 60_000 + 1);
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].st, 'done');
+});
+
+test('a waiting session with no event for 30 min is marked done by sweep, without an alert', () => {
+  const { tracker, clock, ev } = setup();
+  ev('s1', 'Stop', bg('shell'));
+  clock.advance(30 * 60_000);
+  assert.equal(tracker.sweep(), false);
+  assert.equal(tracker.sessions()[0].st, 'running');
+  clock.advance(1);
+  assert.equal(tracker.sweep(), true);
+  assert.equal(tracker.sessions()[0].st, 'done');
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('SessionEnd clears tracked agents', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'SessionEnd');
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].st, 'done');
+});
+
+test('a subagent PermissionRequest raises perm; its next event returns to the waiting state', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'PermissionRequest', { ...agent('a1'), tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+  let [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['perm', 'Bash', 'rm -rf build']);
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
+  // Another agent's activity does not clear it.
+  ev('s1', 'PostToolUse', { ...agent('a2'), tool_name: 'Read', tool_input: {} });
+  assert.equal(tracker.sessions()[0].st, 'perm');
+  ev('s1', 'PostToolUse', { ...agent('a1'), tool_name: 'Bash', tool_input: {} });
+  [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['running', 'Agent', 'waiting 1 agent']);
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('a main-session permission is not cleared by subagent activity', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'deploy' } });
+  ev('s1', 'PostToolUse', { ...agent('a1'), tool_name: 'Read', tool_input: {} });
+  assert.equal(tracker.sessions()[0].st, 'perm');
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
+});

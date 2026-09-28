@@ -17,6 +17,9 @@ export const HEARTBEAT_MS = 10_000;
 export const PID_CHECK_MS = 15_000;
 export const IDLE_EXIT_MS = 30 * 60_000;
 export const SESSION_TTL_MS = 12 * 3600_000;
+// A background worker (subagent) or a Stop that waits on background work is
+// given up on after this long without any event, so a lost stop can't pin a session.
+export const WORKER_TTL_MS = 30 * 60_000;
 export const MDNS_SERVICE = '_miblo._tcp.local';
 
 export function claudeSettingsPath() {

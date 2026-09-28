@@ -154,9 +154,13 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 | `PreToolUse` (`AskUserQuestion`) ou `Notification` com `notification_type = elicitation_dialog` | → `question`; gera alerta âmbar |
 | `PermissionRequest` | → `perm`; `tool`/`det` = ferramenta + comando/arquivo de `tool_input`; gera alerta âmbar |
 | `PostToolUse` | `perm`/`question` → `running` |
-| `Stop` | → `done`; gera alerta azul |
+| `Stop` sem trabalho em segundo plano | → `done`; gera alerta azul |
+| `Stop` com trabalho em segundo plano (`background_tasks` não vazio; sem o campo, em versões antigas do Claude Code, subagentes ativos contados por `SubagentStart`/`SubagentStop`) | fica `running`, sem alerta; `tool` = `Agent`, `det` = `waiting N agents` (ou `waiting N tasks` se houver shell/monitor etc.). A sessão será reacordada pelas notificações das tarefas; só um `Stop` sem nada pendente dá `done` |
+| `SubagentStart` / `SubagentStop` (com `agent_id`; `agent_type` vazio = agente interno, ignorado) | só registra/remove o subagente ativo da sessão; não muda o estado |
+| Evento vindo de dentro de um subagente (traz `agent_id`) | não muda o estado da sessão principal (nunca gera `question`/`done`), exceto `PermissionRequest`, que o usuário vê: → `perm` com alerta âmbar; o próximo evento desse subagente sai da pendência |
+| Subagente sem eventos por 30 min, ou sessão aguardando segundo plano sem eventos por 30 min | o subagente expira; a sessão vai para `done` sem alerta |
 | Qualquer outro evento da sessão enquanto em `perm`/`question` | sai da pendência (permissão negada não gera `PostToolUse`) |
-| `SessionEnd` ou PID do Claude inexistente | remove a sessão |
+| `SessionEnd` ou PID do Claude inexistente | remove a sessão (e seus subagentes) |
 
 - O PID é verificado a cada 15s, para cobrir terminais fechados à força.
 - Modo discreto: a atividade mostra só o tipo da ferramenta.

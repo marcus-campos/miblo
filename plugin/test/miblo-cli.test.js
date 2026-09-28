@@ -50,6 +50,85 @@ test('pair stores the device; wrong code returns 2', async () => {
   }
 });
 
+test('pair after 5 wrong codes reports the lockout with seconds remaining', async () => {
+  let t = 0;
+  const dev = await startFakeDevice({ now: () => t });
+  const d = deps();
+  try {
+    for (let i = 0; i < 5; i++) assert.equal((await run(['pair', dev.addr, '0000'], d)).code, 2);
+    const locked = await run(['pair', dev.addr, '4827'], d);
+    assert.equal(locked.code, 2);
+    assert.match(locked.out, /Too many wrong codes\. Try again in 60 s\./);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair seeds the device language from the host locale when the device reports none', async () => {
+  const dev = await startFakeDevice();
+  const d = deps({ locale: 'pt-BR' });
+  try {
+    await run(['pair', dev.addr, '4827'], d);
+    assert.equal(dev.state.config.lang, 'pt-BR');
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair maps host locales to the firmware\'s supported language codes', async () => {
+  const cases = [
+    ['en-US', 'en'],
+    ['pt-PT', 'pt-PT'],
+    ['pt', 'pt-BR'],
+    ['es-ES', 'es'],
+    ['zh-Hans-CN', 'zh'],
+  ];
+  for (const [locale, expected] of cases) {
+    const dev = await startFakeDevice();
+    try {
+      await run(['pair', dev.addr, '4827'], deps({ locale }));
+      assert.equal(dev.state.config.lang, expected, `${locale} -> ${expected}`);
+    } finally {
+      await dev.close();
+    }
+  }
+});
+
+test('pair skips the language sync for an unsupported locale, without failing the pair', async () => {
+  const dev = await startFakeDevice();
+  const d = deps({ locale: 'ja-JP' });
+  try {
+    const r = await run(['pair', dev.addr, '4827'], d);
+    assert.equal(r.code, 0);
+    assert.equal(dev.state.config.lang, undefined);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair does not overwrite a language the device already reports', async () => {
+  const setConfigCalls = [];
+  const client = {
+    info: async () => ({ id: 'g', name: 'G', lang: 'fr' }),
+    pair: async () => 'tok',
+    setConfig: async (...args) => setConfigCalls.push(args),
+  };
+  const r = await run(['pair', '10.0.0.9', '4827'], deps({ client, locale: 'en-US' }));
+  assert.equal(r.code, 0);
+  assert.equal(setConfigCalls.length, 0);
+});
+
+test('pair still succeeds if the best-effort language setConfig fails', async () => {
+  const client = {
+    info: async () => ({ id: 'g', name: 'G' }),
+    pair: async () => 'tok',
+    setConfig: async () => { throw new Error('offline'); },
+  };
+  const r = await run(['pair', '10.0.0.9', '4827'], deps({ client, locale: 'en-US' }));
+  assert.equal(r.code, 0);
+  assert.match(r.out, /Paired with/);
+});
+
 test('pair adds :80 to a bare IP', async () => {
   const seen = [];
   const client = { info: async (addr) => { seen.push(addr); return { id: 'g', name: 'G' }; }, pair: async () => 'tok' };

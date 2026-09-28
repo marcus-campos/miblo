@@ -24,6 +24,21 @@ const safe = (d) => ({ ...d, id: cleanId(d.id), name: cleanName(d.name) || clean
 
 const withPort = (addr) => (String(addr).includes(':') ? String(addr) : `${addr}:80`);
 
+// Host locale ("en-US", "pt-BR", "zh-Hans-CN", ...) -> one of the firmware's supported
+// language codes (lib/miblo_core/src/miblo_i18n.cpp kCodes), or null if unsupported.
+// Mirrors the firmware's own tag matching (miblo_i18n.cpp matchTag): a bare "pt" or
+// region "BR" maps to pt-BR, any other pt region maps to pt-PT.
+const SIMPLE_LANGS = new Set(['en', 'es', 'fr', 'it', 'de', 'ru', 'zh']);
+function mapLocaleToLang(locale) {
+  const parts = String(locale ?? '').split(/[-_]/).filter(Boolean);
+  const primary = (parts[0] || '').toLowerCase();
+  if (primary === 'pt') {
+    const region = (parts.slice(1).find((p) => p.length === 2) || '').toUpperCase();
+    return region === '' || region === 'BR' ? 'pt-BR' : 'pt-PT';
+  }
+  return SIMPLE_LANGS.has(primary) ? primary : null;
+}
+
 async function defaultFetchStatus() {
   try {
     const res = await fetch(`http://${HOST}:${PORT}/status`, { signal: AbortSignal.timeout(800) });
@@ -34,7 +49,7 @@ async function defaultFetchStatus() {
 }
 
 export async function run(argv, deps) {
-  const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus } = deps;
+  const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus, locale } = deps;
   const store = new DeviceStore(dataDir);
   const [cmd, ...args] = argv;
   const ok = (out) => ({ code: 0, out: out + '\n' });
@@ -55,8 +70,20 @@ export async function run(argv, deps) {
         if (!info.id) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
         const token = await client.pair(addr, code, hostname);
         store.upsert({ id: info.id, name: info.name, addr, token });
+        if (!info.lang) {
+          // Best-effort: the device reported no explicit language, so seed it from the
+          // host's locale. Never let this fail the pair itself.
+          const lang = mapLocaleToLang(locale);
+          if (lang) {
+            try { await client.setConfig(addr, token, { lang }); } catch { /* best-effort */ }
+          }
+        }
         return ok(`Paired with ${info.name} (${info.id}) at ${addr}.`);
       } catch (e) {
+        if (e.status === 429) {
+          const secs = Math.max(1, Math.ceil(Number(e.data?.retryAfter ?? 60)));
+          return fail(2, `Too many wrong codes. Try again in ${secs} s.`);
+        }
         if (e.status === 403) return fail(2, 'Wrong pairing code.');
         return fail(1, `Could not reach a Miblo gadget at ${addr}.`);
       }
@@ -137,6 +164,7 @@ async function main() {
     discoverFn: () => discover(),
     hostname: os.hostname(),
     fetchStatus: defaultFetchStatus,
+    locale: Intl.DateTimeFormat().resolvedOptions().locale,
   });
   process.stdout.write(r.out);
   process.exitCode = r.code;

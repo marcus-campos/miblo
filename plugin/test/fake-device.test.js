@@ -9,9 +9,10 @@ test('after 5 wrong codes, pairing answers 429 for 60 s', async () => {
   const client = new DeviceClient();
   try {
     for (let i = 0; i < 5; i++) await assert.rejects(client.pair(dev.addr, '0000', 'h'), (e) => e.status === 403);
-    await assert.rejects(client.pair(dev.addr, '4827', 'h'), (e) => e.status === 429); // even the right code
+    // even the right code; body matches the firmware's {"error":"locked","retryAfter":<s>} contract
+    await assert.rejects(client.pair(dev.addr, '4827', 'h'), (e) => e.status === 429 && e.data.error === 'locked' && e.data.retryAfter === 60);
     t += LOCKOUT_MS - 1;
-    await assert.rejects(client.pair(dev.addr, '0000', 'h'), (e) => e.status === 429);
+    await assert.rejects(client.pair(dev.addr, '0000', 'h'), (e) => e.status === 429 && e.data.retryAfter === 1);
     t += 1;
     assert.ok(await client.pair(dev.addr, '4827', 'h'));
   } finally {

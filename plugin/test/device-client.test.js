@@ -11,7 +11,7 @@ test('info, pair, push, config and reset against the fake device', async () => {
     assert.equal(info.id, 'miblo-4f2a');
     assert.equal(info.paired, false);
 
-    await assert.rejects(client.pair(dev.addr, '0000', 'host'), (e) => e.status === 403);
+    await assert.rejects(client.pair(dev.addr, '0000', 'host'), (e) => e.status === 403 && e.data?.error === 'bad code');
     const token = await client.pair(dev.addr, '4827', 'host');
     assert.equal(token, dev.state.token);
 

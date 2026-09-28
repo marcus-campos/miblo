@@ -26,7 +26,12 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
     const body = req.method === 'POST' ? await readBody(req) : null;
     if (req.method === 'GET' && req.url === '/api/info') return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0 });
     if (req.method === 'POST' && req.url === '/api/pair') {
-      if (now() < state.lockedUntil) return send(429, { error: 'too many attempts' });
+      if (now() < state.lockedUntil) {
+        // Matches the firmware's 429 {"error":"locked","retryAfter":<seconds>} contract
+        // (src/web.cpp sendLocked): remaining ms rounded up to whole seconds.
+        const retryAfter = Math.ceil((state.lockedUntil - now()) / 1000);
+        return send(429, { error: 'locked', retryAfter });
+      }
       if (String(body?.code) !== code) {
         state.badCodes += 1;
         if (state.badCodes >= MAX_BAD_CODES) {

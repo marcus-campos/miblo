@@ -20,6 +20,7 @@ export class DeviceClient {
     if (!res.ok) {
       const err = new Error(`device ${path} -> HTTP ${res.status}`);
       err.status = res.status;
+      err.data = data;
       throw err;
     }
     return data;

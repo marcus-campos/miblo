@@ -111,7 +111,7 @@ Mockups: `mockups/overview-adaptive.html`, `mockups/alert-flow.html`.
 
 - **Precisa de você** (existe sessão em permissão/pergunta): faixa âmbar fixa no topo com "N AGUARDANDO · <sessão>"; limites em tamanho grande; sessões pendentes no topo da lista compacta, em âmbar.
 - **Trabalhando** (há sessões rodando, nenhuma pendente): limites grandes (5h com % e horário de reset; semanal menor); lista curta das sessões com a atividade atual.
-- **Tudo pronto / ocioso:** limites grandes; no rodapé, a última sessão que terminou e os tokens do dia.
+- **Tudo pronto / ocioso:** limites grandes; no rodapé, a última sessão que terminou e o custo do dia.
 - Lista com mais itens do que cabe: rotaciona a cada 5s.
 
 ### 4.2 Alertas (todos os modos)
@@ -164,9 +164,10 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 
 - **Fonte única: a status line** (§3.2), documentada oficialmente pelo Claude Code.
 - **ctx/modelo por sessão:** `context_window.used_percentage` e `model.display_name` da leitura mais recente da sessão.
-- **Tokens por sessão:** `total_input_tokens + total_output_tokens`. **Tokens do dia:** soma dos deltas positivos por sessão, zerada à meia-noite local.
+- **Tokens por sessão:** `total_input_tokens + total_output_tokens` — segundo a documentação oficial, são os tokens **do contexto atual** (não um total acumulado); exibidos como tamanho de contexto.
+- **Custo do dia:** soma dos deltas positivos de `cost.total_cost_usd` (este sim acumulado por sessão), zerada à meia-noite local. A primeira leitura de uma sessão só conta integralmente se o bridge viu o `SessionStart` dela; caso contrário vira linha de base (evita contar em dobro após reiniciar o bridge). Não há contagem de tokens do dia.
 - **Limites:** `rate_limits.five_hour` e `rate_limits.seven_day` da leitura mais recente de qualquer sessão. Cada janela pode vir ausente; o bridge mantém o último valor até o `resets_at` passar e então o descarta.
-- **Sem assinatura Pro/Max** (chave de API): `rate_limits` nunca vem. A área de limites mostra o custo do dia (soma dos deltas de `cost.total_cost_usd`).
+- **Sem assinatura Pro/Max** (chave de API): `rate_limits` nunca vem. A área de limites mostra o custo do dia.
 - **Sem status line encadeada:** `usage: null` e sessões sem ctx/tokens.
 
 ### 5.3 Protocolo bridge → gadget
@@ -183,7 +184,7 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
     "h5":  {"pct": 62, "reset": 1790607800},
     "d7":  {"pct": 38, "reset": 1790830000}
   },
-  "today": {"tok": 1510000, "usd": 4.8},
+  "today": {"usd": 4.8},
   "sessions": [
     {"id": "a1", "name": "api-server", "st": "perm", "tool": "Bash", "det": "npm run migrate",
      "since": 1790599958, "model": "Opus", "ctx": 71, "tok": 412000}
@@ -200,7 +201,7 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 
 ### 5.4 Pareamento
 
-O gadget exibe um código de 4 dígitos. `POST /api/pair {code, host}` → gadget responde com um token aleatório de 128 bits, salvo em flash nos dois lados. Após 5 códigos errados, novas tentativas ficam bloqueadas por 60s. Cada gadget aceita vários computadores pareados (até 4 tokens), mas o fluxo principal é um.
+O gadget exibe um código de 4 dígitos. `POST /api/pair {code, host}` → gadget responde com um token aleatório de 128 bits, salvo em flash nos dois lados. Após 5 códigos errados, novas tentativas recebem HTTP 429 por 60s. Cada gadget aceita vários computadores pareados (até 4 tokens), mas o fluxo principal é um.
 
 ## 6. Setup do usuário final
 
@@ -255,7 +256,7 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 ## 10. Riscos de produto
 
 1. **Marca** — "Claude" e o logo da Anthropic são marcas registradas. O produto, a caixa e o anúncio não devem usar o nome nem o logo como marca. Usar um nome próprio + "compatível com Claude Code". As telas do gadget usam o nome do produto, e não o logo da Anthropic.
-2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. Mitigação: só com consentimento, comando original salvo, reversível com `/miblo unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo status` avisa).
+2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. O tap e o comando original ficam em `~/.claude/miblo/` (sobrevivem à desinstalação do plugin; um tap órfão continua executando a status line original). Mitigação: só com consentimento, comando original salvo, reversível com `/miblo unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo status` avisa).
 3. **Anatel** — verificar se o GeekMagic tem homologação e se a revenda com firmware alterado mantém a conformidade.
 4. **Hardware** — pinos e comportamento do OTA da GeekMagic Ultra ainda não confirmados (etapa 0). Revisões futuras do hardware podem mudar o chip, então o firmware verifica o ID da flash e o modelo em `/api/info`.
 5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 3 KB do snapshot existem por isso.

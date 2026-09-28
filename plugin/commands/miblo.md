@@ -1,7 +1,7 @@
 ---
 description: Pair and manage Miblo desk gadgets (pair, status, mode, link-statusline, unlink-statusline, reset)
 argument-hint: "[pair [ip] | status | mode <overview|limits|sessions> [id] | link-statusline | unlink-statusline | reset <id>]"
-allowed-tools: Bash(node:*), AskUserQuestion
+allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion
 ---
 
 You manage Miblo desk gadgets with this CLI (call it `MIBLO` below):

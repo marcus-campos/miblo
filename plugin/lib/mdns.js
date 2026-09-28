@@ -72,6 +72,12 @@ export function parseMessage(buf) {
   return records;
 }
 
+// Gadget-provided strings are untrusted: keep a safe charset and short lengths
+// before they reach the terminal or Claude's context.
+const clean = (s, n) => String(s ?? '').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, n);
+export const cleanId = (s) => clean(s, 32);
+export const cleanName = (s) => clean(s, 20);
+
 export function resolveDevices(records, service) {
   const lc = (s) => String(s).toLowerCase();
   const out = [];
@@ -80,7 +86,8 @@ export function resolveDevices(records, service) {
     const srv = records.find((r) => r.type === T_SRV && lc(r.name) === lc(inst));
     const txt = records.find((r) => r.type === T_TXT && lc(r.name) === lc(inst))?.data ?? {};
     const a = srv && records.find((r) => r.type === T_A && lc(r.name) === lc(srv.data.target));
-    if (srv && a && txt.id) out.push({ id: txt.id, name: txt.name || inst.split('.')[0], addr: `${a.data}:${srv.data.port}` });
+    const id = cleanId(txt.id);
+    if (srv && a && id) out.push({ id, name: cleanName(txt.name || inst.split('.')[0]) || id.slice(0, 20), addr: `${a.data}:${srv.data.port}` });
   }
   return out;
 }

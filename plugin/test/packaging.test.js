@@ -35,3 +35,10 @@ test('the /miblo command references the CLI with the data dir', () => {
   assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
   assert.match(md, /\$ARGUMENTS/);
 });
+
+test('the /miblo command pre-approves only the miblo CLI', () => {
+  const md = fs.readFileSync(path.join(root, 'commands/miblo.md'), 'utf8');
+  const line = md.split('\n').find((l) => l.startsWith('allowed-tools:'));
+  assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
+  assert.ok(!line.includes('Bash(node:*)'));
+});

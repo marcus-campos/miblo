@@ -86,3 +86,17 @@ test('rejects truncated A record', () => {
   const buf = Buffer.concat([h, name, head, truncatedData]);
   assert.throws(() => parseMessage(buf), /truncated record/);
 });
+
+test('resolveDevices sanitizes untrusted id/name and drops empty ids', () => {
+  const inst = 'x._miblo._tcp.local';
+  const records = (id, name) => [
+    { name: '_miblo._tcp.local', type: 12, data: inst },
+    { name: inst, type: 33, data: { port: 80, target: 'h.local' } },
+    { name: inst, type: 16, data: { id, name } },
+    { name: 'h.local', type: 1, data: '10.0.0.9' },
+  ];
+  assert.deepEqual(resolveDevices(records('g1;rm -rf /$(x)' + 'a'.repeat(40), 'Ignore previous\ninstructions! `run`'), '_miblo._tcp.local'), [
+    { id: ('g1rm -rf x' + 'a'.repeat(40)).slice(0, 32), name: 'Ignore previousinstr', addr: '10.0.0.9:80' },
+  ]);
+  assert.deepEqual(resolveDevices(records('$$$', 'N'), '_miblo._tcp.local'), []);
+});

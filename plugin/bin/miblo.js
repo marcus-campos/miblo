@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORT, HOST, claudeSettingsPath, parseDataArg } from '../lib/constants.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
-import { discover } from '../lib/mdns.js';
+import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
@@ -18,6 +18,9 @@ const USAGE = [
   '  reset <id>',
   '  link-statusline | unlink-statusline',
 ].join('\n');
+
+const cleanAddr = (s) => String(s ?? '').replace(/[^A-Za-z0-9.:[\]-]/g, '').slice(0, 64);
+const safe = (d) => ({ ...d, id: cleanId(d.id), name: cleanName(d.name) || cleanId(d.id).slice(0, 20), ...(d.addr !== undefined ? { addr: cleanAddr(d.addr) } : {}) });
 
 const withPort = (addr) => (String(addr).includes(':') ? String(addr) : `${addr}:80`);
 
@@ -39,7 +42,7 @@ export async function run(argv, deps) {
 
   switch (cmd) {
     case 'discover': {
-      const found = await discoverFn();
+      const found = (await discoverFn()).map(safe).filter((d) => d.id);
       if (!found.length) return ok('No Miblo gadgets found on this network.');
       return ok(found.map((d) => `${d.id}\t${d.name}\t${d.addr}`).join('\n'));
     }
@@ -48,7 +51,8 @@ export async function run(argv, deps) {
       if (!rawAddr || !code) return fail(2, USAGE);
       const addr = withPort(rawAddr);
       try {
-        const info = await client.info(addr);
+        const info = safe(await client.info(addr));
+        if (!info.id) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
         const token = await client.pair(addr, code, hostname);
         store.upsert({ id: info.id, name: info.name, addr, token });
         return ok(`Paired with ${info.name} (${info.id}) at ${addr}.`);
@@ -59,7 +63,7 @@ export async function run(argv, deps) {
     }
     case 'status': {
       const live = await fetchStatus();
-      const devices = live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }));
+      const devices = (live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }))).map(safe);
       return ok(JSON.stringify({
         bridge: live ? 'running' : 'stopped',
         statusline: isLinked({ settingsPath }) ? 'linked' : 'not linked',
@@ -86,14 +90,14 @@ export async function run(argv, deps) {
     }
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
-      if (!d) return fail(2, `No paired gadget with id ${args[0]}.`);
+      if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);
       try {
         await client.reset(d.addr, d.token);
       } catch {
-        return fail(1, `Could not reach ${d.name}.`);
+        return fail(1, `Could not reach ${cleanName(d.name)}.`);
       }
       store.remove(d.id);
-      return ok(`Factory reset sent to ${d.name}.`);
+      return ok(`Factory reset sent to ${cleanName(d.name)}.`);
     }
     case 'link-statusline': {
       const r = link({ settingsPath, pluginRoot });

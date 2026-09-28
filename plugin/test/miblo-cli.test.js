@@ -109,3 +109,17 @@ test('unknown subcommand prints usage with code 2', async () => {
   assert.equal(r.code, 2);
   assert.match(r.out, /Usage/);
 });
+
+test('discover and pair sanitize gadget-provided strings', async () => {
+  const d = deps({ discoverFn: async () => [{ id: 'g1`x`', name: 'Evil\n\u001b[31mname-that-is-way-too-long', addr: '10.0.0.5:80' }, { id: '!!!', name: 'x', addr: '1.2.3.4:80' }] });
+  assert.equal((await run(['discover'], d)).out.trim(), 'g1x\tEvil31mname-that-is-\t10.0.0.5:80');
+
+  const client = { info: async () => ({ id: 'id<script>', name: 'Na\u0000me; ls' }), pair: async () => 'tok' };
+  const p = deps({ client });
+  const r = await run(['pair', '10.0.0.7', '1234'], p);
+  assert.equal(r.out.trim(), 'Paired with Name ls (idscript) at 10.0.0.7:80.');
+  assert.deepEqual(new DeviceStore(p.dataDir).list().map(({ id, name }) => ({ id, name })), [{ id: 'idscript', name: 'Name ls' }]);
+
+  const bad = await run(['pair', '10.0.0.7', '1234'], deps({ client: { info: async () => ({ id: '###' }), pair: async () => 'tok' } }));
+  assert.equal(bad.code, 1);
+});

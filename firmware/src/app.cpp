@@ -1,0 +1,219 @@
+#include "app.h"
+
+#include <time.h>
+
+#include "api.h"
+#include "board.h"
+#include "context.h"
+#include "miblo_format.h"
+#include "miblo_policy.h"
+#include "platform/mdns_service.h"
+#include "platform/net.h"
+#include "platform/ota.h"
+#include "platform/platform.h"
+#include "platform/storage.h"
+#include "ui_screens.h"
+#include "web.h"
+
+namespace app {
+
+using miblo::Lang;
+using miblo::S;
+using miblo::ScreenId;
+
+static WebServerT server(80);
+static uint32_t bootMs = 0;
+static bool bootCountCleared = false;
+static bool bootAnimDone = false;
+static ScreenId current = ScreenId::Boot;
+static bool firstFrame = true;
+static Lang drawnLang = Lang::En;
+static uint32_t lastFrameMs = 0;
+static miblo::Pager listPager(4, 5000);
+static miblo::Pager sessionPager(4, 5000);
+
+static void enter(ScreenId s) {
+  if (!firstFrame && s == current && drawnLang == uiLang()) return;
+  firstFrame = false;
+  current = s;
+  drawnLang = uiLang();
+  screens::reset();
+}
+
+// Called by the OTA handler during the upload (the loop is blocked while the file arrives).
+static void onOtaProgress(uint8_t pct) {
+  enter(ScreenId::Updating);
+  screens::updating(uiLang(), pct);
+}
+
+static const char* modeName(Lang lang) {
+  switch (ctx.cfg.mode) {
+    case miblo::Mode::Limits: return screens::t(lang, S::ModeLimits);
+    case miblo::Mode::Sessions: return screens::t(lang, S::ModeSessions);
+    case miblo::Mode::Overview: break;
+  }
+  return screens::t(lang, S::ModeOverview);
+}
+
+static screens::Clock clockNow() {
+  screens::Clock c{};
+  time_t now = time(nullptr);
+  if (now > 1600000000) {
+    struct tm lt;
+    localtime_r(&now, &lt);
+    c.valid = true;
+    miblo::formatHHMM(lt.tm_hour, lt.tm_min, c.hhmm, sizeof(c.hhmm));
+    c.epoch = (uint32_t)now;
+  } else {
+    strcpy(c.hhmm, "--:--");
+    c.epoch = ctx.hasSnapshot ? ctx.snap.now + (millis() - ctx.lastSnapshotMs) / 1000 : 0;
+  }
+  return c;
+}
+
+static void applyConfig() {
+  board::setBacklight(ctx.cfg.brightness);
+  ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
+}
+
+void setup() {
+  Serial.begin(115200);
+  board::begin();
+  screens::bind(board::canvas());
+
+  storage::begin();
+  // Factory reset without a button: 3 power cycles with less than 10 s of uptime each.
+  miblo::BootDecision boot = miblo::decideBoot(storage::readBootCount());
+  storage::writeBootCount(boot.storeCount);
+  if (boot.factoryReset) {
+    screens::reset();
+    screens::canvas().text(board::kScreen.w / 2, board::kScreen.h / 2, "Factory reset", ui::Font::Title,
+                           ui::color::RED, ui::Align::Center, board::kScreen.w);
+    storage::factoryReset();
+  }
+
+  storage::loadConfig(ctx.cfg);
+  storage::loadTokens(ctx.tokens);
+  applyConfig();
+  char code[5];
+  miblo::formatCode(hwRandom(), code);
+  ctx.pairing.setCode(code);
+
+  bootMs = millis();
+  net::begin(bootMs);
+  web::begin(server);
+  api::begin(server);
+  ota::begin(server, onOtaProgress);
+  server.begin();
+}
+
+void loop() {
+  const uint32_t now = millis();
+  server.handleClient();
+  net::loop(now);
+  mdns::loop(now);
+
+  if (!bootCountCleared && now - bootMs >= miblo::kPowerCycleWindowMs) {
+    storage::writeBootCount(0);
+    bootCountCleared = true;
+  }
+  if (ctx.configChanged) {
+    ctx.configChanged = false;
+    storage::saveConfig(ctx.cfg);
+    applyConfig();
+    net::applyTimezone();
+    mdns::announce();
+    firstFrame = true;  // language/mode may have changed: redraw everything
+  }
+  if (ctx.factoryResetRequested) {
+    delay(300);  // let the HTTP response go out
+    storage::factoryReset();
+  }
+  if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) ESP.restart();
+  if (ctx.showPairCode && now - ctx.pairCodeAtMs >= miblo::kPairCodeScreenMs) ctx.showPairCode = false;
+
+  if (now - lastFrameMs < 100) return;  // ~10 frames/s
+  lastFrameMs = now;
+
+  if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
+  static const miblo::Snapshot kEmpty{};
+  const miblo::AlertView& alert = ctx.alerts.update(ctx.hasSnapshot ? ctx.snap : kEmpty, now);
+
+  miblo::ScreenInputs in;
+  in.nowMs = now;
+  in.bootAnimDone = bootAnimDone;
+  in.net = net::state();
+  in.updating = ctx.updating;
+  in.presenceActive = ctx.presence.active(now);
+  in.pairCodeRequested = ctx.showPairCode;
+  in.paired = ctx.tokens.count() > 0;
+  in.justPaired = ctx.justPaired;
+  in.pairedAtMs = ctx.pairedAtMs;
+  in.hasSnapshot = ctx.hasSnapshot;
+  in.lastSnapshotMs = ctx.lastSnapshotMs;
+  in.alert = alert.phase;
+  const ScreenId screen = miblo::selectScreen(in);
+  enter(screen);
+
+  const Lang lang = uiLang();
+  const screens::Clock clk = clockNow();
+  switch (screen) {
+    case ScreenId::Boot:
+      screens::boot(lang, (uint8_t)((now - bootMs) / 400));
+      break;
+    case ScreenId::Setup:
+    case ScreenId::WrongPassword:
+      screens::setup(lang, ctx.ident.apSsid, screen == ScreenId::WrongPassword);
+      break;
+    case ScreenId::Welcome:
+      screens::welcome(lang, ctx.pairing.code(), net::ip().c_str());
+      break;
+    case ScreenId::Paired:
+      screens::paired(lang, ctx.pairedHost, modeName(lang), ctx.ident.id);
+      break;
+    case ScreenId::PairCode:
+      screens::code(lang, S::PairingCode, ctx.pairing.code(),
+                    (miblo::kPairCodeScreenMs - (now - ctx.pairCodeAtMs)) / 1000);
+      break;
+    case ScreenId::PresenceCode:
+      screens::code(lang,
+                    ctx.presence.purpose() == miblo::PresenceGate::Purpose::Update ? S::CodeUpdate : S::CodeReset,
+                    ctx.presence.code(), ctx.presence.remainingMs(now) / 1000);
+      break;
+    case ScreenId::Updating:
+      screens::updating(lang, ctx.updatePct);
+      break;
+    case ScreenId::Disconnected: {
+      time_t t = time(nullptr);
+      struct tm lt;
+      localtime_r(&t, &lt);
+      screens::disconnected(lang, clk.valid, lt.tm_hour, lt.tm_min, lt.tm_wday, lt.tm_mday, net::ip().c_str(),
+                            ctx.ident.id, ctx.pairing.code());
+      break;
+    }
+    case ScreenId::AlertFlash: {
+      int idx = miblo::findSession(ctx.snap, alert.sid);
+      screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs);
+      break;
+    }
+    case ScreenId::AlertHero:
+      screens::hero(lang, ctx.snap, miblo::findSession(ctx.snap, alert.sid), alert.kind, ctx.cfg.discreet, clk,
+                    ctx.runs);
+      break;
+    case ScreenId::Main:
+      switch (ctx.cfg.mode) {
+        case miblo::Mode::Overview:
+          screens::overview(lang, ctx.snap, listPager, now, clk, ctx.cfg.discreet);
+          break;
+        case miblo::Mode::Limits:
+          screens::limits(lang, ctx.snap, clk);
+          break;
+        case miblo::Mode::Sessions:
+          screens::sessions(lang, ctx.snap, sessionPager, now, clk, ctx.cfg.discreet);
+          break;
+      }
+      break;
+  }
+}
+
+}  // namespace app

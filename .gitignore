@@ -1,9 +1,47 @@
-.superpowers/
-node_modules/
-.pio/
+# OS / editors
 .DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Local agent / tooling state
+.claude/
+.superpowers/
+
+# Node (plugin)
+node_modules/
+npm-debug.log*
+coverage/
+.nyc_output/
+
+# Python (firmware scripts, PlatformIO venv)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# PlatformIO / firmware build output
+.pio/
+firmware/.pio/
 firmware/.venv/
 firmware/dist/
-firmware/.pio/
-.claude/worktrees/
-__pycache__/
+*.bin
+*.elf
+*.map
+
+# Secrets and local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.h
+
+# Logs / temp
+*.log
+*.tmp
+tmp/

@@ -38,7 +38,7 @@ Nome e marca definitivos, gravação de firmware em lote, manual e embalagem, ve
 | Modo Sessões | S1 — lista detalhada, rolagem automática a cada 5s |
 | Alertas | Flash + herói temporário, em todos os modos (desligável por aparelho) |
 | Fonte de limites/métricas | JSON oficial da status line do Claude Code, encadeado com consentimento (§3.2) — sem endpoints não documentados |
-| Mercado | Internacional: telas em EN (padrão), PT e ES |
+| Mercado | Internacional: gadget e página de configuração em 9 idiomas — `en` (padrão), `pt-BR`, `pt-PT`, `es`, `fr`, `it`, `de`, `ru`, `zh` (chinês simplificado) |
 | Identidade | Nome **Miblo**; mascote na tela de boot/loading (arte final do mascote na Fase B; Fase A usa um placeholder de poucos quadros) |
 
 ## 3. Arquitetura
@@ -99,7 +99,8 @@ Um único comando do plugin com subcomandos:
 - **AlertQueue:** fila de alertas, deduplicada pelo `id`, com âmbar antes de azul.
 - **Watchdog de conexão:** 30s sem snapshot → tela "desconectado" com relógio (via NTP).
 - **Persistência:** WiFi, token, modo e configurações em flash (LittleFS/EEPROM).
-- **i18n:** todas as strings da tela e da página vêm de tabelas por idioma — inglês (padrão), português e espanhol. O idioma é detectado pelo `Accept-Language` do celular no captive portal e pode ser trocado na página de configuração.
+- **i18n:** todas as strings da tela e da página vêm de tabelas por idioma: `en` (padrão), `pt-BR`, `pt-PT`, `es`, `fr`, `it`, `de`, `ru`, `zh`. O idioma é detectado pelo `Accept-Language` do celular no captive portal (`pt` sem região → `pt-BR`; `zh-*` → `zh`) e pode ser trocado na página de configuração. Os textos de atividade são localizados no gadget: o bridge envia a ferramenta e o detalhe separados (§5.3).
+- **Fontes:** a tela precisa de latim estendido (acentos de PT/ES/FR/IT/DE), cirílico (RU) e CJK (ZH). As fontes ficam no LittleFS, não no binário: um subconjunto gerado no build com todos os glyphs das strings fixas de todos os idiomas, mais uma fonte de conteúdo dinâmico (nomes de projeto, comandos) com Latin-1/Latin Extended-A, cirílico e ~3.500 ideogramas chineses comuns (GB2312 nível 1, 16px 1bpp ≈ 110 KB). Um glyph ausente é desenhado como `□`, nunca trava a tela.
 
 ## 4. Telas
 
@@ -147,9 +148,9 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 |---|---|
 | `SessionStart` | cria a sessão em `idle`; nome = basename do `cwd` (desambiguado com sufixo se repetir) |
 | `UserPromptSubmit` | → `running`; limpa `done` |
-| `PreToolUse` (ferramenta ≠ `AskUserQuestion`) | → `running`; atividade = ferramenta + detalhe curto (arquivo sem caminho, comando truncado) |
+| `PreToolUse` (ferramenta ≠ `AskUserQuestion`) | → `running`; `tool`/`det` = ferramenta + detalhe curto (arquivo sem caminho, 1ª linha do comando, padrão de busca, host da URL, descrição do agente) |
 | `PreToolUse` (`AskUserQuestion`) ou `Notification` com `notification_type = elicitation_dialog` | → `question`; gera alerta âmbar |
-| `PermissionRequest` | → `perm`; atividade = ferramenta + comando/arquivo de `tool_input`; gera alerta âmbar |
+| `PermissionRequest` | → `perm`; `tool`/`det` = ferramenta + comando/arquivo de `tool_input`; gera alerta âmbar |
 | `PostToolUse` | `perm`/`question` → `running` |
 | `Stop` | → `done`; gera alerta azul |
 | Qualquer outro evento da sessão enquanto em `perm`/`question` | sai da pendência (permissão negada não gera `PostToolUse`) |
@@ -183,7 +184,7 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
   },
   "today": {"tok": 1510000, "usd": 4.8},
   "sessions": [
-    {"id": "a1", "name": "api-server", "st": "perm", "act": "Bash · npm run migrate",
+    {"id": "a1", "name": "api-server", "st": "perm", "tool": "Bash", "det": "npm run migrate",
      "since": 1790599958, "model": "Opus", "ctx": 71, "tok": 412000}
   ],
   "more": 0,
@@ -192,7 +193,7 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 ```
 
 - Enviado a cada mudança de estado (com debounce de 150ms) e a cada 10s como sinal de vida.
-- `usage` pode ser `null` quando indisponível; `sessions` tem no máximo 8 itens, e o excedente vai em `more`; `name` tem no máximo 20 caracteres e `act` no máximo 32.
+- `usage` pode ser `null` quando indisponível; `sessions` tem no máximo 8 itens, e o excedente vai em `more`; `name` tem no máximo 20 caracteres e `det` no máximo 32; `tool` é o nome da ferramenta do Claude Code (o gadget traduz as conhecidas — Bash, Edit, Write, Read, Grep, Glob, WebFetch, WebSearch, Task/Agent — e mostra as demais como vieram; ferramentas MCP `mcp__srv__x` chegam como `x`). Em modo discreto o gadget oculta `det`.
 - `alerts` contém os alertas ainda não confirmados. O gadget guarda o maior `id` já exibido e ignora os repetidos.
 - `v` permite evolução: o gadget ignora campos desconhecidos, e o bridge lê o `v` suportado em `/api/info`.
 
@@ -257,3 +258,4 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 3. **Anatel** — verificar se o GeekMagic tem homologação e se a revenda com firmware alterado mantém a conformidade.
 4. **Hardware** — pinos e comportamento do OTA da GeekMagic Ultra ainda não confirmados (etapa 0). Revisões futuras do hardware podem mudar o chip, então o firmware verifica o ID da flash e o modelo em `/api/info`.
 5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 2 KB do snapshot existem por isso.
+6. **Fontes CJK/cirílico na flash** — o orçamento de 4 MB precisa acomodar 2× firmware (OTA) + LittleFS com fontes (~1 MB). Confirmar o tamanho da flash na etapa 0; se for 2 MB, a fonte chinesa dinâmica é reduzida às strings fixas e nomes de projeto em chinês mostram `□`.

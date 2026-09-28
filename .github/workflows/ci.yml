@@ -23,3 +23,27 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
       - run: npm test
+
+  firmware:
+    name: Firmware (native tests + ${{ matrix.board }} build)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        board: [geekmagic_ultra]
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
+      - run: pip install platformio
+      - run: pio test -e native
+      - run: pio run -e ${{ matrix.board }}

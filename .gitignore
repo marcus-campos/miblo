@@ -45,3 +45,6 @@ secrets.h
 *.log
 *.tmp
 tmp/
+
+# Local caches (firmware/.cache holds the built MibloWiFiScan helper app)
+firmware/.cache/

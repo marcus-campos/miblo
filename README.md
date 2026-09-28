@@ -53,7 +53,9 @@ python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24
 python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --update
 ```
 
-It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units.
+It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units. By default it installs the images for the version in `firmware/include/miblo_version.h` (and says which); `make fleet` rebuilds them first when they are missing or older than the sources.
+
+Units ship clean: the installer erases the bench Wi‑Fi after the full image is uploaded, so each unit restarts on its own `Miblo-Setup-XXXX` network. On macOS the script then joins those networks one by one to check the version (at `192.168.4.1`) and rejoins the Mac's network at the end. `--no-ap-verify` skips that check (units are reported as "installed (unverified: unit is in setup mode)", as on other systems); `--keep-wifi` keeps the units on the bench network and checks them there.
 
 **Straight out of the box (macOS, `--via-ap`).** Factory units are on no network: each one broadcasts its own Wi‑Fi. With `--via-ap` the Mac joins those networks itself, one unit at a time (one radio), and talks to the device at `192.168.4.1`:
 
@@ -67,7 +69,17 @@ python3 firmware/scripts/flash-fleet.py --via-ap             # every unit in ran
 python3 firmware/scripts/flash-fleet.py --via-ap --loop      # keep going as you power units on; Ctrl-C to stop
 ```
 
-The Mac goes back to its Wi‑Fi network at the end (also on errors and Ctrl‑C; a warning is printed if it can't). `--max N` stops after N units, `--iface` picks the Wi‑Fi interface. macOS only reveals network names to apps with Location Services access: if the script says names are hidden, enable it for your terminal app in System Settings → Privacy & Security → Location Services.
+The Mac goes back to its Wi‑Fi network at the end (also on errors and Ctrl‑C; a warning is printed if it can't). `--max N` stops after N units, `--iface` picks the Wi‑Fi interface.
+
+**Location permission (MibloWiFiScan).** macOS only reveals Wi‑Fi network names to apps with Location Services access, and command-line tools (Terminal, Python) can't be granted it on recent macOS — they only see `<redacted>`. So the scan runs in a tiny helper app, `MibloWiFiScan` (source in `firmware/scripts/macos/MibloWiFiScan`), which the script builds with Swift on first use into `firmware/.cache/MibloWiFiScan.app` (rebuilt when its source changes; needs the Command Line Tools: `xcode-select --install`). The first scan makes macOS ask **"MibloWiFiScan would like to use your location" — click Allow**. If you dismissed it, turn it on in System Settings → Privacy & Security → Location Services → MibloWiFiScan. Check what the scan sees with `make fleet-ap-scan` (`flash-fleet.py --via-ap --scan-only`). Without Swift the script falls back to `system_profiler`.
+
+**Without scanning.** Joining a network by name needs no permission, so the script can work blind:
+
+- stock units have fixed names: `--try-ssid NAME` (repeatable) joins that name and goes on if `192.168.4.1` answers; `GIFTV`, `SmallTV` and `GeekMagic` are tried automatically when the scan is unavailable or finds no unit;
+- after stage 1 the unit's chip id (from its MAC, and the installer's `GET /info` id `miblo-4f2a`) gives the names of its next networks, `Miblo-Installer-4F2A` and `Miblo-Setup-4F2A`, which are joined directly;
+- specific units, e.g. shelf units already on Miblo: `--ssid Miblo-Setup-4F2A` (repeatable; `make fleet-ap SSIDS="Miblo-Setup-4F2A Miblo-Setup-9C01"`).
+
+If the current network's name can't be read either, the script says so and you rejoin it by hand at the end.
 
 ## Reset
 

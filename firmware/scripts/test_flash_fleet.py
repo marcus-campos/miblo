@@ -7,10 +7,12 @@ import io
 import sys
 import json
 import re
+import shutil
 import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -25,6 +27,15 @@ NEW = "0.2.0"
 FAST = dict(probe_timeout=0.5, http_timeout=1.0, upload_timeout=5.0, poll_interval=0.02,
             stage1_timeout=1.5, stage2_timeout=1.5, max_retry_wait=0.05,
             ap_join_timeout=1.0, scan_interval=0.02)
+
+
+def collapse(joins):
+    """Join attempts with retries folded: joining by name while a unit reboots fails and is retried."""
+    names = []
+    for j in joins:
+        if not names or names[-1] != j[0]:
+            names.append(j[0])
+    return names
 
 
 class FakeDevice:
@@ -45,6 +56,7 @@ class FakeDevice:
         self.board = board
         self.chip, self.stock_ssid, self.codeless = chip, stock_ssid, codeless
         self.uploads = []      # (path, size) of accepted uploads
+        self.keepwifi = []     # loader uploads: was ?keepwifi=1 passed
         self.opened = 0
         dev = self
 
@@ -108,7 +120,8 @@ class FakeDevice:
                     return
                 if dev.state == "loader":
                     dev.uploads.append(("loader", size))
-                    self.send(200, "Update Success! Rebooting...", "text/html")
+                    dev.keepwifi.append(parse_qs(url.query).get("keepwifi") == ["1"])
+                    self.send(200, "OK")  # the installer's reply (the stock one says "Update Success!")
                     dev.reboot("miblo", dev.next_fw)
                     return
                 if dev.state == "miblo":
@@ -149,6 +162,11 @@ class FleetTest(unittest.TestCase):
         (dist / ("miblo-geekmagic_ultra-%s.bin" % NEW)).write_bytes(b"F" * 5000)
         self.dist = str(dist)
         self.devices = []
+        # Never touch the Mac's real Wi-Fi: every MacWifi in a test is built on a fake runner.
+        guard = mock.patch.object(ff, "MacWifi", side_effect=AssertionError("real Wi-Fi used in a test"))
+        guard.start()
+        self.addCleanup(guard.stop)
+        self.lan_air = FakeAir(self.devices)
 
     def tearDown(self):
         for d in self.devices:
@@ -160,7 +178,7 @@ class FleetTest(unittest.TestCase):
         self.devices.append(d)
         return d
 
-    def run_fleet(self, *argv, codes=()):
+    def run_fleet(self, *argv, codes=(), wifi=True):
         out = io.StringIO()
         answers = list(codes)
         prompts = []
@@ -173,7 +191,8 @@ class FleetTest(unittest.TestCase):
         for d in self.devices:
             args += ["--host", d.host]
         rc = ff.main(args + list(argv), timing=ff.Timing(**FAST), out=out, ask=ask, sleep=time.sleep,
-                     interactive=True)
+                     interactive=True, wifi=macwifi.MacWifi(run=self.lan_air.run) if wifi else None,
+                     ap_host=self.lan_air.host)
         return rc, out.getvalue(), prompts
 
     def test_picks_newest_images(self):
@@ -219,16 +238,54 @@ class FleetTest(unittest.TestCase):
         self.assertIn(ff.INSTALL, out.getvalue())
 
     def test_two_stage_install(self):
+        # Default: the installer erases the units' Wi-Fi; they restart on Miblo-Setup-XXXX, where
+        # the Mac checks them one by one, then rejoins its network.
         stock = self.device("stock")
-        loader = self.device("loader")
+        loader = self.device("loader", chip="1A2B")
         rc, out, _ = self.run_fleet("--jobs", "2")
         self.assertEqual(rc, 0, out)
         self.assertEqual([k for k, _ in stock.uploads], ["stock", "loader"])
         self.assertEqual([k for k, _ in loader.uploads], ["loader"])
+        self.assertEqual(stock.keepwifi + loader.keepwifi, [False, False])
         for d in (stock, loader):
             self.assertEqual((d.state, d.fw), ("miblo", NEW))
         self.assertIn("miblo %s" % NEW, out)
+        self.assertEqual(sorted(collapse(self.lan_air.joins)[:2]), ["Miblo-Setup-1A2B", "Miblo-Setup-4F2A"])
+        self.assertEqual(self.lan_air.joins[-1], ["HomeNet"])
         self.assertIn("2 flashed, 0 failed", out)
+
+    def test_keep_wifi_verifies_on_lan(self):
+        dev = self.device("loader")
+        rc, out, _ = self.run_fleet("--keep-wifi")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.keepwifi, [True])
+        self.assertEqual(self.lan_air.joins, [])
+        self.assertIn("1 flashed, 0 failed", out)
+
+    def test_no_ap_verify_reports_unverified(self):
+        dev = self.device("loader")
+        rc, out, _ = self.run_fleet("--no-ap-verify")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.keepwifi, [False])
+        self.assertIn(ff.UNVERIFIED, out)
+        self.assertEqual(self.lan_air.joins, [])
+        self.assertIn("1 flashed, 0 failed", out)
+
+    def test_not_macos_reports_unverified(self):
+        self.device("loader")
+        with mock.patch.object(ff.sys, "platform", "linux"):
+            rc, out, _ = self.run_fleet(wifi=False)
+        self.assertEqual(rc, 0, out)
+        self.assertIn(ff.UNVERIFIED, out)
+        self.assertIn("--keep-wifi", out)
+
+    def test_ap_verify_failure(self):
+        self.device("loader")
+        self.lan_air.fail_join = {"Miblo-Setup-4F2A"}
+        rc, out, _ = self.run_fleet("--stage2-timeout", "0.3")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAILED: after install", out)
+        self.assertEqual(self.lan_air.joins[-1], ["HomeNet"])
 
     def test_not_enough_space(self):
         dev = self.device("stock", space=100)  # the 300-byte loader does not fit
@@ -259,7 +316,7 @@ class FleetTest(unittest.TestCase):
 
     def test_wrong_version_after_install_fails(self):
         self.device("loader", next_fw="0.0.9")
-        rc, out, _ = self.run_fleet("--stage2-timeout", "0.3")
+        rc, out, _ = self.run_fleet("--stage2-timeout", "0.3", "--keep-wifi")
         self.assertEqual(rc, 1)
         self.assertIn("timed out", out)
 
@@ -301,6 +358,16 @@ class FakeAir:
         self.raise_on = None      # a command word that raises (simulates an unexpected crash)
         self.scans = 0
         self.on_scan = None
+        self.hidden = False       # the scan works but shows no unit network
+        self.arp = True           # `arp -n` knows the joined unit's MAC
+
+    @staticmethod
+    def bssid_of(dev):
+        return "5e:cf:7f:12:%s:%s" % (dev.chip[:2].lower(), dev.chip[2:].lower())
+
+    def scanned(self):
+        """What a scan shows (the fake devices keep broadcasting; `hidden` just hides them)."""
+        return [self.home] + self.others + ([] if self.hidden else list(self.broadcasting()))
 
     @staticmethod
     def ssid_of(dev):
@@ -327,8 +394,8 @@ class FakeAir:
             self.scans += 1
             if self.on_scan:
                 self.on_scan(self.scans)
-            vis = self.visible()
-            cur = self.joined if self.joined in vis else None
+            vis = self.scanned()
+            cur = self.joined if self.joined in self.visible() else None
             others = [s for s in vis if s != cur]
             if self.redacted:
                 cur, others = ("<redacted>" if cur else None), ["<redacted>"] * len(others)
@@ -346,6 +413,11 @@ class FakeAir:
                 return 0, "Could not find network %s." % ssid
             self.joined = ssid
             return 0, ""
+        if argv[:2] == ["arp", "-n"]:
+            dev = self.broadcasting().get(self.joined)
+            if self.arp and dev:
+                return 0, "? (%s) at %s on en0 ifscope [ethernet]\n" % (argv[2], self.bssid_of(dev))
+            return 1, "%s (%s) -- no entry\n" % (argv[2], argv[2])
         if argv[:3] == ["ipconfig", "getifaddr", "en0"]:
             if self.joined == self.home:
                 return 0, "192.168.0.10\n"
@@ -421,6 +493,13 @@ class AccessPointTest(unittest.TestCase):
         self.assertEqual([k for k, _ in dev.uploads], ["loader"])
         self.assertEqual(self.air.joins, [["Miblo-Installer-1A2B"], ["Miblo-Setup-1A2B"], ["HomeNet"]])
         self.assertIn("1 flashed", out)
+        self.assertEqual(dev.keepwifi, [False])  # units ship clean
+
+    def test_keep_wifi_passed_in_ap_mode(self):
+        dev = self.device("loader", chip="1A2B")
+        rc, out, _ = self.run_ap("--keep-wifi")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.keepwifi, [True])
 
     def test_setup_up_to_date_is_skipped(self):
         dev = self.device("miblo", fw=NEW)
@@ -521,6 +600,267 @@ class AccessPointTest(unittest.TestCase):
         self.assertIn("Waiting for more units", out)
         self.assertIn("2 flashed", out)
         self.assertEqual(self.air.joins[-1], ["HomeNet"])
+
+
+class FakeHelperRun:
+    """Answers the commands ScanHelper runs: xcode-select, xcrun, swiftc (creates the binary),
+    codesign and `open -W -n MibloWiFiScan.app --args <out>` (writes the scan JSON)."""
+
+    def __init__(self, air, authorized=True, swift=True):
+        self.air, self.authorized, self.swift = air, authorized, swift
+        self.calls = []
+
+    def run(self, argv, timeout):
+        self.calls.append(list(argv))
+        if argv == ["xcode-select", "-p"]:
+            return (0, "/Library/Developer/CommandLineTools\n") if self.swift else (2, "error: no developer tools")
+        if argv == ["xcrun", "--find", "swiftc"]:
+            return 0, "/usr/bin/swiftc\n"
+        if argv[:2] == ["xcrun", "swiftc"]:
+            out = Path(argv[argv.index("-o") + 1])
+            out.write_bytes(b"binary")
+            return 0, ""
+        if argv[0] == "codesign":
+            return 0, ""
+        if argv[:3] == ["open", "-W", "-n"]:
+            devs = self.air.broadcasting()
+            nets = [{"ssid": s if self.authorized else None,
+                     "bssid": FakeAir.bssid_of(devs[s]).upper() if s in devs and self.authorized else None,
+                     "rssi": -50, "channel": 6} for s in self.air.scanned()]
+            doc = {"authorized": self.authorized, "status": "authorized" if self.authorized else "denied",
+                   "interface": "en0", "current_ssid": self.air.joined if self.authorized else None,
+                   "networks": nets, "error": None}
+            Path(argv[-1]).write_text(json.dumps(doc))
+            return 0, ""
+        return 1, "unexpected command %r" % (argv,)
+
+
+class ScanHelperTest(unittest.TestCase):
+    setUp_ap = AccessPointTest.setUp
+    setUp_bench = FleetTest.setUp
+    tearDown = FleetTest.tearDown
+    device = FleetTest.device
+
+    def setUp(self):
+        self.setUp_ap()
+        self.cache = Path(self.tmp.name) / "cache"
+        self.src = Path(self.tmp.name) / "src"
+        shutil.copytree(macwifi.HELPER_SRC, self.src)
+        self.hrun = FakeHelperRun(self.air)
+        self.logs = []
+        self.helper = macwifi.ScanHelper(run=self.hrun.run, cache_dir=self.cache, src_dir=self.src,
+                                         log=self.logs.append)
+
+    def run_ap(self, *argv, codes=(), interactive=True):
+        out = io.StringIO()
+        wifi = macwifi.MacWifi(run=self.air.run, helper=self.helper, log=self.logs.append)
+        rc = ff.main(["--dist", self.dist, "--via-ap"] + list(argv), timing=ff.Timing(**FAST), out=out,
+                     ask=lambda p: codes[0], sleep=time.sleep, interactive=interactive,
+                     wifi=wifi, ap_host=self.air.host)
+        return rc, out.getvalue(), []
+
+    def test_helper_sources_exist(self):
+        plist = (macwifi.HELPER_SRC / "Info.plist").read_text()
+        for text in ("dev.miblo.wifiscan", "MibloWiFiScan", "LSUIElement", "NSLocationWhenInUseUsageDescription",
+                     "NSLocationUsageDescription", "Miblo needs Wi-Fi network names to find gadgets to flash."):
+            self.assertIn(text, plist)
+        swift = (macwifi.HELPER_SRC / "main.swift").read_text()
+        for text in ("scanForNetworks(withName: nil)", "CLLocationManager", "requestWhenInUseAuthorization",
+                     "MIBLO_WIFISCAN_OUT"):
+            self.assertIn(text, swift)
+
+    def test_helper_json_parsing(self):
+        res = macwifi.parse_helper_json(json.dumps({
+            "authorized": True, "status": "authorized", "current_ssid": "HomeNet",
+            "current_bssid": "AA:BB:CC:DD:EE:FF",
+            "networks": [{"ssid": "GIFTV", "bssid": "5E:CF:7F:12:4F:2A", "rssi": -48, "channel": 6},
+                         {"ssid": "<redacted>", "bssid": None, "rssi": "-70", "channel": None},
+                         {"ssid": "", "bssid": "", "rssi": None}, "junk"]}))
+        self.assertTrue(res.authorized)
+        self.assertEqual((res.current, res.current_bssid), ("HomeNet", "aa:bb:cc:dd:ee:ff"))
+        self.assertEqual(res.networks[0], {"ssid": "GIFTV", "bssid": "5e:cf:7f:12:4f:2a", "rssi": -48, "channel": 6})
+        self.assertEqual(res.networks[1], {"ssid": None, "bssid": None, "rssi": -70, "channel": None})
+        self.assertEqual(len(res.networks), 3)
+        self.assertFalse(macwifi.parse_helper_json('{"authorized": false}').authorized)
+        with self.assertRaises(macwifi.WifiError):
+            macwifi.parse_helper_json("not json")
+        self.assertEqual(macwifi.mac_chip("5e:cf:7f:12:4f:2a"), "4f2a")
+        self.assertEqual(macwifi.parse_arp_mac("? (192.168.4.1) at 5e:cf:7f:12:4f:2a on en0"), "5e:cf:7f:12:4f:2a")
+        self.assertEqual(macwifi.parse_arp_mac("? (192.168.4.1) at 5e:cf:7f:2:f:a on en0"), "5e:cf:7f:02:0f:0a")
+        self.assertIsNone(macwifi.parse_arp_mac("? (192.168.4.1) at (incomplete) on en0"))
+
+    def test_build_on_first_use_then_reuse_then_rebuild(self):
+        res = self.helper.scan()
+        self.assertTrue(res.authorized)
+        app = self.cache / "MibloWiFiScan.app"
+        exe = app / "Contents" / "MacOS" / "MibloWiFiScan"
+        self.assertEqual([c[:2] for c in self.hrun.calls][:3], [["xcode-select", "-p"], ["xcrun", "--find"], ["xcrun", "swiftc"]])
+        self.assertEqual([c[0] for c in self.hrun.calls][3:], ["codesign", "open"])
+        self.assertEqual(self.hrun.calls[2], ["xcrun", "swiftc", "-O", str(self.src / "main.swift"), "-framework",
+                                              "CoreWLAN", "-framework", "CoreLocation", "-o", str(exe)])
+        self.assertEqual(self.hrun.calls[3], ["codesign", "--force", "--sign", "-", "--deep", str(app)])
+        self.assertEqual(self.hrun.calls[4][:5], ["open", "-W", "-n", str(app), "--args"])
+        self.assertEqual((app / "Contents" / "Info.plist").read_bytes(), (self.src / "Info.plist").read_bytes())
+        self.assertTrue(any("Building" in m for m in self.logs))
+
+        self.hrun.calls.clear()
+        self.helper.scan()   # up to date: just run it
+        self.assertEqual([c[0] for c in self.hrun.calls], ["open"])
+
+        with open(self.src / "main.swift", "a") as f:
+            f.write("// changed\n")
+        self.hrun.calls.clear()
+        self.helper.scan()   # sources changed: rebuilt
+        self.assertEqual([c[0] for c in self.hrun.calls], ["xcode-select", "xcrun", "xcrun", "codesign", "open"])
+
+    def test_not_authorized_exits_2_with_instructions(self):
+        self.device("stock")
+        self.hrun.authorized = False
+        rc, out, _ = self.run_ap()
+        self.assertEqual(rc, 2, out)
+        self.assertIn("MibloWiFiScan would like to use your location", out)
+        self.assertIn("Privacy & Security -> Location Services -> MibloWiFiScan", out)
+        self.assertEqual(self.air.joins, [])
+        self.assertEqual(self.air.scans, 0)  # no system_profiler fallback once the helper runs
+
+    def test_install_through_helper_scan(self):
+        dev = self.device("stock", stock_ssid="GIFTV")
+        self.air.arp = False  # the chip comes from the scanned BSSID instead
+        rc, out, _ = self.run_ap()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
+        self.assertEqual(self.air.joins, [["GIFTV"], ["Miblo-Installer-4F2A"], ["Miblo-Setup-4F2A"], ["HomeNet"]])
+        self.assertIn("current network: HomeNet", out)
+        self.assertEqual(self.air.scans, 0)
+
+    def test_no_swift_falls_back_to_system_profiler(self):
+        self.device("loader", chip="1A2B")
+        self.hrun.swift = False
+        rc, out, _ = self.run_ap()
+        self.assertEqual(rc, 0, out)
+        self.assertTrue(any("using system_profiler" in m for m in self.logs), self.logs)
+        self.assertGreater(self.air.scans, 0)
+        self.assertEqual(self.air.joins, [["Miblo-Installer-1A2B"], ["Miblo-Setup-1A2B"], ["HomeNet"]])
+
+    def test_scan_only_prints_table(self):
+        self.device("stock", stock_ssid="GIFTV")
+        self.device("miblo", fw=NEW, chip="3C4D")
+        out = io.StringIO()
+        wifi = macwifi.MacWifi(run=self.air.run, helper=self.helper, log=self.logs.append)
+        rc = ff.main(["--via-ap", "--scan-only", "--dist", "/nonexistent"], out=out, wifi=wifi)
+        text = out.getvalue()
+        self.assertEqual(rc, 0, text)
+        self.assertIn("Scanner: MibloWiFiScan", text)
+        self.assertRegex(text, r"GIFTV\s+5e:cf:7f:12:4f:2a\s+-50\s+6\s+stock")
+        self.assertRegex(text, r"Miblo-Setup-3C4D\s+\S+\s+-50\s+6\s+miblo")
+        self.assertEqual(self.air.joins, [])
+
+
+class NoScanTest(unittest.TestCase):
+    setUp = AccessPointTest.setUp
+    setUp_bench = FleetTest.setUp
+    tearDown = FleetTest.tearDown
+    device = FleetTest.device
+    run_ap = AccessPointTest.run_ap
+    def test_try_ssid_defaults_when_scan_finds_nothing(self):
+        dev = self.device("stock", stock_ssid="SmallTV")
+        self.air.hidden = True
+        rc, out, _ = self.run_ap()
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
+        joins = collapse(self.air.joins)
+        # GIFTV isn't there; SmallTV is, then its installer/setup by the derived names; SmallTV
+        # again (next unit?) and GeekMagic are not there; back home.
+        self.assertEqual(joins, ["GIFTV", "SmallTV", "Miblo-Installer-4F2A", "Miblo-Setup-4F2A", "SmallTV",
+                                 "GeekMagic", "HomeNet"])
+        self.assertIn("[GIFTV] not in range", out)
+        self.assertIn("1 flashed, 0 failed, 0 skipped", out)
+        self.assertNotIn("GeekMagic", out.split("Summary:")[1])
+
+    def test_hidden_names_with_try_ssid_joins_by_name(self):
+        dev = self.device("stock", stock_ssid="MyTV")
+        self.air.redacted = True  # scanning unavailable: every name hidden
+        rc, out, _ = self.run_ap("--try-ssid", "MyTV")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
+        # Installer and setup names come from the chip id (MAC via ARP, then GET /info).
+        self.assertEqual(collapse(self.air.joins), ["MyTV", "Miblo-Installer-4F2A", "Miblo-Setup-4F2A", "MyTV"])
+        self.assertEqual(self.air.scans, 1)  # one scan attempt; everything else by name
+        # The home network's name was hidden too: the user is told to rejoin it.
+        self.assertIn("rejoin your network by hand", out)
+        self.assertNotIn(["HomeNet"], self.air.joins)
+
+    def test_derived_setup_name_after_stage2(self):
+        dev = self.device("loader", chip="1A2B")
+        self.air.redacted = True
+        self.air.arp = False
+        rc, out, _ = self.run_ap("--ssid", "Miblo-Installer-1A2B")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.fw, NEW)
+        self.assertEqual(collapse(self.air.joins), ["Miblo-Installer-1A2B", "Miblo-Setup-1A2B"])
+        self.assertIn("waiting for Miblo-Setup-1A2B", out)
+
+    def test_stage1_derives_installer_name_from_info_chip(self):
+        # No ARP entry, no scan: the unit is found by name; its chip id comes from the stock SSID
+        # suffix, and after stage 1 GET /info confirms it ("miblo-4f2a").
+        dev = self.device("stock", stock_ssid="GIFTV-4F2A")
+        self.air.redacted = True
+        self.air.arp = False
+        rc, out, _ = self.run_ap("--ssid", "GIFTV-4F2A")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.fw, NEW)
+        self.assertEqual(collapse(self.air.joins), ["GIFTV-4F2A", "Miblo-Installer-4F2A", "Miblo-Setup-4F2A"])
+
+    def test_explicit_ssid_units_only(self):
+        a = self.device("miblo", fw="0.1.0", chip="3C4D", codeless=True)
+        b = self.device("loader", chip="1A2B")
+        rc, out, _ = self.run_ap("--ssid", "Miblo-Setup-3C4D")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((a.fw, b.uploads), (NEW, []))
+        self.assertEqual(self.air.joins, [["Miblo-Setup-3C4D"], ["Miblo-Setup-3C4D"], ["HomeNet"]])
+        self.assertIn("1 flashed", out)
+
+    def test_explicit_ssid_not_found_fails(self):
+        rc, out, _ = self.run_ap("--ssid", "Miblo-Setup-9999")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("FAILED: could not join Miblo-Setup-9999", out)
+        self.assertEqual(self.air.joins[-1], ["HomeNet"])
+
+    def test_dry_run_lists_names_to_try(self):
+        self.air.hidden = True
+        rc, out, _ = self.run_ap("--dry-run", "--ssid", "Miblo-Setup-3C4D")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("Miblo-Setup-3C4D", out.split("Plan")[1])
+        rc, out, _ = self.run_ap("--dry-run")
+        for name in ff.DEFAULT_TRY_SSIDS:
+            self.assertIn(name, out.split("Plan")[1])
+        self.assertIn("try by name", out)
+        self.assertEqual(self.air.joins, [])
+
+
+class ImageVersionTest(unittest.TestCase):
+    setUp = FleetTest.setUp
+    tearDown = FleetTest.tearDown
+
+    def test_images_follow_the_sources_version(self):
+        args = ff.parse_args(["--host", "x", "--dist", self.dist])
+        with mock.patch.object(ff, "source_version", lambda: "0.1.0"):
+            images = ff.resolve_images(args)
+        self.assertEqual(images.version, "0.1.0")
+        self.assertTrue(images.firmware.name.endswith("-0.1.0.bin"))
+        self.assertTrue(images.loader.name.endswith("-0.1.0.bin"))
+        out = io.StringIO()
+        with mock.patch.object(ff, "source_version", lambda: "9.9.9"):
+            images = ff.resolve_images(args, out)  # explicit --dist: newest, with a warning
+            self.assertEqual(images.version, NEW)
+            self.assertIn("WARNING", out.getvalue())
+            with mock.patch.object(ff, "DEFAULT_DIST", Path(self.dist)):
+                with self.assertRaises(SystemExit) as cm:
+                    ff.resolve_images(args)  # the default dist must hold the sources' version
+                self.assertIn("9.9.9", str(cm.exception))
+        header = Path(self.tmp.name) / "v.h"
+        header.write_text('#pragma once\n#define MIBLO_FW_VERSION "1.2.3"\n')
+        self.assertEqual(ff.source_version(header), "1.2.3")
 
 
 if __name__ == "__main__":

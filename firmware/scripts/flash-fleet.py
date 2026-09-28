@@ -23,8 +23,16 @@ talks to the device at 192.168.4.1:
   Miblo-Setup-XXXX         -> skipped when up to date; otherwise updated (no --update needed):
                               no code when the unit says so ("codeRequired": false), else the
                               on-screen code is asked (skipped when stdin is not a terminal)
-The Wi-Fi network the Mac was on is rejoined at the end (also on errors and Ctrl-C). macOS only
-shows network names to apps with Location Services permission (see the error message).
+The Wi-Fi network the Mac was on is rejoined at the end (also on errors and Ctrl-C).
+
+macOS only shows network names to apps with Location Services permission, which command-line
+tools can't get: the scan runs in a small helper app (MibloWiFiScan, built with Swift on first
+use into firmware/.cache; macOS asks once to allow its location access). Without scanning:
+  --try-ssid NAME   stock units have fixed names: join by name, go on if 192.168.4.1 answers
+                    (GIFTV, SmallTV, GeekMagic are tried when the scan is unavailable or finds none)
+  --ssid NAME       a unit given by name, e.g. a shelf unit on Miblo-Setup-4F2A (repeatable)
+After stage 1 the unit's chip id (from its MAC, or GET /info "miblo-4f2a") gives the next
+networks' names (Miblo-Installer-4F2A, Miblo-Setup-4F2A), which are joined by name directly.
 
 Examples:
   flash-fleet.py --subnet 192.168.0.0/24 --dry-run
@@ -32,6 +40,8 @@ Examples:
   flash-fleet.py --host 192.168.0.41 --host 192.168.0.42 --update
   flash-fleet.py --via-ap --dry-run
   flash-fleet.py --via-ap --loop
+  flash-fleet.py --via-ap --ssid Miblo-Setup-4F2A --ssid GIFTV
+  flash-fleet.py --via-ap --scan-only
 """
 from __future__ import annotations
 
@@ -52,10 +62,12 @@ from pathlib import Path
 from typing import Callable, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from macwifi import MacWifi, WifiError, WifiPermissionError  # noqa: E402  (helper next to this script)
+from macwifi import (MacWifi, ScanHelper, WifiError, WifiPermissionError,  # noqa: E402  (next to this script)
+                     mac_chip)
 
 DEFAULT_BOARD = "geekmagic_ultra"
 DEFAULT_DIST = Path(__file__).resolve().parent.parent / "dist"
+VERSION_HEADER = Path(__file__).resolve().parent.parent / "include" / "miblo_version.h"
 
 STOCK, LOADER, MIBLO, UNKNOWN = "stock", "loader", "miblo", "unknown"
 
@@ -70,6 +82,7 @@ SKIP_BOARD = "skip: different board"
 
 
 SKIP_NO_TTY = "skip: needs the 4-digit code on its screen (run from a terminal)"
+UNVERIFIED = "installed (unverified: unit is in setup mode)"
 
 
 class FlashError(Exception):
@@ -116,6 +129,7 @@ class Unit:
     seconds: float = 0.0
     ssid: Optional[str] = None      # --via-ap: the network the unit was found on
     chip: Optional[str] = None      # --via-ap: "4f2a" (from the SSID or the device id)
+    verify: bool = False            # LAN: installed, the unit restarted on its Miblo-Setup network
 
     @property
     def label(self) -> str:
@@ -189,8 +203,15 @@ def upload(url: str, image: Path, timing: Timing) -> Tuple[int, bytes]:
         return 0, b""
 
 
+def installer_update_url(host: str, keep_wifi: bool) -> str:
+    """The installer's /update erases the unit's saved Wi-Fi after a good upload (units ship
+    clean, restarting on Miblo-Setup-XXXX) unless ?keepwifi=1."""
+    return base_url(host) + "/update" + ("?keepwifi=1" if keep_wifi else "")
+
+
 def check_update_server_reply(status: int, data: bytes) -> None:
-    """Checks an ESP8266HTTPUpdateServer reply (stock firmware and Miblo installer)."""
+    """Checks an /update reply: the stock ESP8266HTTPUpdateServer ("Update Success! ...") or the
+    Miblo installer ("OK"); both report failures as "Update error: ..." or an HTTP error."""
     m = UPDATE_ERROR.search(data.decode("utf-8", "replace"))
     if m:
         raise FlashError("Update error: " + m.group(1).strip())
@@ -284,13 +305,15 @@ def plan(unit: Unit, images: Images, board: str, allow_update: bool) -> None:
 
 class Runner:
     def __init__(self, images: Images, timing: Timing, out, ask: Callable[[str], str],
-                 sleep: Callable[[float], None] = time.sleep, interactive: bool = True):
+                 sleep: Callable[[float], None] = time.sleep, interactive: bool = True,
+                 keep_wifi: bool = False):
         self.images = images
         self.timing = timing
         self.out = out
         self.ask = ask
         self.sleep = sleep
         self.interactive = interactive  # False: units that need the on-screen code are skipped
+        self.keep_wifi = keep_wifi      # stage 2 with ?keepwifi=1: the unit stays on the LAN
         self.lock = threading.Lock()
 
     def log(self, unit: Unit, msg: str) -> None:
@@ -332,16 +355,26 @@ class Runner:
         status, data = upload(base_url(unit.host) + "/update", loader, self.timing)
         check_update_server_reply(status, data)
         self.log(unit, "stage 1: uploaded, waiting for the installer to boot...")
-        self.poll(unit, "/info", lambda d: d.get("app") == "miblo-loader",
-                  self.timing.stage1_timeout, "the installer on /info")
+        doc = self.poll(unit, "/info", lambda d: d.get("app") == "miblo-loader",
+                        self.timing.stage1_timeout, "the installer on /info")
+        unit.name = doc.get("id") or unit.name
         self.log(unit, "stage 1: installer running")
 
     def stage2(self, unit: Unit) -> None:
         image = self.images.firmware
         self.log(unit, "stage 2: uploading %s (%d KB)..." % (image.name, image.stat().st_size // 1024))
-        status, data = upload(base_url(unit.host) + "/update", image, self.timing)
+        status, data = upload(installer_update_url(unit.host, self.keep_wifi), image, self.timing)
         check_update_server_reply(status, data)
-        self.wait_for_miblo(unit)
+        if self.keep_wifi:
+            self.wait_for_miblo(unit)
+            return
+        # The installer erased the unit's Wi-Fi: it restarts on its own Miblo-Setup-XXXX network.
+        m = CHIP_SUFFIX.search(unit.name or "")
+        unit.chip = m.group(1).lower() if m else None
+        unit.verify = True
+        unit.after = "miblo %s?" % self.images.version
+        self.log(unit, "stage 2: uploaded; the unit restarts in setup mode (%s)"
+                 % ("Miblo-Setup-" + unit.chip.upper() if unit.chip else "Miblo-Setup-XXXX"))
 
     def locked_wait(self, unit: Unit, data: bytes) -> None:
         try:
@@ -425,8 +458,11 @@ class Runner:
                 self.stage2(unit)
             elif unit.action == OTA:
                 self.ota(unit)
-            unit.result = "ok"
-            self.log(unit, "done: %s" % unit.after)
+            if unit.verify:
+                unit.result = UNVERIFIED
+            else:
+                unit.result = "ok"
+                self.log(unit, "done: %s" % unit.after)
         except SkipUnit as e:
             unit.result = str(e)
             self.log(unit, unit.result)
@@ -446,6 +482,7 @@ class Runner:
 
 AP_SUBNET = ipaddress.ip_network("192.168.4.0/24")
 DEFAULT_STOCK_SSID = r"^(GIFTV|SmallTV|GeekMagic)"
+DEFAULT_TRY_SSIDS = ["GIFTV", "SmallTV", "GeekMagic"]   # the stock units' fixed network names
 INSTALLER_SSID = re.compile(r"^Miblo-Installer-([0-9A-Fa-f]{4})$")
 SETUP_SSID = re.compile(r"^Miblo-Setup-([0-9A-Fa-f]{4})$")
 CHECK = "check version, update if different"
@@ -495,6 +532,7 @@ class ApFleet:
         self.handled = set()          # ssid_key()s processed, or produced by a processed unit
         self.units: List[Unit] = []
         self.current: Optional[Unit] = None
+        self.scan_blocked = False     # names are hidden: skip scans inside a unit's steps
 
     def log(self, unit: Unit, msg: str) -> None:
         self.runner.log(unit, msg)
@@ -502,21 +540,23 @@ class ApFleet:
     def pending(self, ssids: List[str]) -> List[str]:
         return [s for s in ssids if ssid_kind(s, self.stock_re) and ssid_key(s) not in self.handled]
 
-    def wait_for_ssid(self, pick: Callable[[List[str]], Optional[str]], limit: float, what: str) -> str:
-        deadline = time.monotonic() + limit
-        while True:
-            ssid = pick(self.wifi.scan())
-            if ssid:
-                return ssid
-            if time.monotonic() >= deadline:
-                raise FlashError("timed out after %gs waiting for %s" % (limit, what))
-            self.runner.sleep(self.timing.scan_interval)
+    def scan(self) -> Optional[List[str]]:
+        """Visible SSIDs, or None when scanning is unavailable (hidden names, no helper...)."""
+        if self.scan_blocked:
+            return None
+        try:
+            return self.wifi.scan()
+        except WifiPermissionError:
+            self.scan_blocked = True  # won't change during a unit: join by name from now on
+            return None
+        except WifiError:
+            return None
 
-    def connect(self, unit: Unit, ssid: str, password: Optional[str] = None) -> None:
+    def connect(self, unit: Unit, ssid: str, password: Optional[str] = None, attempts: int = 3) -> None:
         """Joins `ssid` and waits for a 192.168.4.x address and the device answering on HTTP."""
         self.log(unit, "joining Wi-Fi %s..." % ssid)
         last = None
-        for _ in range(3):
+        for _ in range(attempts):
             try:
                 self.wifi.join(ssid, password)
                 break
@@ -536,6 +576,41 @@ class ApFleet:
                 raise FlashError("joined %s but got no 192.168.4.x address or no answer from %s within %gs "
                                  "(Mac address: %s)" % (ssid, unit.host, self.timing.ap_join_timeout, mine))
             self.runner.sleep(self.timing.poll_interval)
+
+    def reach(self, unit: Unit, pick: Callable[[List[str]], Optional[str]], name: Optional[str],
+              limit: float, what: str) -> str:
+        """Joins the network `pick` finds in a scan. With a known `name` it is joined by name
+        directly when scanning is unavailable, or when the scan hasn't shown it after half of
+        `limit` (scans can miss a network)."""
+        start = time.monotonic()
+        deadline = start + limit
+        last = None
+        while True:
+            ssids = self.scan()
+            ssid = pick(ssids) if ssids is not None else None
+            if ssid is None and name and (ssids is None or time.monotonic() >= start + limit / 2):
+                ssid = name
+            if ssid:
+                try:
+                    self.connect(unit, ssid, attempts=1)
+                    return ssid
+                except FlashError as e:
+                    last = e
+            if time.monotonic() >= deadline:
+                raise FlashError("timed out after %gs waiting for %s%s" % (limit, what, " (%s)" % last if last else ""))
+            self.runner.sleep(self.timing.scan_interval)
+
+    def chip_hint(self, unit: Unit) -> Optional[str]:
+        """The chip id of the unit we're joined to: its MAC's low bytes (ARP), else a 4-hex
+        suffix of its network name, else the scanned BSSID (when only one unit has that name)."""
+        chip = mac_chip(self.wifi.device_mac(split_host(unit.host)[0]))
+        if chip:
+            return chip
+        m = CHIP_SUFFIX.search(unit.ssid or "")
+        if m:
+            return m.group(1).lower()
+        bssids = self.wifi.bssids.get(unit.ssid or "", [])
+        return mac_chip(bssids[0]) if len(bssids) == 1 else None
 
     def note_chip(self, unit: Unit) -> None:
         m = CHIP_SUFFIX.search(unit.name or "")  # device id "miblo-4f2a"
@@ -559,13 +634,13 @@ class ApFleet:
         loader = self.runner.images.loader
         if loader is None:
             raise FlashError("no installer image (miblo-loader-*.bin) for this board")
-        before = {s for s in self.wifi.scan() if INSTALLER_SSID.match(s)}
+        hint = self.chip_hint(unit)
+        before = {s for s in (self.scan() or []) if INSTALLER_SSID.match(s)}
         self.log(unit, "stage 1: uploading installer %s (%d KB)..." % (loader.name, loader.stat().st_size // 1024))
         status, data = upload(base_url(unit.host) + "/update", loader, self.timing)
         check_update_server_reply(status, data)
-        self.log(unit, "stage 1: uploaded, waiting for its Miblo-Installer-XXXX network...")
-        m = CHIP_SUFFIX.search(unit.ssid or "")
-        hint = m.group(1).lower() if m else None
+        name = "Miblo-Installer-%s" % hint.upper() if hint else None
+        self.log(unit, "stage 1: uploaded, waiting for %s..." % (name or "its Miblo-Installer-XXXX network"))
 
         def pick(ssids):
             fresh = [s for s in ssids if INSTALLER_SSID.match(s) and ssid_key(s) not in self.handled]
@@ -573,9 +648,8 @@ class ApFleet:
             new = [s for s in fresh if s not in before]  # can't correlate: one not seen before
             return (same or new or [None])[0]
 
-        ssid = self.wait_for_ssid(pick, self.timing.stage1_timeout, "a new Miblo-Installer-XXXX network")
+        ssid = self.reach(unit, pick, name, self.timing.stage1_timeout, name or "a new Miblo-Installer-XXXX network")
         self.handled.add(ssid_key(ssid))
-        self.connect(unit, ssid)
         doc = self.runner.poll(unit, "/info", lambda d: d.get("app") == "miblo-loader",
                                self.timing.ap_join_timeout, "the installer on /info")
         unit.name = doc.get("id") or unit.name
@@ -584,15 +658,17 @@ class ApFleet:
 
     def stage2(self, unit: Unit) -> None:
         image = self.runner.images.firmware
-        before = set() if unit.chip else {s for s in self.wifi.scan() if SETUP_SSID.match(s)}
+        before = set() if unit.chip else {s for s in (self.scan() or []) if SETUP_SSID.match(s)}
         self.log(unit, "stage 2: uploading %s (%d KB)..." % (image.name, image.stat().st_size // 1024))
-        status, data = upload(base_url(unit.host) + "/update", image, self.timing)
+        status, data = upload(installer_update_url(unit.host, self.runner.keep_wifi), image, self.timing)
         check_update_server_reply(status, data)
         self.after_reboot(unit, before)
 
     def after_reboot(self, unit: Unit, before=frozenset()) -> None:
-        """The unit rebooted into Miblo: find its Miblo-Setup-XXXX, join it and check /api/info."""
-        want = ("Miblo-Setup-%s" % unit.chip).lower() if unit.chip else None
+        """The unit rebooted into Miblo: join its Miblo-Setup-XXXX (by name when the chip id is
+        known) and check /api/info."""
+        name = "Miblo-Setup-%s" % unit.chip.upper() if unit.chip else None
+        want = name.lower() if name else None
 
         def pick(ssids):
             if want:
@@ -601,29 +677,35 @@ class ApFleet:
                    and ssid_key(s) not in self.handled]
             return new[0] if new else None
 
-        what = "Miblo-Setup-%s" % unit.chip.upper() if unit.chip else "a new Miblo-Setup-XXXX network"
+        what = name or "a new Miblo-Setup-XXXX network"
         self.log(unit, "waiting for %s..." % what)
         deadline = time.monotonic() + self.timing.stage2_timeout
-        while True:  # the old network can still show up in a scan right after the reboot: retry
-            try:
-                ssid = self.wait_for_ssid(pick, max(deadline - time.monotonic(), 0.0), what)
-                self.connect(unit, ssid)
-                break
-            except FlashError:
-                if time.monotonic() >= deadline:
-                    raise
+        ssid = self.reach(unit, pick, name, self.timing.stage2_timeout, what)
         self.handled.add(ssid_key(ssid))
         self.runner.wait_for_miblo(unit, max(deadline - time.monotonic(), self.timing.ap_join_timeout))
 
-    def process(self, ssid: str) -> Unit:
+    def process(self, ssid: str, probe: bool = False) -> Optional[Unit]:
+        """Joins `ssid` and installs/updates the unit there. `probe`: the network was not seen
+        in a scan (joined by name only); when it can't be joined, it is not a unit: None."""
         unit = Unit(host=self.ap_host(ssid), ssid=ssid, chip=ssid_chip(ssid))
         self.handled.add(ssid_key(ssid))
         self.units.append(unit)
         self.current = unit
         start = time.monotonic()
         found_as = ssid_kind(ssid, self.stock_re)
+        password = self.args.stock_pass if found_as in (STOCK, None) else None
+        if probe:
+            try:
+                self.connect(unit, ssid, password, attempts=1)
+            except FlashError:
+                self.units.remove(unit)
+                self.handled.discard(ssid_key(ssid))
+                self.current = None
+                self.log(unit, "not in range")
+                return None
         try:
-            self.connect(unit, ssid, self.args.stock_pass if found_as == STOCK else None)
+            if not probe:
+                self.connect(unit, ssid, password)
             self.classify(unit, found_as)
             # Units on their setup network are unconfigured shelf stock: update them by default.
             plan(unit, self.runner.images, self.args.board, allow_update=True)
@@ -638,6 +720,8 @@ class ApFleet:
             if unit.action in (INSTALL, STAGE2, OTA):
                 unit.result = "ok"
                 self.log(unit, "done: %s" % unit.after)
+                if unit.action == INSTALL and not ssid_chip(ssid):
+                    self.handled.discard(ssid_key(ssid))  # the next stock unit has the same name
             else:
                 unit.result = unit.action
         except SkipUnit as e:
@@ -659,7 +743,9 @@ def restore_wifi(wifi: MacWifi, original: Optional[str], out) -> None:
     if not wifi.joined_other:
         return
     if not original:
-        out.write("WARNING: the Mac was on no known Wi-Fi network before; not rejoining any.\n")
+        out.write("\nWARNING: the name of the Wi-Fi network the Mac was on is unknown (macOS hides it, or "
+                  "there was none); rejoin your network by hand.\n")
+        out.flush()
         return
     out.write("\nRejoining Wi-Fi %s...\n" % original)
     try:
@@ -669,16 +755,71 @@ def restore_wifi(wifi: MacWifi, original: Optional[str], out) -> None:
     out.flush()
 
 
+def scan_only(args, out, wifi: MacWifi) -> int:
+    """--via-ap --scan-only: print what the scan sees (a debug aid; joins nothing)."""
+    try:
+        res = wifi.scan_result()
+    except WifiPermissionError as e:
+        out.write("\n%s\n" % e)
+        return 2
+    except WifiError as e:
+        out.write("Wi-Fi: %s\n" % e)
+        return 2
+    stock_re = re.compile(args.stock_ssid, re.I)
+    names = {STOCK: "stock", LOADER: "installer", MIBLO: "miblo"}
+    out.write("Scanner: %s%s, current network: %s\n" % (
+        res.source, " (%s)" % res.status if res.status else "", res.current or "(unknown)"))
+    rows = [["ssid", "bssid", "rssi", "channel", "unit"]]
+    for n in res.networks:
+        ssid = n["ssid"] or "(hidden)"
+        kind = ssid_kind(n["ssid"], stock_re) if n["ssid"] else None
+        rows.append([ssid, n["bssid"] or "-", "-" if n["rssi"] is None else str(n["rssi"]),
+                     "-" if n["channel"] is None else str(n["channel"]), names.get(kind, "")])
+    out.write(table(rows) + "\n\n%d network(s)\n" % len(res.networks))
+    return 0
+
+
 def run_via_ap(args, images: Images, timing: Timing, out, ask, sleep, interactive: bool,
                wifi: MacWifi, ap_host: Callable[[str], str]) -> int:
-    runner = Runner(images, timing, out, ask, sleep, interactive)
+    runner = Runner(images, timing, out, ask, sleep, interactive, args.keep_wifi)
     fleet = ApFleet(runner, wifi, args, ap_host)
+    by_name = bool(args.ssid or args.try_ssid)   # the user gave names: a scan is optional
+    try_names = args.try_ssid or DEFAULT_TRY_SSIDS
+
+    def scan() -> Optional[List[str]]:
+        """SSIDs, or None when scanning is unavailable. Hidden names without --ssid/--try-ssid
+        raise WifiPermissionError (the run stops with the instructions)."""
+        try:
+            ssids = wifi.scan()
+            fleet.scan_blocked = False
+            return ssids
+        except WifiPermissionError:
+            if not by_name:
+                raise
+            fleet.scan_blocked = True
+            return None
+        except WifiError as e:
+            out.write("Wi-Fi scan unavailable: %s\n" % e)
+            return None
+
+    ssids: Optional[List[str]] = []
     try:
-        original = wifi.current_ssid()
-        out.write("Wi-Fi interface %s, current network: %s\n" % (wifi.iface, original or "(none)"))
-        out.write("Scanning for units (stock networks: /%s/i)...\n" % args.stock_ssid)
+        iface = wifi.iface
+        if not args.ssid:  # explicit units need no scan
+            out.write("Scanning for units (stock networks: /%s/i)...\n" % args.stock_ssid)
+            out.flush()
+            ssids = scan()
+            if ssids is None:
+                out.write("Scanning is unavailable (network names hidden by macOS); joining networks by name.\n")
+        # Remember the network to come back to BEFORE joining anything.
+        try:
+            original = wifi.current_ssid()
+        except WifiError:
+            original = None
+        out.write("Wi-Fi interface %s, current network: %s\n" % (iface, original or "(unknown)"))
+        if not original:
+            out.write("WARNING: can't read the current network's name; after the run, rejoin it by hand.\n")
         out.flush()
-        ssids = wifi.scan()
     except WifiPermissionError as e:
         out.write("\n%s\n" % e)
         return 2
@@ -686,38 +827,57 @@ def run_via_ap(args, images: Images, timing: Timing, out, ask, sleep, interactiv
         out.write("Wi-Fi: %s\n" % e)
         return 2
 
+    def targets(first: bool) -> List[Tuple[str, bool]]:
+        """(ssid, probe) to process this round; probe: joined by name, not seen in a scan."""
+        if args.ssid:
+            return [(s, False) for s in args.ssid if ssid_key(s) not in fleet.handled] if first else []
+        found = fleet.pending(ssids or [])
+        result = [(s, False) for s in found]
+        if ssids is None or (first and (not found or args.try_ssid)):
+            result += [(n, True) for n in try_names if n not in found and ssid_key(n) not in fleet.handled]
+        return result
+
+    def full() -> bool:
+        return bool(args.max) and len(fleet.units) >= args.max
+
     if args.dry_run:
-        found = fleet.pending(ssids)
-        if not found:
-            out.write("No unit networks visible (%d other network(s)).\n" % len(ssids))
+        kinds = {STOCK: ("stock", INSTALL), LOADER: ("installer", STAGE2), MIBLO: ("miblo", CHECK)}
+        rows = [["ssid", "found", "action"]]
+        for s, probe in targets(True):
+            found, action = kinds.get(ssid_kind(s, fleet.stock_re), ("?", "classify, then install/update"))
+            if probe:
+                found, action = "not scanned", "try by name, then " + action
+            elif args.ssid:
+                found = "given"
+            rows.append([s, found, action])
+        if len(rows) == 1:
+            out.write("No unit networks visible (%d other network(s)).\n" % len(ssids or []))
             return 0
-        actions = {STOCK: INSTALL, LOADER: STAGE2, MIBLO: CHECK}
-        names = {STOCK: "stock", LOADER: "installer", MIBLO: "miblo"}
-        kinds = [ssid_kind(s, fleet.stock_re) for s in found]
-        rows = [["ssid", "found", "action"]] + [[s, names[k], actions[k]] for s, k in zip(found, kinds)]
         out.write("\nPlan (nothing joined):\n" + table(rows) + "\n")
         return 0
 
     status = 0
     try:
         waiting = False
+        first = True
         while True:
-            for ssid in fleet.pending(ssids):
-                if args.max and len(fleet.units) >= args.max:
-                    break
-                if ssid_key(ssid) in fleet.handled:  # produced by a unit processed meanwhile
-                    continue
-                waiting = False
-                out.write("\n== %s ==\n" % ssid)
-                fleet.process(ssid)
-            if (args.max and len(fleet.units) >= args.max) or not args.loop:
+            for ssid, probe in targets(first):
+                while not full() and ssid_key(ssid) not in fleet.handled:
+                    waiting = False
+                    out.write("\n== %s%s ==\n" % (ssid, " (by name)" if probe else ""))
+                    unit = fleet.process(ssid, probe)
+                    # A stock name joined blindly: the next unit may use the same name.
+                    if not probe or unit is None or unit.result != "ok":
+                        break
+            first = False
+            if full() or not args.loop or args.ssid:
                 break
             if not waiting:
                 out.write("\nWaiting for more units (power the next one on; Ctrl-C to stop)...\n")
                 out.flush()
                 waiting = True
             sleep(timing.scan_interval)
-            ssids = wifi.scan()
+            ssids = scan()
     except KeyboardInterrupt:
         out.write("\nStopped.\n")
         if fleet.current is not None:
@@ -737,10 +897,48 @@ def run_via_ap(args, images: Images, timing: Timing, out, ask, sleep, interactiv
     rows += [[u.label, u.before, u.after, u.result, "%.0f" % u.seconds] for u in units]
     out.write("\nSummary:\n" + table(rows) + "\n")
     failed = sum(u.failed for u in units)
-    done = sum(u.result == "ok" for u in units)
+    done = sum(u.result in ("ok", UNVERIFIED) for u in units)
     out.write("\n%d flashed, %d failed, %d skipped\n" % (done, failed, len(units) - done - failed))
     out.flush()
     return status or (1 if failed else 0)
+
+
+def verify_via_ap(units: List[Unit], runner: Runner, wifi: MacWifi, args, ap_host: Callable[[str], str],
+                  out) -> None:
+    """LAN installs without --keep-wifi: each unit restarted on its own Miblo-Setup-XXXX network.
+    Join each one by name (one radio: in turn), check GET /api/info at 192.168.4.1, then rejoin
+    the Mac's network."""
+    fleet = ApFleet(runner, wifi, args, ap_host)
+    fleet.scan_blocked = True  # the names are known: join directly, no scan (no permission needed)
+    try:
+        original = wifi.current_ssid()
+    except WifiError:
+        original = None
+    out.write("\nChecking %d unit(s) on their setup networks (the Mac leaves %s meanwhile)...\n"
+              % (len(units), original or "its network"))
+    if not original:
+        out.write("WARNING: can't read the current network's name; after the run, rejoin it by hand.\n")
+    out.flush()
+    try:
+        for u in units:
+            if not u.chip:
+                runner.log(u, "can't tell its Miblo-Setup-XXXX name (no chip id); not verified")
+                continue
+            lan_host, start = u.host, time.monotonic()
+            try:
+                fleet.after_reboot(u)
+                u.verify = False
+                u.result = "ok"
+                runner.log(u, "done: %s" % u.after)
+            except (FlashError, WifiError) as e:
+                u.failed = True
+                u.result = "FAILED: after install: %s" % e
+                runner.log(u, u.result)
+            finally:
+                u.host = lan_host
+                u.seconds += time.monotonic() - start
+    finally:
+        restore_wifi(wifi, original, out)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -762,7 +960,16 @@ def pick(dist: Path, prefix: str) -> List[Tuple[str, Path]]:
     return sorted(found, key=lambda t: version_key(t[0]))
 
 
-def resolve_images(args) -> Images:
+def source_version(header: Path = VERSION_HEADER) -> Optional[str]:
+    """MIBLO_FW_VERSION from include/miblo_version.h (the version the sources build)."""
+    try:
+        m = re.search(r'^#define MIBLO_FW_VERSION "([^"]+)"', header.read_text(), re.M)
+    except OSError:
+        return None
+    return m.group(1) if m else None
+
+
+def resolve_images(args, out=None) -> Images:
     loader = Path(args.loader) if args.loader else None
     if args.firmware:
         firmware = Path(args.firmware)
@@ -773,10 +980,21 @@ def resolve_images(args) -> Images:
     else:
         dist = Path(args.dist)
         full = pick(dist, "miblo-%s-" % args.board)
-        if not full:
+        want = args.fw_version or source_version()
+        match = [(v, p) for v, p in full if v == want]
+        if match:
+            version, firmware = match[-1]
+        elif want and (args.fw_version or Path(args.dist).resolve() == DEFAULT_DIST.resolve()):
+            # The sources are at `want`: never flash an older image left in dist/ by mistake.
+            raise SystemExit("no miblo-%s-%s.bin in %s (run make build, or firmware/scripts/build.sh)"
+                             % (args.board, want, dist))
+        elif full:
+            version, firmware = full[-1]
+            if want and out is not None:
+                out.write("WARNING: no image for the sources' version %s in %s; using the newest, %s\n"
+                          % (want, dist, version))
+        else:
             raise SystemExit("no miblo-%s-<version>.bin in %s (run firmware/scripts/build.sh)" % (args.board, dist))
-        version, firmware = full[-1]
-        version = args.fw_version or version
     if loader is None:
         dist = Path(args.dist) if args.dist else firmware.parent
         loaders = pick(dist, "miblo-loader-%s-" % args.board)
@@ -825,6 +1043,16 @@ def parse_args(argv):
                    help="stock GeekMagic network names, case-insensitive (default %(default)s)")
     w.add_argument("--stock-pass", default=None, metavar="PASS",
                    help="password of the stock networks (default: open network)")
+    w.add_argument("--ssid", action="append", default=[], metavar="NAME",
+                   help="process only this unit network, joined by name without scanning, e.g. a shelf "
+                        "unit's Miblo-Setup-4F2A (repeatable)")
+    w.add_argument("--try-ssid", action="append", default=[], metavar="NAME",
+                   help="network name to try joining even when a scan doesn't show it; the unit is used "
+                        "if 192.168.4.1 answers (repeatable; when the scan is unavailable or finds no "
+                        "unit, %s are tried)" % ", ".join(DEFAULT_TRY_SSIDS))
+    w.add_argument("--scan-only", action="store_true",
+                   help="print the Wi-Fi scan (names, BSSIDs, signal; builds the MibloWiFiScan helper "
+                        "if needed) and exit")
     w.add_argument("--iface", default=None, help="Wi-Fi interface (default: from networksetup)")
     w.add_argument("--max", type=int, default=0, metavar="N", help="stop after N units")
     w.add_argument("--loop", action="store_true",
@@ -847,6 +1075,13 @@ def parse_args(argv):
     r.add_argument("--update", action="store_true",
                    help="also update units already running another Miblo version (asks for the "
                         "4-digit code shown on each screen; done one unit at a time)")
+    r.add_argument("--keep-wifi", action="store_true",
+                   help="stage 2 keeps the unit's Wi-Fi (?keepwifi=1) and checks it on the LAN; by default "
+                        "the installer erases it, the unit restarts on Miblo-Setup-XXXX and (macOS) the Mac "
+                        "joins that network to check it, then rejoins its own")
+    r.add_argument("--no-ap-verify", action="store_true",
+                   help="don't join the units' setup networks to check them after a LAN install (they are "
+                        "reported as installed, unverified)")
     r.add_argument("--poll-interval", type=float, default=None, help=argparse.SUPPRESS)
     r.add_argument("--stage1-timeout", type=float, default=None,
                    help="seconds to wait for the installer after stage 1 (default %g)" % Timing.stage1_timeout)
@@ -862,6 +1097,8 @@ def parse_args(argv):
             ap.error("--stock-ssid: %s" % e)
         if args.max < 0:
             ap.error("--max must be positive")
+    elif args.ssid or args.try_ssid or args.scan_only:
+        ap.error("--ssid/--try-ssid/--scan-only need --via-ap")
     elif not args.subnet and not args.host:
         ap.error("give at least one --subnet or --host (or use --via-ap)")
     if args.jobs < 1:
@@ -881,18 +1118,22 @@ def main(argv=None, timing: Optional[Timing] = None, out=None,
     for name in ("poll_interval", "stage1_timeout", "stage2_timeout"):
         if getattr(args, name) is not None:
             setattr(timing, name, getattr(args, name))
+    if args.via_ap and wifi is None:
+        if sys.platform != "darwin":
+            raise SystemExit("--via-ap needs macOS (networksetup, CoreWLAN)")
+        wifi = MacWifi(iface=args.iface, helper=ScanHelper(log=lambda m: (out.write(m + "\n"), out.flush())),
+                       log=lambda m: (out.write(m + "\n"), out.flush()))
+    if args.via_ap and args.scan_only:
+        return scan_only(args, out, wifi)
     if args.dist is None and not args.firmware:
         args.dist = str(DEFAULT_DIST)
-    images = resolve_images(args)
+    images = resolve_images(args, out)
+    out.write("Installing Miblo %s\n" % images.version)
     out.write("Image: %s (fw %s%s)\nInstaller: %s\n" % (
         images.firmware, images.version, ", build %s" % images.build if images.build else "",
         images.loader or "(none)"))
 
     if args.via_ap:
-        if wifi is None:
-            if sys.platform != "darwin":
-                raise SystemExit("--via-ap needs macOS (networksetup, system_profiler)")
-            wifi = MacWifi(iface=args.iface)
         return run_via_ap(args, images, timing, out, ask, sleep, interactive, wifi, ap_host)
 
     hosts: List[str] = []
@@ -919,10 +1160,22 @@ def main(argv=None, timing: Optional[Timing] = None, out=None,
     if args.dry_run:
         return 0
 
-    runner = Runner(images, timing, out, ask, sleep, interactive)
+    runner = Runner(images, timing, out, ask, sleep, interactive, args.keep_wifi)
     parallel = [u for u in units if u.action in (INSTALL, STAGE2)]
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
         list(pool.map(runner.run_unit, parallel))
+    pending = [u for u in parallel if u.verify and not u.failed]
+    if pending:
+        if args.no_ap_verify:
+            out.write("\n%d unit(s) left unverified (--no-ap-verify).\n" % len(pending))
+        elif wifi is None and sys.platform != "darwin":
+            out.write("\n%d unit(s) can't be verified here: they restarted on their Miblo-Setup-XXXX "
+                      "networks (use --keep-wifi to keep them on the LAN).\n" % len(pending))
+        else:
+            if wifi is None:
+                wifi = MacWifi(iface=args.iface, helper=ScanHelper(log=lambda m: (out.write(m + "\n"), out.flush())),
+                               log=lambda m: (out.write(m + "\n"), out.flush()))
+            verify_via_ap(pending, runner, wifi, args, ap_host, out)
     for u in units:  # a code prompt each: strictly one at a time
         if u.action == OTA:
             runner.run_unit(u)
@@ -934,7 +1187,7 @@ def main(argv=None, timing: Optional[Timing] = None, out=None,
     rows += [[u.host, u.before, u.after, u.result, "%.0f" % u.seconds] for u in units]
     out.write("\nSummary:\n" + table(rows) + "\n")
     failed = sum(u.failed for u in units)
-    done = sum(u.result == "ok" for u in units)
+    done = sum(u.result in ("ok", UNVERIFIED) for u in units)
     out.write("\n%d flashed, %d failed, %d skipped\n" % (done, failed, len(units) - done - failed))
     out.flush()
     return 1 if failed else 0

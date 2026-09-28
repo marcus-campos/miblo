@@ -9,18 +9,29 @@
 #   make fleet-ap-plan              scan nearby Wi-Fi for GIFTV/SmallTV/GeekMagic/Miblo-* units (no joining)
 #   make fleet-ap                   flash/update every unit through its own access point (sequential)
 #   make fleet-ap-loop              keep scanning: plug units in one after another (Ctrl-C to stop)
+#   make fleet-ap SSIDS="Miblo-Setup-4F2A GIFTV"   only these unit networks, joined by name (no scan)
+#   make fleet-ap-scan              print the Wi-Fi scan (builds the MibloWiFiScan helper on first use)
+#
+# The builds are refreshed automatically: fleet targets run `make build` unless dist/ holds both
+# images for the sources' MIBLO_FW_VERSION and they are newer than every firmware source file.
+# LAN installs leave units in setup mode (Wi-Fi erased); on macOS the Mac then joins each unit's
+# Miblo-Setup-XXXX to check it (ARGS=--keep-wifi keeps them on the LAN, --no-ap-verify skips it).
+# Access-point mode scans through a small helper app: allow "MibloWiFiScan" to use your location
+# when macOS asks (System Settings -> Privacy & Security -> Location Services).
 #
 # Variables (override on the command line):
 #   BOARD   board name in the image files          (default geekmagic_ultra)
 #   SUBNET  network to scan, CIDR                   (default: this Mac's /24, auto-detected)
 #   HOSTS   space-separated unit IPs; skips the scan when set
 #   JOBS    units flashed in parallel               (default 50)
-#   ARGS    extra flags passed to flash-fleet.py    (e.g. ARGS="--build 9d4215b")
+#   SSIDS   unit networks for the fleet-ap targets, each passed as --ssid (no scan needed)
+#   ARGS    extra flags passed to flash-fleet.py    (e.g. ARGS="--build 9d4215b", ARGS="--try-ssid MyTV")
 #   VERSION release version; skips the question   (e.g. make release VERSION=0.3.0)
 
 BOARD  ?= geekmagic_ultra
 JOBS   ?= 50
 HOSTS  ?=
+SSIDS  ?=
 ARGS   ?=
 PYTHON ?= python3
 
@@ -30,14 +41,30 @@ SUBNET ?= $(shell ip=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr
 
 FLEET   := $(PYTHON) scripts/flash-fleet.py --board $(BOARD) --jobs $(JOBS)
 TARGETS := $(if $(strip $(HOSTS)),$(foreach h,$(HOSTS),--host $(h)),--subnet $(SUBNET))
+AP      := $(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap $(foreach s,$(SSIDS),--ssid $(s))
 
-.PHONY: help build test release fleet-ap-plan fleet-ap fleet-ap-loop fleet-plan fleet fleet-update fleet-test check-target
+# Images for the version the sources declare; rebuilt when missing or older than any source.
+VER     := $(shell sed -n 's/.*MIBLO_FW_VERSION "\(.*\)".*/\1/p' include/miblo_version.h)
+IMAGES  := dist/miblo-$(BOARD)-$(VER).bin dist/miblo-loader-$(BOARD)-$(VER).bin
+SOURCES := src lib/miblo_core lib/miblo_ui loader include platformio.ini
+define ensure_images
+	@stale=; for f in $(IMAGES); do \
+	  if [ ! -f "$$f" ] || [ -n "$$(find $(SOURCES) -type f -newer "$$f" 2>/dev/null | head -n 1)" ]; then stale=1; fi; \
+	done; \
+	if [ -n "$$stale" ]; then echo "Images for $(VER) missing or older than the sources: building..."; \
+	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
+endef
+
+.PHONY: help build test release images fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
 
 build:
 	./scripts/build.sh $(BOARD)
+
+images:
+	$(ensure_images)
 
 test:
 	@if [ -x .venv/bin/pio ]; then .venv/bin/pio test -e native; else pio test -e native; fi
@@ -51,12 +78,10 @@ check-target:
 fleet-plan: check-target
 	$(FLEET) $(TARGETS) --dry-run $(ARGS)
 
-fleet: check-target
-	@ls dist/miblo-loader-$(BOARD)-*.bin dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
+fleet: check-target images
 	$(FLEET) $(TARGETS) $(ARGS)
 
-fleet-update: check-target
-	@ls dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
+fleet-update: check-target images
 	$(FLEET) $(TARGETS) --update $(ARGS)
 
 fleet-test:
@@ -95,14 +120,16 @@ release:
 	*) echo "Not tagged. Later: git tag -a $$tag -m $$tag && git push origin $$branch $$tag";; esac
 
 # Access-point mode (macOS): the Mac joins each unit's own Wi-Fi, flashes it at 192.168.4.1 and
-# rejoins the original network at the end. Needs Location Services for your terminal app.
+# rejoins the original network at the end. The scan runs in the MibloWiFiScan helper app (allow
+# its location access once); SSIDS="..." skips scanning.
 fleet-ap-plan:
-	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap --dry-run $(ARGS)
+	$(AP) --dry-run $(ARGS)
 
-fleet-ap:
-	@ls dist/miblo-loader-$(BOARD)-*.bin dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
-	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap $(ARGS)
+fleet-ap-scan:
+	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap --scan-only $(ARGS)
 
-fleet-ap-loop:
-	@ls dist/miblo-loader-$(BOARD)-*.bin dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
-	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap --loop $(ARGS)
+fleet-ap: images
+	$(AP) $(ARGS)
+
+fleet-ap-loop: images
+	$(AP) --loop $(ARGS)

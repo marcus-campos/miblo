@@ -37,7 +37,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
       if (tracker.handle(evt)) schedule();
     },
     onStatusline(sl) {
-      if (metrics.ingest(sl)) schedule();
+      if (metrics.ingest(sl, { fresh: tracker.sawStart(sl?.session_id) })) schedule();
     },
     getStatus: () => ({
       sessions: tracker.sessions(),

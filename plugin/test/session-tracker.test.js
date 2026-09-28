@@ -153,3 +153,13 @@ test('events without session_id or with unknown names are ignored', () => {
   assert.equal(ev('s1', 'SubagentStop'), false);
   assert.equal(ev('s1', 'Notification', { notification_type: 'idle_prompt' }), false);
 });
+
+test('sawStart is true only for sessions whose SessionStart was handled', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SessionStart');
+  ev('s2', 'UserPromptSubmit');
+  assert.equal(tracker.sawStart('s1'), true);
+  assert.equal(tracker.sawStart('s2'), false);
+  ev('s1', 'SessionEnd');
+  assert.equal(tracker.sawStart('s1'), false);
+});

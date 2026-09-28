@@ -20,6 +20,7 @@ export class SessionTracker {
   #sessions = new Map();
   #alerts = [];
   #nextAlertId = 1;
+  #started = new Set();
 
   constructor({ now = () => Date.now(), isAlive = pidAlive } = {}) {
     this.now = now;
@@ -39,6 +40,7 @@ export class SessionTracker {
 
     switch (name) {
       case 'SessionStart':
+        this.#started.add(id);
         break;
       case 'UserPromptSubmit':
         this.#enter(s, 'running');
@@ -93,6 +95,11 @@ export class SessionTracker {
     return this.#alerts.map(({ id, kind, sid }) => ({ id, kind, sid }));
   }
 
+  // True iff a SessionStart was handled for this session (its cost starts at zero here).
+  sawStart(sid) {
+    return this.#started.has(sid);
+  }
+
   hasActive() {
     return this.#sessions.size > 0;
   }
@@ -121,6 +128,7 @@ export class SessionTracker {
   }
 
   #remove(id) {
+    this.#started.delete(id);
     this.#alerts = this.#alerts.filter((a) => a.sid !== id);
     return this.#sessions.delete(id);
   }

@@ -79,3 +79,17 @@ test('SessionEnd forgets metrics and invalid JSON returns 400', async () => {
     await http.stop();
   }
 });
+
+test('cost counts from zero only for sessions whose SessionStart the bridge saw', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const bridge = createBridge({ dataDir, discoverFn: async () => [] });
+  const http = await started(bridge);
+  try {
+    await http.post('/event', { session_id: 'new', hook_event_name: 'SessionStart', cwd: '/w/a' });
+    await http.post('/statusline', { session_id: 'new', cost: { total_cost_usd: 2 } });
+    await http.post('/statusline', { session_id: 'old', cost: { total_cost_usd: 40 } });
+    assert.deepEqual(bridge.metrics.today(), { usd: 2 });
+  } finally {
+    await http.stop();
+  }
+});

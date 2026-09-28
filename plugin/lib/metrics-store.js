@@ -12,14 +12,18 @@ export class MetricsStore {
   #per = new Map();
   #limits = {};
   #day = null;
-  #todayTok = 0;
   #todayUsd = 0;
 
   constructor({ now = () => Date.now() } = {}) {
     this.now = now;
   }
 
-  ingest(sl) {
+  // Per session, `tok` is the CURRENT context size (total_input_tokens +
+  // total_output_tokens), not a running total. Only cost.total_cost_usd is a
+  // running total, so "today" sums its positive deltas. A session's first
+  // reading counts fully only when `fresh` (the bridge saw its SessionStart);
+  // otherwise it only sets the baseline.
+  ingest(sl, { fresh = false } = {}) {
     const sid = sl?.session_id;
     if (!sid) return false;
     this.#rollDay();
@@ -32,9 +36,9 @@ export class MetricsStore {
       tokOut: num(cw.total_output_tokens),
       usd: num(sl.cost?.total_cost_usd),
     };
-    const prev = this.#per.get(sid) ?? { tokIn: 0, tokOut: 0, usd: 0 };
-    this.#todayTok += Math.max(0, cur.tokIn - prev.tokIn) + Math.max(0, cur.tokOut - prev.tokOut);
-    this.#todayUsd += Math.max(0, cur.usd - prev.usd);
+    const prev = this.#per.get(sid);
+    const baseUsd = prev ? prev.usd : fresh ? 0 : cur.usd;
+    this.#todayUsd += Math.max(0, cur.usd - baseUsd);
     this.#per.set(sid, cur);
 
     const rl = sl.rate_limits;
@@ -67,7 +71,7 @@ export class MetricsStore {
 
   today() {
     this.#rollDay();
-    return { tok: this.#todayTok, usd: Math.round(this.#todayUsd * 100) / 100 };
+    return { usd: Math.round(this.#todayUsd * 100) / 100 };
   }
 
   forget(sid) {
@@ -82,7 +86,6 @@ export class MetricsStore {
     const key = dayKey(this.now());
     if (key !== this.#day) {
       this.#day = key;
-      this.#todayTok = 0;
       this.#todayUsd = 0;
     }
   }

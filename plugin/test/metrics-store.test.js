@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MetricsStore } from '../lib/metrics-store.js';
 
-const T0 = new Date(2026, 8, 28, 14, 0, 0).getTime(); // 28/09/2026 14:00 local
+const T0 = new Date(2026, 8, 28, 14, 0, 0).getTime(); // 2026-09-28 14:00 local time
 const sec = (ms) => Math.floor(ms / 1000);
 
 function sl(sid, { inTok = 0, outTok = 0, usd = 0, ctx = 10, model = 'Opus', rl } = {}) {
@@ -40,22 +40,39 @@ test('null used_percentage becomes null ctx', () => {
   assert.equal(store.forSession('a').ctx, null);
 });
 
-test('today sums positive deltas across sessions', () => {
+test('today sums positive cost deltas across sessions (fresh sessions count from zero)', () => {
   const { store } = setup();
-  store.ingest(sl('a', { inTok: 1000, outTok: 100, usd: 0.5 }));
+  store.ingest(sl('a', { inTok: 1000, outTok: 100, usd: 0.5 }), { fresh: true });
   store.ingest(sl('a', { inTok: 1500, outTok: 150, usd: 0.75 }));
-  store.ingest(sl('b', { inTok: 10, outTok: 5, usd: 0.01 }));
-  store.ingest(sl('a', { inTok: 1400, outTok: 150, usd: 0.75 })); // regressão ignorada
-  assert.deepEqual(store.today(), { tok: 1665, usd: 0.76 });
+  store.ingest(sl('b', { inTok: 10, outTok: 5, usd: 0.01 }), { fresh: true });
+  store.ingest(sl('a', { inTok: 1400, outTok: 150, usd: 0.7 })); // regression ignored
+  assert.deepEqual(store.today(), { usd: 0.76 });
+});
+
+test('first reading of a non-fresh session only sets the cost baseline', () => {
+  const { store } = setup();
+  store.ingest(sl('a', { usd: 12.5 }));
+  assert.deepEqual(store.today(), { usd: 0 });
+  store.ingest(sl('a', { usd: 13 }));
+  assert.deepEqual(store.today(), { usd: 0.5 });
+});
+
+test('tok is the current context size, not accumulated', () => {
+  const { store } = setup();
+  store.ingest(sl('a', { inTok: 5000, outTok: 500 }), { fresh: true });
+  store.ingest(sl('a', { inTok: 3000, outTok: 100 })); // context compacted
+  assert.equal(store.forSession('a').tok, 3100);
+  assert.deepEqual(Object.keys(store.today()), ['usd']);
 });
 
 test('today resets at local midnight but keeps per-session baselines', () => {
   const { store, advance } = setup();
-  store.ingest(sl('a', { inTok: 1000 }));
-  advance(11 * 3600_000); // 01:00 do dia seguinte
-  assert.deepEqual(store.today(), { tok: 0, usd: 0 });
-  store.ingest(sl('a', { inTok: 1300 }));
-  assert.deepEqual(store.today(), { tok: 300, usd: 0 });
+  store.ingest(sl('a', { usd: 1 }), { fresh: true });
+  assert.deepEqual(store.today(), { usd: 1 });
+  advance(11 * 3600_000); // 01:00 next day
+  assert.deepEqual(store.today(), { usd: 0 });
+  store.ingest(sl('a', { usd: 1.3 }));
+  assert.deepEqual(store.today(), { usd: 0.3 });
 });
 
 test('usage takes the latest rate_limits and keeps them across readings without it', () => {

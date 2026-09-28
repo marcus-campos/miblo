@@ -18,7 +18,7 @@ test('empty world', () => {
   const { snap } = world();
   assert.deepEqual(snap(7), {
     v: 1, seq: 7, now: 1_790_600_000, host: 'MacBook-Marcus',
-    usage: null, today: { tok: 0, usd: 0 }, sessions: [], more: 0, alerts: [],
+    usage: null, today: { usd: 0 }, sessions: [], more: 0, alerts: [],
   });
 });
 

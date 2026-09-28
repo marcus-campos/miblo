@@ -12,14 +12,14 @@ const NOW = Date.UTC(2026, 8, 28, 14, 32, 0);
 const S = Math.floor(NOW / 1000);
 
 function world() {
-  let t = NOW - 10_000; // < ALERT_TTL_MS, para os alertas ainda constarem no snapshot
+  let t = NOW - 10_000; // < ALERT_TTL_MS, so alerts are still in the snapshot
   const clock = { now: () => t, set: (ms) => { t = ms; } };
   const tracker = new SessionTracker({ now: clock.now, isAlive: () => true });
   const metrics = new MetricsStore({ now: clock.now });
   const ev = (sid, name, cwd, extra = {}) => tracker.handle({ session_id: sid, hook_event_name: name, cwd, ...extra });
   const sl = (sid, model, ctx, inTok, outTok, usd, rl) =>
     metrics.ingest({ session_id: sid, model: { display_name: model }, cost: { total_cost_usd: usd },
-      context_window: { used_percentage: ctx, total_input_tokens: inTok, total_output_tokens: outTok }, ...(rl ? { rate_limits: rl } : {}) });
+      context_window: { used_percentage: ctx, total_input_tokens: inTok, total_output_tokens: outTok }, ...(rl ? { rate_limits: rl } : {}) }, { fresh: true });
   const rl = { five_hour: { used_percentage: 62, resets_at: S + 7800 }, seven_day: { used_percentage: 38, resets_at: S + 240000 } };
   const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics }); };
   return { ev, sl, rl, finish };

@@ -1,0 +1,11 @@
+{
+  "name": "miblo",
+  "owner": { "name": "Marcus Campos" },
+  "plugins": [
+    {
+      "name": "miblo",
+      "source": "./plugin",
+      "description": "Shows Claude Code session status, alerts and usage limits on a Miblo desk gadget."
+    }
+  ]
+}

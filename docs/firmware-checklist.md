@@ -1,0 +1,74 @@
+# Firmware manual on-device checklist
+
+This is the human-executed, on-device checklist for validating a Miblo firmware release. It
+cannot be run by an agent: it requires a real device, a real Wi-Fi network, and a phone to scan
+QR codes. A person should run every item below and record the result of each in the PR or release
+notes.
+
+## Before you start
+
+- Computer on the same network as the gadget; Claude Code with the Plan 1 plugin installed.
+- Note the gadget's current IP (shown on the reference-firmware screen).
+- **Use a proper power supply.** A weak USB supply (phone charger, laptop port, hub without
+  external power) can brown out the device under load. Six consecutive brown-out resets look
+  identical to the intentional AirTag-style "6 quick power cycles" factory-reset sequence
+  (checklist item 10) and can trigger an unwanted factory reset. Power the gadget from a proper
+  5V/1A (or better) supply for all of the steps below, especially the OTA and stress items.
+- **Keep the stock GeekMagic `.bin` before flashing.** Back up the device's original/stock
+  firmware image (or confirm you already have a copy) before flashing `firmware/dist/miblo-*.bin`
+  over it, so the device can be restored if a release build needs to be rolled back.
+
+## Checklist
+
+1. **First flash (reference firmware):** open `http://<ip>/update` in the browser, choose
+   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin`, submit. Expected: the device reboots and shows
+   the blinking mascot (boot screen), then the firmware version near the bottom of the screen.
+2. **Saved Wi-Fi:** with no interaction, the boot screen gives way to the "Wi-Fi connected"
+   welcome screen, which shows a QR code pointing to `https://github.com/marcus-campos/miblo`
+   (the repo README has the install commands) above the `/plugin install miblo@miblo` label, the
+   4-digit pairing code, and the IP — the SDK's saved Wi-Fi credentials were reused; no
+   `Miblo-Setup-…` network appears.
+3. **Page:** `http://miblo-xxxx.local` (or by IP) opens the config page in the browser's language;
+   the timezone is captured automatically; switching the language to `pt-BR` changes the screen.
+4. **Pairing:** `/miblo pair` finds `Miblo-XXXX`, asks for the code shown on screen, then shows
+   "Paired with <host>" for 5 s, then "Disconnected"/clock until the first snapshot. `GET
+   http://<ip>/api/info` shows `paired: true`, `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`,
+   `caps: []`. Five wrong codes in a row cause a 429 for 60 s.
+5. **Screens:** with real sessions — Working (running count, big weekly hours, list), Needs you
+   (amber band; request something that needs a permission), All done (finished sessions, today's
+   cost). `/miblo mode limits` shows the limits arc; `/miblo mode sessions` shows the session
+   list, paging every 5 s when there are more than 4 sessions; `/miblo mode overview` returns to
+   the adaptive view.
+6. **Alerts:** permission request causes an amber flash (~1.5 s), a hero screen (~10 s) with the
+   command and "waiting for …", then a summary with the band; no response for 2 min repeats the
+   alert; approving it clears the band. `Stop` causes a blue flash and a hero screen (~5 s, with
+   duration and ctx/tokens), then "finished" in the list. Discreet mode on the config page hides
+   commands and file paths.
+7. **Disconnected:** close Claude Code/the bridge; after 30 s the device shows a "Disconnected"
+   screen with the correct clock (NTP + timezone) and the pairing code in the footer.
+8. **Wrong password:** factory-reset (item 10) and, on the setup portal, type the wrong Wi-Fi
+   password; the device shows a "Wrong password" screen with the QR code; correcting it connects.
+9. **Recovery:** power off the router; after ~2 minutes the `Miblo-Setup-XXXX` network and QR
+   appear; power the router back on; the gadget returns on its own to the saved network and the
+   setup network disappears.
+10. **Power-cycle reset (AirTag-style, no 3-cycle reset):** six quick power-on cycles in a row,
+    each under 10 s of uptime. From the 3rd through the 5th quick boot, the screen shows an amber
+    countdown ("N more quick restarts to reset" / "leave it on to cancel"); leaving the device
+    powered on for 10 s at any point clears the counter and cancels the reset (verify this
+    explicitly: interrupt the sequence once and confirm it does **not** reset). On the 6th
+    consecutive quick boot, the device performs a full factory reset (erases Wi-Fi, pairings,
+    config) and returns to the setup QR; the phone that scans the QR joins the network and the
+    portal opens on its own in the phone's language.
+11. **Own OTA:** open `http://<ip>/update`; the screen shows the 4-digit code (generated on
+    load). Submit the same `.bin` with the wrong code: "Wrong code" and nothing changes. Submit
+    with the correct code: a progress bar on screen, "OK", reboot, pairing preserved. The device's
+    own `/update` requires the on-screen presence code, including when a Bearer token is also
+    sent.
+12. **OTA on the setup network:** with the gadget on the `Miblo-Setup-XXXX` AP,
+    `http://192.168.4.1/update` also works, with the same code-based flow.
+13. **Extended-use health check:** after using the device normally for at least 10 minutes
+    (receiving snapshots, switching modes, triggering a couple of alerts), request
+    `GET http://<ip>/api/info` again and inspect the heap fields. Confirm free heap and max
+    contiguous free block (`maxBlock`) are stable — not trending toward zero or badly fragmented —
+    compared to a reading taken right after boot. A steadily shrinking heap or a `maxBlock` far
+    smaller than free heap indicates a leak or fragmentation that should block the release.

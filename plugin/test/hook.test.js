@@ -17,7 +17,7 @@ function runHook(input, env) {
   });
 }
 
-test('forwards the event to the bridge, adding pid on SessionStart', async () => {
+test('forwards whitelisted fields, adding pid on SessionStart and UserPromptSubmit', async () => {
   const received = [];
   const server = http.createServer((req, res) => {
     let body = '';
@@ -31,6 +31,14 @@ test('forwards the event to the bridge, adding pid on SessionStart', async () =>
     assert.equal(r.out, '');
     assert.equal(received[0].session_id, 's1');
     assert.ok('pid' in received[0]);
+
+    await runHook(JSON.stringify({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'secret', transcript_path: '/t' }), { MIBLO_PORT: String(server.address().port), MIBLO_NO_SPAWN: '1' });
+    assert.ok('pid' in received[1]);
+    assert.equal(received[1].prompt, undefined);
+    assert.equal(received[1].transcript_path, undefined);
+
+    await runHook(JSON.stringify({ session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/a.js', content: 'BODY' } }), { MIBLO_PORT: String(server.address().port), MIBLO_NO_SPAWN: '1' });
+    assert.deepEqual(received[2], { session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Write', tool_input: { file_path: '/a.js' } });
   } finally {
     await new Promise((r) => server.close(r));
   }
@@ -64,4 +72,11 @@ test('exits 0 within the watchdog when stdin never closes', async () => {
     });
     // Intentionally do NOT end stdin, forcing the watchdog to trigger
   });
+});
+
+test('the bridge is spawned from the home dir with the shared data-dir fallback', async () => {
+  const fs = await import('node:fs');
+  const src = fs.readFileSync(hook, 'utf8');
+  assert.match(src, /cwd: os\.homedir\(\)/);
+  assert.match(src, /'--data', defaultDataDir\(\)/);
 });

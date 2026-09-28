@@ -1,16 +1,19 @@
 #!/usr/bin/env node
-// Entrada de todos os hooks. Nunca pode atrasar nem quebrar o Claude Code:
-// roda com "async": true, captura tudo, sai sempre com 0 e não escreve em stdout.
+// Entry point of every hook. It must never delay or break Claude Code:
+// runs with "async": true, catches everything, always exits 0 and never writes to stdout.
 import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PORT, HOST } from '../lib/constants.js';
+import { PORT, HOST, defaultDataDir, pluginVersion } from '../lib/constants.js';
 import { findClaudePid } from '../lib/proc.js';
+import { pickEvent, wantsPid, deliver } from '../lib/hook-client.js';
 
 // Hard cap: a hook must never hang Claude Code.
 setTimeout(() => process.exit(0), 3000).unref();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
+const base = `http://${HOST}:${PORT}`;
 
 async function readStdin() {
   const chunks = [];
@@ -18,20 +21,39 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function post(body) {
-  const res = await fetch(`http://${HOST}:${PORT}/event`, {
+async function postJson(p, body, timeoutMs = 800) {
+  const res = await fetch(base + p, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body,
-    signal: AbortSignal.timeout(800),
+    signal: AbortSignal.timeout(timeoutMs),
   });
-  if (!res.ok) throw new Error(`bridge ${res.status}`);
+  await res.arrayBuffer().catch(() => {});
+  if (!res.ok) {
+    const err = new Error(`bridge ${res.status}`);
+    err.status = res.status;
+    throw err;
+  }
+}
+
+async function health() {
+  let res;
+  try {
+    res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(300) });
+  } catch {
+    return null;
+  }
+  try {
+    return (await res.json()) ?? {};
+  } catch {
+    return {};
+  }
 }
 
 function startBridge() {
   try {
-    const dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(here, '..', '.data');
-    const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', dataDir], {
+    const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', defaultDataDir()], {
+      cwd: os.homedir(),
       detached: true,
       stdio: 'ignore',
       windowsHide: true,
@@ -42,17 +64,23 @@ function startBridge() {
 }
 
 async function main() {
-  const evt = JSON.parse((await readStdin()) || '{}');
-  if (evt.hook_event_name === 'SessionStart') evt.pid = findClaudePid();
-  const body = JSON.stringify(evt);
-  try {
-    await post(body);
-  } catch {
-    if (process.env.MIBLO_NO_SPAWN === '1') return;
-    startBridge();
-    await new Promise((r) => setTimeout(r, 400));
-    await post(body).catch(() => {});
-  }
+  const evt = pickEvent(JSON.parse((await readStdin()) || '{}'));
+  if (wantsPid(evt)) evt.pid = findClaudePid();
+  await deliver(
+    JSON.stringify(evt),
+    {
+      post: (body) => postJson('/event', body),
+      health,
+      shutdown: () => postJson('/shutdown', '{}', 300),
+      startBridge,
+      sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+    },
+    {
+      allowSpawn: process.env.MIBLO_NO_SPAWN !== '1',
+      checkVersion: evt.hook_event_name === 'SessionStart',
+      version: pluginVersion(),
+    },
+  );
 }
 
 main()

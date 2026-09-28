@@ -223,7 +223,10 @@ static void portalPage() {
   pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
   out += F("<h1>");
   appendEscaped(out, tr(lang, S::WebSetupTitle).c_str());
-  out += F("</h1>");
+  out += F("</h1><p class=\"w\">");
+  // The plugin finds the gadget over mDNS on the local network: another network never works.
+  appendEscaped(out, tr(lang, S::WebSameNetwork).c_str());
+  out += F("</p>");
   String why = failureText(lang);
   if (why.length()) {  // the last attempt failed: say why above the form
     out += F("<p class=\"w\">");

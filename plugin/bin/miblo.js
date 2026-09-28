@@ -63,10 +63,16 @@ export async function run(argv, deps) {
     }
     case 'status': {
       const live = await fetchStatus();
+      let statusline;
+      try {
+        statusline = isLinked({ settingsPath }) ? 'linked' : 'not linked';
+      } catch {
+        statusline = 'settings.json unreadable';
+      }
       const devices = (live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }))).map(safe);
       return ok(JSON.stringify({
         bridge: live ? 'running' : 'stopped',
-        statusline: isLinked({ settingsPath }) ? 'linked' : 'not linked',
+        statusline,
         statuslineSeen: live?.statuslineSeen ?? false,
         devices,
         sessions: live?.sessions ?? [],

@@ -123,3 +123,11 @@ test('discover and pair sanitize gadget-provided strings', async () => {
   const bad = await run(['pair', '10.0.0.7', '1234'], deps({ client: { info: async () => ({ id: '###' }), pair: async () => 'tok' } }));
   assert.equal(bad.code, 1);
 });
+
+test('status survives a corrupt settings.json', async () => {
+  const d = deps();
+  fs.writeFileSync(d.settingsPath, '{broken');
+  const r = await run(['status'], d);
+  assert.equal(r.code, 0);
+  assert.equal(JSON.parse(r.out).statusline, 'settings.json unreadable');
+});

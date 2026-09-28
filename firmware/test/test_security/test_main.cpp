@@ -266,6 +266,19 @@ static void test_presence_gate() {
   TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "9999", 10));  // closed after 5 failures
 }
 
+static void test_ota_code_required() {
+  // Only the fully unconfigured unit on its own setup AP skips the code.
+  TEST_ASSERT_FALSE(otaCodeRequired(false, 0, true));
+  TEST_ASSERT_TRUE(otaCodeRequired(true, 0, true));    // saved Wi-Fi
+  TEST_ASSERT_TRUE(otaCodeRequired(false, 1, true));   // paired
+  TEST_ASSERT_TRUE(otaCodeRequired(false, 4, true));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, 0, false));  // not via the soft AP
+  TEST_ASSERT_TRUE(otaCodeRequired(true, 2, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(true, 0, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(false, 3, false));
+  TEST_ASSERT_TRUE(otaCodeRequired(true, 1, true));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_codes_and_tokens);
@@ -284,5 +297,6 @@ int main() {
   RUN_TEST(test_presence_lockout_caps_at_one_hour);
   RUN_TEST(test_presence_failures_survive_reopen);
   RUN_TEST(test_presence_lockout_clock_wrap);
+  RUN_TEST(test_ota_code_required);
   return UNITY_END();
 }

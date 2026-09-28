@@ -194,4 +194,8 @@ bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
   return false;
 }
 
+bool otaCodeRequired(bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp) {
+  return hasWifiCreds || tokenCount != 0 || !viaSoftAp;
+}
+
 }  // namespace miblo

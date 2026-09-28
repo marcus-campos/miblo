@@ -5,6 +5,7 @@
 #include "../context.h"
 #include "../web.h"
 #include "miblo_version.h"
+#include "net.h"
 
 namespace ota {
 
@@ -23,6 +24,14 @@ static bool endedOk = false;  // Update.end(true) succeeded (image written and v
 static size_t expected = 0;
 static uint8_t lastPct = 255;
 
+// Evaluated per request: codeless only for an unconfigured unit (no saved Wi-Fi, no pairings)
+// reached over its own setup AP (see miblo::otaCodeRequired).
+static bool codeRequired() {
+  const bool hasWifiCreds = WiFi.SSID().length() > 0;  // SDK station config, as in net::begin
+  const bool viaSoftAp = net::apActive() && srv->client().localIP() == WiFi.softAPIP();
+  return miblo::otaCodeRequired(hasWifiCreds, ctx.tokens.count(), viaSoftAp);
+}
+
 static void resetState() {
   uploadRan = false;
   rejected = true;
@@ -34,6 +43,11 @@ static void resetState() {
 // A plain GET never changes state (a link or <img> from another site cannot light up the code).
 static void openGate() {
   if (!web::requireJson(*srv)) return;  // 415: CSRF guard
+  if (!codeRequired()) {
+    // Unconfigured unit on its own AP: no gate, no code on screen.
+    web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
+    return;
+  }
   const uint32_t now = millis();
   if (ctx.presence.locked(now)) {
     web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
@@ -44,7 +58,7 @@ static void openGate() {
     miblo::formatCode(hwRandom(), code);
     ctx.presence.open(PresenceGate::Purpose::Update, code, now);  // the screen now shows the code
   }
-  web::sendJson(*srv, 200, "{\"ok\":true}");
+  web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":true}");
 }
 
 // GET /update: only serves the page; its script opens the gate with POST /update/open.
@@ -56,7 +70,7 @@ static void page() {
   web::appendEscaped(out, web::tr(lang, S::WebFirmware).c_str());
   out += F("</h1><p class=\"m\">");
   web::appendEscaped(out, web::tr(lang, S::WebVersion).c_str());
-  out += F(" " MIBLO_FW_VERSION "</p><label>");
+  out += F(" " MIBLO_FW_VERSION "</p><label id=\"cl\">");
   web::appendEscaped(out, web::tr(lang, S::WebCodeHint).c_str());
   out += F("</label><input id=\"code\" inputmode=\"numeric\" maxlength=\"4\" autocomplete=\"off\"><label>.bin</label>"
            "<input id=\"f\" type=\"file\" accept=\".bin\"><button onclick=\"up()\">");
@@ -67,13 +81,15 @@ static void page() {
   t["bad"] = web::tr(lang, S::WebBadCode);
   t["failed"] = web::tr(lang, S::WebFailed);
   serializeJson(t, out);
-  out += F(";const $=k=>document.getElementById(k);"
+  out += F(";let nc=0;const $=k=>document.getElementById(k);"
            "fetch('/update/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
            ".then(r=>{if(r.status===429)return r.json().then(j=>{$('st').textContent=T.failed+' ('+j.retryAfter+' s)';});"
-           "if(!r.ok)$('st').textContent=T.failed;}).catch(()=>{$('st').textContent=T.failed;});"
+           "if(!r.ok){$('st').textContent=T.failed;return;}"
+           "return r.json().then(j=>{if(j.codeRequired===false){nc=1;$('cl').style.display=$('code').style.display='none';}});})"
+           ".catch(()=>{$('st').textContent=T.failed;});"
            "function up(){const f=$('f').files[0];if(!f)return;const d=new FormData();d.append('firmware',f);"
            "$('st').textContent='...';"
-           "fetch('/update?code='+encodeURIComponent($('code').value),{method:'POST',body:d})"
+           "fetch(nc?'/update':'/update?code='+encodeURIComponent($('code').value),{method:'POST',body:d})"
            ".then(r=>r.text().then(x=>{$('st').textContent=r.ok?T.ok:(r.status===403?T.bad:T.failed+': '+x);}))"
            ".catch(()=>{$('st').textContent=T.failed;});}</script>");
   web::pageEnd(out);
@@ -84,7 +100,10 @@ static void upload() {
   HTTPUpload& up = srv->upload();
   if (up.status == UPLOAD_FILE_START) {
     uploadRan = true;
-    rejected = !ctx.presence.check(PresenceGate::Purpose::Update, srv->arg(F("code")).c_str(), millis());
+    // Codeless only for an unconfigured unit on its own AP; otherwise the code check (and its
+    // escalating lockout) applies exactly as before.
+    rejected = codeRequired() &&
+               !ctx.presence.check(PresenceGate::Purpose::Update, srv->arg(F("code")).c_str(), millis());
     started = false;
     endedOk = false;
     if (rejected) return;

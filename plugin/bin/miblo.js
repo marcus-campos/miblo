@@ -62,7 +62,7 @@ export async function run(argv, deps) {
       const devices = live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }));
       return ok(JSON.stringify({
         bridge: live ? 'running' : 'stopped',
-        statusline: isLinked({ settingsPath, dataDir }) ? 'linked' : 'not linked',
+        statusline: isLinked({ settingsPath }) ? 'linked' : 'not linked',
         statuslineSeen: live?.statuslineSeen ?? false,
         devices,
         sessions: live?.sessions ?? [],
@@ -96,11 +96,11 @@ export async function run(argv, deps) {
       return ok(`Factory reset sent to ${d.name}.`);
     }
     case 'link-statusline': {
-      const r = link({ settingsPath, dataDir, pluginRoot });
+      const r = link({ settingsPath, pluginRoot });
       return ok(r.changed ? 'Statusline linked.' : 'Statusline already linked.');
     }
     case 'unlink-statusline': {
-      const r = unlink({ settingsPath, dataDir });
+      const r = unlink({ settingsPath });
       return ok(r.changed ? 'Statusline unlinked.' : 'Statusline was not linked.');
     }
     default:

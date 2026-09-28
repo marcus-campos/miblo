@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// Autossuficiente: é copiado para o diretório de dados do plugin e referenciado
-// em ~/.claude/settings.json. Não importa nada de lib/.
-import { spawnSync } from 'node:child_process';
+// Self-contained: copied to <claudeConfigDir>/miblo/ and referenced from
+// settings.json, so it keeps working after the plugin is uninstalled.
+// Imports nothing from lib/.
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,23 +24,58 @@ function loadOriginal() {
   }
 }
 
-async function main() {
-  const input = await readStdin();
-  const forward = fetch(`http://127.0.0.1:${port}/statusline`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: input,
-    signal: AbortSignal.timeout(200),
-  }).catch(() => {});
-
-  const original = loadOriginal();
-  if (original?.command) {
-    const r = spawnSync(original.command, { shell: true, input, maxBuffer: 1024 * 1024 });
-    if (r.stdout?.length) process.stdout.write(r.stdout);
-    if (r.stderr?.length) process.stderr.write(r.stderr);
-    process.exitCode = r.status ?? 0;
+async function forward(input) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/statusline`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: input,
+      signal: AbortSignal.timeout(150),
+    });
+    await res.arrayBuffer().catch(() => {});
+  } catch {
+    // bridge down or slow: the status line must not care
   }
-  await forward;
 }
 
-main().catch(() => {});
+function preferredShell() {
+  if (process.platform === 'win32') return process.env.CLAUDE_CODE_GIT_BASH_PATH || 'bash';
+  return process.env.SHELL || true;
+}
+
+// Resolves with the exit status, or null when the command could not be spawned
+// or was killed by a signal. `spawnFailed` tells the caller a fallback may help.
+function runWith(command, input, shell) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(command, { shell, stdio: ['pipe', 'inherit', 'inherit'], windowsHide: true });
+    } catch {
+      resolve({ status: null, spawnFailed: true });
+      return;
+    }
+    let spawned = false;
+    child.on('spawn', () => { spawned = true; });
+    child.on('error', () => resolve({ status: null, spawnFailed: !spawned }));
+    child.on('close', (status) => resolve({ status, spawnFailed: false }));
+    child.stdin.on('error', () => {});
+    child.stdin.end(input);
+  });
+}
+
+async function runOriginal(command, input) {
+  const r = await runWith(command, input, preferredShell());
+  if (r.spawnFailed && process.platform === 'win32') return (await runWith(command, input, true)).status;
+  return r.status;
+}
+
+async function main() {
+  const input = await readStdin();
+  const sent = forward(input);
+  const original = loadOriginal();
+  const status = original?.command ? await runOriginal(original.command, input) : 0;
+  await sent;
+  process.exit(status ?? 1);
+}
+
+main().catch(() => process.exit(1));

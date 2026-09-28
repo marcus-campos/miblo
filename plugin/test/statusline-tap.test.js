@@ -56,3 +56,28 @@ test('forwards the statusline JSON to the bridge', async () => {
     await new Promise((r) => server.close(r));
   }
 });
+
+test('a slow original (500 ms) still lets the forward reach the bridge; output stays exact', async () => {
+  const got = [];
+  const server = http.createServer((req, res) => {
+    let b = '';
+    req.on('data', (c) => { b += c; });
+    req.on('end', () => { got.push({ url: req.url, type: req.headers['content-type'], body: JSON.parse(b) }); res.end('{}'); });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  try {
+    const tap = installed({ type: 'command', command: `node -e "setTimeout(()=>{process.stdout.write('slow\\nline');process.exit(0)},500)"` });
+    const r = await run(tap, INPUT, { MIBLO_PORT: String(server.address().port) });
+    assert.equal(r.out, 'slow\nline');
+    assert.equal(r.code, 0);
+    assert.deepEqual(got, [{ url: '/statusline', type: 'application/json', body: JSON.parse(INPUT) }]);
+  } finally {
+    await new Promise((r) => server.close(r));
+  }
+});
+
+test('exits 1 when the original is killed by a signal', async () => {
+  const tap = installed({ type: 'command', command: `node -e "process.kill(process.pid,'SIGKILL')"` });
+  const r = await run(tap, INPUT, { MIBLO_PORT: '1' });
+  assert.equal(r.code, 1);
+});

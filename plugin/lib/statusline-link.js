@@ -20,41 +20,55 @@ function writeJson(file, obj) {
   fs.renameSync(tmp, file);
 }
 
-export function tapCommand({ dataDir, nodePath = process.execPath }) {
-  return `"${nodePath}" "${path.join(dataDir, TAP)}"`;
+const slashes = (p) => p.replace(/\\/g, '/');
+
+// Stable home of the tap and the saved original: <claudeConfigDir>/miblo/.
+// It lives next to settings.json (not in the plugin data dir) so the user's
+// status line survives an uninstall of the plugin.
+export function tapDir(settingsPath) {
+  return path.join(path.dirname(settingsPath), 'miblo');
 }
 
-export function installTap({ pluginRoot, dataDir }) {
-  fs.mkdirSync(dataDir, { recursive: true });
-  fs.copyFileSync(path.join(pluginRoot, 'bin', TAP), path.join(dataDir, TAP));
+export function tapCommand({ settingsPath }) {
+  return `node "${slashes(path.join(tapDir(settingsPath), TAP))}"`;
 }
 
-export function isLinked({ settingsPath, dataDir }) {
+export function installTap({ pluginRoot, settingsPath }) {
+  const dir = tapDir(settingsPath);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(path.join(pluginRoot, 'bin', TAP), path.join(dir, TAP));
+}
+
+export function isLinked({ settingsPath }) {
   const cmd = readSettings(settingsPath).statusLine?.command;
-  return typeof cmd === 'string' && cmd.includes(path.join(dataDir, TAP));
+  return typeof cmd === 'string' && slashes(cmd).includes(slashes(path.join(tapDir(settingsPath), TAP)));
 }
 
-export function link({ settingsPath, dataDir, pluginRoot, nodePath = process.execPath }) {
+export function link({ settingsPath, pluginRoot }) {
   const settings = readSettings(settingsPath);
-  installTap({ pluginRoot, dataDir });
-  if (isLinked({ settingsPath, dataDir })) return { changed: false, original: null };
+  installTap({ pluginRoot, settingsPath });
+  if (isLinked({ settingsPath })) return { changed: false, original: null };
 
   if (fs.existsSync(settingsPath) && !fs.existsSync(`${settingsPath}.miblo-backup`)) {
     fs.copyFileSync(settingsPath, `${settingsPath}.miblo-backup`);
   }
-  const original = settings.statusLine ?? null;
-  writeJson(path.join(dataDir, ORIGINAL), original ?? {});
-  settings.statusLine = { ...(original ?? {}), type: 'command', command: tapCommand({ dataDir, nodePath }) };
+  const current = settings.statusLine ?? null;
+  const originalFile = path.join(tapDir(settingsPath), ORIGINAL);
+  // Never chain taps: a status line that is already a miblo tap is not the original.
+  const isTap = typeof current?.command === 'string' && current.command.includes(TAP);
+  const original = isTap ? null : current;
+  if (!isTap || !fs.existsSync(originalFile)) writeJson(originalFile, original ?? {});
+  settings.statusLine = { ...(current ?? {}), type: 'command', command: tapCommand({ settingsPath }) };
   writeJson(settingsPath, settings);
   return { changed: true, original };
 }
 
-export function unlink({ settingsPath, dataDir }) {
-  if (!isLinked({ settingsPath, dataDir })) return { changed: false };
+export function unlink({ settingsPath }) {
+  if (!isLinked({ settingsPath })) return { changed: false };
   const settings = readSettings(settingsPath);
   let original = null;
   try {
-    original = JSON.parse(fs.readFileSync(path.join(dataDir, ORIGINAL), 'utf8'));
+    original = JSON.parse(fs.readFileSync(path.join(tapDir(settingsPath), ORIGINAL), 'utf8'));
   } catch {
     original = null;
   }

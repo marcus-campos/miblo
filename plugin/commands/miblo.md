@@ -34,7 +34,7 @@ Run `MIBLO mode <mode> [id]` and report the result.
 
 ## `link-statusline` / `unlink-statusline`
 
-Run the matching command and report the result.
+Run the matching command and report the result. Before uninstalling the plugin, run `/miblo unlink-statusline` so the original status line is restored.
 
 ## `reset <id>`
 

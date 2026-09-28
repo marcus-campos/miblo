@@ -60,9 +60,10 @@ function main() {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const dataDir = argValue('--data') || process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.miblo');
   try {
-    if (isLinked({ settingsPath: claudeSettingsPath(), dataDir })) installTap({ pluginRoot: path.resolve(here, '..'), dataDir });
+    const settingsPath = claudeSettingsPath();
+    if (isLinked({ settingsPath })) installTap({ pluginRoot: path.resolve(here, '..'), settingsPath });
   } catch {
-    // a status line continua funcionando com a cópia anterior do tap
+    // the status line keeps working with the previous copy of the tap
   }
   const bridge = createBridge({ dataDir });
   bridge.server.on('error', (e) => process.exit(e.code === 'EADDRINUSE' ? 0 : 1));

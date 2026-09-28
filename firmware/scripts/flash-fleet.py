@@ -13,6 +13,11 @@ portal). The script finds the units, works out what each one runs and installs M
                       here, then the image goes to POST /update?code=XXXX); one unit at a time
   anything else    -> skipped
 
+Finding units: --host/--subnet name them explicitly or scan a CIDR; --discover instead asks the
+LAN over mDNS (_miblo._tcp.local) for units that are already configured and running Miblo or the
+installer, no subnet guessing needed (merged with any --host/--subnet given at the same time,
+deduped by IP/id).
+
 Access-point mode (--via-ap, macOS): for factory units that are not on any network. Each unit
 broadcasts its own Wi-Fi; the Mac joins them one at a time (one radio, strictly sequential) and
 talks to the device at 192.168.4.1:
@@ -38,6 +43,7 @@ Examples:
   flash-fleet.py --subnet 192.168.0.0/24 --dry-run
   flash-fleet.py --subnet 192.168.0.0/24
   flash-fleet.py --host 192.168.0.41 --host 192.168.0.42 --update
+  flash-fleet.py --discover --update
   flash-fleet.py --via-ap --dry-run
   flash-fleet.py --via-ap --loop
   flash-fleet.py --via-ap --ssid Miblo-Setup-4F2A --ssid GIFTV
@@ -49,6 +55,7 @@ import argparse
 import ipaddress
 import json
 import re
+import select
 import socket
 import sys
 import threading
@@ -104,6 +111,7 @@ class Timing:
     max_retry_wait: float = 120.0   # cap for a 429 retryAfter
     ap_join_timeout: float = 30.0   # --via-ap: joined network must give an IP and answer on :80
     scan_interval: float = 3.0      # --via-ap: between Wi-Fi scans
+    mdns_timeout: float = 2.5       # --discover: how long to collect mDNS answers
 
 
 @dataclass
@@ -298,6 +306,324 @@ def plan(unit: Unit, images: Images, board: str, allow_update: bool) -> None:
             unit.action = OTA if allow_update else SKIP_NEEDS_UPDATE
     else:
         unit.action = SKIP_UNKNOWN
+
+
+# ---------------------------------------------------------------------------------------------
+# mDNS discovery (--discover): finds already-configured Miblo units on the LAN without a
+# --subnet/--host list. Ported from plugin/lib/mdns.js (same wire format, same one-socket-per-
+# interface trick); this side only ever sends a query and listens for answers, never announces.
+
+MDNS_SERVICE = "_miblo._tcp.local"
+MDNS_GROUP = "224.0.0.251"
+MDNS_PORT = 5353
+
+T_A, T_PTR, T_TXT, T_SRV = 1, 12, 16, 33
+
+
+def encode_dns_name(name: str) -> bytes:
+    out = bytearray()
+    for label in name.split("."):
+        if not label:
+            continue
+        b = label.encode("utf-8")
+        out += bytes([len(b)]) + b
+    out += b"\x00"
+    return bytes(out)
+
+
+def build_mdns_query(service: str, unicast: bool = True) -> bytes:
+    """PTR question for `service`. `unicast` sets the QU bit ("answer me directly")."""
+    header = bytearray(12)
+    header[4:6] = (1).to_bytes(2, "big")  # QDCOUNT = 1
+    qclass = 0x8001 if unicast else 0x0001
+    tail = T_PTR.to_bytes(2, "big") + qclass.to_bytes(2, "big")
+    return bytes(header) + encode_dns_name(service) + tail
+
+
+def ipv4_interfaces() -> List[str]:
+    """Non-internal IPv4 addresses of this host: the multicast query goes out on each of them,
+    since the OS default route for 224.0.0.251 is often a VPN/bridge interface, not the LAN."""
+    addrs: List[str] = []
+
+    def add(ip: Optional[str]) -> None:
+        if ip and ip not in addrs and not ip.startswith("127.") and not ip.startswith("169.254."):
+            addrs.append(ip)
+
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            add(info[4][0])
+    except OSError:
+        pass
+    if not addrs:  # gethostname()/DNS gave nothing usable: fall back to the default route
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            s.connect(("8.8.8.8", 80))  # no packet actually sent (UDP connect just picks a route)
+            add(s.getsockname()[0])
+        except OSError:
+            pass
+        finally:
+            s.close()
+    return addrs
+
+
+def read_dns_name(buf: bytes, offset: int) -> Tuple[str, int]:
+    labels = []
+    off = offset
+    end = None
+    for _ in range(128):
+        if off >= len(buf):
+            raise ValueError("truncated name")
+        length = buf[off]
+        if length == 0:
+            off += 1
+            break
+        if (length & 0xC0) == 0xC0:
+            if off + 1 >= len(buf):
+                raise ValueError("truncated pointer")
+            if end is None:
+                end = off + 2
+            off = ((length & 0x3F) << 8) | buf[off + 1]
+            continue
+        start, stop = off + 1, off + 1 + length
+        if stop > len(buf):
+            raise ValueError("truncated label")
+        labels.append(buf[start:stop].decode("utf-8", "replace"))
+        off = stop
+    else:
+        raise ValueError("name too long")
+    return ".".join(labels), (end if end is not None else off)
+
+
+def parse_mdns_message(buf: bytes) -> List[dict]:
+    """Parses a DNS/mDNS message into a flat list of {"name", "type", "data"} answer records.
+    Bounds-checked throughout (compression pointers, rdlength): a truncated or garbage packet
+    raises ValueError instead of an IndexError/UnicodeDecodeError, so callers can just skip it."""
+    if len(buf) < 12:
+        raise ValueError("short packet")
+    qd = int.from_bytes(buf[4:6], "big")
+    total = (int.from_bytes(buf[6:8], "big") + int.from_bytes(buf[8:10], "big") +
+             int.from_bytes(buf[10:12], "big"))
+    off = 12
+    for _ in range(qd):
+        _, nxt = read_dns_name(buf, off)
+        off = nxt + 4  # QTYPE + QCLASS
+        if off > len(buf):
+            raise ValueError("truncated question")
+    records = []
+    for _ in range(total):
+        name, nxt = read_dns_name(buf, off)
+        if nxt + 10 > len(buf):
+            raise ValueError("truncated record header")
+        rtype = int.from_bytes(buf[nxt:nxt + 2], "big")
+        rdlen = int.from_bytes(buf[nxt + 8:nxt + 10], "big")
+        rd = nxt + 10
+        if rd + rdlen > len(buf):
+            raise ValueError("truncated record")
+        data = None
+        if rtype == T_A:
+            if rdlen != 4:
+                raise ValueError("bad A record")
+            data = ".".join(str(b) for b in buf[rd:rd + 4])
+        elif rtype == T_PTR:
+            data, _ = read_dns_name(buf, rd)
+        elif rtype == T_SRV:
+            if rd + 6 > len(buf):
+                raise ValueError("truncated SRV record")
+            port = int.from_bytes(buf[rd + 4:rd + 6], "big")
+            target, _ = read_dns_name(buf, rd + 6)
+            data = {"port": port, "target": target}
+        elif rtype == T_TXT:
+            data = {}
+            p, end = rd, rd + rdlen
+            while p < end:
+                ln = buf[p]
+                if p + 1 + ln > end:
+                    raise ValueError("truncated TXT entry")
+                s = buf[p + 1:p + 1 + ln].decode("utf-8", "replace")
+                eq = s.find("=")
+                if eq > 0:
+                    data[s[:eq]] = s[eq + 1:]
+                p += 1 + ln
+        records.append({"name": name, "type": rtype, "data": data})
+        off = rd + rdlen
+    return records
+
+
+_MDNS_CLEAN_RE = re.compile(r"[^A-Za-z0-9 ._-]")
+
+
+def _mdns_clean(s, n: int) -> str:
+    """Gadget-provided strings are untrusted: keep a safe charset and short length before they
+    reach the terminal."""
+    return _MDNS_CLEAN_RE.sub("", str(s if s is not None else ""))[:n]
+
+
+def clean_mdns_id(s) -> str:
+    return _mdns_clean(s, 32)
+
+
+def clean_mdns_name(s) -> str:
+    return _mdns_clean(s, 20)
+
+
+def clean_mdns_fw(s) -> str:
+    return _mdns_clean(s, 32)
+
+
+def resolve_mdns_devices(records: List[dict], service: str) -> List[dict]:
+    def lc(s):
+        return str(s).lower()
+
+    out = []
+    for ptr in records:
+        if ptr["type"] != T_PTR or lc(ptr["name"]) != lc(service):
+            continue
+        inst = ptr["data"]
+        if not inst:
+            continue
+        srv = next((r for r in records if r["type"] == T_SRV and lc(r["name"]) == lc(inst)), None)
+        txt_rec = next((r for r in records if r["type"] == T_TXT and lc(r["name"]) == lc(inst)), None)
+        txt = txt_rec["data"] if txt_rec and isinstance(txt_rec["data"], dict) else {}
+        a = None
+        if srv and isinstance(srv["data"], dict):
+            target = srv["data"].get("target")
+            a = next((r for r in records if r["type"] == T_A and lc(r["name"]) == lc(target)), None)
+        dev_id = clean_mdns_id(txt.get("id"))
+        if srv and a and dev_id:
+            name = clean_mdns_name(txt.get("name") or inst.split(".")[0]) or dev_id[:20]
+            out.append({
+                "id": dev_id,
+                "name": name,
+                "addr": "%s:%d" % (a["data"], srv["data"]["port"]),
+                "fw": clean_mdns_fw(txt.get("fw")),
+            })
+    return out
+
+
+def discover_mdns(service: str = MDNS_SERVICE, timeout: float = 2.5,
+                  interfaces: Optional[List[str]] = None,
+                  socket_factory: Optional[Callable[[str], socket.socket]] = None) -> List[dict]:
+    """Sends a unicast-requested (QU) PTR query for `service` from an ephemeral socket on every
+    non-internal IPv4 interface (one socket per interface, each with its own IP_MULTICAST_IF: a
+    single shared socket sending in a loop would race between setting the interface and the send
+    actually leaving), and listens on a shared 5353 socket for whatever comes back — unicast
+    replies as well as ordinary multicast announcements. Collects for ~`timeout` seconds and
+    returns the resolved devices, deduped by id. Any socket that fails to open/bind/send is
+    skipped; discovery continues on the rest."""
+    make = socket_factory or (lambda kind: socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+    addrs = interfaces if interfaces is not None else ipv4_interfaces()
+    query = build_mdns_query(service, unicast=True)
+    socks: List[socket.socket] = []
+
+    for a in (addrs or [None]):
+        try:
+            s = make("unicast")
+        except OSError:
+            continue  # this interface is skipped, others still run
+        try:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        except OSError:
+            pass
+        try:
+            s.bind(("0.0.0.0", 0))
+        except OSError:
+            try:
+                s.close()
+            except OSError:
+                pass
+            continue
+        socks.append(s)
+        try:
+            if a:
+                s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(a))
+            s.sendto(query, (MDNS_GROUP, MDNS_PORT))
+        except OSError:
+            pass  # interface gone or not multicast-capable; other sockets still work
+
+    try:
+        msock = make("multicast")
+    except OSError:
+        msock = None
+    if msock is not None:
+        try:
+            msock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        except OSError:
+            pass
+        if hasattr(socket, "SO_REUSEPORT"):
+            try:
+                msock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+            except OSError:
+                pass
+        try:
+            msock.bind(("0.0.0.0", MDNS_PORT))
+        except OSError:  # ignore bind errors: per-interface queries and unicast answers still work
+            try:
+                msock.close()
+            except OSError:
+                pass
+            msock = None
+    if msock is not None:
+        socks.append(msock)
+        for a in (addrs or [None]):
+            try:
+                mreq = socket.inet_aton(MDNS_GROUP) + socket.inet_aton(a or "0.0.0.0")
+                msock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            except OSError:
+                pass  # already joined / no multicast on this interface
+
+    records: List[dict] = []
+    deadline = time.monotonic() + timeout
+    try:
+        while socks:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            try:
+                ready, _, _ = select.select(socks, [], [], remaining)
+            except OSError:
+                break
+            for s in ready:
+                try:
+                    data, _ = s.recvfrom(4096)
+                except OSError:
+                    continue
+                try:
+                    records.extend(parse_mdns_message(data))
+                except ValueError:
+                    continue  # invalid packet: ignored
+    finally:
+        for s in socks:
+            try:
+                s.close()
+            except OSError:
+                pass
+
+    by_id = {}
+    for d in resolve_mdns_devices(records, service):
+        by_id[d["id"]] = d
+    return list(by_id.values())
+
+
+def host_ip(host: str) -> str:
+    return host.split(":", 1)[0]
+
+
+def merge_discovered_hosts(hosts: List[str], discovered: List[dict]) -> List[str]:
+    """Adds mDNS-discovered addresses to `hosts` (from --host/--subnet), deduped by IP and by
+    device id, keeping the given hosts in order and appending new ones in discovery order."""
+    seen_ips = {host_ip(h) for h in hosts}
+    seen_ids = set()
+    merged = list(hosts)
+    for d in discovered:
+        if d["id"] in seen_ids:
+            continue
+        seen_ids.add(d["id"])
+        ip = host_ip(d["addr"])
+        if ip in seen_ips:
+            continue
+        seen_ips.add(ip)
+        merged.append(d["addr"])
+    return merged
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1035,6 +1361,7 @@ def parse_args(argv):
         epilog="Examples:\n  %(prog)s --subnet 192.168.0.0/24 --dry-run\n"
                "  %(prog)s --subnet 192.168.0.0/24\n"
                "  %(prog)s --host 192.168.0.41 --host 192.168.0.42 --update\n"
+               "  %(prog)s --discover --update\n"
                "  %(prog)s --via-ap --dry-run\n"
                "  %(prog)s --via-ap --loop",
         formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -1043,6 +1370,9 @@ def parse_args(argv):
                    help="scan this network for devices answering on the HTTP port (repeatable)")
     t.add_argument("--host", action="append", default=[], metavar="IP[:PORT]",
                    help="a unit's address (repeatable)")
+    t.add_argument("--discover", action="store_true",
+                   help="find already-configured units automatically via mDNS (_miblo._tcp.local); "
+                        "no subnet guessing needed, merged with any --host/--subnet given too")
     t.add_argument("--port", type=int, default=80, help="HTTP port probed in --subnet scans (default 80)")
     w = ap.add_argument_group("access-point mode (macOS)")
     w.add_argument("--via-ap", action="store_true",
@@ -1098,8 +1428,8 @@ def parse_args(argv):
                    help="seconds to wait for Miblo after stage 2 / update (default %g)" % Timing.stage2_timeout)
     args = ap.parse_args(argv)
     if args.via_ap:
-        if args.subnet or args.host:
-            ap.error("--via-ap does not take --subnet/--host")
+        if args.subnet or args.host or args.discover:
+            ap.error("--via-ap does not take --subnet/--host/--discover")
         try:
             re.compile(args.stock_ssid)
         except re.error as e:
@@ -1108,8 +1438,8 @@ def parse_args(argv):
             ap.error("--max must be positive")
     elif args.ssid or args.try_ssid or args.scan_only:
         ap.error("--ssid/--try-ssid/--scan-only need --via-ap")
-    elif not args.subnet and not args.host:
-        ap.error("give at least one --subnet or --host (or use --via-ap)")
+    elif not args.subnet and not args.host and not args.discover:
+        ap.error("give at least one --subnet, --host or --discover (or use --via-ap)")
     if args.jobs < 1:
         ap.error("--jobs must be at least 1")
     return args
@@ -1118,7 +1448,8 @@ def parse_args(argv):
 def main(argv=None, timing: Optional[Timing] = None, out=None,
          ask: Callable[[str], str] = input, sleep: Callable[[float], None] = time.sleep,
          interactive: Optional[bool] = None, wifi: Optional[MacWifi] = None,
-         ap_host: Callable[[str], str] = ap_device_host) -> int:
+         ap_host: Callable[[str], str] = ap_device_host,
+         mdns_discover: Callable[..., List[dict]] = discover_mdns) -> int:
     args = parse_args(argv)
     if interactive is None:
         interactive = sys.stdin is not None and sys.stdin.isatty()
@@ -1153,6 +1484,17 @@ def main(argv=None, timing: Optional[Timing] = None, out=None,
         out.write("  %d host(s) answer\n" % len(found))
         hosts += found
     hosts += args.host
+    if args.discover:
+        out.write("Discovering Miblo units via mDNS (%s)...\n" % MDNS_SERVICE)
+        out.flush()
+        found_mdns = mdns_discover(timeout=timing.mdns_timeout)
+        if found_mdns:
+            rows = [["name", "ip", "fw"]]
+            rows += [[d["name"], host_ip(d["addr"]), d.get("fw") or "?"] for d in found_mdns]
+            out.write("  %d unit(s) found:\n" % len(found_mdns) + table(rows) + "\n")
+        else:
+            out.write("  no units found\n")
+        hosts = merge_discovered_hosts(hosts, found_mdns)
     seen = set()
     units = [Unit(h) for h in hosts if not (h in seen or seen.add(h))]
 

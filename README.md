@@ -51,9 +51,13 @@ python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --dry-run
 python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24
 # also update units running an older Miblo: each one shows a 4-digit code that you type in
 python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --update
+# find already-configured units on their own (mDNS), no subnet needed, then update them
+python3 firmware/scripts/flash-fleet.py --discover --update
 ```
 
-It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units. By default it installs the images for the version in `firmware/include/miblo_version.h` (and says which); `make fleet` rebuilds them first when they are missing or older than the sources.
+It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units, or `--discover` for units that are already configured and running Miblo or the installer: it asks the LAN over mDNS (`_miblo._tcp.local`) and needs no subnet or host list (it can be combined with `--host`/`--subnet` too; the results are merged and deduped). By default it installs the images for the version in `firmware/include/miblo_version.h` (and says which); `make fleet` rebuilds them first when they are missing or older than the sources.
+
+`make fleet-update` uses `--discover` by default, so updating units already on the bench needs no `HOSTS=`/`SUBNET=` at all; `make fleet-update-plan` shows the same plan without updating anything. `HOSTS="192.168.0.41 192.168.0.42"` still overrides discovery with specific units, and a `SUBNET=` given on the command line is searched alongside mDNS (not instead of it).
 
 Units ship clean: the installer erases the bench Wi‑Fi after the full image is uploaded, so each unit restarts on its own `Miblo-Setup-XXXX` network. On macOS the script then joins those networks one by one to check the version (at `192.168.4.1`) and rejoins the Mac's network at the end. `--no-ap-verify` skips that check (units are reported as "installed (unverified: unit is in setup mode)", as on other systems); `--keep-wifi` keeps the units on the bench network and checks them there.
 

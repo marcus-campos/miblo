@@ -6,8 +6,11 @@ import importlib.util
 import io
 import sys
 import json
+import os
 import re
 import shutil
+import socket
+import subprocess
 import tempfile
 import threading
 import time
@@ -236,6 +239,36 @@ class FleetTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn(dev.host, out.getvalue())
         self.assertIn(ff.INSTALL, out.getvalue())
+
+    def test_discover_merges_and_dedupes_with_host(self):
+        known = self.device("miblo", fw="0.1.0")   # given explicitly via --host
+        found_only = "127.0.0.2:1"                 # only found via mDNS (different IP, nothing listens)
+
+        def fake_discover(**kw):
+            return [
+                {"id": "miblo-aaaa", "name": "Known", "addr": known.host, "fw": "0.1.0"},  # dup of --host
+                {"id": "miblo-bbbb", "name": "Found", "addr": found_only, "fw": "0.1.0"},
+            ]
+
+        out = io.StringIO()
+        rc = ff.main(["--dist", self.dist, "--host", known.host, "--discover", "--dry-run"],
+                     timing=ff.Timing(**FAST), out=out, mdns_discover=fake_discover)
+        self.assertEqual(rc, 0)
+        text = out.getvalue()
+        self.assertIn("Discovering Miblo units via mDNS", text)
+        self.assertIn("Found", text)  # the discovered-only device's name, in the "found" table
+        plan = text.split("Plan:")[1]
+        self.assertIn(known.host, plan)
+        self.assertIn(found_only, plan)
+        self.assertEqual(plan.count(known.host), 1)  # not duplicated: same IP as --host
+
+    def test_discover_alone_reports_nothing_found(self):
+        out = io.StringIO()
+        rc = ff.main(["--dist", self.dist, "--discover", "--dry-run"],
+                     timing=ff.Timing(**FAST), out=out, mdns_discover=lambda **kw: [])
+        self.assertEqual(rc, 0)
+        self.assertIn("no units found", out.getvalue())
+        self.assertIn("No devices found", out.getvalue())
 
     def test_two_stage_install(self):
         # Default: the installer erases the units' Wi-Fi; they restart on Miblo-Setup-XXXX, where
@@ -838,6 +871,251 @@ class NoScanTest(unittest.TestCase):
         self.assertEqual(self.air.joins, [])
 
 
+# --- mDNS helpers: build DNS wire-format packets the way a gadget would, mirroring
+# plugin/test/mdns.test.js's fixtures (Python port of plugin/lib/mdns.js).
+
+def mdns_enc(name):
+    out = bytearray()
+    for label in name.split("."):
+        if not label:
+            continue
+        b = label.encode("utf-8")
+        out += bytes([len(b)]) + b
+    out += b"\x00"
+    return bytes(out)
+
+
+def mdns_rr(name, rtype, rdata):
+    head = bytearray(10)
+    head[0:2] = rtype.to_bytes(2, "big")
+    head[2:4] = (1).to_bytes(2, "big")
+    head[4:8] = (120).to_bytes(4, "big")
+    head[8:10] = len(rdata).to_bytes(2, "big")
+    return mdns_enc(name) + bytes(head) + rdata
+
+
+def mdns_response(records):
+    h = bytearray(12)
+    h[2:4] = (0x8400).to_bytes(2, "big")
+    h[6:8] = len(records).to_bytes(2, "big")
+    return bytes(h) + b"".join(records)
+
+
+def mdns_txt(pairs):
+    out = bytearray()
+    for s in pairs:
+        b = s.encode("utf-8")
+        out += bytes([len(b)]) + b
+    return bytes(out)
+
+
+def gadget_response(inst="Miblo-4F2A._miblo._tcp.local", host="miblo-4f2a.local",
+                    ip=(192, 168, 0, 42), port=80, dev_id="miblo-4f2a"):
+    srv = bytes([0, 0, 0, 0, port >> 8, port & 255]) + mdns_enc(host)
+    txt = mdns_txt(["id=%s" % dev_id, "name=Miblo-4F2A", "fw=0.1.0"])
+    return mdns_response([
+        mdns_rr("_miblo._tcp.local", ff.T_PTR, mdns_enc(inst)),
+        mdns_rr(inst, ff.T_SRV, srv),
+        mdns_rr(inst, ff.T_TXT, txt),
+        mdns_rr(host, ff.T_A, bytes(ip)),
+    ])
+
+
+class FakeMdnsSocket:
+    """A stand-in for socket.socket() good enough for discover_mdns(): sendto() can trigger a
+    canned reply (queued for a later recvfrom()), and select.select() is patched (see
+    fake_select below) to treat any socket with a queued message as ready."""
+
+    def __init__(self, kind, log, on_send=None, bind_error=False):
+        self.kind = kind
+        self.log = log
+        self.on_send = on_send
+        self.bind_error = bind_error
+        self.queue = []
+        self.closed = False
+
+    def setsockopt(self, level, optname, value=None):
+        if self.kind == "multicast" and optname == socket.IP_ADD_MEMBERSHIP:
+            self.log.append("%s:join" % self.kind)
+
+    def bind(self, addr):
+        if self.bind_error:
+            raise OSError("EADDRINUSE")
+        self.log.append("%s:bind:%d" % (self.kind, addr[1]))
+
+    def sendto(self, data, addr):
+        self.log.append("%s:send:%s:%d:%s" % (self.kind, addr[0], addr[1], "QU" if data[-2] else "QM"))
+        if self.on_send:
+            self.on_send(self)
+        return len(data)
+
+    def recvfrom(self, n):
+        return self.queue.pop(0)
+
+    def fileno(self):
+        return id(self)
+
+    def close(self):
+        self.closed = True
+        self.log.append("%s:close" % self.kind)
+
+
+def fake_select(rlist, wlist, xlist, timeout):
+    return [s for s in rlist if s.queue], [], []
+
+
+class MdnsTest(unittest.TestCase):
+    def test_build_query_sets_qu_bit(self):
+        q = ff.build_mdns_query("_miblo._tcp.local")
+        self.assertEqual(int.from_bytes(q[4:6], "big"), 1)
+        self.assertEqual(list(q[-4:]), [0x00, 0x0C, 0x80, 0x01])
+        q = ff.build_mdns_query("_miblo._tcp.local", unicast=False)
+        self.assertEqual(list(q[-4:]), [0x00, 0x0C, 0x00, 0x01])
+
+    def test_parse_and_resolve_gadget_response(self):
+        records = ff.parse_mdns_message(gadget_response())
+        self.assertEqual(ff.resolve_mdns_devices(records, "_miblo._tcp.local"),
+                         [{"id": "miblo-4f2a", "name": "Miblo-4F2A", "addr": "192.168.0.42:80", "fw": "0.1.0"}])
+
+    def test_parse_handles_name_compression_pointers(self):
+        h = bytearray(12)
+        h[6:8] = (1).to_bytes(2, "big")
+        name = mdns_enc("_miblo._tcp.local")
+        ptr_target = bytes([4]) + b"inst" + bytes([0xC0, 12])
+        head = bytearray(10)
+        head[0:2] = ff.T_PTR.to_bytes(2, "big")
+        head[2:4] = (1).to_bytes(2, "big")
+        head[8:10] = len(ptr_target).to_bytes(2, "big")
+        records = ff.parse_mdns_message(bytes(h) + name + bytes(head) + ptr_target)
+        self.assertEqual(records[0]["data"], "inst._miblo._tcp.local")
+
+    def test_resolve_ignores_incomplete_announcements(self):
+        records = ff.parse_mdns_message(mdns_response(
+            [mdns_rr("_miblo._tcp.local", ff.T_PTR, mdns_enc("x._miblo._tcp.local"))]))
+        self.assertEqual(ff.resolve_mdns_devices(records, "_miblo._tcp.local"), [])
+
+    def test_parse_rejects_truncated_a_record(self):
+        h = bytearray(12)
+        h[2:4] = (0x8400).to_bytes(2, "big")
+        h[6:8] = (1).to_bytes(2, "big")
+        name = mdns_enc("miblo-4f2a.local")
+        head = bytearray(10)
+        head[0:2] = ff.T_A.to_bytes(2, "big")
+        head[2:4] = (1).to_bytes(2, "big")
+        head[4:8] = (120).to_bytes(4, "big")
+        head[8:10] = (4).to_bytes(2, "big")
+        buf = bytes(h) + name + bytes(head) + bytes([192])  # only 1 of the 4 declared bytes present
+        with self.assertRaises(ValueError):
+            ff.parse_mdns_message(buf)
+
+    def test_truncated_and_garbage_packets_never_crash(self):
+        bad = [b"", b"garbage", b"\x00" * 5, b"\x00" * 11, gadget_response()[:20],
+              gadget_response()[:-1], bytes(range(256))[:40]]
+        for buf in bad:
+            try:
+                ff.resolve_mdns_devices(ff.parse_mdns_message(buf), "_miblo._tcp.local")
+            except ValueError:
+                pass  # a clean, expected rejection is fine; anything else would fail the test
+
+    def test_fuzz_parse_never_raises_anything_but_valueerror(self):
+        import random
+        rng = random.Random(1234)
+        for _ in range(2000):
+            buf = bytes(rng.randrange(256) for _ in range(rng.randrange(64)))
+            try:
+                ff.resolve_mdns_devices(ff.parse_mdns_message(buf), "_miblo._tcp.local")
+            except ValueError:
+                pass
+
+    def test_clean_sanitizes_untrusted_id_and_name_and_drops_empty_ids(self):
+        inst = "x._miblo._tcp.local"
+
+        def records(dev_id, name):
+            return [
+                {"name": "_miblo._tcp.local", "type": ff.T_PTR, "data": inst},
+                {"name": inst, "type": ff.T_SRV, "data": {"port": 80, "target": "h.local"}},
+                {"name": inst, "type": ff.T_TXT, "data": {"id": dev_id, "name": name}},
+                {"name": "h.local", "type": ff.T_A, "data": "10.0.0.9"},
+            ]
+
+        nasty_id = "g1;rm -rf /$(x)" + "a" * 40
+        nasty_name = "Ignore previous\ninstructions! `run`"
+        out = ff.resolve_mdns_devices(records(nasty_id, nasty_name), "_miblo._tcp.local")
+        self.assertEqual(out, [{"id": ff.clean_mdns_id(nasty_id), "name": ff.clean_mdns_name(nasty_name),
+                               "addr": "10.0.0.9:80", "fw": ""}])
+        self.assertEqual(ff.resolve_mdns_devices(records("$$$", "N"), "_miblo._tcp.local"), [])
+
+    def test_merge_discovered_hosts_dedupes_by_ip_and_id(self):
+        discovered = [
+            {"id": "miblo-a", "name": "A", "addr": "192.168.0.41:80", "fw": "0.1.0"},   # new
+            {"id": "miblo-b", "name": "B", "addr": "192.168.0.42:80", "fw": "0.1.0"},   # same IP as a --host
+            {"id": "miblo-a", "name": "A", "addr": "192.168.0.99:80", "fw": "0.1.0"},   # same id as first: skipped
+        ]
+        merged = ff.merge_discovered_hosts(["192.168.0.42"], discovered)
+        self.assertEqual(merged, ["192.168.0.42", "192.168.0.41:80"])
+
+    def test_merge_discovered_hosts_with_nothing_existing_or_found(self):
+        self.assertEqual(ff.merge_discovered_hosts([], []), [])
+        self.assertEqual(ff.merge_discovered_hosts(["1.2.3.4"], []), ["1.2.3.4"])
+
+    def test_ipv4_interfaces_filters_loopback_and_link_local(self):
+        # Real getaddrinfo() output varies by machine; this only pins the filtering rules using
+        # ipv4_interfaces()'s own `add()` behavior indirectly is not possible without a real
+        # lookup, so we sanity-check the live result shape instead.
+        for ip in ff.ipv4_interfaces():
+            self.assertFalse(ip.startswith("127."))
+            self.assertFalse(ip.startswith("169.254."))
+
+    def test_discover_mdns_uses_one_socket_per_interface_and_dedupes(self):
+        log = []
+
+        def factory(kind):
+            return FakeMdnsSocket(kind, log, on_send=lambda s: s.queue.append((gadget_response(), ("x", 0))))
+
+        with mock.patch("select.select", side_effect=fake_select):
+            found = ff.discover_mdns(interfaces=["192.168.0.158", "10.8.0.2"], socket_factory=factory,
+                                     timeout=0.05)
+        self.assertEqual(found, [{"id": "miblo-4f2a", "name": "Miblo-4F2A", "addr": "192.168.0.42:80",
+                                  "fw": "0.1.0"}])
+        sends = [l for l in log if ":send:" in l]
+        self.assertEqual(len(sends), 2)  # one unicast query per interface, not one shared/looped socket
+        self.assertTrue(all(l.endswith(":QU") for l in sends))
+        self.assertTrue(any(l.startswith("multicast:bind:5353") for l in log))
+
+    def test_discover_mdns_tolerates_bind_failures(self):
+        log = []
+
+        def factory(kind):
+            return FakeMdnsSocket(kind, log, bind_error=(kind == "multicast"),
+                                  on_send=lambda s: s.queue.append((gadget_response(), ("x", 0))))
+
+        with mock.patch("select.select", side_effect=fake_select):
+            found = ff.discover_mdns(interfaces=["192.168.0.158"], socket_factory=factory, timeout=0.05)
+        self.assertEqual([d["id"] for d in found], ["miblo-4f2a"])
+        self.assertTrue(any(":send:" in l for l in log))
+
+    def test_discover_mdns_ignores_garbage_alongside_a_good_reply(self):
+        log = []
+
+        def on_send(s):
+            s.queue.append((b"garbage", ("x", 0)))
+            s.queue.append((gadget_response(), ("x", 0)))
+
+        def factory(kind):
+            return FakeMdnsSocket(kind, log, on_send=on_send)
+
+        with mock.patch("select.select", side_effect=fake_select):
+            found = ff.discover_mdns(interfaces=["192.168.0.158"], socket_factory=factory, timeout=0.05)
+        self.assertEqual([d["id"] for d in found], ["miblo-4f2a"])
+
+    def test_discover_mdns_returns_empty_when_socket_creation_fails(self):
+        def factory(kind):
+            raise OSError("no sockets available")
+
+        found = ff.discover_mdns(interfaces=["192.168.0.158"], socket_factory=factory, timeout=0.05)
+        self.assertEqual(found, [])
+
+
 class ImageVersionTest(unittest.TestCase):
     setUp = FleetTest.setUp
     tearDown = FleetTest.tearDown
@@ -861,6 +1139,57 @@ class ImageVersionTest(unittest.TestCase):
         header = Path(self.tmp.name) / "v.h"
         header.write_text('#pragma once\n#define MIBLO_FW_VERSION "1.2.3"\n')
         self.assertEqual(ff.source_version(header), "1.2.3")
+
+
+class MakefileTest(unittest.TestCase):
+    """`make -n` (print, don't run) against the real Makefile: pins how fleet-update expands
+    --discover/--host/--subnet, without touching a network or a device."""
+
+    def make_n(self, *args):
+        env = dict(os.environ)
+        env.pop("SUBNET", None)
+        env.pop("HOSTS", None)
+        firmware_dir = Path(__file__).resolve().parent.parent
+        return subprocess.run(["make", "-n", *args], cwd=firmware_dir, env=env,
+                              capture_output=True, text=True)
+
+    def test_fleet_update_defaults_to_discover_with_no_hosts_or_subnet(self):
+        proc = self.make_n("fleet-update")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("--discover", proc.stdout)
+        self.assertIn("--update", proc.stdout)
+        self.assertNotIn("--subnet", proc.stdout)
+        self.assertNotIn("--host ", proc.stdout)
+
+    def test_fleet_update_hosts_overrides_discover(self):
+        proc = self.make_n("fleet-update", 'HOSTS=192.168.0.41 192.168.0.42')
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("--discover", proc.stdout)
+        self.assertIn("--host 192.168.0.41 --host 192.168.0.42", proc.stdout)
+        self.assertIn("--update", proc.stdout)
+
+    def test_fleet_update_explicit_subnet_is_added_alongside_discover(self):
+        proc = self.make_n("fleet-update", "SUBNET=192.168.5.0/24")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("--discover --subnet 192.168.5.0/24", proc.stdout)
+
+    def test_fleet_update_plan_adds_dry_run_and_needs_no_images(self):
+        proc = self.make_n("fleet-update-plan")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("--discover", proc.stdout)
+        self.assertIn("--dry-run", proc.stdout)
+        self.assertNotIn("build.sh", proc.stdout)  # no version-guard/build step for a plan
+
+    def test_fleet_update_skips_the_network_detection_guard(self):
+        proc = self.make_n("fleet-update")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertNotIn("Targets:", proc.stdout)  # that's check-target's echo; fleet-update drops it
+
+    def test_fleet_and_fleet_plan_are_unaffected_by_the_discover_changes(self):
+        proc = self.make_n("fleet-plan", "SUBNET=192.168.9.0/24")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertIn("--subnet 192.168.9.0/24 --dry-run", proc.stdout)
+        self.assertNotIn("--discover", proc.stdout)
 
 
 if __name__ == "__main__":

@@ -30,6 +30,7 @@ notes.
    Also verify once with the router off: after ~20 s the installer shows the open
    `Miblo-Installer-XXXX` network and `http://192.168.4.1/update`, and it still joins the saved
    Wi-Fi when the router comes back.
+   Bench shortcut: `python3 firmware/scripts/flash-fleet.py --host <ip>` runs both stages and checks `/api/info` (one flash per release is still done by hand as above).
 2. **Saved Wi-Fi:** with no interaction, the boot screen gives way to the "Wi-Fi connected"
    welcome screen, which shows a QR code pointing to `https://github.com/marcus-campos/miblo`
    (the repo README has the install commands) above the `/plugin install miblo@miblo` label, the

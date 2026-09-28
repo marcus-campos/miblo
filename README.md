@@ -40,6 +40,21 @@ Keep the official GeekMagic firmware file around if you ever want to go back —
 
 Use a proper 5 V / 1 A USB supply: a weak supply can brown-out during Wi-Fi bursts, and six quick resets in a row count as a hard reset.
 
+## Flashing many units
+
+`firmware/scripts/flash-fleet.py` (Python 3.9+, no dependencies) flashes a whole bench over the LAN. Each unit must first join the bench Wi‑Fi once through the stock GeekMagic setup portal; after that the script finds them, detects what each one runs (stock GeekMagic, Miblo installer, Miblo) and does the two-stage install on its own, several units in parallel (`--jobs`, default 4). Images come from `firmware/dist` (the newest `miblo-<board>-<ver>.bin` and its `miblo-loader-…` pair) unless you pass `--loader`/`--firmware`.
+
+```sh
+# see what is on the network and what would happen, without touching anything
+python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --dry-run
+# install Miblo on every stock/installer unit found (units already on this version are skipped)
+python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24
+# also update units running an older Miblo: each one shows a 4-digit code that you type in
+python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --update
+```
+
+It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units.
+
 ## Reset
 
 - From the gadget's page (`http://miblo-xxxx.local`) → Factory reset (confirm with the on‑screen code), or `/miblo reset <id>`.

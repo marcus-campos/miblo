@@ -2,7 +2,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion } from '../lib/constants.js';
+import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion, parseDataArg } from '../lib/constants.js';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
 import { buildSnapshot } from '../lib/snapshot-builder.js';
@@ -53,14 +53,14 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   return { tracker, metrics, devices, server, push, schedule, idleFor: () => now() - lastActive };
 }
 
-function argValue(name) {
-  const i = process.argv.indexOf(name);
-  return i > 0 ? process.argv[i + 1] : undefined;
-}
-
 function main() {
   const here = path.dirname(fileURLToPath(import.meta.url));
-  const dataDir = argValue('--data') || process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.miblo');
+  let dataDir;
+  try {
+    ({ dataDir } = parseDataArg(process.argv.slice(2)));
+  } catch {
+    process.exit(2);
+  }
   try {
     const settingsPath = claudeSettingsPath();
     if (isLinked({ settingsPath })) installTap({ pluginRoot: path.resolve(here, '..'), settingsPath });

@@ -2,7 +2,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, claudeSettingsPath } from '../lib/constants.js';
+import { PORT, HOST, claudeSettingsPath, parseDataArg } from '../lib/constants.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { discover } from '../lib/mdns.js';
@@ -109,13 +109,15 @@ export async function run(argv, deps) {
 }
 
 async function main() {
-  const argv = process.argv.slice(2);
-  let dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.miblo');
-  const i = argv.indexOf('--data');
-  if (i >= 0) {
-    dataDir = argv[i + 1];
-    argv.splice(i, 2);
+  let parsed;
+  try {
+    parsed = parseDataArg(process.argv.slice(2));
+  } catch (e) {
+    process.stdout.write(`Error: ${e.message}\n`);
+    process.exitCode = 2;
+    return;
   }
+  const { dataDir, rest: argv } = parsed;
   const here = path.dirname(fileURLToPath(import.meta.url));
   const r = await run(argv, {
     dataDir,

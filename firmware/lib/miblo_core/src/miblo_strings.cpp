@@ -95,7 +95,7 @@ static const char kEn[] MIBLO_ROM =
     "Done. The device is restarting.\0"  // WebUpdateOk
     "Failed\0"  // WebFailed
     "Wrong code\0"  // WebBadCode
-    "No limits received yet: run /miblo pair in Claude Code\0"  // WebLimitsHint
+    "No limits received yet: run /miblo:pair in Claude Code\0"  // WebLimitsHint
     "Paired computers: %u\0"  // WebPairedCount
     "Firmware version\0"  // WebVersion
     "Quick restarts left to reset: %u\0"  // HardResetCountdown
@@ -190,7 +190,7 @@ static const char kPtBR[] MIBLO_ROM =
     "Pronto. O aparelho está reiniciando.\0"  // WebUpdateOk
     "Falhou\0"  // WebFailed
     "Código incorreto\0"  // WebBadCode
-    "Nenhum limite recebido ainda: rode /miblo pair no Claude Code\0"  // WebLimitsHint
+    "Nenhum limite recebido ainda: rode /miblo:pair no Claude Code\0"  // WebLimitsHint
     "Computadores pareados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
     "Reinícios rápidos restantes para resetar: %u\0"  // HardResetCountdown
@@ -285,7 +285,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Concluído. O aparelho está a reiniciar.\0"  // WebUpdateOk
     "Falhou\0"  // WebFailed
     "Código incorreto\0"  // WebBadCode
-    "Ainda não chegaram limites: execute /miblo pair no Claude Code\0"  // WebLimitsHint
+    "Ainda não chegaram limites: execute /miblo:pair no Claude Code\0"  // WebLimitsHint
     "Computadores emparelhados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
     "Reinícios rápidos restantes para repor: %u\0"  // HardResetCountdown
@@ -380,7 +380,7 @@ static const char kEs[] MIBLO_ROM =
     "Listo. El dispositivo se está reiniciando.\0"  // WebUpdateOk
     "Error\0"  // WebFailed
     "Código incorrecto\0"  // WebBadCode
-    "Aún no llegan límites: ejecuta /miblo pair en Claude Code\0"  // WebLimitsHint
+    "Aún no llegan límites: ejecuta /miblo:pair en Claude Code\0"  // WebLimitsHint
     "Ordenadores vinculados: %u\0"  // WebPairedCount
     "Versión del firmware\0"  // WebVersion
     "Reinicios rápidos restantes para restablecer: %u\0"  // HardResetCountdown
@@ -475,7 +475,7 @@ static const char kFr[] MIBLO_ROM =
     "Terminé. L'appareil redémarre.\0"  // WebUpdateOk
     "Échec\0"  // WebFailed
     "Code incorrect\0"  // WebBadCode
-    "Aucune limite reçue : lancez /miblo pair dans Claude Code\0"  // WebLimitsHint
+    "Aucune limite reçue : lancez /miblo:pair dans Claude Code\0"  // WebLimitsHint
     "Ordinateurs appairés : %u\0"  // WebPairedCount
     "Version du firmware\0"  // WebVersion
     "Redémarrages rapides restants avant réinitialisation : %u\0"  // HardResetCountdown
@@ -570,7 +570,7 @@ static const char kIt[] MIBLO_ROM =
     "Fatto. Il dispositivo si sta riavviando.\0"  // WebUpdateOk
     "Non riuscito\0"  // WebFailed
     "Codice errato\0"  // WebBadCode
-    "Nessun limite ricevuto: esegui /miblo pair in Claude Code\0"  // WebLimitsHint
+    "Nessun limite ricevuto: esegui /miblo:pair in Claude Code\0"  // WebLimitsHint
     "Computer abbinati: %u\0"  // WebPairedCount
     "Versione firmware\0"  // WebVersion
     "Riavvii rapidi rimanenti per il reset: %u\0"  // HardResetCountdown
@@ -665,7 +665,7 @@ static const char kDe[] MIBLO_ROM =
     "Fertig. Das Gerät startet neu.\0"  // WebUpdateOk
     "Fehlgeschlagen\0"  // WebFailed
     "Falscher Code\0"  // WebBadCode
-    "Noch keine Limits empfangen: führe /miblo pair in Claude Code aus\0"  // WebLimitsHint
+    "Noch keine Limits empfangen: führe /miblo:pair in Claude Code aus\0"  // WebLimitsHint
     "Gekoppelte Computer: %u\0"  // WebPairedCount
     "Firmware-Version\0"  // WebVersion
     "Verbleibende schnelle Neustarts bis zum Zurücksetzen: %u\0"  // HardResetCountdown
@@ -760,7 +760,7 @@ static const char kRu[] MIBLO_ROM =
     "Готово. Устройство перезагружается.\0"  // WebUpdateOk
     "Ошибка\0"  // WebFailed
     "Неверный код\0"  // WebBadCode
-    "Лимиты ещё не получены: выполните /miblo pair в Claude Code\0"  // WebLimitsHint
+    "Лимиты ещё не получены: выполните /miblo:pair в Claude Code\0"  // WebLimitsHint
     "Сопряжённых компьютеров: %u\0"  // WebPairedCount
     "Версия прошивки\0"  // WebVersion
     "Осталось быстрых перезапусков до сброса: %u\0"  // HardResetCountdown
@@ -855,7 +855,7 @@ static const char kZh[] MIBLO_ROM =
     "完成，设备正在重启。\0"  // WebUpdateOk
     "失败\0"  // WebFailed
     "代码错误\0"  // WebBadCode
-    "尚未收到用量限制：请在 Claude Code 中运行 /miblo pair\0"  // WebLimitsHint
+    "尚未收到用量限制：请在 Claude Code 中运行 /miblo:pair\0"  // WebLimitsHint
     "已配对电脑：%u\0"  // WebPairedCount
     "固件版本\0"  // WebVersion
     "再快速重启 %u 次即可重置\0"  // HardResetCountdown

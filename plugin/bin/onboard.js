@@ -18,7 +18,7 @@ export function onboardMessage({ store, stampFile, now = () => Date.now() }) {
   if (now() - last <= DAY_MS) return null;
   fs.mkdirSync(path.dirname(stampFile), { recursive: true });
   fs.writeFileSync(stampFile, JSON.stringify({ last: now() }));
-  return JSON.stringify({ systemMessage: 'Miblo: no desk gadget paired yet. Run /miblo pair to connect it.' });
+  return JSON.stringify({ systemMessage: 'Miblo: no desk gadget paired yet. Run /miblo:pair to connect it.' });
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -23,9 +23,9 @@ In Claude Code:
 /plugin install miblo@miblo
 ```
 
-Then run `/miblo pair` and type the 4‑digit code shown on the gadget. Miblo will ask before linking your status line (needed for limits and context); your existing status line keeps working exactly the same. Undo any time with `/miblo unlink-statusline` — run it **before uninstalling** the plugin.
+Then run `/miblo:pair` and type the 4‑digit code shown on the gadget. Miblo will ask before linking your status line (needed for limits and context); your existing status line keeps working exactly the same. Undo any time with `/miblo:unlink-statusline` — run it **before uninstalling** the plugin.
 
-Other commands: `/miblo status`, `/miblo mode overview|limits|sessions`, `/miblo reset <id>`.
+Other commands: `/miblo:status`, `/miblo:mode overview|limits|sessions`, `/miblo:reset <id>`.
 
 ## Flash the firmware (GeekMagic Ultra)
 
@@ -57,7 +57,7 @@ It prints a line per step per unit and a final table (host, before, after, resul
 
 ## Reset
 
-- From the gadget's page (`http://miblo-xxxx.local`) → Factory reset (confirm with the on‑screen code), or `/miblo reset <id>`.
+- From the gadget's page (`http://miblo-xxxx.local`) → Factory reset (confirm with the on‑screen code), or `/miblo:reset <id>`.
 - **Hard reset without a computer:** power‑cycle the gadget 6 times in a row, unplugging it within 10 seconds each time. From the 3rd quick restart the screen counts down; leave it on to cancel.
 
 ## Development

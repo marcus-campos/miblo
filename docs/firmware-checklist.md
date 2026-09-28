@@ -40,14 +40,14 @@ notes.
 3. **Page:** `http://miblo-xxxx.local` (or by IP) opens the config page in the browser's language;
    the time zone select lists IANA names (`GET /api/zones`) and preselects the browser's zone
    (saved automatically the first time); switching the language to `pt-BR` changes the screen.
-4. **Pairing:** `/miblo pair` finds `Miblo-XXXX`, asks for the code shown on screen, then shows
+4. **Pairing:** `/miblo:pair` finds `Miblo-XXXX`, asks for the code shown on screen, then shows
    "Paired with <host>" for 5 s, then "Disconnected"/clock until the first snapshot. `GET
    http://<ip>/api/info` shows `paired: true`, `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`,
    `caps: []`. Five wrong codes in a row cause a 429 for 60 s.
 5. **Screens:** with real sessions — Working (running count, big weekly hours, list), Needs you
    (amber band; request something that needs a permission), All done (finished sessions, today's
-   cost). `/miblo mode limits` shows the limits arc; `/miblo mode sessions` shows the session
-   list, paging every 5 s when there are more than 4 sessions; `/miblo mode overview` returns to
+   cost). `/miblo:mode limits` shows the limits arc; `/miblo:mode sessions` shows the session
+   list, paging every 5 s when there are more than 4 sessions; `/miblo:mode overview` returns to
    the adaptive view.
 6. **Alerts:** permission request causes an amber flash (~1.5 s), a hero screen (~10 s) with the
    command and "waiting for …", then a summary with the band; no response for 2 min repeats the

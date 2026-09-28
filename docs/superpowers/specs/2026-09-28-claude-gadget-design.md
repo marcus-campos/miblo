@@ -62,12 +62,12 @@ Claude Code ──hooks (async)──▶ hook.js ──────────�
 
 ### 3.2 `statusline-tap.js` (métricas oficiais)
 
-Plugins não podem definir `statusLine` (só `agent`/`subagentStatusLine`). Por isso, com **consentimento do usuário**, `/miblo pair` substitui o `statusLine` de `~/.claude/settings.json` por `statusline-tap.js`, salvando o comando original em `${CLAUDE_PLUGIN_DATA}/statusline-original.json`.
+Plugins não podem definir `statusLine` (só `agent`/`subagentStatusLine`). Por isso, com **consentimento do usuário**, `/miblo:pair` substitui o `statusLine` de `~/.claude/settings.json` por `statusline-tap.js`, salvando o comando original em `${CLAUDE_PLUGIN_DATA}/statusline-original.json`.
 
 - Lê o JSON da status line no stdin, repassa uma cópia (fire-and-forget, timeout 200ms) para `POST /statusline` no bridge.
 - Executa o comando original do usuário com o mesmo stdin e devolve **exatamente** a sua saída (stdout e código). Sem comando original, não imprime nada.
 - Fornece por sessão (`session_id`): `rate_limits.five_hour` / `seven_day` (`used_percentage`, `resets_at`), `context_window.used_percentage`, `context_window.total_input_tokens` / `total_output_tokens`, `model.display_name`, `cost.total_cost_usd`.
-- `/miblo unlink-statusline` restaura o comando original. Se o usuário recusar o encadeamento, o gadget funciona só com os estados das sessões (sem limites/tokens/ctx).
+- `/miblo:unlink-statusline` restaura o comando original. Se o usuário recusar o encadeamento, o gadget funciona só com os estados das sessões (sem limites/tokens/ctx).
 
 ### 3.3 Bridge (serviço local)
 
@@ -80,16 +80,16 @@ Unidades (cada uma testável isoladamente):
 - **DeviceManager** — descoberta mDNS, pareamento, envio do snapshot, reenvio com espera crescente e OTA.
 - **SnapshotBuilder** — monta o JSON do protocolo (§5.3) a partir das outras unidades, aplicando os limites de tamanho.
 
-### 3.4 Comando `/miblo`
+### 3.4 Comandos `/miblo:*`
 
-Um único comando do plugin com subcomandos:
+Um comando do plugin por ação (Claude Code namespacea comandos de plugin por nome de arquivo):
 
-- `/miblo pair [ip]` — descobre gadgets (ou usa o IP informado), pede o código de 4 dígitos exibido na tela e salva o token. Pergunta se pode encadear a status line (§3.2). Roda automaticamente na primeira instalação.
-- `/miblo status` — sessões, limites e gadgets pareados (online/offline).
-- `/miblo mode <overview|limits|sessions> [gadget]`
-- `/miblo update` — envia o firmware mais recente para os gadgets pareados.
-- `/miblo reset [gadget]` — reset de fábrica remoto.
-- `/miblo unlink-statusline` — desfaz o encadeamento da status line.
+- `/miblo:pair [ip]` — descobre gadgets (ou usa o IP informado), pede o código de 4 dígitos exibido na tela e salva o token. Pergunta se pode encadear a status line (§3.2). Roda automaticamente na primeira instalação.
+- `/miblo:status` — sessões, limites e gadgets pareados (online/offline).
+- `/miblo:mode <overview|limits|sessions> [gadget]`
+- `/miblo:update` — envia o firmware mais recente para os gadgets pareados.
+- `/miblo:reset [gadget]` — reset de fábrica remoto.
+- `/miblo:unlink-statusline` — desfaz o encadeamento da status line.
 
 ### 3.5 Firmware (ESP8266, PlatformIO/Arduino)
 
@@ -211,26 +211,26 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 1. Ligar na tomada → a tela mostra um QR de WiFi (`WIFI:S:Miblo-Setup-XXXX;;`) e o nome da rede.
 2. O celular conecta e o captive portal abre sozinho: escolher a rede, digitar a senha; o fuso é detectado pelo navegador.
 3. A tela do gadget mostra: WiFi conectado, comando `/plugin install ...`, código de pareamento e IP.
-4. No Claude Code: instalar o plugin → o `/miblo pair` roda automaticamente → encontra o gadget e pede o código.
+4. No Claude Code: instalar o plugin → o `/miblo:pair` roda automaticamente → encontra o gadget e pede o código.
 5. A tela mostra "Pareado com <host>" e entra no modo Visão geral.
 
 ### Exceções
 
 - **Senha errada** → volta ao passo 1 com "Senha incorreta".
-- **mDNS indisponível** (WSL2, rede corporativa) → `/miblo pair <ip>`.
+- **mDNS indisponível** (WSL2, rede corporativa) → `/miblo:pair <ip>`.
 - **Vários gadgets** → a lista mostra todos; o código identifica qual.
-- **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/miblo status`.
+- **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/miblo:status`.
 - **Roteador fora do ar** → o gadget mantém as credenciais; após 2 min sem conexão, abre a rede de setup **e continua tentando** a rede salva.
-- **Reset de fábrica** → (a) pela página do gadget, confirmado com o código de 4 dígitos mostrado na tela; (b) por `/miblo reset` (token do pareamento); (c) **hard reset estilo AirTag**: 6 boots rápidos seguidos (cada um desligado antes de 10 s de uptime; o contador zera após 10 s ligado). A partir do 3º boot rápido a tela mostra "Mais N reinícios rápidos para resetar · deixe ligado para cancelar" (N = 3, 2, 1); no 6º, reset de fábrica e tela de setup. Só contam boots por energia (`REASON_DEFAULT_RST`/`REASON_EXT_SYS_RST`) — crash, watchdog, OTA e reinício por software não contam. Quedas de energia comuns não apagam nada: Wi-Fi, pareamento e configurações ficam na flash; trocar de roteador não exige reset (após 2 min sem conexão o gadget abre a rede de setup).
+- **Reset de fábrica** → (a) pela página do gadget, confirmado com o código de 4 dígitos mostrado na tela; (b) por `/miblo:reset` (token do pareamento); (c) **hard reset estilo AirTag**: 6 boots rápidos seguidos (cada um desligado antes de 10 s de uptime; o contador zera após 10 s ligado). A partir do 3º boot rápido a tela mostra "Mais N reinícios rápidos para resetar · deixe ligado para cancelar" (N = 3, 2, 1); no 6º, reset de fábrica e tela de setup. Só contam boots por energia (`REASON_DEFAULT_RST`/`REASON_EXT_SYS_RST`) — crash, watchdog, OTA e reinício por software não contam. Quedas de energia comuns não apagam nada: Wi-Fi, pareamento e configurações ficam na flash; trocar de roteador não exige reset (após 2 min sem conexão o gadget abre a rede de setup).
 
 ## 7. Tratamento de erros
 
 | Falha | Comportamento |
 |---|---|
 | Bridge fora do ar | Os hooks tentam subir o bridge; o Claude Code nunca é afetado |
-| Status line não encadeada ou sem `rate_limits` | `usage: null`; o gadget mostra "limites indisponíveis" (com dica "rode /miblo pair" na página) |
+| Status line não encadeada ou sem `rate_limits` | `usage: null`; o gadget mostra "limites indisponíveis" (com dica "rode /miblo:pair" na página) |
 | Status line original do usuário falha | O tap devolve a mesma saída/código de erro — o comportamento do usuário não muda |
-| Gadget inacessível | Espera crescente (1s → 60s); redescoberta mDNS; aparece como offline em `/miblo status` |
+| Gadget inacessível | Espera crescente (1s → 60s); redescoberta mDNS; aparece como offline em `/miblo:status` |
 | Snapshot ausente por 30s | Gadget mostra "desconectado" + relógio |
 | JSON inválido/grande demais | Gadget responde 400 e mantém a última tela válida |
 | OTA falha no meio | O ESP8266 mantém a imagem anterior (OTA padrão com verificação); o bridge informa o erro |
@@ -243,21 +243,21 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 - **Contrato** — os mesmos arquivos em `fixtures/snapshots/*.json` são gerados/validados pelos testes do bridge e consumidos pelos testes do firmware.
 - **Firmware — lógica** (`pio test -e native`): parse do snapshot, escolha do herói, AlertQueue (dedupe, ordem, lembrete), rotação de páginas.
 - **Preview de telas** — script que gera PNGs de cada tela a partir das fixtures de snapshot, para revisão visual e fotos do anúncio.
-- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, dois gadgets, computador desligado, OTA via `/miblo update`.
+- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, dois gadgets, computador desligado, OTA via `/miblo:update`.
 
 ## 9. Ordem de construção
 
 0. **Teste de hardware** — baixar o firmware oficial da GeekMagic (para restauração); gravar por OTA um firmware mínimo que acende a tela, desenha texto e **já inclui OTA**; confirmar pinos da tela e da luz de fundo, tamanho da flash e se a página de update original aceita o `.bin`. Nenhuma outra etapa começa antes disso.
 1. Bridge — núcleo (SessionTracker, MetricsStore, SnapshotBuilder).
-2. Bridge — plugin (`hook.js`, `statusline-tap.js`, subida automática, `/miblo status`).
+2. Bridge — plugin (`hook.js`, `statusline-tap.js`, subida automática, `/miblo:status`).
 3. Firmware — base (captive portal + QR, mDNS, pareamento, API, página de configuração, OTA).
 4. Firmware — telas (Visão geral adaptativa, alertas, Limites, Sessões, sistema).
-5. Integração (`/miblo pair/mode/update/reset`, vários gadgets, checklist manual).
+5. Integração (`/miblo:pair`, `/miblo:mode`, `/miblo:update`, `/miblo:reset`, vários gadgets, checklist manual).
 
 ## 10. Riscos de produto
 
 1. **Marca** — "Claude" e o logo da Anthropic são marcas registradas. O produto, a caixa e o anúncio não devem usar o nome nem o logo como marca. Usar um nome próprio + "compatível com Claude Code". As telas do gadget usam o nome do produto, e não o logo da Anthropic.
-2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. O tap e o comando original ficam em `~/.claude/miblo/` (sobrevivem à desinstalação do plugin; um tap órfão continua executando a status line original). Mitigação: só com consentimento, comando original salvo, reversível com `/miblo unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo status` avisa).
+2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. O tap e o comando original ficam em `~/.claude/miblo/` (sobrevivem à desinstalação do plugin; um tap órfão continua executando a status line original). Mitigação: só com consentimento, comando original salvo, reversível com `/miblo:unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo:status` avisa).
 3. **Anatel** — verificar se o GeekMagic tem homologação e se a revenda com firmware alterado mantém a conformidade.
 4. **Hardware** — pinos e comportamento do OTA da GeekMagic Ultra ainda não confirmados (etapa 0). Revisões futuras do hardware podem mudar o chip, então o firmware verifica o ID da flash e o modelo em `/api/info`.
 5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 3 KB do snapshot existem por isso.

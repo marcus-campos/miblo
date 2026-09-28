@@ -33,7 +33,7 @@ Installing from the stock GeekMagic firmware takes two uploads: its update page 
 
 1. Download `miblo-loader-geekmagic_ultra-<version>.bin` and `miblo-geekmagic_ultra-<version>.bin` from the [latest release](https://github.com/marcus-campos/miblo/releases/latest).
 2. Open your clock's web page (`http://<clock-ip>/`), go to its firmware update page and upload `miblo-loader-geekmagic_ultra-<version>.bin`.
-3. The clock reboots showing "Miblo installer" and an address like `http://<ip>/update`. (If it cannot reach your Wi‑Fi within 20 s it also opens an open network `Miblo-Installer-XXXX`; join it and use the address on screen.) Open that address and upload `miblo-geekmagic_ultra-<version>.bin`; a progress bar shows on screen.
+3. The clock reboots showing "Miblo installer" and an address like `http://<ip>/update`. (If it cannot reach your Wi‑Fi within 20 s it also opens an open network `Miblo-Installer-XXXX`; join it and use the address on screen.) Open that address and upload `miblo-geekmagic_ultra-<version>.bin` (the installer screen shows no progress; wait for the browser to report "Update Success").
 4. The clock reboots into Miblo. If it already knew your Wi‑Fi it connects right away; otherwise join the `Miblo-Setup-XXXX` network with your phone (scan the QR code on screen) and pick your Wi‑Fi.
 
 Keep the official GeekMagic firmware file around if you ever want to go back — Miblo's own `/update` page (`http://miblo-xxxx.local/update`) accepts it; it shows a 4-digit code on the gadget's screen that you type in the page. The boot screen shows the firmware version and build (e.g. `v0.1.0 (4534fb8)`); `/api/info` reports the same plus free heap. See the [on-device checklist](docs/firmware-checklist.md).

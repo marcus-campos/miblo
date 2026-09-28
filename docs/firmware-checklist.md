@@ -25,11 +25,12 @@ notes.
    not fit the stock firmware's OTA space: "Not Enough Space"). Expected: the device reboots and
    shows "Miblo installer", the version and `http://<ip>/update`; `GET http://<ip>/info` returns
    `{"app":"miblo-loader",...}`. Then open that `/update` and upload
-   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin`: a progress bar fills on screen, then the device
-   reboots and shows the blinking mascot (boot screen) with the firmware version near the bottom.
+   `firmware/dist/miblo-geekmagic_ultra-0.1.0.bin` (the installer screen shows no progress; the
+   browser's upload finishes with "Update Success"), then the device reboots and shows the blinking mascot (boot screen) with the firmware version near the bottom.
    Also verify once with the router off: after ~20 s the installer shows the open
-   `Miblo-Installer-XXXX` network and `http://192.168.4.1/update`, and it still joins the saved
-   Wi-Fi when the router comes back.
+   `Miblo-Installer-XXXX` network and `http://192.168.4.1/update`; a phone joined to that network
+   stays connected (no automatic station retries), and with nobody on the AP it rejoins the saved
+   Wi-Fi within ~3 min of the router coming back.
    Bench shortcut: `python3 firmware/scripts/flash-fleet.py --host <ip>` runs both stages and checks `/api/info` (one flash per release is still done by hand as above).
 2. **Saved Wi-Fi:** with no interaction, the boot screen gives way to the "Wi-Fi connected"
    welcome screen, which shows a QR code pointing to `https://github.com/marcus-campos/miblo`

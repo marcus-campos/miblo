@@ -8,7 +8,9 @@
 // Behaviour:
 //   - screen: "Miblo installer", version, and where to upload (IP or AP name);
 //   - Wi-Fi: SDK-saved credentials (never erased); after 20 s without a connection an open AP
-//     "Miblo-Installer-XXXX" is started while the STA keeps retrying;
+//     "Miblo-Installer-XXXX" is started. From then on the station stops its automatic retries
+//     (their channel scans disrupt clients of the AP): the saved network is retried every 3 min,
+//     and only while nobody is connected to the AP;
 //   - HTTP: ESP8266HTTPUpdateServer at /update (no auth: the loader only lives for the install
 //     window), GET /info (JSON identity for install tooling) and GET / -> /update;
 //   - mDNS: miblo-installer-xxxx.local.
@@ -32,10 +34,13 @@ static char apSsid[32];    // "Miblo-Installer-4F2A"
 static bool apOn = false;
 static bool mdnsOn = false;
 static bool wasConnected = false;
+static bool retrying = false;  // a station attempt started by the AP-mode retry timer
 static uint32_t bootMs = 0;
-static int lastPct = -1;
+static uint32_t lastRetryMs = 0;
 
 static const uint32_t kApAfterMs = 20000;
+static const uint32_t kRetryEveryMs = 180000;  // AP on: retry the saved network this often...
+static const uint32_t kRetryWindowMs = 15000;  // ...for this long, then stop scanning again
 
 static void drawHeader() {
   tft.fillScreen(TFT_BLACK);
@@ -65,7 +70,7 @@ static void showAddress() {
                String(host) + ".local");
   } else if (apOn) {
     drawStatus("Join Wi-Fi " + String(apSsid), "http://" + WiFi.softAPIP().toString() + "/update",
-               "(still retrying saved Wi-Fi)");
+               "(saved Wi-Fi retried every 3 min)");
   } else {
     drawStatus("Connecting to saved Wi-Fi...");
   }
@@ -92,16 +97,6 @@ static void handleRoot() {
   server.send(302, F("text/plain"), F("/update"));
 }
 
-// Upload progress on screen (the Updater calls this from inside server.handleClient()).
-static void onProgress(size_t done, size_t total) {
-  int pct = total ? (int)(done * 100 / total) : 0;
-  if (pct == lastPct) return;
-  if (lastPct < 0) drawStatus("Installing Miblo...", "do not unplug");
-  lastPct = pct;
-  tft.drawRect(20, 180, 200, 14, TFT_WHITE);
-  tft.fillRect(22, 182, 196 * pct / 100, 10, TFT_ORANGE);
-}
-
 void setup() {
   bootMs = millis();
   uint32_t chip = ESP.getChipId() & 0xFFFF;
@@ -122,7 +117,6 @@ void setup() {
   WiFi.begin();  // credentials saved in the SDK by the previous firmware
 
   updater.setup(&server, "/update");
-  Update.onProgress(onProgress);
   server.on("/info", HTTP_GET, handleInfo);
   server.on("/", HTTP_GET, handleRoot);
   server.begin();
@@ -136,14 +130,31 @@ void loop() {
   if (connected != wasConnected) {
     wasConnected = connected;
     if (connected) startMdns();
-    if (lastPct < 0) showAddress();
+    retrying = false;
+    lastRetryMs = millis();
+    showAddress();
   }
-  if (!connected && !apOn && millis() - bootMs > kApAfterMs) {
-    // Open AP alongside the STA: the saved network keeps being retried in the background.
+  const uint32_t now = millis();
+  if (!connected && !apOn && now - bootMs > kApAfterMs) {
+    // Open AP alongside the STA. Stop the SDK's automatic reconnects: every attempt scans all
+    // channels and knocks the phone/laptop off the AP mid-upload. Credentials are kept.
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false, false);
     WiFi.mode(WIFI_AP_STA);
     WiFi.softAP(apSsid);
     apOn = true;
+    lastRetryMs = now;
     startMdns();
-    if (lastPct < 0) showAddress();
+    showAddress();
+  }
+  if (apOn && !connected) {
+    if (retrying && now - lastRetryMs > kRetryWindowMs) {
+      WiFi.disconnect(false, false);  // give up this attempt; keep the credentials
+      retrying = false;
+    } else if (!retrying && now - lastRetryMs >= kRetryEveryMs && WiFi.softAPgetStationNum() == 0) {
+      WiFi.begin();  // one attempt at the saved network, only while nobody uses the AP
+      retrying = true;
+      lastRetryMs = now;
+    }
   }
 }

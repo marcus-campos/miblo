@@ -439,6 +439,59 @@ static void test_rotation_config_defaults_validation_and_json() {
   TEST_ASSERT_EQUAL_UINT16(5, b.rotateShowSec);
 }
 
+// Night mode: off by default (22:00-07:00, 10%), validated all-or-nothing, dims only inside the
+// window (overnight or same-day), never above the day brightness, and not while the time is unknown.
+static void test_night_mode_config_and_brightness() {
+  Config c;
+  TEST_ASSERT_FALSE(c.night);
+  TEST_ASSERT_EQUAL_UINT16(1320, c.nightFrom);
+  TEST_ASSERT_EQUAL_UINT16(420, c.nightTo);
+  TEST_ASSERT_EQUAL_UINT8(10, c.nightBrightness);
+  TEST_ASSERT_EQUAL_UINT8(80, brightnessAt(c, 23 * 60));  // off: day brightness
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"night\":true}"));
+  TEST_ASSERT_EQUAL_UINT8(10, brightnessAt(c, 23 * 60));
+  TEST_ASSERT_EQUAL_UINT8(10, brightnessAt(c, 0));
+  TEST_ASSERT_EQUAL_UINT8(10, brightnessAt(c, 6 * 60 + 59));
+  TEST_ASSERT_EQUAL_UINT8(80, brightnessAt(c, 7 * 60));      // end is exclusive
+  TEST_ASSERT_EQUAL_UINT8(80, brightnessAt(c, 21 * 60 + 59));
+  TEST_ASSERT_EQUAL_UINT8(10, brightnessAt(c, 22 * 60));     // start is inclusive
+  TEST_ASSERT_EQUAL_UINT8(80, brightnessAt(c, -1));          // time unknown
+  // Same-day window, and never brighter than the day setting.
+  TEST_ASSERT_TRUE(patch(c, "{\"nightFrom\":780,\"nightTo\":840,\"nightBrightness\":50,\"brightness\":30}"));
+  TEST_ASSERT_EQUAL_UINT8(30, brightnessAt(c, 800));
+  TEST_ASSERT_EQUAL_UINT8(30, brightnessAt(c, 900));
+  TEST_ASSERT_FALSE(nightActive(c, 900));
+  TEST_ASSERT_TRUE(nightActive(c, 780));
+  // Ranges, types, empty window; all-or-nothing.
+  TEST_ASSERT_FALSE(patch(c, "{\"nightFrom\":1440}", &bad));
+  TEST_ASSERT_EQUAL_STRING("nightFrom", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"nightTo\":-1}", &bad));
+  TEST_ASSERT_EQUAL_STRING("nightTo", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"nightBrightness\":0}", &bad));
+  TEST_ASSERT_EQUAL_STRING("nightBrightness", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"night\":\"yes\"}", &bad));
+  TEST_ASSERT_EQUAL_STRING("night", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"night\":false,\"nightTo\":780}", &bad));
+  TEST_ASSERT_EQUAL_STRING("nightTo", bad);
+  TEST_ASSERT_TRUE(c.night);
+  TEST_ASSERT_FALSE(patch(c, "{\"nightFrom\":840}", &bad));
+  TEST_ASSERT_EQUAL_STRING("nightFrom", bad);
+  // JSON round trip.
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_TRUE(doc["night"].as<bool>());
+  TEST_ASSERT_EQUAL(780, doc["nightFrom"].as<int>());
+  TEST_ASSERT_EQUAL(840, doc["nightTo"].as<int>());
+  TEST_ASSERT_EQUAL(50, doc["nightBrightness"].as<int>());
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_TRUE(b.night);
+  TEST_ASSERT_EQUAL_UINT16(780, b.nightFrom);
+  TEST_ASSERT_EQUAL_UINT16(840, b.nightTo);
+  TEST_ASSERT_EQUAL_UINT8(50, b.nightBrightness);
+}
+
 static RotationTiming rot(bool on, uint32_t everySec, uint32_t showSec) {
   RotationTiming t;
   t.enabled = on;
@@ -566,5 +619,6 @@ int main() {
   RUN_TEST(test_rotation_config_change_resets_cycle);
   RUN_TEST(test_rotation_survives_millis_wrap);
   RUN_TEST(test_quiet_clock_phases);
+  RUN_TEST(test_night_mode_config_and_brightness);
   return UNITY_END();
 }

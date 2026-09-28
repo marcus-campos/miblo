@@ -17,6 +17,7 @@ const USAGE = [
   '  status',
   '  mode <overview|limits|sessions> [id]',
   '  rotate <on|off> [every-seconds] [show-seconds] [id] | rotate --status [id]',
+  '  night <on|off> [HH:MM HH:MM] [brightness%] [id] | night --status [id]',
   '  reset <id>',
   '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
@@ -147,6 +148,106 @@ async function rotate(args, store, client) {
   return done ? ok(out) : fail(1, out);
 }
 
+// ---- night: dim the screen between two local times (firmware miblo_config.h) ----
+// Times travel as minutes of the day (0..1439); the window may cross midnight.
+export const NIGHT_BRIGHTNESS = { min: 1, max: 100 };
+const NIGHT_USAGE = 'Usage: night <on|off> [HH:MM HH:MM] [brightness%] [id]  (or: night --status [id])';
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+// -> { patch, id } or { error }. Two HH:MM are start and end; a number (optionally with %) is
+// the night brightness; any other word is the gadget id.
+export function parseNightArgs(args) {
+  const [state, ...rest] = args;
+  if (state !== 'on' && state !== 'off') return { error: `First argument must be "on" or "off".\n${NIGHT_USAGE}` };
+  const times = [];
+  let brightness;
+  let id;
+  for (const a of rest) {
+    const t = /^(\d{1,2})[:h](\d{2})$/.exec(a);
+    if (t) {
+      const h = Number(t[1]);
+      const m = Number(t[2]);
+      if (h > 23 || m > 59) return { error: `Invalid time "${String(a).slice(0, 10)}": use HH:MM from 00:00 to 23:59.` };
+      times.push(h * 60 + m);
+    } else if (/^[+-]?\d+(\.\d+)?%?$/.test(a)) {
+      if (brightness !== undefined) return { error: `Too many numbers: give one night brightness.\n${NIGHT_USAGE}` };
+      brightness = Number(a.replace('%', ''));
+    } else if (id === undefined) {
+      id = a;
+    } else {
+      return { error: `Unexpected argument "${String(a).slice(0, 40)}".\n${NIGHT_USAGE}` };
+    }
+  }
+  if (times.length === 1 || times.length > 2) return { error: `Give both times (start and end), e.g. 22:00 07:00.\n${NIGHT_USAGE}` };
+  if (times.length === 2 && times[0] === times[1]) return { error: 'Start and end times must differ.' };
+  if (brightness !== undefined &&
+      (!Number.isInteger(brightness) || brightness < NIGHT_BRIGHTNESS.min || brightness > NIGHT_BRIGHTNESS.max)) {
+    return { error: `Night brightness must be a whole number from ${NIGHT_BRIGHTNESS.min} to ${NIGHT_BRIGHTNESS.max} (got ${brightness}).` };
+  }
+  const patch = { night: state === 'on' };
+  if (times.length === 2) [patch.nightFrom, patch.nightTo] = times;
+  if (brightness !== undefined) patch.nightBrightness = brightness;
+  return { patch, id };
+}
+
+const describeNight = (n) =>
+  n.night ? `on, ${hhmm(n.nightFrom)}-${hhmm(n.nightTo)} at ${n.nightBrightness}%` : 'off';
+
+async function night(args, store, client) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  const parsed = args[0] === '--status' ? null : parseNightArgs(args);
+  if (parsed?.error) return fail(2, parsed.error);
+  const devices = store.list();
+  if (!devices.length) return fail(2, 'No paired Miblo gadgets. Run /miblo:pair first.');
+  const id = parsed ? parsed.id : args[1];
+  const targets = devices.filter((d) => !id || d.id === id);
+  if (!targets.length) return fail(2, `No paired gadget with id ${cleanId(id)}.`);
+
+  if (!parsed) {
+    const lines = [];
+    for (const d of targets) {
+      const label = `${cleanName(d.name)} (${cleanId(d.id)})`;
+      try {
+        const info = await client.info(d.addr);
+        if (typeof info?.night !== 'boolean') lines.push(`${label}: night mode not supported by this firmware (update it)`);
+        else lines.push(`${label}: night mode ${describeNight(info)}`);
+      } catch {
+        lines.push(`${label}: offline`);
+      }
+    }
+    return ok(lines.join('\n'));
+  }
+
+  const { patch } = parsed;
+  let done = 0;
+  const problems = [];
+  for (const d of targets) {
+    try {
+      await client.setConfig(d.addr, d.token, patch);
+      done++;
+    } catch (e) {
+      const label = cleanName(d.name);
+      if (e.status === 400 && e.data?.field) {
+        const field = String(e.data.field).replace(/[^A-Za-z]/g, '').slice(0, 20);
+        problems.push(field === 'nightFrom' || field === 'nightTo'
+          ? `${label} rejected ${field}: start and end must differ; pass both times.`
+          : field.startsWith('night') ? `${label} rejected ${field}.` : `${label} does not support night mode yet (update its firmware).`);
+      } else if (e.status === 400) {
+        problems.push(`${label} does not support night mode yet (update its firmware).`);
+      } else {
+        problems.push(`${label} is offline.`);
+      }
+    }
+  }
+  const parts = [];
+  if (patch.nightFrom !== undefined) parts.push(`${hhmm(patch.nightFrom)}-${hhmm(patch.nightTo)}`);
+  if (patch.nightBrightness !== undefined) parts.push(`${patch.nightBrightness}%`);
+  const what = patch.night ? `Night mode on${parts.length ? ` (${parts.join(', ')})` : ''}` : 'Night mode off';
+  const out = [`${what} on ${done} gadget(s).`, ...problems].join('\n');
+  return done ? ok(out) : fail(1, out);
+}
+
 export async function run(argv, deps) {
   const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus, locale } = deps;
   const store = new DeviceStore(dataDir);
@@ -224,6 +325,8 @@ export async function run(argv, deps) {
     }
     case 'rotate':
       return rotate(args, store, client);
+    case 'night':
+      return night(args, store, client);
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);

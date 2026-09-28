@@ -88,6 +88,15 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn16(v, 10, 3600, next.rotateEverySec);
     } else if (strcmp(k, "rotateShowSec") == 0) {
       ok = intIn16(v, 3, 300, next.rotateShowSec);
+    } else if (strcmp(k, "night") == 0) {
+      ok = v.is<bool>();
+      if (ok) next.night = v.as<bool>();
+    } else if (strcmp(k, "nightFrom") == 0) {
+      ok = intIn16(v, 0, 1439, next.nightFrom);
+    } else if (strcmp(k, "nightTo") == 0) {
+      ok = intIn16(v, 0, 1439, next.nightTo);
+    } else if (strcmp(k, "nightBrightness") == 0) {
+      ok = intIn(v, 1, 100, next.nightBrightness);
     }
     if (!ok) {
       bad = k;
@@ -98,6 +107,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
   if (!bad && next.rotateShowSec >= next.rotateEverySec) {
     bad = patch["rotateShowSec"].isNull() ? "rotateEverySec" : "rotateShowSec";
   }
+  // An empty night window (start == end) is meaningless: reject whichever end the patch moved.
+  if (!bad && next.nightFrom == next.nightTo) bad = patch["nightTo"].isNull() ? "nightFrom" : "nightTo";
   if (bad) {
     if (badField) *badField = bad;
     return false;
@@ -120,6 +131,10 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["rotate"] = cfg.rotate;
   out["rotateEverySec"] = cfg.rotateEverySec;
   out["rotateShowSec"] = cfg.rotateShowSec;
+  out["night"] = cfg.night;
+  out["nightFrom"] = cfg.nightFrom;
+  out["nightTo"] = cfg.nightTo;
+  out["nightBrightness"] = cfg.nightBrightness;
 }
 
 void configToStored(const Config& cfg, JsonObject out) {
@@ -148,6 +163,18 @@ RotationTiming rotationTiming(const Config& cfg) {
   t.everyMs = (uint32_t)cfg.rotateEverySec * 1000;
   t.showMs = (uint32_t)cfg.rotateShowSec * 1000;
   return t;
+}
+
+bool nightActive(const Config& cfg, int minuteOfDay) {
+  if (!cfg.night || minuteOfDay < 0 || cfg.nightFrom == cfg.nightTo) return false;
+  const int m = minuteOfDay % 1440;
+  if (cfg.nightFrom < cfg.nightTo) return m >= cfg.nightFrom && m < cfg.nightTo;
+  return m >= cfg.nightFrom || m < cfg.nightTo;  // crosses midnight (22:00 -> 07:00)
+}
+
+uint8_t brightnessAt(const Config& cfg, int minuteOfDay) {
+  if (!nightActive(cfg, minuteOfDay)) return cfg.brightness;
+  return cfg.nightBrightness < cfg.brightness ? cfg.nightBrightness : cfg.brightness;
 }
 
 BootDecision decideBoot(uint8_t storedCount, bool powerOn) {

@@ -42,6 +42,23 @@ export function startFakeDevice({
     if (merged.rotateShowSec >= merged.rotateEverySec) return 'rotateShowSec' in patch ? 'rotateShowSec' : 'rotateEverySec';
     return null;
   };
+  // Night mode, as /api/info reports it and /api/config validates it (miblo_config.cpp).
+  const nightCfg = () => ({
+    night: state.config.night ?? false,
+    nightFrom: state.config.nightFrom ?? 1320,
+    nightTo: state.config.nightTo ?? 420,
+    nightBrightness: state.config.nightBrightness ?? 10,
+  });
+  const badNightField = (patch) => {
+    const intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+    if ('night' in patch && typeof patch.night !== 'boolean') return 'night';
+    if ('nightFrom' in patch && !intIn(patch.nightFrom, 0, 1439)) return 'nightFrom';
+    if ('nightTo' in patch && !intIn(patch.nightTo, 0, 1439)) return 'nightTo';
+    if ('nightBrightness' in patch && !intIn(patch.nightBrightness, 1, 100)) return 'nightBrightness';
+    const merged = { ...nightCfg(), ...patch };
+    if (merged.nightFrom === merged.nightTo) return 'nightTo' in patch ? 'nightTo' : 'nightFrom';
+    return null;
+  };
   const asJson = (buf) => {
     const text = buf.toString('utf8');
     try { return text ? JSON.parse(text) : {}; } catch { return null; }
@@ -59,7 +76,7 @@ export function startFakeDevice({
     if (req.method === 'GET' && req.url === '/api/info') {
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
-      return send(200, { id, name, fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation() });
+      return send(200, { id, name, fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg() });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -84,7 +101,7 @@ export function startFakeDevice({
     if (!authed(req)) return send(401, { error: 'unauthorized' });
     if (req.method === 'POST' && req.url === '/api/state') { state.snapshots.push(body); return send(200, { ok: true }); }
     if (req.method === 'POST' && req.url === '/api/config') {
-      const bad = badRotationField(body ?? {});
+      const bad = badRotationField(body ?? {}) ?? badNightField(body ?? {});
       if (bad) return send(400, { error: 'invalid', field: bad });  // all-or-nothing, like the firmware
       Object.assign(state.config, body);
       return send(200, { ok: true });

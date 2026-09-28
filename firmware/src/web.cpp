@@ -331,7 +331,7 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName(), 7400);
+  pageStart(out, lang, deviceName(), 8600);
   out += F("<h1>");
   appendEscaped(out, deviceName());
   out += F("</h1><p class=\"m\">");
@@ -376,7 +376,16 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::WebRotateEvery).c_str());
   out += F("</label><input id=\"rotateEverySec\" type=\"number\" min=\"10\" max=\"3600\"><label>");
   appendEscaped(out, tr(lang, S::WebRotateShow).c_str());
-  out += F("</label><input id=\"rotateShowSec\" type=\"number\" min=\"3\" max=\"300\"><label>");
+  out += F("</label><input id=\"rotateShowSec\" type=\"number\" min=\"3\" max=\"300\"><label><input id=\"night\" "
+           "type=\"checkbox\">");
+  appendEscaped(out, tr(lang, S::WebNight).c_str());
+  out += F("</label><label>");
+  appendEscaped(out, tr(lang, S::WebNightFrom).c_str());
+  out += F("</label><input id=\"nightFrom\" type=\"time\" required><label>");
+  appendEscaped(out, tr(lang, S::WebNightTo).c_str());
+  out += F("</label><input id=\"nightTo\" type=\"time\" required><label>");
+  appendEscaped(out, tr(lang, S::WebNightBrightness).c_str());
+  out += F("</label><input id=\"nightBrightness\" type=\"range\" min=\"1\" max=\"100\"><label>");
   appendEscaped(out, tr(lang, S::WebDeviceName).c_str());
   out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
   appendEscaped(out, ctx.ident.defaultName);
@@ -416,11 +425,15 @@ static void settingsPage() {
   out += FPSTR(kTzJs);
   out += F(
       "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
-      "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];else e.value=C[k];}"
-      "function val(k){const e=$(k);return e.type==='checkbox'?e.checked:"
-      "(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
+      // Night times travel as minutes of the day; the page shows them as HH:MM.
+      "const p2=n=>String(n).padStart(2,'0');"
+      "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
+      "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
+      "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
+      "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
-      "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
+      "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
+      "'nightBrightness','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"

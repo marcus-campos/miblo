@@ -226,6 +226,71 @@ test('rotate reports a device-side rejection (show not shorter than the stored p
   }
 });
 
+test('night turns night mode on and off with its window and brightness', async () => {
+  const dev = await startFakeDevice();
+  const d = deps();
+  try {
+    assert.equal((await run(['night', 'on'], d)).code, 2);  // nothing paired yet
+    await run(['pair', dev.addr, '4827'], d);
+    assert.match((await run(['night', '--status'], d)).out, /Miblo-4F2A \(miblo-4f2a\): night mode off/);
+
+    const on = await run(['night', 'on', '23:30', '06:15', '8%'], d);
+    assert.equal(on.code, 0);
+    assert.match(on.out, /Night mode on \(23:30-06:15, 8%\) on 1 gadget/);
+    assert.deepEqual(
+      { n: dev.state.config.night, f: dev.state.config.nightFrom, t: dev.state.config.nightTo, b: dev.state.config.nightBrightness },
+      { n: true, f: 23 * 60 + 30, t: 6 * 60 + 15, b: 8 });
+    assert.match((await run(['night', '--status', 'miblo-4f2a'], d)).out, /night mode on, 23:30-06:15 at 8%/);
+
+    const off = await run(['night', 'off', 'miblo-4f2a'], d);
+    assert.match(off.out, /Night mode off on 1 gadget/);
+    assert.equal(dev.state.config.night, false);
+    assert.equal(dev.state.config.nightFrom, 23 * 60 + 30);  // window kept
+    assert.equal((await run(['night', 'on', 'nope'], d)).code, 2);  // unknown id
+  } finally {
+    await dev.close();
+  }
+});
+
+test('night validates arguments client-side with clear messages', async () => {
+  const d = deps();
+  const cases = [
+    [[], /"on" or "off"/],
+    [['on', '22:00'], /Give both times/],
+    [['on', '24:00', '07:00'], /Invalid time "24:00"/],
+    [['on', '22:60', '07:00'], /Invalid time/],
+    [['on', '22:00', '22:00'], /must differ/],
+    [['on', '0'], /from 1 to 100 \(got 0\)/],
+    [['on', '101%'], /from 1 to 100/],
+    [['on', '10', '20'], /Too many numbers/],
+    [['on', 'a', 'b'], /Unexpected argument "b"/],
+  ];
+  for (const [args, re] of cases) {
+    const r = await run(['night', ...args], d);
+    assert.equal(r.code, 2, args.join(' '));
+    assert.match(r.out, re, args.join(' '));
+  }
+});
+
+test('night reports a device-side rejection (window collapsing onto the stored end)', async () => {
+  const dev = await startFakeDevice();
+  const d = deps();
+  try {
+    await run(['pair', dev.addr, '4827'], d);
+    // The CLI always sends both ends; a patch moving only the start onto the stored end (07:00)
+    // is rejected whole, like the firmware does.
+    const r = await fetch(`http://${dev.addr}/api/config`, {
+      method: 'POST', headers: { authorization: `Bearer ${dev.state.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ night: true, nightFrom: 420 }),
+    });
+    assert.equal(r.status, 400);
+    assert.equal((await r.json()).field, 'nightFrom');
+    assert.equal(dev.state.config.night, undefined);
+  } finally {
+    await dev.close();
+  }
+});
+
 test('reset sends the command and forgets the pairing', async () => {
   const dev = await startFakeDevice();
   const d = deps();

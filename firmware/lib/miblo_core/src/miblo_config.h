@@ -27,6 +27,10 @@ struct Config {
   bool rotate = false;           // Overview mode: alternate with Limits now and then
   uint16_t rotateEverySec = 60;  // 10..3600: period between two Limits slots
   uint16_t rotateShowSec = 10;   // 3..300 and < rotateEverySec: how long Limits stays up
+  bool night = false;            // night mode: dim the screen between nightFrom and nightTo
+  uint16_t nightFrom = 22 * 60;  // local minute of the day, 0..1439
+  uint16_t nightTo = 7 * 60;     // 0..1439, != nightFrom; may be earlier than nightFrom (overnight)
+  uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
 };
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
@@ -41,6 +45,10 @@ void restoreStoredLang(Config& cfg, JsonObjectConst stored);
 AlertTiming alertTiming(const Config& cfg);
 // Enabled only when rotation is on and the device is in Overview mode.
 RotationTiming rotationTiming(const Config& cfg);
+// Backlight % for the local time. `minuteOfDay`: 0..1439, or -1 when the time is unknown (no
+// night mode then). In the night window it is min(nightBrightness, brightness).
+bool nightActive(const Config& cfg, int minuteOfDay);
+uint8_t brightnessAt(const Config& cfg, int minuteOfDay);
 
 // ---- Hard reset by quick power cycles ----
 // Each power-on with less than 10 s of uptime counts; the 6th in a row erases everything.

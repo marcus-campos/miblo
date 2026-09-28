@@ -25,9 +25,9 @@ static bool authorized() {
 }
 
 static void handleInfo() {
-  // 19 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
-  // ESP8266; 768 leaves room for future caps.
-  StaticJsonDocument<768> doc;
+  // 26 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the
+  // ESP8266; 1024 leaves room for future caps.
+  StaticJsonDocument<1024> doc;
   doc["id"] = ctx.ident.id;
   doc["name"] = deviceName();
   doc["fw"] = MIBLO_FW_VERSION;
@@ -58,6 +58,11 @@ static void handleInfo() {
   doc["rotate"] = ctx.cfg.rotate;
   doc["rotateEverySec"] = ctx.cfg.rotateEverySec;
   doc["rotateShowSec"] = ctx.cfg.rotateShowSec;
+  // Night mode (read back by `/miblo:night`).
+  doc["night"] = ctx.cfg.night;
+  doc["nightFrom"] = ctx.cfg.nightFrom;
+  doc["nightTo"] = ctx.cfg.nightTo;
+  doc["nightBrightness"] = ctx.cfg.nightBrightness;
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

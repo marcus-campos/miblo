@@ -126,6 +126,10 @@ enum class S : uint8_t {
   WebAuto,              // settings page: automatic language option ("Auto")
   Compacting,           // activity while Claude Code compacts the conversation
   WebSameNetwork,       // portal: the gadget must join the same network as the computer
+  WebNight,             // settings: night mode checkbox
+  WebNightFrom,         // settings: night mode start time
+  WebNightTo,           // settings: night mode end time
+  WebNightBrightness,   // settings: brightness during the night window
   Count
 };
 

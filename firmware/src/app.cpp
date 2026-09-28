@@ -88,8 +88,27 @@ static screens::Clock clockNow() {
   return c;
 }
 
+static uint8_t backlight = 0;  // % last sent to the board (0 = not yet)
+
+// Local minute of the day, or -1 while the time is unknown.
+static int minuteOfDay() {
+  time_t now = time(nullptr);
+  if (now <= 1600000000) return -1;
+  struct tm lt;
+  localtime_r(&now, &lt);
+  return lt.tm_hour * 60 + lt.tm_min;
+}
+
+// Brightness for the current time (night mode); only touches the board when it changes.
+static void updateBacklight() {
+  const uint8_t want = miblo::brightnessAt(ctx.cfg, minuteOfDay());
+  if (want == backlight) return;
+  backlight = want;
+  board::setBacklight(want);
+}
+
 static void applyConfig() {
-  board::setBacklight(ctx.cfg.brightness);
+  updateBacklight();
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 
@@ -172,6 +191,7 @@ void loop() {
   lastFrameMs = now;
 
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
+  updateBacklight();
   static const miblo::Snapshot kEmpty{};
   const miblo::AlertView& alert = ctx.alerts.update(ctx.hasSnapshot ? ctx.snap : kEmpty, now);
 

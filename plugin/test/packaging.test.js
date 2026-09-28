@@ -61,3 +61,13 @@ for (const name of COMMANDS) {
     assert.ok(line && line.length > 'description:'.length, name);
   });
 }
+
+test('the /miblo:update command references the CLI and pre-approves only miblo.js and the two plugin-update commands', () => {
+  const md = fs.readFileSync(path.join(root, 'commands/update.md'), 'utf8');
+  assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
+  assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
+  assert.match(md, /\$ARGUMENTS/);
+  assert.match(md, /^description: \S/m);
+  const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+  assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+});

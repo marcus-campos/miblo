@@ -71,3 +71,18 @@ test('discover collects responses until the timeout and dedupes by id', async ()
   const found = await discover({ timeoutMs: 50, socketFactory: () => sock });
   assert.deepEqual(found, [{ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.42:80' }]);
 });
+
+test('rejects truncated A record', () => {
+  const h = Buffer.alloc(12);
+  h.writeUInt16BE(0x8400, 2);
+  h.writeUInt16BE(1, 6);
+  const name = enc('miblo-4f2a.local');
+  const head = Buffer.alloc(10);
+  head.writeUInt16BE(1, 0);
+  head.writeUInt16BE(1, 2);
+  head.writeUInt32BE(120, 4);
+  head.writeUInt16BE(4, 8);
+  const truncatedData = Buffer.from([192]);
+  const buf = Buffer.concat([h, name, head, truncatedData]);
+  assert.throws(() => parseMessage(buf), /truncated record/);
+});

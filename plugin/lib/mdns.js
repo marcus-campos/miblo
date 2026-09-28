@@ -51,6 +51,8 @@ export function parseMessage(buf) {
     const type = buf.readUInt16BE(next);
     const rdlen = buf.readUInt16BE(next + 8);
     const rd = next + 10;
+    if (rd + rdlen > buf.length) throw new Error('truncated record');
+    if (type === T_A && rdlen !== 4) throw new Error('bad A record');
     let data = null;
     if (type === T_PTR) data = readName(buf, rd).name;
     else if (type === T_SRV) data = { port: buf.readUInt16BE(rd + 4), target: readName(buf, rd + 6).name };
@@ -91,13 +93,13 @@ export function discover({ service = MDNS_SERVICE, timeoutMs = 2000, socketFacto
     const finish = () => {
       if (finished) return;
       finished = true;
-      try { sock.close(); } catch { /* já fechado */ }
+      try { sock.close(); } catch { /* already closed */ }
       const byId = new Map();
       for (const d of resolveDevices(records, service)) byId.set(d.id, d);
       resolve([...byId.values()]);
     };
     sock.on('message', (msg) => {
-      try { records.push(...parseMessage(msg)); } catch { /* pacote inválido */ }
+      try { records.push(...parseMessage(msg)); } catch { /* invalid packet */ }
     });
     sock.on('error', finish);
     sock.bind(0, () => {

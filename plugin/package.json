@@ -2,6 +2,6 @@
   "name": "miblo-plugin",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": { "node": ">=20" },
   "scripts": { "test": "node --test" }
 }

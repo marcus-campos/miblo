@@ -13,6 +13,8 @@ test('manifest and marketplace agree on the plugin name', () => {
   const mk = read('../.claude-plugin/marketplace.json');
   assert.equal(mk.plugins[0].name, 'miblo');
   assert.equal(mk.plugins[0].source, './plugin');
+  assert.equal(mk.description, 'Miblo desk gadget for Claude Code: session status, alerts and usage limits.');
+  assert.equal(read('package.json').engines.node, '>=20');
 });
 
 test('every tracked event runs hook.js asynchronously', () => {

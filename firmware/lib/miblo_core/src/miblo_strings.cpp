@@ -98,7 +98,7 @@ static const char kEn[] MIBLO_ROM =
     "No limits received yet: run /miblo pair in Claude Code\0"  // WebLimitsHint
     "Paired computers: %u\0"  // WebPairedCount
     "Firmware version\0"  // WebVersion
-    "%u more quick restarts to reset\0"  // HardResetCountdown
+    "Quick restarts left to reset: %u\0"  // HardResetCountdown
     "Leave it on to cancel\0";  // HardResetCancelHint
 
 static const char kPtBR[] MIBLO_ROM =
@@ -193,7 +193,7 @@ static const char kPtBR[] MIBLO_ROM =
     "Nenhum limite recebido ainda: rode /miblo pair no Claude Code\0"  // WebLimitsHint
     "Computadores pareados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
-    "Mais %u reinícios rápidos para resetar\0"  // HardResetCountdown
+    "Reinícios rápidos restantes para resetar: %u\0"  // HardResetCountdown
     "Deixe ligado para cancelar\0";  // HardResetCancelHint
 
 static const char kPtPT[] MIBLO_ROM =
@@ -288,7 +288,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Ainda não chegaram limites: execute /miblo pair no Claude Code\0"  // WebLimitsHint
     "Computadores emparelhados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
-    "Mais %u reinícios rápidos para repor\0"  // HardResetCountdown
+    "Reinícios rápidos restantes para repor: %u\0"  // HardResetCountdown
     "Deixe ligado para cancelar\0";  // HardResetCancelHint
 
 static const char kEs[] MIBLO_ROM =
@@ -383,7 +383,7 @@ static const char kEs[] MIBLO_ROM =
     "Aún no llegan límites: ejecuta /miblo pair en Claude Code\0"  // WebLimitsHint
     "Ordenadores vinculados: %u\0"  // WebPairedCount
     "Versión del firmware\0"  // WebVersion
-    "%u reinicios rápidos más para restablecer\0"  // HardResetCountdown
+    "Reinicios rápidos restantes para restablecer: %u\0"  // HardResetCountdown
     "Déjalo encendido para cancelar\0";  // HardResetCancelHint
 
 static const char kFr[] MIBLO_ROM =
@@ -478,7 +478,7 @@ static const char kFr[] MIBLO_ROM =
     "Aucune limite reçue : lancez /miblo pair dans Claude Code\0"  // WebLimitsHint
     "Ordinateurs appairés : %u\0"  // WebPairedCount
     "Version du firmware\0"  // WebVersion
-    "Encore %u redémarrages rapides pour réinitialiser\0"  // HardResetCountdown
+    "Redémarrages rapides restants avant réinitialisation : %u\0"  // HardResetCountdown
     "Laissez-le allumé pour annuler\0";  // HardResetCancelHint
 
 static const char kIt[] MIBLO_ROM =
@@ -573,7 +573,7 @@ static const char kIt[] MIBLO_ROM =
     "Nessun limite ricevuto: esegui /miblo pair in Claude Code\0"  // WebLimitsHint
     "Computer abbinati: %u\0"  // WebPairedCount
     "Versione firmware\0"  // WebVersion
-    "Ancora %u riavvii rapidi per il reset\0"  // HardResetCountdown
+    "Riavvii rapidi rimanenti per il reset: %u\0"  // HardResetCountdown
     "Lascialo acceso per annullare\0";  // HardResetCancelHint
 
 static const char kDe[] MIBLO_ROM =
@@ -668,7 +668,7 @@ static const char kDe[] MIBLO_ROM =
     "Noch keine Limits empfangen: führe /miblo pair in Claude Code aus\0"  // WebLimitsHint
     "Gekoppelte Computer: %u\0"  // WebPairedCount
     "Firmware-Version\0"  // WebVersion
-    "Noch %u schnelle Neustarts zum Zurücksetzen\0"  // HardResetCountdown
+    "Verbleibende schnelle Neustarts bis zum Zurücksetzen: %u\0"  // HardResetCountdown
     "Eingeschaltet lassen zum Abbrechen\0";  // HardResetCancelHint
 
 static const char kRu[] MIBLO_ROM =
@@ -763,7 +763,7 @@ static const char kRu[] MIBLO_ROM =
     "Лимиты ещё не получены: выполните /miblo pair в Claude Code\0"  // WebLimitsHint
     "Сопряжённых компьютеров: %u\0"  // WebPairedCount
     "Версия прошивки\0"  // WebVersion
-    "Ещё %u быстрых перезапуска для сброса\0"  // HardResetCountdown
+    "Осталось быстрых перезапусков до сброса: %u\0"  // HardResetCountdown
     "Оставьте включённым для отмены\0";  // HardResetCancelHint
 
 static const char kZh[] MIBLO_ROM =

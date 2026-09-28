@@ -93,7 +93,7 @@ static void test_power_cycle_reset_counter() {
   TEST_ASSERT_TRUE(d.factoryReset);
   TEST_ASSERT_EQUAL_UINT8(0, d.nextCount);
   TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
-  TEST_ASSERT_EQUAL_UINT8(kPowerCyclesForReset, 6);
+  TEST_ASSERT_EQUAL_UINT8(6, kPowerCyclesForReset);
 }
 
 static void test_non_power_on_boot_clears_sequence() {

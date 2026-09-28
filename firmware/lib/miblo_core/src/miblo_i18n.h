@@ -99,7 +99,7 @@ enum class S : uint8_t {
   WebLimitsHint,
   WebPairedCount,
   WebVersion,
-  HardResetCountdown,   // "%u more quick restarts to reset"
+  HardResetCountdown,   // "Quick restarts left to reset: %u"
   HardResetCancelHint,  // "Leave it on to cancel"
   Count
 };

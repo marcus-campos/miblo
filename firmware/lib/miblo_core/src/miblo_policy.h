@@ -39,7 +39,7 @@ enum class ScreenId : uint8_t {
   AlertFlash,
   AlertHero,
   Main,           // modo do aparelho (Visão geral, Limites ou Sessões)
-  HardResetCountdown  // "N more quick restarts to reset" during the first 10 s of a quick boot
+  HardResetCountdown  // quick-restarts-left countdown during the first 10 s of a quick boot
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;

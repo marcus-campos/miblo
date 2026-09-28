@@ -100,14 +100,17 @@ void setup() {
 
   board::begin();
   screens::bind(board::canvas());
-  storage::loadConfig(ctx.cfg);  // loaded first: the reset message below uses its language
   if (boot.factoryReset) {
+    // Escape hatch: touch as little as possible (a corrupt config must not block the reset), so
+    // the message is always in English. Keep it readable for a moment, then wipe and restart.
     screens::reset();
-    screens::canvas().text(screens::X(120), screens::Y(124), screens::t(uiLang(), S::WebFactoryReset),
+    screens::canvas().text(screens::X(120), screens::Y(124), screens::t(Lang::En, S::WebFactoryReset),
                            ui::Font::Title, ui::color::RED, ui::Align::Center, screens::X(232));
+    delay(1500);
     storage::factoryReset();  // erases config, pairings and SDK Wi-Fi, then restarts into setup
   }
 
+  storage::loadConfig(ctx.cfg);
   storage::loadTokens(ctx.tokens);
   applyConfig();
   char code[5];

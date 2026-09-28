@@ -40,7 +40,7 @@ static void test_hard_reset_countdown_content() {
   fc.clearLog();
   screens::hardResetCountdown(Lang::En, 2);
   TEST_ASSERT_TRUE(fc.drew("2"));
-  TEST_ASSERT_TRUE(fc.drew("2 more quick"));  // may wrap onto two lines
+  TEST_ASSERT_TRUE(fc.drew("reset: 2"));  // may wrap onto two lines
   TEST_ASSERT_TRUE(fc.drew("Leave it on to cancel"));
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
   fc.clearLog();

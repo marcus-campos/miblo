@@ -1,0 +1,101 @@
+<style>
+  .row{display:flex;gap:22px;flex-wrap:wrap;justify-content:center;margin-top:16px}
+  .dev{background:#f2a516;border-radius:34px;padding:30px 30px 40px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+  .scr{width:240px;height:240px;background:#0b0b0d;overflow:hidden;position:relative;font-family:ui-monospace,Menlo,monospace;color:#eee;transform:scale(1.3);transform-origin:top left;margin:0 72px 72px 0}
+  .t{position:absolute}
+  .bar{height:8px;background:#262629;border-radius:4px;overflow:hidden}
+  .bar i{display:block;height:100%;border-radius:4px}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .mini{display:flex;align-items:center;font-size:10px;color:#aaa;margin-bottom:4px;white-space:nowrap;overflow:hidden}
+  .mini b{color:#ddd;font-weight:600;margin-right:6px}
+  .col{max-width:360px}
+  .col h3{margin-top:10px}
+  @keyframes pulse{50%{opacity:.35}}
+  .pulse{animation:pulse 1.2s infinite}
+  table.p{border-collapse:collapse;margin:14px auto;font-size:14px}
+  table.p td{padding:4px 12px;border-bottom:1px solid rgba(128,128,128,.25)}
+</style>
+
+<h2>Visão geral adaptativa: A + B</h2>
+<p class="subtitle">A mesma tela muda de "modo" conforme a situação. Clique no que quiser comentar.</p>
+
+<div class="row">
+
+<!-- 1. ação necessária -->
+<div class="col option" data-choice="attention" onclick="toggleSelect(this)" style="display:block;padding:12px">
+ <div class="dev"><div class="scr">
+  <div class="t" style="left:0;right:0;top:0;height:4px;background:#f5a524" class="pulse"></div>
+  <div class="t" style="left:12px;top:12px;font-size:10px;color:#f5a524;letter-spacing:1px"><span class="pulse">● PRECISA DE VOCÊ</span></div>
+  <div class="t" style="right:12px;top:12px;font-size:10px;color:#777">14:32</div>
+  <div class="t" style="left:12px;top:30px;font-size:24px;font-weight:700">api-server</div>
+  <div class="t" style="left:12px;top:62px;font-size:12px;color:#f5a524">Pediu permissão: Bash</div>
+  <div class="t" style="left:12px;top:80px;font-size:10px;color:#888">esperando há 0:42</div>
+  <div class="t" style="left:12px;right:12px;top:104px;border-top:1px solid #222;padding-top:8px">
+    <div class="mini"><span class="dot" style="background:#f5a524"></span><b>infra</b>fez uma pergunta</div>
+    <div class="mini"><span class="dot" style="background:#4ade80"></span><b>front-app</b>Editando… 3:12</div>
+    <div class="mini"><span class="dot" style="background:#4ade80"></span><b>worker</b>Rodando testes</div>
+    <div class="mini" style="color:#666">+1 ociosa</div>
+  </div>
+  <div class="t" style="left:12px;right:12px;bottom:10px;display:flex;gap:10px;font-size:9px;color:#999">
+    <div style="flex:1">5h 62%<div class="bar" style="height:4px;margin-top:2px"><i style="width:62%;background:#d97757"></i></div></div>
+    <div style="flex:1">7d 38%<div class="bar" style="height:4px;margin-top:2px"><i style="width:38%;background:#8b8bf5"></i></div></div>
+  </div>
+ </div></div>
+ <h3>1 · Precisa de você</h3>
+ <p>A sessão mais urgente vira o <b>herói</b> da tela, com nome grande, o motivo e há quanto tempo está esperando. Abaixo vêm as outras sessões em lista compacta, e os limites encolhem para o rodapé. Uma faixa âmbar pisca no topo.</p>
+</div>
+
+<!-- 2. trabalhando -->
+<div class="col option" data-choice="working" onclick="toggleSelect(this)" style="display:block;padding:12px">
+ <div class="dev"><div class="scr">
+  <div class="t" style="left:12px;top:12px;font-size:10px;color:#4ade80;letter-spacing:1px">● 3 RODANDO</div>
+  <div class="t" style="right:12px;top:12px;font-size:10px;color:#777">14:32</div>
+  <div class="t" style="left:12px;right:12px;top:34px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:#aaa">Sessão 5h</span><span style="font-size:28px;font-weight:700">62%</span></div>
+    <div class="bar" style="height:10px;margin-top:4px"><i style="width:62%;background:#d97757"></i></div>
+    <div style="font-size:10px;color:#777;margin-top:4px">reseta 16:42 · em 2h10</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:12px"><span style="font-size:12px;color:#aaa">Semana</span><span style="font-size:20px;font-weight:700">38%</span></div>
+    <div class="bar" style="height:6px;margin-top:4px"><i style="width:38%;background:#8b8bf5"></i></div>
+    <div style="font-size:10px;color:#777;margin-top:4px">reseta qui 09:00</div>
+  </div>
+  <div class="t" style="left:12px;right:12px;bottom:10px;border-top:1px solid #222;padding-top:7px">
+    <div class="mini"><span class="dot" style="background:#4ade80"></span><b>front-app</b>Editando…</div>
+    <div class="mini"><span class="dot" style="background:#4ade80"></span><b>worker</b>Bash · npm test</div>
+  </div>
+ </div></div>
+ <h3>2 · Trabalhando (nada pendente)</h3>
+ <p>Os <b>limites ficam grandes</b>, e as sessões rodando aparecem como uma lista curta embaixo com o que cada uma está fazendo. Quando há mais sessões do que cabem, a lista vai rotacionando.</p>
+</div>
+
+<!-- 3. ocioso -->
+<div class="col option" data-choice="idle" onclick="toggleSelect(this)" style="display:block;padding:12px">
+ <div class="dev"><div class="scr">
+  <div class="t" style="left:12px;top:12px;font-size:10px;color:#60a5fa;letter-spacing:1px">✓ TUDO PRONTO</div>
+  <div class="t" style="right:12px;top:12px;font-size:10px;color:#777">14:32</div>
+  <div class="t" style="left:12px;right:12px;top:34px">
+    <div style="display:flex;justify-content:space-between;align-items:baseline"><span style="font-size:12px;color:#aaa">Sessão 5h</span><span style="font-size:28px;font-weight:700">62%</span></div>
+    <div class="bar" style="height:10px;margin-top:4px"><i style="width:62%;background:#d97757"></i></div>
+    <div style="font-size:10px;color:#777;margin-top:4px">reseta 16:42 · em 2h10</div>
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:12px"><span style="font-size:12px;color:#aaa">Semana</span><span style="font-size:20px;font-weight:700">38%</span></div>
+    <div class="bar" style="height:6px;margin-top:4px"><i style="width:38%;background:#8b8bf5"></i></div>
+    <div style="font-size:10px;color:#777;margin-top:4px">reseta qui 09:00</div>
+  </div>
+  <div class="t" style="left:12px;right:12px;bottom:10px;border-top:1px solid #222;padding-top:7px;font-size:10px;color:#888">
+    <div>docs terminou há 2 min</div>
+    <div style="margin-top:4px;color:#666">hoje ▲1.2M ▼310k tokens</div>
+  </div>
+ </div></div>
+ <h3>3 · Tudo pronto / ocioso</h3>
+ <p>Mesmo layout de limites grandes. No rodapé aparecem a última sessão que terminou e o consumo de tokens do dia.</p>
+</div>
+
+</div>
+
+<h3 style="margin-top:24px">Quem vira o "herói" (ordem de prioridade)</h3>
+<table class="p">
+ <tr><td>1</td><td><span class="dot" style="background:#f5a524"></span>Pediu permissão</td><td>bloqueada até você aprovar</td></tr>
+ <tr><td>2</td><td><span class="dot" style="background:#f5a524"></span>Fez uma pergunta</td><td>bloqueada até você responder</td></tr>
+ <tr><td>3</td><td><span class="dot" style="background:#60a5fa"></span>Terminou (ainda não vista)</td><td>fica em destaque por alguns minutos até você mandar o próximo prompt</td></tr>
+ <tr><td>4</td><td><span class="dot" style="background:#4ade80"></span>Rodando</td><td>entra na lista, sem herói</td></tr>
+</table>
+<p class="subtitle">Empate: a que está esperando há mais tempo ganha. O "Terminou" também vira herói? Na minha proposta, sim: dispara um flash azul curto e depois fica na lista. Me diga se prefere que só permissão e pergunta roubem a tela.</p>

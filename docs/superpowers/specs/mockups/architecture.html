@@ -1,0 +1,62 @@
+<style>
+  .arch{display:flex;gap:26px;align-items:stretch;justify-content:center;flex-wrap:wrap;margin-top:16px}
+  .zone{border:2px dashed rgba(128,128,128,.45);border-radius:14px;padding:14px 16px;min-width:300px;max-width:470px}
+  .zone>h3{margin:0 0 10px}
+  .box{border-radius:10px;padding:9px 12px;margin:8px 0;border:1px solid rgba(128,128,128,.35);background:rgba(128,128,128,.08)}
+  .box b{display:block;font-size:14px}
+  .box span{font-size:12.5px;opacity:.8}
+  .box.cc{background:rgba(217,119,87,.14);border-color:#d97757}
+  .box.dm{background:rgba(96,165,250,.12);border-color:#60a5fa}
+  .box.fw{background:rgba(74,222,128,.12);border-color:#4ade80}
+  .sub{margin-left:14px}
+  .flow{display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px;font-size:12.5px;min-width:150px;text-align:center}
+  .flow .a{font-size:26px;opacity:.7}
+  code{font-size:12px}
+</style>
+
+<h2>Arquitetura: seção 1</h2>
+<p class="subtitle">Tudo roda na rede local. As peças coloridas são o que vamos construir.</p>
+
+<div class="arch">
+ <div class="zone">
+  <h3>💻 Computador (macOS / Windows / Linux)</h3>
+  <div class="box">
+   <b>Claude Code</b><span>cada terminal = 1 sessão</span>
+  </div>
+  <div style="text-align:center;opacity:.7;font-size:12px">↓ hooks: SessionStart · UserPromptSubmit · PreToolUse · PostToolUse · Notification · Stop · SessionEnd</div>
+  <div class="box cc">
+   <b>① hook.js (plugin)</b><span>minúsculo: lê o evento e repassa para o serviço em <code>127.0.0.1</code>. Sobe o serviço se ele não estiver rodando. <b>Nunca trava o Claude</b> (timeout de 300ms, sempre sai com sucesso).</span>
+  </div>
+  <div style="text-align:center;opacity:.7">↓</div>
+  <div class="box dm">
+   <b>② Serviço "bridge" (Node.js, sem dependências)</b>
+   <div class="sub">
+    <span>• <b>SessionTracker</b>: estado de cada sessão (rodando / permissão / pergunta / terminou / ociosa)</span><br>
+    <span>• <b>TranscriptReader</b>: tokens, modelo e % de contexto a partir do <code>.jsonl</code></span><br>
+    <span>• <b>UsageClient</b>: limites de 5h/7d a cada 60s (degrada com elegância se falhar)</span><br>
+    <span>• <b>DeviceManager</b>: acha os gadgets (mDNS), pareia e envia</span>
+   </div>
+   <span style="display:block;margin-top:6px">Desliga sozinho após 30 min sem sessões.</span>
+  </div>
+  <div class="box cc">
+   <b>③ Comandos /gadget</b><span><code>/gadget pair</code> · <code>/gadget status</code> · <code>/gadget update</code> (atualiza o firmware)</span>
+  </div>
+ </div>
+
+ <div class="flow">
+  <div class="a">⟶</div>
+  <div><b>HTTP na rede local</b><br>snapshot JSON completo<br>a cada mudança + a cada 10s</div>
+  <div class="a">⟵</div>
+  <div>mDNS anuncia<br><code>_cgadget._tcp</code></div>
+ </div>
+
+ <div class="zone">
+  <h3>🟧 Gadget (ESP8266 + ST7789)</h3>
+  <div class="box fw"><b>Setup de WiFi</b><span>1ª vez: cria a rede "XXX-Setup" e abre a página de configuração no celular (captive portal)</span></div>
+  <div class="box fw"><b>API</b><span><code>POST /api/state</code> (exige token de pareamento) · <code>/api/pair</code> · <code>/api/info</code></span></div>
+  <div class="box fw"><b>Página de configuração</b><span>modo (Visão geral / Limites / Sessões), brilho, alertas on/off e tempos, fuso, nome do aparelho</span></div>
+  <div class="box fw"><b>Renderizador</b><span>telas por região (RAM curta) · fila de alertas (flash → herói) · rolagem 5s</span></div>
+  <div class="box fw"><b>Sem sinal há 30s</b><span>mostra um relógio simples + "computador desconectado" (o gadget nunca fica "morto")</span></div>
+  <div class="box fw"><b>OTA</b><span>recebe firmware novo do bridge ou pela página</span></div>
+ </div>
+</div>

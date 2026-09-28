@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
-# Produces the release binary: firmware/dist/miblo-<board>-<version>.bin
+# Produces the release binaries:
+#   firmware/dist/miblo-<board>-<version>.bin         the full Miblo firmware
+#   firmware/dist/miblo-loader-<board>-<version>.bin  the stage-1 installer (env <board>_loader),
+#     flashed first from the stock GeekMagic firmware, whose /update has too little OTA space
+#     for the full image.
 # Usage: firmware/scripts/build.sh [board]      (default: geekmagic_ultra)
 #
 # PlatformIO binary resolution (env PIO):
@@ -43,9 +47,14 @@ fi
 cd "$ROOT"
 "$PIO" test -e native
 "$PIO" run -e "$BOARD"
+"$PIO" run -e "${BOARD}_loader"
 
 mkdir -p dist
 OUT="dist/miblo-$BOARD-$VERSION.bin"
+LOADER_OUT="dist/miblo-loader-$BOARD-$VERSION.bin"
 cp ".pio/build/$BOARD/firmware.bin" "$OUT"
-echo "OK: firmware/$OUT ($(wc -c < "$OUT" | tr -d ' ') bytes)"
-if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$OUT"; else sha256sum "$OUT"; fi
+cp ".pio/build/${BOARD}_loader/firmware.bin" "$LOADER_OUT"
+for f in "$OUT" "$LOADER_OUT"; do
+  echo "OK: firmware/$f ($(wc -c < "$f" | tr -d ' ') bytes)"
+  if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$f"; else sha256sum "$f"; fi
+done

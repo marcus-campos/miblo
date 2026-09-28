@@ -47,3 +47,4 @@ jobs:
       - run: pip install platformio
       - run: pio test -e native
       - run: pio run -e ${{ matrix.board }}
+      - run: pio run -e ${{ matrix.board }}_loader

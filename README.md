@@ -25,7 +25,7 @@ In Claude Code:
 
 Then run `/miblo:pair` and type the 4‑digit code shown on the gadget. Miblo will ask before linking your status line (needed for limits and context); your existing status line keeps working exactly the same. Undo any time with `/miblo:unlink-statusline` — run it **before uninstalling** the plugin.
 
-Other commands: `/miblo:status`, `/miblo:mode overview|limits|sessions`, `/miblo:rotate on|off [every-seconds] [show-seconds] [id]` (alternate Overview with the Limits screen now and then; with no arguments it asks), `/miblo:reset <id>`.
+Other commands: `/miblo:status`, `/miblo:mode overview|limits|sessions`, `/miblo:rotate on|off [every-seconds] [show-seconds] [id]` (alternate Overview with the Limits screen now and then; with no arguments it asks), `/miblo:update [id]` (updates the plugin and the gadget firmware from the latest GitHub release; `--file <path>` for a local .bin), `/miblo:reset <id>`.
 
 ## Flash the firmware (GeekMagic Ultra)
 

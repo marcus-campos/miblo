@@ -8,16 +8,23 @@ export const MAX_TOKENS = 4;
 export const MAX_BAD_CODES = 5;
 export const LOCKOUT_MS = 60_000;
 
-export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code = '4827', now = () => Date.now() } = {}) {
-  const state = { token: null, tokens: [], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0 };
-  const readBody = (req) =>
+// OTA (src/platform/ota.cpp): POST /update/open (JSON) opens the presence gate and shows
+// `otaCode` on screen ({ok, codeRequired}); multipart POST /update?code=XXXX with a "firmware"
+// part answers "OK", then the unit "reboots" (drops connections for `rebootMs`) and comes back
+// with the version parsed from the uploaded file name. 5 wrong codes lock OTA for 60 s.
+export function startFakeDevice({
+  id = 'miblo-4f2a', name = 'Miblo-4F2A', code = '4827', now = () => Date.now(),
+  fw = '0.0.0-fake', board = 'geekmagic_ultra', otaCode = '1234', otaCodeRequired = true, rebootMs = 30,
+} = {}) {
+  const state = {
+    token: null, tokens: [], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
+    fw, gateOpen: false, otaBadCodes: 0, otaLockedUntil: 0, uploads: [], rebooting: false,
+  };
+  const readRaw = (req) =>
     new Promise((resolve) => {
       const chunks = [];
       req.on('data', (c) => chunks.push(c));
-      req.on('end', () => {
-        const text = Buffer.concat(chunks).toString('utf8');
-        try { resolve(text ? JSON.parse(text) : {}); } catch { resolve(null); }
-      });
+      req.on('end', () => resolve(Buffer.concat(chunks)));
     });
   // Overview/Limits rotation, as the firmware reports it in /api/info (defaults until configured)
   // and validates it in /api/config (lib/miblo_core/src/miblo_config.cpp).
@@ -35,15 +42,24 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
     if (merged.rotateShowSec >= merged.rotateEverySec) return 'rotateShowSec' in patch ? 'rotateShowSec' : 'rotateEverySec';
     return null;
   };
+  const asJson = (buf) => {
+    const text = buf.toString('utf8');
+    try { return text ? JSON.parse(text) : {}; } catch { return null; }
+  };
   const authed = (req) => state.tokens.some((t) => req.headers.authorization === `Bearer ${t}`);
 
   const server = http.createServer(async (req, res) => {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
-    const body = req.method === 'POST' ? await readBody(req) : null;
+    const raw = req.method === 'POST' ? await readRaw(req) : null;
+    if (state.rebooting) return req.socket.destroy();
+    const url = new URL(req.url, 'http://x');
+    if (req.method === 'POST' && url.pathname === '/update/open') return otaOpen(req, send);
+    if (req.method === 'POST' && url.pathname === '/update') return otaUpload(req, res, url, raw, send);
+    const body = raw ? asJson(raw) : null;
     if (req.method === 'GET' && req.url === '/api/info') {
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
-      return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation() });
+      return send(200, { id, name, fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation() });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -76,6 +92,54 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
     if (req.method === 'POST' && req.url === '/api/reset') { state.resets++; state.tokens = []; state.token = null; return send(200, { ok: true }); }
     send(404, { error: 'not found' });
   });
+
+  function otaLocked(send) {
+    if (now() >= state.otaLockedUntil) return false;
+    send(429, { error: 'locked', retryAfter: Math.ceil((state.otaLockedUntil - now()) / 1000) });
+    return true;
+  }
+
+  function otaOpen(req, send) {
+    if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(415, { error: 'json only' });
+    if (!otaCodeRequired) return send(200, { ok: true, codeRequired: false });
+    if (otaLocked(send)) return undefined;
+    state.gateOpen = true;
+    return send(200, { ok: true, codeRequired: true });
+  }
+
+  function otaUpload(req, res, url, raw, send) {
+    if (otaLocked(send)) return undefined;
+    if (otaCodeRequired && (!state.gateOpen || url.searchParams.get('code') !== otaCode)) {
+      state.otaBadCodes += 1;
+      if (state.otaBadCodes >= MAX_BAD_CODES) {
+        state.otaBadCodes = 0;
+        state.otaLockedUntil = now() + LOCKOUT_MS;
+        return send(429, { error: 'locked', retryAfter: LOCKOUT_MS / 1000 });
+      }
+      return send(403, { error: 'bad code' });
+    }
+    const boundary = /boundary=(.+)$/.exec(String(req.headers['content-type'] ?? ''))?.[1];
+    const text = raw.toString('latin1');
+    const m = boundary && /Content-Disposition: form-data; name="firmware"; filename="([^"]+)"\r\n(?:[^\r\n]+\r\n)*\r\n/.exec(text);
+    if (!m) return send(400, { error: 'no firmware file' });
+    const start = m.index + m[0].length;
+    const bytes = raw.subarray(start, text.indexOf(`\r\n--${boundary}--`, start));
+    if (bytes[0] !== 0xe9) {
+      res.writeHead(500, { 'content-type': 'text/plain' });
+      return res.end('Magic byte is wrong, not 0xE9');
+    }
+    state.uploads.push({ filename: m[1], bytes: Buffer.from(bytes), contentLength: Number(req.headers['content-length']) });
+    state.otaBadCodes = 0;
+    state.gateOpen = false;
+    res.writeHead(200, { 'content-type': 'text/plain' });
+    res.end('OK');
+    state.rebooting = true;
+    setTimeout(() => {
+      state.fw = /-(\d+\.\d+\.\d+)\.bin$/.exec(m[1])?.[1] ?? state.fw;
+      state.rebooting = false;
+    }, rebootMs).unref();
+    return undefined;
+  }
 
   return new Promise((resolve) =>
     server.listen(0, '127.0.0.1', () =>

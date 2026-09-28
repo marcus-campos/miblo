@@ -2,11 +2,12 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, claudeSettingsPath, parseDataArg } from '../lib/constants.js';
+import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion } from '../lib/constants.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
+import { FirmwareUpdater } from '../lib/firmware-update.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -17,6 +18,7 @@ const USAGE = [
   '  mode <overview|limits|sessions> [id]',
   '  rotate <on|off> [every-seconds] [show-seconds] [id] | rotate --status [id]',
   '  reset <id>',
+  '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
 ].join('\n');
 
@@ -233,6 +235,8 @@ export async function run(argv, deps) {
       store.remove(d.id);
       return ok(`Factory reset sent to ${cleanName(d.name)}.`);
     }
+    case 'update':
+      return new FirmwareUpdater({ store, dataDir, pluginVersion: pluginVersion(), ...deps.updater }).run(args);
     case 'link-statusline': {
       const r = link({ settingsPath, pluginRoot });
       return ok(r.changed ? 'Statusline linked.' : 'Statusline already linked.');

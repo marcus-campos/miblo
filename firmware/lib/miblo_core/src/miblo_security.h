@@ -15,6 +15,9 @@ bool constantTimeEquals(const char* a, const char* b);
 // Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
 // first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
 bool findContentLength(const char* headers, size_t len, uint32_t& out);
+// Same raw header bytes: true only if a Content-Type header is present and its value starts with
+// "multipart/" (case-insensitive). Absent or truncated before the value → false.
+bool contentTypeIsMultipart(const char* headers, size_t len);
 
 // Escalating brute-force lockout shared by PairingGuard and PresenceGate: the 5th failure in a
 // row locks for 60 s, each further lockout doubles it (capped at 1 h). Only success() ends the

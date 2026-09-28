@@ -17,6 +17,9 @@ void pageEnd(String& out);
 void appendEscaped(String& out, const char* s);
 String tr(miblo::Lang lang, miblo::S id);
 void sendJson(WebServerT& server, int code, const char* json);
+// CSRF guard for the pages' state-changing POSTs: a cross-site <form> cannot send
+// application/json without a CORS preflight (which this server never answers). false → 415 sent.
+bool requireJson(WebServerT& server);
 // 429 {"error":"locked","retryAfter":<s>} for a locked presence gate or pairing guard.
 void sendLocked(WebServerT& server, uint32_t remainingMs);
 

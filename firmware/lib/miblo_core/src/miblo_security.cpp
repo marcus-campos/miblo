@@ -70,6 +70,31 @@ bool findContentLength(const char* headers, size_t len, uint32_t& out) {
   return found;
 }
 
+bool contentTypeIsMultipart(const char* headers, size_t len) {
+  static const char kName[] = "content-type:";
+  static const char kPrefix[] = "multipart/";
+  const size_t nameLen = sizeof(kName) - 1;
+  const size_t prefixLen = sizeof(kPrefix) - 1;
+  size_t i = 0;
+  while (i < len) {
+    if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
+    bool match = len - i > nameLen;
+    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == kName[k];
+    if (match) {
+      size_t j = i + nameLen;
+      while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
+      if (len - j < prefixLen) return false;
+      for (size_t k = 0; k < prefixLen; k++) {
+        if (lower(headers[j + k]) != kPrefix[k]) return false;
+      }
+      return true;
+    }
+    while (i < len && headers[i] != '\n') i++;  // next line
+    i++;
+  }
+  return false;
+}
+
 void PairingGuard::setCode(const char* code4) {
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;

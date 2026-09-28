@@ -161,6 +161,19 @@ static void test_find_content_length() {
   TEST_ASSERT_EQUAL_UINT32(90000, n);
 }
 
+static void test_content_type_is_multipart() {
+  const char h1[] = "Host: x\r\ncontent-TYPE:  Multipart/form-data; boundary=abc\r\n\r\n";
+  TEST_ASSERT_TRUE(contentTypeIsMultipart(h1, sizeof(h1) - 1));
+  const char h2[] = "Content-Type: application/json\r\n\r\n";
+  TEST_ASSERT_FALSE(contentTypeIsMultipart(h2, sizeof(h2) - 1));
+  const char h3[] = "Host: x\r\n\r\nContent-Type: multipart/form-data";  // body, not a header
+  TEST_ASSERT_FALSE(contentTypeIsMultipart(h3, sizeof(h3) - 1));
+  const char h4[] = "Content-Type: multi";  // truncated
+  TEST_ASSERT_FALSE(contentTypeIsMultipart(h4, sizeof(h4) - 1));
+  TEST_ASSERT_FALSE(contentTypeIsMultipart("X-Content-Type: multipart/x\r\n", 29));
+  TEST_ASSERT_FALSE(contentTypeIsMultipart("Host: x\r\n", 9));
+}
+
 // Re-opening (a new code) must not grant fresh guesses: 4 bad, re-open, 1 bad → locked.
 static void test_presence_failures_survive_reopen() {
   PresenceGate g;
@@ -266,6 +279,7 @@ int main() {
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);
   RUN_TEST(test_find_content_length);
+  RUN_TEST(test_content_type_is_multipart);
   RUN_TEST(test_presence_lockout_escalates);
   RUN_TEST(test_presence_lockout_caps_at_one_hour);
   RUN_TEST(test_presence_failures_survive_reopen);

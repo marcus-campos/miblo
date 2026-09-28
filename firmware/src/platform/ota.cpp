@@ -30,8 +30,11 @@ static void resetState() {
   endedOk = false;
 }
 
-static void page() {
-  uint32_t now = millis();
+// POST /update/open (JSON, body {}): opens the presence gate so the screen shows the code.
+// A plain GET never changes state (a link or <img> from another site cannot light up the code).
+static void openGate() {
+  if (!web::requireJson(*srv)) return;  // 415: CSRF guard
+  const uint32_t now = millis();
   if (ctx.presence.locked(now)) {
     web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
     return;
@@ -41,6 +44,11 @@ static void page() {
     miblo::formatCode(hwRandom(), code);
     ctx.presence.open(PresenceGate::Purpose::Update, code, now);  // the screen now shows the code
   }
+  web::sendJson(*srv, 200, "{\"ok\":true}");
+}
+
+// GET /update: only serves the page; its script opens the gate with POST /update/open.
+static void page() {
   Lang lang = web::pageLang(*srv);
   String out;
   web::pageStart(out, lang, web::tr(lang, S::WebFirmware).c_str());
@@ -60,6 +68,9 @@ static void page() {
   t["failed"] = web::tr(lang, S::WebFailed);
   serializeJson(t, out);
   out += F(";const $=k=>document.getElementById(k);"
+           "fetch('/update/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
+           ".then(r=>{if(r.status===429)return r.json().then(j=>{$('st').textContent=T.failed+' ('+j.retryAfter+' s)';});"
+           "if(!r.ok)$('st').textContent=T.failed;}).catch(()=>{$('st').textContent=T.failed;});"
            "function up(){const f=$('f').files[0];if(!f)return;const d=new FormData();d.append('firmware',f);"
            "$('st').textContent='...';"
            "fetch('/update?code='+encodeURIComponent($('code').value),{method:'POST',body:d})"
@@ -137,6 +148,7 @@ void begin(WebServerT& server, ProgressHook onProgress) {
   srv = &server;
   hook = onProgress;
   server.on(F("/update"), HTTP_GET, page);
+  server.on(F("/update/open"), HTTP_POST, openGate);
   server.on(F("/update"), HTTP_POST, done, upload);
 }
 

@@ -77,6 +77,18 @@ static bool bodyTooLarge() {
   return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
 }
 
+bool requireJson(WebServerT& server) {
+  String ct = server.header(F("Content-Type"));
+  ct.trim();
+  ct.toLowerCase();
+  if (ct.startsWith(F("application/json")) &&
+      (ct.length() == 16 || ct[16] == ';' || ct[16] == ' ' || ct[16] == '\t')) {
+    return true;
+  }
+  sendJson(server, 415, "{\"error\":\"json required\"}");
+  return false;
+}
+
 Lang pageLang(WebServerT& server) {
   if (ctx.cfg.langSet) return ctx.cfg.lang;
   Lang l = miblo::negotiateLang(server.header(F("Accept-Language")).c_str());
@@ -182,6 +194,11 @@ static void portalPage() {
 }
 
 static void handleWifi() {
+  // Only from a client of the setup network, while it is up: never from the home LAN.
+  if (!net::apActive() || srv->client().localIP() != WiFi.softAPIP()) {
+    srv->send(403, F("text/plain"), F("forbidden"));
+    return;
+  }
   if (bodyTooLarge()) {
     srv->send(413, F("text/plain"), F("payload too large"));
     return;
@@ -301,17 +318,17 @@ static void settingsPage() {
   out += F(";");
   out += FPSTR(kTzJs);
   out += F(
-      "const $=k=>document.getElementById(k);"
+      "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
       "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];else e.value=C[k];}"
       "function val(k){const e=$(k);return e.type==='checkbox'?e.checked:"
       "(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
       "'reminderMin','discreet','name','tz','lang'])b[k]=val(k);"
-      "fetch('/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(b)})"
+      "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
-      "function post(u){return fetch(u,{method:'POST'});}"
+      "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
       "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
-      "fetch('/factory-reset?code='+encodeURIComponent(c),{method:'POST'}).then(r=>{if(!r.ok)alert(T.bad);});});}"
+      "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
       "if(C.tz==='UTC0'){const z=posixTz();if(z!=='UTC0'){$('tz').value=z;save();}}"
       "</script>");
   pageEnd(out);
@@ -319,6 +336,7 @@ static void settingsPage() {
 }
 
 static void handleSettings() {
+  if (!requireJson(*srv)) return;
   if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
     sendJson(*srv, 413, "{\"error\":\"too large\"}");
     return;
@@ -344,12 +362,14 @@ static void handleRoot() {
 }
 
 static void handlePairCode() {
+  if (!requireJson(*srv)) return;
   ctx.showPairCode = true;
   ctx.pairCodeAtMs = millis();
   sendJson(*srv, 200, "{\"ok\":true}");
 }
 
 static void handleResetCode() {
+  if (!requireJson(*srv)) return;
   const uint32_t now = millis();
   char code[5];
   miblo::formatCode(hwRandom(), code);
@@ -361,6 +381,7 @@ static void handleResetCode() {
 }
 
 static void handleFactoryReset() {
+  if (!requireJson(*srv)) return;
   if (ctx.presence.locked(millis())) {
     sendLocked(*srv, ctx.presence.lockRemainingMs(millis()));
     return;
@@ -385,12 +406,16 @@ static bool captiveRedirect() {
 #if defined(ESP8266)
 // Best-effort first layer. Runs right after the request line, before ESP8266WebServer reads (and
 // buffers in RAM) a non-multipart POST body. Peeks at the header bytes already received — without
-// consuming them — and refuses bodies over kMaxPostBody (largest Content-Length if duplicated). /update is multipart and streamed, so it is exempt.
+// consuming them — and refuses bodies over kMaxPostBody (largest Content-Length if duplicated).
+// Only a multipart POST /update (streamed to flash by the upload handler) is exempt.
 // Headers that did not arrive in the first TCP segment are not seen here; the handler checks
 // remain as a second layer.
 static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* client,
                                                      ESP8266WebServer::ContentTypeFunction) {
-  if (method != F("POST") || url == F("/update")) return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  if (method != F("POST")) return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  if (url == F("/update") && miblo::contentTypeIsMultipart(client->peekBuffer(), client->peekAvailable())) {
+    return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  }
   uint32_t len = 0;
   if (!miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len) || len <= kMaxPostBody) {
     return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
@@ -408,8 +433,9 @@ void begin(WebServerT& server) {
 #if defined(ESP8266)
   server.addHook(limitPostBody);
 #endif
-  // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API (api.cpp).
-  server.collectHeaders("Accept-Language", "Authorization", "Content-Length");
+  // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API
+  // (api.cpp); Content-Type: the CSRF check on the pages' state-changing POSTs (requireJson).
+  server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type");
   server.on(F("/"), HTTP_GET, handleRoot);
   server.on(F("/wifi"), HTTP_POST, handleWifi);
   server.on(F("/settings"), HTTP_POST, handleSettings);

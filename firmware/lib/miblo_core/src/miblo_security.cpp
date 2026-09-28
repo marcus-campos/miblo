@@ -43,9 +43,10 @@ static char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a'
 bool findContentLength(const char* headers, size_t len, uint32_t& out) {
   static const char kName[] = "content-length:";
   const size_t nameLen = sizeof(kName) - 1;
+  bool found = false;
   size_t i = 0;
   while (i < len) {
-    if (headers[i] == '\r' || headers[i] == '\n') return false;  // blank line: end of headers
+    if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
     bool match = len - i > nameLen;
     for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == kName[k];
     if (match) {
@@ -59,14 +60,14 @@ bool findContentLength(const char* headers, size_t len, uint32_t& out) {
         j++;
         digits++;
       }
-      if (digits == 0) return false;
-      out = (uint32_t)v;
-      return true;
+      if (digits == 0) return false;  // malformed: let the server's own parser deal with it
+      if (!found || (uint32_t)v > out) out = (uint32_t)v;  // duplicates: keep the largest
+      found = true;
     }
     while (i < len && headers[i] != '\n') i++;  // next line
     i++;
   }
-  return false;
+  return found;
 }
 
 void PairingGuard::setCode(const char* code4) {
@@ -131,19 +132,24 @@ void TokenStore::restore(const TokenEntry* entries, uint8_t n) {
 }
 
 uint32_t PresenceGate::lockRemainingMs(uint32_t nowMs) const {
-  if (lockMs_ == 0) return 0;
+  if (!locked_) return 0;
   const uint32_t elapsed = nowMs - lockedAtMs_;
   return elapsed >= lockMs_ ? 0 : lockMs_ - elapsed;
 }
 
+void PresenceGate::update(uint32_t nowMs) {
+  if (locked_ && lockRemainingMs(nowMs) == 0) locked_ = false;  // expired: nothing left to wrap
+}
+
 bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {
-  if (locked(nowMs)) return false;
+  update(nowMs);
+  if (locked_) return false;
   open_ = true;
   purpose_ = p;
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;
   openedAtMs_ = nowMs;
-  failures_ = 0;
+  // failures_ is deliberately kept: re-opening (a new code) must not grant 5 fresh guesses.
   return true;
 }
 
@@ -156,15 +162,19 @@ uint32_t PresenceGate::remainingMs(uint32_t nowMs) const {
 }
 
 bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
-  if (locked(nowMs) || !active(nowMs) || p != purpose_) return false;
+  update(nowMs);
+  if (locked_ || !active(nowMs) || p != purpose_) return false;
   if (code && constantTimeEquals(code, code_)) {
+    failures_ = 0;
     lockMs_ = 0;  // a correct code ends the escalation
     return true;
   }
   if (++failures_ >= kMaxFailures) {
     open_ = false;
+    failures_ = 0;
     lockMs_ = lockMs_ == 0 ? kLockBaseMs : (lockMs_ >= kLockMaxMs / 2 ? kLockMaxMs : lockMs_ * 2);
     lockedAtMs_ = nowMs;
+    locked_ = true;
   }
   return false;
 }

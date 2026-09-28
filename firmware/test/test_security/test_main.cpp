@@ -115,6 +115,48 @@ static void test_find_content_length() {
   TEST_ASSERT_EQUAL_UINT32(1, n);
   TEST_ASSERT_FALSE(findContentLength("Content-Length: x\r\n", 19, n));
   TEST_ASSERT_FALSE(findContentLength("X-Content-Length: 5\r\n", 21, n));
+  // Duplicates: the core honours the last one, so the check uses the largest of them.
+  const char h5[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 90000\r\nContent-Length: 20\r\n\r\n";
+  TEST_ASSERT_TRUE(findContentLength(h5, sizeof(h5) - 1, n));
+  TEST_ASSERT_EQUAL_UINT32(90000, n);
+}
+
+// Re-opening (a new code) must not grant fresh guesses: 4 bad, re-open, 1 bad → locked.
+static void test_presence_failures_survive_reopen() {
+  PresenceGate g;
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "1111", 0));
+  for (int i = 0; i < 4; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 10));
+  TEST_ASSERT_FALSE(g.locked(10));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "2222", 20));  // new code, same failures
+  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", 30));
+  TEST_ASSERT_TRUE(g.locked(30));
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(30));
+  TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "3333", 40));  // 429 path
+  // A correct code clears the accumulated failures.
+  PresenceGate h;
+  h.open(PresenceGate::Purpose::Update, "1234", 0);
+  for (int i = 0; i < 4; i++) h.check(PresenceGate::Purpose::Update, "0000", 0);
+  TEST_ASSERT_TRUE(h.check(PresenceGate::Purpose::Update, "1234", 0));
+  h.open(PresenceGate::Purpose::Update, "1234", 0);
+  for (int i = 0; i < 4; i++) h.check(PresenceGate::Purpose::Update, "0000", 0);
+  TEST_ASSERT_FALSE(h.locked(0));
+}
+
+// The lockout is honoured across a clock wrap, and an expired one never comes back ~49.7 days
+// later when the unsigned elapsed time wraps around.
+static void test_presence_lockout_clock_wrap() {
+  PresenceGate g;
+  const uint32_t t0 = 0xFFFFF000u;  // 4096 ms before the wrap
+  g.open(PresenceGate::Purpose::Update, "1234", t0);
+  for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t0);
+  TEST_ASSERT_TRUE(g.locked(0x00000100u));  // wrapped, 4352 ms later: still locked
+  TEST_ASSERT_EQUAL_UINT32(60000 - 4352, g.lockRemainingMs(0x00000100u));
+  const uint32_t expired = t0 + 60000;
+  g.update(expired);  // the app calls this every frame
+  TEST_ASSERT_FALSE(g.locked(expired));
+  const uint32_t phantom = t0 + 10;  // same low bits one full wrap (2^32 ms) later
+  TEST_ASSERT_FALSE(g.locked(phantom));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", phantom));
 }
 
 // Brute force: the lockout survives re-opening the gate and escalates until a correct code.
@@ -184,5 +226,7 @@ int main() {
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_presence_lockout_escalates);
   RUN_TEST(test_presence_lockout_caps_at_one_hour);
+  RUN_TEST(test_presence_failures_survive_reopen);
+  RUN_TEST(test_presence_lockout_clock_wrap);
   return UNITY_END();
 }

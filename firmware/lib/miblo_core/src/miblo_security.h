@@ -60,8 +60,9 @@ class TokenStore {
 
 // Código de presença física: ao abrir /update (ou pedir o reset de fábrica) pelo navegador, a
 // tela mostra um código de 4 dígitos, válido por 5 min; o POST precisa dele. 5 erros fecham o portão.
-// Brute-force lockout (survives re-opens): once the gate closes on 5 failures it refuses to open
-// again for 60 s, doubling on each further lockout (capped at 1 h). Only a correct code resets
+// Brute-force lockout (survives re-opens): failures accumulate across re-opens (a new code does
+// not grant fresh guesses); on the 5th the gate closes and refuses to open again for 60 s,
+// doubling on each further lockout (capped at 1 h). Only a correct code resets the failures and
 // the escalation.
 class PresenceGate {
  public:
@@ -75,6 +76,9 @@ class PresenceGate {
   bool open(Purpose p, const char* code4, uint32_t nowMs);
   bool locked(uint32_t nowMs) const { return lockRemainingMs(nowMs) > 0; }
   uint32_t lockRemainingMs(uint32_t nowMs) const;
+  // Clears an expired lockout. Call regularly (the app does, every frame) so a lockout from long
+  // ago can never look active again when the 32-bit millisecond clock wraps (~49.7 days).
+  void update(uint32_t nowMs);
   bool active(uint32_t nowMs) const;
   Purpose purpose() const { return purpose_; }
   const char* code() const { return code_; }
@@ -88,7 +92,8 @@ class PresenceGate {
   char code_[5] = "";
   uint32_t openedAtMs_ = 0;
   uint8_t failures_ = 0;
-  uint32_t lockMs_ = 0;  // duration of the current/last lockout; 0 = no escalation
+  bool locked_ = false;   // a lockout is in force (cleared by update() once it expires)
+  uint32_t lockMs_ = 0;   // duration of the current/last lockout, kept for escalation; 0 = none
   uint32_t lockedAtMs_ = 0;
 };
 

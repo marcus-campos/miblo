@@ -68,9 +68,10 @@ void sendLocked(WebServerT& server, uint32_t remainingMs) {
   sendJson(server, 429, out);
 }
 
-// Second layer for the human pages: the server hook installed in begin() already refused any
-// POST body over kMaxPostBody before ESP8266WebServer buffered it; by the time a handler runs
-// the body is in RAM, so this only enforces the pages' tighter 1 KiB limit.
+// Second layer for the human pages. The server hook installed in begin() refuses most POST
+// bodies over kMaxPostBody before ESP8266WebServer buffers them, but only when Content-Length
+// arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
+// this check enforces the pages' tighter 1 KiB limit and covers what the hook could not see.
 static bool bodyTooLarge() {
   String cl = srv->header(F("Content-Length"));
   return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
@@ -382,9 +383,9 @@ static bool captiveRedirect() {
 }
 
 #if defined(ESP8266)
-// Runs right after the request line, before ESP8266WebServer reads (and buffers in RAM) a
-// non-multipart POST body. Peeks at the header bytes already received — without consuming them —
-// and refuses bodies over kMaxPostBody. /update is multipart and streamed, so it is exempt.
+// Best-effort first layer. Runs right after the request line, before ESP8266WebServer reads (and
+// buffers in RAM) a non-multipart POST body. Peeks at the header bytes already received — without
+// consuming them — and refuses bodies over kMaxPostBody (largest Content-Length if duplicated). /update is multipart and streamed, so it is exempt.
 // Headers that did not arrive in the first TCP segment are not seen here; the handler checks
 // remain as a second layer.
 static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* client,

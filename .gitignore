@@ -6,3 +6,4 @@ firmware/.venv/
 firmware/dist/
 firmware/.pio/
 .claude/worktrees/
+__pycache__/

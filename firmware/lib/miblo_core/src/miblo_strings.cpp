@@ -123,7 +123,8 @@ static const char kEn[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7d\0"  // Short7d
     "Auto\0"  // WebAuto
-    "Compacting context\0";  // Compacting
+    "Compacting context\0"  // Compacting
+    "Connect Miblo to the same Wi-Fi network as your computer, or they won't find each other.\0";  // WebSameNetwork
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -242,7 +243,8 @@ static const char kPtBR[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7d\0"  // Short7d
     "Automático\0"  // WebAuto
-    "Compactando contexto\0";  // Compacting
+    "Compactando contexto\0"  // Compacting
+    "Conecte o Miblo à mesma rede Wi-Fi do seu computador, senão eles não vão se encontrar.\0";  // WebSameNetwork
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -361,7 +363,8 @@ static const char kPtPT[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7d\0"  // Short7d
     "Automático\0"  // WebAuto
-    "A compactar contexto\0";  // Compacting
+    "A compactar contexto\0"  // Compacting
+    "Ligue o Miblo à mesma rede Wi-Fi do seu computador, caso contrário não se vão encontrar.\0";  // WebSameNetwork
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -480,7 +483,8 @@ static const char kEs[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7d\0"  // Short7d
     "Automático\0"  // WebAuto
-    "Compactando contexto\0";  // Compacting
+    "Compactando contexto\0"  // Compacting
+    "Conecta Miblo a la misma red Wi-Fi que tu ordenador; si no, no se encontrarán.\0";  // WebSameNetwork
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -599,7 +603,8 @@ static const char kFr[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7j\0"  // Short7d
     "Automatique\0"  // WebAuto
-    "Compacte le contexte\0";  // Compacting
+    "Compacte le contexte\0"  // Compacting
+    "Connectez Miblo au même réseau Wi-Fi que votre ordinateur, sinon ils ne se trouveront pas.\0";  // WebSameNetwork
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -718,7 +723,8 @@ static const char kIt[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7g\0"  // Short7d
     "Automatica\0"  // WebAuto
-    "Compatta il contesto\0";  // Compacting
+    "Compatta il contesto\0"  // Compacting
+    "Collega Miblo alla stessa rete Wi-Fi del tuo computer, altrimenti non si troveranno.\0";  // WebSameNetwork
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -837,7 +843,8 @@ static const char kDe[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7T\0"  // Short7d
     "Automatisch\0"  // WebAuto
-    "Kontext wird komprimiert\0";  // Compacting
+    "Kontext wird komprimiert\0"  // Compacting
+    "Verbinde Miblo mit demselben WLAN wie deinen Computer, sonst finden sie sich nicht.\0";  // WebSameNetwork
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -956,7 +963,8 @@ static const char kRu[] MIBLO_ROM =
     "5ч\0"  // Short5h
     "7д\0"  // Short7d
     "Авто\0"  // WebAuto
-    "Сжимает контекст\0";  // Compacting
+    "Сжимает контекст\0"  // Compacting
+    "Подключите Miblo к той же сети Wi-Fi, что и компьютер, иначе они не найдут друг друга.\0";  // WebSameNetwork
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1075,7 +1083,8 @@ static const char kZh[] MIBLO_ROM =
     "5h\0"  // Short5h
     "7天\0"  // Short7d
     "自动\0"  // WebAuto
-    "正在压缩上下文\0";  // Compacting
+    "正在压缩上下文\0"  // Compacting
+    "请将 Miblo 连接到与电脑相同的 Wi-Fi 网络，否则它们无法互相找到。\0";  // WebSameNetwork
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

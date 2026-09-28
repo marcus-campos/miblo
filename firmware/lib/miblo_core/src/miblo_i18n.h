@@ -125,6 +125,7 @@ enum class S : uint8_t {
   Short7d,              // compact limits strip label for the weekly window ("7d")
   WebAuto,              // settings page: automatic language option ("Auto")
   Compacting,           // activity while Claude Code compacts the conversation
+  WebSameNetwork,       // portal: the gadget must join the same network as the computer
   Count
 };
 

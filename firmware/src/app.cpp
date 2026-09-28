@@ -34,6 +34,9 @@ static uint32_t lastFrameMs = 0;
 static miblo::Pager listPager(3, 5000);  // Overview: 3 session cards per page
 static miblo::Pager sessionPager(3, 5000);  // Sessions mode: 3 big cards per page
 static miblo::RotationClock rotation;  // optional Overview/Limits alternation
+static miblo::QuietClock quiet;        // All done -> Limits -> Desk while nothing happens
+static bool mainLimits = false;        // Main is showing the Limits screen in Overview mode
+static uint32_t awaySinceMs = 0;       // when the Disconnected screen came up
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -105,7 +108,7 @@ static bool poweredOn() {
 void setup() {
   Serial.begin(115200);
   storage::begin();
-  // AirTag-style hard reset without a button: 6 power-ons in a row, each with less than 10 s of
+  // Hard reset without a button: 6 power-ons in a row, each with less than 10 s of
   // uptime. Persist the counter before anything slow so a quick unplug still counts.
   const miblo::BootDecision boot = miblo::decideBoot(storage::readBootCount(), poweredOn());
   storage::writeBootCount(boot.nextCount);
@@ -186,12 +189,20 @@ void loop() {
   in.hasSnapshot = ctx.hasSnapshot;
   in.lastSnapshotMs = ctx.lastSnapshotMs;
   in.alert = alert.phase;
-  const ScreenId screen = miblo::selectScreen(in);
+  ScreenId screen = miblo::selectScreen(in);
+  const miblo::StateCounts counts = miblo::countStates(ctx.snap);
+  // Nothing running or waiting: "All done" gives way to Limits, and later to the Desk mascot.
+  const miblo::QuietPhase qp =
+      quiet.update(screen == ScreenId::Main && counts.pending == 0 && counts.running == 0, now);
+  if (qp == miblo::QuietPhase::Desk) screen = ScreenId::Desk;
   // Rotation never takes the screen away from an alert or a session waiting on the user.
-  const bool rotBlocked = screen != ScreenId::Main || miblo::countStates(ctx.snap).pending > 0;
-  const bool wasLimits = rotation.showingLimits();
+  const bool rotBlocked = screen != ScreenId::Main || counts.pending > 0 || qp == miblo::QuietPhase::Settled;
   const bool rotLimits = rotation.update(miblo::rotationTiming(ctx.cfg), rotBlocked, now);
-  if (rotLimits != wasLimits) firstFrame = true;  // Overview <-> Limits: redraw everything
+  const bool wantLimits = screen == ScreenId::Main && ctx.cfg.mode == miblo::Mode::Overview &&
+                          (rotLimits || qp == miblo::QuietPhase::Settled);
+  if (wantLimits != mainLimits) firstFrame = true;  // Overview <-> Limits: redraw everything
+  mainLimits = wantLimits;
+  if (screen == ScreenId::Disconnected && current != ScreenId::Disconnected) awaySinceMs = now;
   enter(screen);
 
   const Lang lang = uiLang();
@@ -230,14 +241,12 @@ void loop() {
     case ScreenId::Updating:
       screens::updating(lang, ctx.updatePct);
       break;
-    case ScreenId::Disconnected: {
-      time_t t = time(nullptr);
-      struct tm lt;
-      localtime_r(&t, &lt);
-      screens::disconnected(lang, clk.valid, lt.tm_hour, lt.tm_min, lt.tm_wday, lt.tm_mday, net::ip().c_str(),
-                            ctx.ident.id, ctx.pairing.code());
+    case ScreenId::Disconnected:
+      screens::disconnected(lang, clk, net::ip().c_str(), ctx.ident.id, ctx.pairing.code(), now, now - awaySinceMs);
       break;
-    }
+    case ScreenId::Desk:
+      screens::desk(lang, ctx.snap, clk, now);
+      break;
     case ScreenId::AlertFlash: {
       int idx = miblo::findSession(ctx.snap, alert.sid);
       screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs);
@@ -250,7 +259,7 @@ void loop() {
     case ScreenId::Main:
       switch (ctx.cfg.mode) {
         case miblo::Mode::Overview:
-          if (rotLimits) {
+          if (mainLimits) {
             screens::limits(lang, ctx.snap, clk);
             break;
           }

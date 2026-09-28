@@ -112,6 +112,89 @@ struct MascotPen {
 };
 }  // namespace
 
+// The cat itself. `desk` adds what only the big Desk mascot has: a table edge, front paws and
+// the extras (sweat, alarm, zzz, open mouth).
+static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk) {
+  const int x = k.dx;
+  const int b = k.dy;
+  d.rect(-48, -48, 96, 96, color::BG);
+  if (desk) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
+  d.tri(-36 + x, -42 + b, -32 + x, -4 + b, -8 + x, -18 + b, color::SKIN);  // ears
+  d.tri(36 + x, -42 + b, 32 + x, -4 + b, 8 + x, -18 + b, color::SKIN);
+  if (innerEars) {
+    d.tri(-31 + x, -33 + b, -28 + x, -10 + b, -14 + x, -17 + b, color::EAR_IN);
+    d.tri(31 + x, -33 + b, 28 + x, -10 + b, 14 + x, -17 + b, color::EAR_IN);
+  }
+  d.rrect(-32 + x, -20 + b, 64, 52, 24, color::SKIN);  // head
+  switch (k.eyes) {
+    case Eyes::Closed:
+      d.rect(-22 + x, 5 + b, 16, 3, color::PUPIL);
+      d.rect(6 + x, 5 + b, 16, 3, color::PUPIL);
+      break;
+    case Eyes::Wide:  // big irises, tiny pupils
+      d.circle(-14 + x, 6 + b, 10, color::EYE_GREEN);
+      d.circle(14 + x, 6 + b, 10, color::EYE_GREEN);
+      d.circle(-14 + x + k.gx, 6 + b + k.gy, 3, color::PUPIL);
+      d.circle(14 + x + k.gx, 6 + b + k.gy, 3, color::PUPIL);
+      break;
+    case Eyes::Open:
+    case Eyes::Sleepy:
+      d.circle(-14 + x, 6 + b, 8, color::EYE_GREEN);
+      d.circle(14 + x, 6 + b, 8, color::EYE_GREEN);
+      d.circle(-14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
+      d.circle(14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
+      if (k.eyes == Eyes::Sleepy) {  // heavy lids over the top half
+        d.rect(-23 + x, -3 + b, 18, 8, color::SKIN);
+        d.rect(5 + x, -3 + b, 18, 8, color::SKIN);
+        d.rect(-22 + x, 4 + b, 16, 2, color::PUPIL);
+        d.rect(6 + x, 4 + b, 16, 2, color::PUPIL);
+      }
+      break;
+  }
+  d.rrect(-4 + x, 17 + b, 8, 5, 2, color::NOSE);
+  if (!desk) return;
+  if (k.extras & kMouthO) d.circle(x, 26 + b, 3, color::PUPIL);
+  switch (k.paws) {
+    case Paws::Down:
+      d.rrect(-26 + x, 28 + b, 16, 11, 5, color::SKIN);
+      d.rrect(10 + x, 28 + b, 16, 11, 5, color::SKIN);
+      break;
+    case Paws::ReachLeft:  // batting at the left gauge
+      d.rrect(-46 + x, 24 + b, 16, 11, 5, color::SKIN);
+      d.rrect(10 + x, 28 + b, 16, 11, 5, color::SKIN);
+      break;
+    case Paws::ReachRight:
+      d.rrect(-26 + x, 28 + b, 16, 11, 5, color::SKIN);
+      d.rrect(30 + x, 24 + b, 16, 11, 5, color::SKIN);
+      break;
+    case Paws::Cover:  // can't look
+      d.rrect(-26 + x, -3 + b, 20, 16, 7, color::SKIN);
+      d.rrect(6 + x, -3 + b, 20, 16, 7, color::SKIN);
+      break;
+  }
+  if (k.extras & kSweat) {
+    d.tri(36 + x, -12 + b, 32 + x, -3 + b, 40 + x, -3 + b, color::BLUE);
+    d.circle(36 + x, -2 + b, 4, color::BLUE);
+  }
+  // Marks beside the right ear: fixed, so a shiver or a hop never pushes them out of the box.
+  if (k.extras & kAlarm) {
+    d.rect(41, -46, 5, 13, color::RED);
+    d.rect(41, -30, 5, 5, color::RED);
+  }
+  if (k.extras & kZ1) {
+    d.rect(38, -22, 9, 2, color::MUTED);
+    d.tri(44, -20, 47, -20, 38, -16, color::MUTED);
+    d.tri(47, -20, 41, -16, 38, -16, color::MUTED);
+    d.rect(38, -16, 9, 2, color::MUTED);
+  }
+  if (k.extras & kZ2) {
+    d.rect(40, -34, 6, 2, color::DIM);
+    d.tri(43, -32, 46, -32, 40, -29, color::DIM);
+    d.tri(46, -32, 43, -29, 40, -29, color::DIM);
+    d.rect(40, -29, 6, 2, color::DIM);
+  }
+}
+
 void mascot(int cx, int cy, uint8_t frame, bool small) {
   // Simplified Sphynx: flat shapes only, so a frame is
   // cheap and renders the same on an off-screen 16-colour layer. Big triangular ears with pink
@@ -121,26 +204,16 @@ void mascot(int cx, int cy, uint8_t frame, bool small) {
   const int m = g_w < g_h ? g_w : g_h;
   MascotPen d{*g_canvas, cx, cy, m, small ? 480 : 240};
   const uint8_t pose = mascotPose(frame);
-  const int b = pose == 2 ? -4 : 0;  // hop
-  d.rect(-48, -48, 96, 96, color::BG);
-  d.tri(-36, -42 + b, -32, -4 + b, -8, -18 + b, color::SKIN);  // ears
-  d.tri(36, -42 + b, 32, -4 + b, 8, -18 + b, color::SKIN);
-  if (!small) {
-    d.tri(-31, -33 + b, -28, -10 + b, -14, -17 + b, color::EAR_IN);
-    d.tri(31, -33 + b, 28, -10 + b, 14, -17 + b, color::EAR_IN);
-  }
-  d.rrect(-32, -20 + b, 64, 52, 24, color::SKIN);  // head
-  if (pose == 1) {
-    d.rect(-22, 5 + b, 16, 3, color::PUPIL);  // closed eyes
-    d.rect(6, 5 + b, 16, 3, color::PUPIL);
-  } else {
-    const int gx = pose == 3 ? 3 : 0;
-    d.circle(-14, 6 + b, 8, color::EYE_GREEN);
-    d.circle(14, 6 + b, 8, color::EYE_GREEN);
-    d.circle(-14 + gx, 6 + b, 4, color::PUPIL);
-    d.circle(14 + gx, 6 + b, 4, color::PUPIL);
-  }
-  d.rrect(-4, 17 + b, 8, 5, 2, color::NOSE);
+  MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+  if (pose == 1) k.eyes = Eyes::Closed;
+  if (pose == 2) k.dy = -4;
+  if (pose == 3) k.gx = 3;
+  drawCat(d, k, !small, false);
+}
+
+void deskMascot(int cx, int cy, const MascotLook& look) {
+  MascotPen d{*g_canvas, cx, cy, Sz(64), 48};  // the 96-unit box drawn exactly 2 * Sz(64) wide
+  drawCat(d, look, true, true);
 }
 
 void qr(const char* payload, int x, int y, int scale) {

@@ -109,6 +109,10 @@ static void renderMain(FakeCanvas& fc) {
   screens::limits(Lang::En, snap, clk);
   screens::reset();
   screens::sessions(Lang::En, snap, pager, 0, clk, false);
+  screens::reset();
+  screens::desk(Lang::En, snap, clk, 0);
+  screens::reset();
+  screens::disconnected(Lang::En, clk, "192.168.0.42", "miblo-4f2a", "4827", 0, 0);
 }
 
 static void test_main_screens_fit_any_resolution() {
@@ -743,8 +747,90 @@ static void test_pt_br_screens_have_no_english() {
   screens::hardResetCountdown(L, 3);
   check("hard reset");
   screens::reset();
-  screens::disconnected(L, true, 14, 32, 1, 28, "192.168.0.42", "miblo-4f2a", "4827");
+  screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", 0, 0);
   check("disconnected");
+  screens::reset();
+  screens::desk(L, snap, clk, 0);
+  check("desk");
+}
+
+// Desk: the mood follows the fuller window, a window past its reset counts as 0%, and the
+// mascot looks at (and bats at) the gauge that worries it.
+static void test_desk_mood_and_gauges() {
+  TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Calm, (int)screens::deskMood(49));
+  TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Watchful, (int)screens::deskMood(50));
+  TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Worried, (int)screens::deskMood(80));
+  TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Scared, (int)screens::deskMood(95));
+  const UsageWindow w{true, 88, NOW + 60};
+  TEST_ASSERT_EQUAL_UINT8(88, screens::deskPct(w, NOW));
+  TEST_ASSERT_EQUAL_UINT8(0, screens::deskPct(w, NOW + 60));  // reset since: back to 0
+  TEST_ASSERT_EQUAL_UINT8(88, screens::deskPct({true, 88, 0}, NOW));  // unknown reset: kept
+
+  // Scared of the week gauge (right): it gazes right at some point, never left while focused.
+  bool gazedRight = false, alarm = false, covered = false;
+  for (uint32_t ms = 0; ms < 20000; ms += 50) {
+    const screens::MascotLook k = screens::deskLook(screens::DeskMood::Scared, false, ms);
+    gazedRight |= k.gx > 0;
+    alarm |= (k.extras & screens::kAlarm) != 0;
+    covered |= k.paws == screens::Paws::Cover;
+  }
+  TEST_ASSERT_TRUE(gazedRight && alarm && covered);
+  bool reachLeft = false;
+  for (uint32_t ms = 0; ms < 20000; ms += 50) {
+    reachLeft |= screens::deskLook(screens::DeskMood::Watchful, true, ms).paws == screens::Paws::ReachLeft;
+  }
+  TEST_ASSERT_TRUE(reachLeft);
+  bool sleeps = false;
+  for (uint32_t ms = 0; ms < 30000; ms += 50) {
+    const screens::MascotLook k = screens::deskLook(screens::DeskMood::Calm, true, ms);
+    sleeps |= k.eyes == screens::Eyes::Closed && (k.extras & screens::kZ1);
+  }
+  TEST_ASSERT_TRUE(sleeps);
+
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();  // 62% / 38%
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), 0);
+  TEST_ASSERT_TRUE(fc.drew("62%"));
+  TEST_ASSERT_TRUE(fc.drew("38%"));
+  TEST_ASSERT_TRUE(fc.drew("14:32"));
+  TEST_ASSERT_EQUAL_INT(4, (int)fc.arcs.size());  // two tracks + two values
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  // Same expression and limits: nothing redrawn.
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  // Limits past their reset show 0%.
+  screens::Clock later = testClock();
+  later.epoch = NOW + 250000;
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, later, 0);
+  TEST_ASSERT_TRUE(fc.drew("0%"));
+  TEST_ASSERT_FALSE(fc.drew("62%"));
+}
+
+// Disconnected: says so, keeps the address and pairing code, animates the waiting dots, and
+// shows no limits.
+static void test_disconnected_has_mascot_and_info() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  fc.clearLog();
+  screens::disconnected(Lang::En, testClock(), "192.168.0.42", "miblo-4f2a", "4827", 0, 0);
+  TEST_ASSERT_TRUE(fc.drew("Disconnected"));
+  TEST_ASSERT_TRUE(fc.drew("Waiting for the computer"));
+  TEST_ASSERT_TRUE(fc.drew("192.168.0.42"));
+  TEST_ASSERT_TRUE(fc.drew("4827"));
+  TEST_ASSERT_FALSE(fc.drew("%"));
+  TEST_ASSERT_EQUAL_INT(0, (int)fc.arcs.size());
+  TEST_ASSERT_EQUAL_INT(1, fc.layerBegins);  // the mascot, composed off-screen
+  fc.clearLog();
+  screens::disconnected(Lang::En, testClock(), "192.168.0.42", "miblo-4f2a", "4827", 1200, 1200);
+  TEST_ASSERT_TRUE(fc.drew("Waiting for the computer.."));  // the dots move
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 }
 
 int main() {
@@ -765,5 +851,7 @@ int main() {
   RUN_TEST(test_ticks_update_in_place);
   RUN_TEST(test_paging_uses_layer);
   RUN_TEST(test_pt_br_screens_have_no_english);
+  RUN_TEST(test_desk_mood_and_gauges);
+  RUN_TEST(test_disconnected_has_mascot_and_info);
   return UNITY_END();
 }

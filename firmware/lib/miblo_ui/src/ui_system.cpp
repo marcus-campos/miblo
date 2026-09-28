@@ -187,35 +187,4 @@ void hardResetCountdown(Lang lang, uint8_t remaining) {
   C().text(X(120), Y(218), t(lang, S::HardResetCancelHint), Font::Small, color::MUTED, Align::Center, X(232));
 }
 
-void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
-                  const char* mdnsHost, const char* pairCode) {
-  if (region(0, hashInt(kHashSeed, (uint32_t)lang), 0, 0, X(240), Y(30))) {
-    C().text(X(12), Y(20), t(lang, S::Disconnected), Font::SmallBold, color::DIM, Align::Left, X(216));
-  }
-  uint32_t ht = timeValid ? hashInt(hashInt(kHashSeed, (uint32_t)(hour * 60 + minute)), (uint32_t)(wday * 32 + mday))
-                          : 1;
-  Compose clock;  // big clock: composed off-screen when memory allows (no flash each minute)
-  if (clock.begin(1, hashInt(ht, (uint32_t)lang), 0, Y(60), X(240), Y(90))) {
-    char hhmm[8];
-    if (timeValid) miblo::formatHHMM(hour, minute, hhmm, sizeof(hhmm));
-    else strcpy(hhmm, "--:--");
-    C().text(X(120), Y(112), hhmm, Font::NumL, color::TEXT, Align::Center, X(232));
-    if (timeValid && wday >= 0 && wday < 7) {
-      char date[32];
-      snprintf(date, sizeof(date), "%s %d", t(lang, (S)((int)S::WdSun + wday)), mday);
-      C().text(X(120), Y(140), date, Font::Small, color::MUTED, Align::Center, X(232));
-    }
-  }
-  clock.end();
-  uint32_t hf = hashStr(hashStr(hashStr(hashInt(kHashSeed, (uint32_t)lang), ip), mdnsHost), pairCode);
-  if (region(2, hf, 0, Y(156), X(240), Y(84))) {
-    C().text(X(120), Y(176), t(lang, S::WaitingComputer), Font::Small, color::MUTED, Align::Center, X(232));
-    char line[64];
-    snprintf(line, sizeof(line), "%s \xC2\xB7 %s.local", ip, mdnsHost);
-    C().text(X(120), Y(208), line, Font::Small, color::FAINT, Align::Center, X(232));
-    snprintf(line, sizeof(line), "%s %s", t(lang, S::PairingCode), pairCode);
-    C().text(X(120), Y(228), line, Font::Small, color::FAINT, Align::Center, X(232));
-  }
-}
-
 }  // namespace screens

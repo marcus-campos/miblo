@@ -4,6 +4,7 @@
 
 #include "miblo_activity.h"
 #include "miblo_format.h"
+#include "miblo_policy.h"
 #include "ui_screens.h"
 
 namespace screens {
@@ -557,6 +558,209 @@ void sessions(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     return;
   }
   sessionRows(lang, s, page, per, clk, discreet, {Y(26), Y(70), Y(28), Y(52)});
+}
+
+// ---------------- Desk and Disconnected (the mascot) ----------------
+// The mascot plays a short looped choreography picked by its mood; each step is one
+// expression held for `ms`. Gaze is symbolic: Focus = towards the gauge that worries it.
+
+namespace {
+enum class Gaze : uint8_t { Front, Focus, Other, Up };
+enum : uint8_t { P_DOWN = 0, P_REACH = 1, P_COVER = 2 };
+struct Step {
+  uint16_t ms;
+  int8_t dx;
+  int8_t dy;
+  Gaze gaze;
+  Eyes eyes;
+  uint8_t paws;
+  uint8_t extras;
+};
+constexpr Gaze F = Gaze::Front, FO = Gaze::Focus, OT = Gaze::Other, UP = Gaze::Up;
+constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy;
+
+// Under half of the limits used: idles, checks both gauges, hops, dozes off for a bit.
+const Step kCalm[] = {
+    {2200, 0, 0, F, O, P_DOWN, 0},   {150, 0, 0, F, CL, P_DOWN, 0},    {1400, 0, 0, F, O, P_DOWN, 0},
+    {1600, 0, 0, FO, O, P_DOWN, 0},  {1600, 0, 0, OT, O, P_DOWN, 0},   {600, 0, 0, F, O, P_DOWN, 0},
+    {250, 0, -4, F, O, P_DOWN, 0},   {250, 0, 0, F, O, P_DOWN, 0},     {250, 0, -4, F, O, P_DOWN, 0},
+    {1800, 0, 0, F, O, P_DOWN, 0},   {150, 0, 0, F, CL, P_DOWN, 0},    {1500, 0, 0, UP, O, P_DOWN, 0},
+    {2500, 0, 0, F, SL, P_DOWN, 0},  {1200, 0, 0, F, CL, P_DOWN, kZ1}, {1200, 0, 0, F, CL, P_DOWN, kZ1 | kZ2},
+    {1200, 0, 0, F, CL, P_DOWN, kZ1}, {1200, 0, 0, F, CL, P_DOWN, kZ1 | kZ2}, {800, 0, 0, F, SL, P_DOWN, 0},
+    {150, 0, 0, F, CL, P_DOWN, 0},   {1500, 0, 0, F, O, P_DOWN, 0},
+};
+// 50-79%: keeps an eye on the fuller gauge and bats at it.
+const Step kWatchful[] = {
+    {1500, 0, 0, F, O, P_DOWN, 0},   {2000, 0, 0, FO, O, P_DOWN, 0},  {150, 0, 0, FO, CL, P_DOWN, 0},
+    {1200, 0, 0, FO, O, P_DOWN, 0},  {400, 0, 0, FO, O, P_REACH, 0},  {300, 0, 0, FO, O, P_DOWN, 0},
+    {400, 0, 0, FO, O, P_REACH, 0},  {300, 0, 0, FO, O, P_DOWN, 0},   {1500, 0, 0, OT, O, P_DOWN, 0},
+    {1800, 0, 0, FO, O, P_DOWN, 0},  {150, 0, 0, F, CL, P_DOWN, 0},   {1500, 0, 0, F, O, P_DOWN, 0},
+    {250, 0, -4, F, O, P_DOWN, 0},   {250, 0, 0, F, O, P_DOWN, 0},
+};
+// 80-94%: wide eyes on the gauge, sweating, a nervous shiver.
+const Step kWorried[] = {
+    {1200, 0, 0, FO, W, P_DOWN, 0},      {1500, 0, 0, FO, W, P_DOWN, kSweat}, {120, 0, 0, F, CL, P_DOWN, kSweat},
+    {800, 0, 0, F, O, P_DOWN, kSweat},   {1400, 0, 0, FO, W, P_DOWN, kSweat}, {120, -2, 0, FO, W, P_DOWN, kSweat},
+    {120, 2, 0, FO, W, P_DOWN, kSweat},  {120, -2, 0, FO, W, P_DOWN, kSweat}, {120, 2, 0, FO, W, P_DOWN, kSweat},
+    {1200, 0, 0, OT, O, P_DOWN, 0},      {1500, 0, 0, FO, W, P_DOWN, kSweat}, {150, 0, 0, F, CL, P_DOWN, 0},
+    {1000, 0, 0, F, O, P_DOWN, 0},
+};
+// 95% and up: alarmed, jumps, shivers, covers its eyes and peeks.
+const Step kScared[] = {
+    {800, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {200, 0, -5, FO, W, P_DOWN, kAlarm | kMouthO},
+    {200, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {200, 0, -5, FO, W, P_DOWN, kAlarm | kMouthO},
+    {200, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {100, -2, 0, FO, W, P_DOWN, kAlarm | kSweat},
+    {100, 2, 0, FO, W, P_DOWN, kAlarm | kSweat},    {100, -2, 0, FO, W, P_DOWN, kAlarm | kSweat},
+    {100, 2, 0, FO, W, P_DOWN, kAlarm | kSweat},    {100, -2, 0, FO, W, P_DOWN, kAlarm | kSweat},
+    {100, 2, 0, FO, W, P_DOWN, kAlarm | kSweat},    {1800, 0, 0, F, O, P_COVER, kSweat},
+    {400, 0, 0, FO, W, P_DOWN, kSweat},             {1200, 0, 0, F, O, P_COVER, kSweat},
+    {1000, 0, 0, FO, W, P_DOWN, kSweat | kMouthO},  {150, 0, 0, F, CL, P_DOWN, kSweat},
+};
+// Disconnected: looks left and right for the computer, up, sighs.
+const Step kSearching[] = {
+    {1500, 0, 0, F, O, P_DOWN, 0},   {1200, 0, 0, FO, O, P_DOWN, 0},  {1200, 0, 0, OT, O, P_DOWN, 0},
+    {150, 0, 0, F, CL, P_DOWN, 0},   {1000, 0, 0, UP, O, P_DOWN, 0},  {1200, 0, 0, F, O, P_DOWN, 0},
+    {800, 0, 0, FO, O, P_DOWN, 0},   {800, 0, 0, OT, O, P_DOWN, 0},   {250, 0, -4, F, O, P_DOWN, 0},
+    {250, 0, 0, F, O, P_DOWN, 0},    {2000, 0, 0, F, SL, P_DOWN, 0},  {150, 0, 0, F, CL, P_DOWN, 0},
+    {1200, 0, 0, F, O, P_DOWN, 0},
+};
+// Disconnected for long: asleep, now and then half-opening an eye.
+const Step kAsleep[] = {
+    {1400, 0, 0, F, CL, P_DOWN, kZ1}, {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2}, {1400, 0, 0, F, CL, P_DOWN, kZ1},
+    {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2}, {1400, 0, 0, F, CL, P_DOWN, kZ1}, {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2},
+    {1200, 0, 0, UP, SL, P_DOWN, 0},  {1400, 0, 0, F, CL, P_DOWN, 0},
+};
+
+template <size_t N>
+const Step& stepAt(const Step (&seq)[N], uint32_t ms) {
+  uint32_t total = 0;
+  for (const Step& st : seq) total += st.ms;
+  uint32_t t = ms % total;
+  for (const Step& st : seq) {
+    if (t < st.ms) return st;
+    t -= st.ms;
+  }
+  return seq[0];
+}
+}  // namespace
+
+DeskMood deskMood(uint8_t pct) {
+  if (pct >= 95) return DeskMood::Scared;
+  if (pct >= 80) return DeskMood::Worried;
+  if (pct >= 50) return DeskMood::Watchful;
+  return DeskMood::Calm;
+}
+
+uint8_t deskPct(const miblo::UsageWindow& w, uint32_t nowEpoch) {
+  if (!w.present) return 0;
+  if (w.reset && nowEpoch && nowEpoch >= w.reset) return 0;  // the window has reset since
+  return w.pct;
+}
+
+MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
+  const Step* st = nullptr;
+  switch (mood) {
+    case DeskMood::Calm: st = &stepAt(kCalm, ms); break;
+    case DeskMood::Watchful: st = &stepAt(kWatchful, ms); break;
+    case DeskMood::Worried: st = &stepAt(kWorried, ms); break;
+    case DeskMood::Scared: st = &stepAt(kScared, ms); break;
+    case DeskMood::Searching: st = &stepAt(kSearching, ms); break;
+    case DeskMood::Asleep: st = &stepAt(kAsleep, ms); break;
+  }
+  MascotLook k{st->dx, st->dy, 0, 0, st->eyes, Paws::Down, st->extras};
+  const int8_t side = focusLeft ? -3 : 3;  // the gauges sit below the cat: gaze down and sideways
+  switch (st->gaze) {
+    case Gaze::Front: break;
+    case Gaze::Focus: k.gx = side, k.gy = 3; break;
+    case Gaze::Other: k.gx = (int8_t)-side, k.gy = 3; break;
+    case Gaze::Up: k.gy = -3; break;
+  }
+  if (st->paws == P_REACH) k.paws = focusLeft ? Paws::ReachLeft : Paws::ReachRight;
+  if (st->paws == P_COVER) k.paws = Paws::Cover;
+  return k;
+}
+
+static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
+  uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
+                                 (uint32_t)(uint8_t)k.gy << 24);
+  return hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
+}
+
+// The mascot in its box (half = Sz(64)), composed on a layer when memory allows; only redrawn
+// when the expression changes.
+static void deskCat(uint8_t id, int cx, int cy, const MascotLook& k) {
+  if (!dirty(id, lookHash(kHashSeed + 17, k))) return;
+  const int half = Sz(64);
+  const bool layered = C().beginLayer(cx - half, cy - half, 2 * half, 2 * half);
+  deskMascot(cx, cy, k);
+  if (layered) {
+    C().endLayer();
+    C().releaseLayer();
+  }
+}
+
+// Ring gauge (270 degrees, gap at the bottom) with the percentage inside and the label in the gap.
+static void ring(int cx, int cy, const char* label, bool present, uint8_t pct, uint16_t base) {
+  const int r = Sz(28);
+  const int ir = Sz(22);
+  C().arc(cx, cy, r, ir, 45, 315, color::TRACK, color::BG);
+  if (present && pct > 0) {
+    int end = 45 + 270 * pct / 100;
+    if (end <= 45) end = 46;
+    C().arc(cx, cy, r, ir, 45, end, levelColor(pct, base), color::BG);
+  }
+  char buf[8];
+  if (present) snprintf(buf, sizeof(buf), "%u%%", pct);
+  else snprintf(buf, sizeof(buf), "--");
+  C().text(cx, cy + Y(5), buf, Font::SmallBold, present ? color::TEXT : color::DIM, Align::Center, 2 * ir - 2);
+  C().text(cx, cy + Y(26), label, Font::Small, color::MUTED, Align::Center, 2 * ir);
+}
+
+void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
+  const uint32_t now = clk.epoch ? clk.epoch : s.now;
+  const uint8_t p5 = deskPct(s.h5, now);
+  const uint8_t p7 = deskPct(s.d7, now);
+  const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
+  const uint8_t worst = !usage ? 0 : (s.h5.present && (!s.d7.present || p5 >= p7) ? p5 : p7);
+  const bool focusLeft = !usage || !s.d7.present || (s.h5.present && p5 >= p7);
+  field(R_CLOCK, kHashSeed + 19, X(120), Y(22), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
+  deskCat(R_BODY, X(120), Y(98), deskLook(deskMood(worst), focusLeft, nowMs));
+  uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
+  h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
+  h = hashInt(h, (uint32_t)(s.todayUsd * 100));
+  if (region(R_LIMITS, h, 0, Y(166), X(240), Y(74))) {
+    if (!usage) {
+      noLimits(lang, s, Y(200));
+    } else {
+      ring(X(60), Y(198), t(lang, S::Short5h), s.h5.present, p5, color::CORAL);
+      ring(X(180), Y(198), t(lang, S::Short7d), s.d7.present, p7, color::VIOLET);
+    }
+  }
+}
+
+void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,
+                  uint32_t nowMs, uint32_t awayMs) {
+  const uint32_t hh = hashInt(kHashSeed + 29, (uint32_t)lang);
+  if (region(R_HEADER, hh, 0, 0, X(240), Y(26))) {
+    C().fillCircle(X(16), Y(13), Sz(4), color::RED);
+    C().text(X(26), Y(18), t(lang, S::Disconnected), Font::SmallBold, color::DIM, Align::Left, X(150));
+  }
+  clockRight(hh, clk, Y(18), color::DIM, color::BG);
+  const DeskMood mood = awayMs >= miblo::kAwayNapMs ? DeskMood::Asleep : DeskMood::Searching;
+  deskCat(R_BODY, X(120), Y(96), deskLook(mood, true, nowMs));
+  // "Waiting for the computer" with dots that come and go.
+  char buf[128];
+  const unsigned dots = (unsigned)(nowMs / 600 % 4);
+  snprintf(buf, sizeof(buf), "%s%s", t(lang, S::WaitingComputer), "..." + (3 - dots));
+  field(R_ROW0, hh, X(120), Y(180), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(232));
+  const uint32_t hf = hashStr(hashStr(hashStr(hh, ip), mdnsHost), pairCode);
+  if (region(R_FOOT, hf, 0, Y(206), X(240), Y(34))) {
+    char line[64];
+    snprintf(line, sizeof(line), "%s \xC2\xB7 %s.local", ip, mdnsHost);
+    C().text(X(120), Y(218), line, Font::Small, color::FAINT, Align::Center, X(232));
+    snprintf(line, sizeof(line), "%s %s", t(lang, S::PairingCode), pairCode);
+    C().text(X(120), Y(236), line, Font::Small, color::FAINT, Align::Center, X(232));
+  }
 }
 
 }  // namespace screens

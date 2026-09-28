@@ -61,6 +61,28 @@ void check(int cx, int cy, int size, uint16_t c);
 void mascot(int cx, int cy, uint8_t frame, bool small = false);
 // Pose of a frame (0 idle, 1 blink, 2 hop, 3 glance); frames with equal poses draw the same.
 uint8_t mascotPose(uint8_t frame);
+
+// Expression of the big Desk mascot (design units of the 96-unit box).
+enum class Eyes : uint8_t { Open, Closed, Wide, Sleepy };
+enum class Paws : uint8_t { Down, ReachLeft, ReachRight, Cover };  // Cover: paws over the eyes
+enum : uint8_t { kSweat = 1, kAlarm = 2, kZ1 = 4, kZ2 = 8, kMouthO = 16 };  // MascotLook::extras
+struct MascotLook {
+  int8_t dx;   // whole cat sideways (shiver)
+  int8_t dy;   // whole cat up/down (hop < 0)
+  int8_t gx;   // pupils: gaze offset
+  int8_t gy;
+  Eyes eyes;
+  Paws paws;
+  uint8_t extras;  // kSweat | kAlarm | kZ1 | kZ2 | kMouthO
+  bool operator==(const MascotLook& o) const {
+    return dx == o.dx && dy == o.dy && gx == o.gx && gy == o.gy && eyes == o.eyes && paws == o.paws &&
+           extras == o.extras;
+  }
+  bool operator!=(const MascotLook& o) const { return !(*this == o); }
+};
+// Desk mascot with front paws: flat primitives only, inside the square
+// (cx - Sz(64), cy - Sz(64), 2 * Sz(64)), background included.
+void deskMascot(int cx, int cy, const MascotLook& look);
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens ----
@@ -75,8 +97,6 @@ void code(Lang lang, miblo::S title, const char* code, uint32_t remainingSec);
 void updating(Lang lang, uint8_t pct);
 // Quick-boot hard reset countdown: big amber N + "Quick restarts left to reset: N".
 void hardResetCountdown(Lang lang, uint8_t remaining);
-void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
-                  const char* mdnsHost, const char* pairCode);
 
 // ---- main screens ----
 struct Clock {
@@ -99,5 +119,21 @@ void overview(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t
 void limits(Lang lang, const miblo::Snapshot& s, const Clock& clk);
 void sessions(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
               bool discreet);
+
+// ---- Desk (long quiet spell) ----
+// How the mascot feels about the last known limits (the higher of 5h and week).
+// Searching / Asleep: the Disconnected screen (looking around for the computer, then a nap).
+enum class DeskMood : uint8_t { Calm, Watchful, Worried, Scared, Searching, Asleep };
+DeskMood deskMood(uint8_t pct);  // < 50 calm, < 80 watchful, < 95 worried, else scared
+// Percentage the Desk shows for a window: a window whose reset time has passed is back to 0.
+uint8_t deskPct(const miblo::UsageWindow& w, uint32_t nowEpoch);
+// Expression at `ms` into the mood's loop; `focusLeft`: the gauge that worries it is the left one (5h).
+MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms);
+// Full-screen mascot + two ring gauges (5h, week) + clock.
+void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs);
+// No snapshot for a while: "Disconnected" + clock, the mascot looking for the computer (asleep
+// after kAwayNapMs away), "Waiting for the computer", and the address and pairing code.
+void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,
+                  uint32_t nowMs, uint32_t awayMs);
 
 }  // namespace screens

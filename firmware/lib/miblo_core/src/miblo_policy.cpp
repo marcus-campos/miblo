@@ -187,4 +187,20 @@ bool RotationClock::update(const RotationTiming& t, bool blocked, uint32_t nowMs
   return limits_;
 }
 
+QuietPhase QuietClock::update(bool quiet, uint32_t nowMs) {
+  if (!quiet) {
+    phase_ = QuietPhase::Busy;
+    return phase_;
+  }
+  if (phase_ == QuietPhase::Busy) {
+    phase_ = QuietPhase::AllDone;
+    sinceMs_ = nowMs;
+  }
+  if (phase_ == QuietPhase::Desk) return phase_;  // sticky: no fall-back once millis() wraps
+  const uint32_t elapsed = nowMs - sinceMs_;
+  if (elapsed >= kDeskIdleMs) phase_ = QuietPhase::Desk;
+  else if (elapsed >= kAllDoneMs) phase_ = QuietPhase::Settled;
+  return phase_;
+}
+
 }  // namespace miblo

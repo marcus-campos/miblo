@@ -88,7 +88,8 @@ enum class ScreenId : uint8_t {
   AlertFlash,
   AlertHero,
   Main,           // device mode (Overview, Limits, or Sessions)
-  HardResetCountdown  // quick-restarts-left countdown during the first 10 s of a quick boot
+  HardResetCountdown,  // quick-restarts-left countdown during the first 10 s of a quick boot
+  Desk            // long quiet spell: full-screen mascot playing with the last known limits
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;
@@ -137,6 +138,34 @@ class RotationClock {
   RotationTiming last_;
   bool started_ = false;
   bool limits_ = false;
+  uint32_t sinceMs_ = 0;
+};
+
+// ---- Quiet spells: what the main screen becomes when nothing is going on ----
+// Quiet = the main screen with no session running or waiting (Overview shows "All done").
+// After kAllDoneMs of quiet the Overview swaps "All done" for the Limits screen; after
+// kDeskIdleMs any mode gives way to the Desk screen. (Disconnected has its own mascot.)
+enum class QuietPhase : uint8_t {
+  Busy,     // not quiet: normal screens
+  AllDone,  // just went quiet
+  Settled,  // quiet for kAllDoneMs: Overview shows Limits
+  Desk      // quiet for kDeskIdleMs: the Desk screen
+};
+
+constexpr uint32_t kAllDoneMs = 20000;
+constexpr uint32_t kDeskIdleMs = 600000;
+// Disconnected: the mascot looks around for the computer, then falls asleep after this long.
+constexpr uint32_t kAwayNapMs = 600000;
+
+class QuietClock {
+ public:
+  // Call on every frame; anything not quiet (activity, an alert, any other screen) restarts the
+  // spell. Safe across millis() wrap.
+  QuietPhase update(bool quiet, uint32_t nowMs);
+  QuietPhase phase() const { return phase_; }
+
+ private:
+  QuietPhase phase_ = QuietPhase::Busy;
   uint32_t sinceMs_ = 0;
 };
 

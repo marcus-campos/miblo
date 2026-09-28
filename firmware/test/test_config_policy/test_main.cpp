@@ -520,6 +520,21 @@ static void test_rotation_survives_millis_wrap() {
   TEST_ASSERT_FALSE(r.update(t, false, start + 20000));
 }
 
+// Quiet spells: All done, then (after kAllDoneMs) Limits, then (after kDeskIdleMs) Desk; any
+// activity starts over, and Desk survives a millis() wrap.
+static void test_quiet_clock_phases() {
+  QuietClock q;
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 0));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000 + kAllDoneMs - 1));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Settled, (int)q.update(true, 1000 + kAllDoneMs));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 1000 + kDeskIdleMs));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 999));  // wrapped: still Desk
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 2000));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 0xFFFFF000u));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Settled, (int)q.update(true, 0xFFFFF000u + kAllDoneMs));  // wraps
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -550,5 +565,6 @@ int main() {
   RUN_TEST(test_rotation_alert_preempts_limits_slot);
   RUN_TEST(test_rotation_config_change_resets_cycle);
   RUN_TEST(test_rotation_survives_millis_wrap);
+  RUN_TEST(test_quiet_clock_phases);
   return UNITY_END();
 }

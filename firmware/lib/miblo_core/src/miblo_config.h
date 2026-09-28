@@ -42,7 +42,7 @@ AlertTiming alertTiming(const Config& cfg);
 // Enabled only when rotation is on and the device is in Overview mode.
 RotationTiming rotationTiming(const Config& cfg);
 
-// ---- AirTag-style hard reset by quick power cycles ----
+// ---- Hard reset by quick power cycles ----
 // Each power-on with less than 10 s of uptime counts; the 6th in a row erases everything.
 // From the 3rd quick boot on, the screen shows how many are left ("Leave it on to cancel").
 constexpr uint8_t kPowerCyclesForReset = 6;

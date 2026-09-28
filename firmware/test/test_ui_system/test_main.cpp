@@ -29,7 +29,6 @@ static void renderSystem(FakeCanvas& fc) {
   screens::reset();
   screens::updating(Lang::Fr, 42);
   screens::reset();
-  screens::disconnected(Lang::It, true, 14, 32, 1, 28, "192.168.0.42", "miblo-4f2a", "4827");
   for (int l = 0; l < (int)Lang::Count; l++) {
     screens::reset();
     screens::hardResetCountdown((Lang)l, 3);
@@ -222,6 +221,30 @@ static void test_mascot_stays_in_its_box() {
   }
 }
 
+// The Desk mascot (with paws and extras) stays inside its 2 * Sz(64) box for every expression
+// its choreographies use, with flat primitives only.
+static void test_desk_mascot_stays_in_its_box() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    BoxCanvas bc(sp);
+    screens::bind(bc);
+    const int cx = screens::X(120), cy = screens::Y(98), half = screens::Sz(64);
+    bc.bx = cx - half;
+    bc.by = cy - half;
+    bc.bw = bc.bh = 2 * half;
+    for (int mood = 0; mood <= (int)screens::DeskMood::Asleep; mood++) {
+      for (int left = 0; left < 2; left++) {
+        for (uint32_t ms = 0; ms < 60000; ms += 50) {
+          screens::deskMascot(cx, cy, screens::deskLook((screens::DeskMood)mood, left != 0, ms));
+          TEST_ASSERT_EQUAL_INT_MESSAGE(0, bc.escaped, "desk mascot escaped its bounding box");
+        }
+      }
+    }
+    TEST_ASSERT_EQUAL_INT(0, bc.lines + bc.arcs_);
+    TEST_ASSERT_EQUAL_INT(0, bc.outOfBounds);
+  }
+}
+
 // Records the primitive sequence (kind + geometry) of one mascot frame, to compare poses.
 class TraceCanvas : public FakeCanvas {
  public:
@@ -318,6 +341,7 @@ int main() {
   RUN_TEST(test_boot_shows_firmware_version);
   RUN_TEST(test_mascot_stays_in_its_box);
   RUN_TEST(test_mascot_poses_differ);
+  RUN_TEST(test_desk_mascot_stays_in_its_box);
   RUN_TEST(test_boot_draws_mascot_on_a_layer_only_on_pose_change);
   RUN_TEST(test_hard_reset_countdown_content);
   return UNITY_END();

@@ -223,8 +223,10 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
     snprintf(buf, sizeof(buf), "%u%%", s.h5.pct);
     C().text(X(228), Y(58), buf, Font::NumL, color::TEXT, Align::Right, X(100));
     bar(X(12), Y(64), X(216), Y(10), s.h5.pct, levelColor(s.h5.pct, color::CORAL));
-    resetLine(lang, s.h5, clk, s.now, true, buf, sizeof(buf));
-    C().text(X(12), Y(90), buf, Font::Small, color::DIM, Align::Left, X(216));
+    if (s.h5.reset) {  // 0 = unknown (the plugin sent reset:null): no line
+      resetLine(lang, s.h5, clk, s.now, true, buf, sizeof(buf));
+      C().text(X(12), Y(90), buf, Font::Small, color::DIM, Align::Left, X(216));
+    }
   } else {
     C().text(X(228), Y(58), "--", Font::NumM, color::DIM, Align::Right, X(100));
   }
@@ -233,8 +235,10 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
     snprintf(buf, sizeof(buf), "%u%%", s.d7.pct);
     C().text(X(228), Y(118), buf, Font::NumM, color::TEXT, Align::Right, X(100));
     bar(X(12), Y(124), X(216), Y(6), s.d7.pct, levelColor(s.d7.pct, color::VIOLET));
-    resetLine(lang, s.d7, clk, s.now, false, buf, sizeof(buf));
-    C().text(X(12), Y(144), buf, Font::Small, color::DIM, Align::Left, X(216));
+    if (s.d7.reset) {
+      resetLine(lang, s.d7, clk, s.now, false, buf, sizeof(buf));
+      C().text(X(12), Y(144), buf, Font::Small, color::DIM, Align::Left, X(216));
+    }
   } else {
     C().text(X(228), Y(118), "--", Font::NumM, color::DIM, Align::Right, X(100));
   }
@@ -357,10 +361,12 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
       snprintf(buf, sizeof(buf), "%u%%", pct);
       C().text(cx, Y(112), buf, Font::NumL, color::TEXT, Align::Center, 2 * ir);
       C().text(cx, Y(134), t(lang, S::Session5h), Font::Small, color::MUTED, Align::Center, 2 * ir);
-      char left[16];
-      miblo::formatCountdown(s.h5.reset > clk.epoch ? s.h5.reset - clk.epoch : 0, left, sizeof(left));
-      snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
-      C().text(cx, Y(152), buf, Font::Small, color::DIM, Align::Center, 2 * ir);
+      if (s.h5.reset) {  // 0 = unknown: no countdown
+        char left[16];
+        miblo::formatCountdown(s.h5.reset > clk.epoch ? s.h5.reset - clk.epoch : 0, left, sizeof(left));
+        snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
+        C().text(cx, Y(152), buf, Font::Small, color::DIM, Align::Center, 2 * ir);
+      }
     }
   }
   h = hashInt(hashInt(hashInt(kHashSeed, s.d7.present ? s.d7.pct : 255), s.d7.reset), (uint32_t)lang);
@@ -368,8 +374,12 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
     if (s.hasUsage && s.d7.present) {
       char when[32];
       C().text(X(12), Y(192), t(lang, S::Week), Font::Small, color::MUTED, Align::Left, X(100));
-      formatWhen(lang, s.d7.reset, clk.epoch ? clk.epoch : s.now, when, sizeof(when));
-      snprintf(buf, sizeof(buf), "%u%%%s%s", s.d7.pct, kDot, when);
+      if (s.d7.reset) {
+        formatWhen(lang, s.d7.reset, clk.epoch ? clk.epoch : s.now, when, sizeof(when));
+        snprintf(buf, sizeof(buf), "%u%%%s%s", s.d7.pct, kDot, when);
+      } else {
+        snprintf(buf, sizeof(buf), "%u%%", s.d7.pct);  // reset unknown: percentage only
+      }
       C().text(X(228), Y(192), buf, Font::Small, color::MUTED, Align::Right, X(120));
       bar(X(12), Y(200), X(216), Y(6), s.d7.pct, levelColor(s.d7.pct, color::VIOLET));
     }

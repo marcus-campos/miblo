@@ -134,6 +134,32 @@ static void test_limits_arc_and_cost_fallback() {
   TEST_ASSERT_TRUE(fc.drew("limites indisponíveis"));
 }
 
+// The plugin sends reset:null when unknown (parsed as 0): no "resets …" / "in …" line at all.
+static void test_unknown_reset_hides_reset_line() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(4, 5000);
+  attention();
+  screens::reset();
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("resets"));  // known resets: both lines drawn
+  snap.h5.reset = 0;
+  snap.d7.reset = 0;
+  screens::reset();
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("62%"));
+  TEST_ASSERT_FALSE(fc.drew("resets"));
+  TEST_ASSERT_FALSE(fc.drew("in "));
+  screens::reset();
+  fc.clearLog();
+  screens::limits(Lang::En, snap, testClock());
+  TEST_ASSERT_TRUE(fc.drew("38%"));
+  TEST_ASSERT_FALSE(fc.drew("in "));
+  TEST_ASSERT_FALSE(fc.drew("38% ·"));
+}
+
 static void test_sessions_pages_and_flash_blinks() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
@@ -169,5 +195,6 @@ int main() {
   RUN_TEST(test_discreet_mode_hides_details);
   RUN_TEST(test_limits_arc_and_cost_fallback);
   RUN_TEST(test_sessions_pages_and_flash_blinks);
+  RUN_TEST(test_unknown_reset_hides_reset_line);
   return UNITY_END();
 }

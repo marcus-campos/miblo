@@ -99,7 +99,20 @@ static const char kEn[] MIBLO_ROM =
     "Paired computers: %u\0"  // WebPairedCount
     "Firmware version\0"  // WebVersion
     "Quick restarts left to reset: %u\0"  // HardResetCountdown
-    "Leave it on to cancel\0";  // HardResetCancelHint
+    "Leave it on to cancel\0"  // HardResetCancelHint
+    "Network not found\0"  // NetNotFound
+    "Use a 2.4 GHz network\0"  // Use24GHz
+    "Network not found. Miblo only works with 2.4 GHz Wi-Fi.\0"  // WebNotFound
+    "Connected! Open Miblo at:\0"  // WebConnectedAt
+    "Could not connect. Check the network and try again.\0"  // WebConnectFailed
+    "Try again\0"  // WebTryAgain
+    "No reply from Miblo. Check the device screen.\0"  // WebNoReply
+    "Connection refused\0"  // ConnRefused
+    "Check password or use WPA2\0"  // RefusedHint
+    "Could not connect\0"  // JoinFailed
+    "Error code %u\0"  // ErrorCode
+    "The router refused the connection. Check the password. If the router uses WPA3 or \"WPA2/WPA3\" mode, switch it to WPA2 (Miblo does not support WPA3).\0"  // WebRefused
+    "Could not connect (code %u). Check the network and try again.\0";  // WebFailedCode
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -194,7 +207,20 @@ static const char kPtBR[] MIBLO_ROM =
     "Computadores pareados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
     "Reinícios rápidos restantes para resetar: %u\0"  // HardResetCountdown
-    "Deixe ligado para cancelar\0";  // HardResetCancelHint
+    "Deixe ligado para cancelar\0"  // HardResetCancelHint
+    "Rede não encontrada\0"  // NetNotFound
+    "Use uma rede de 2,4 GHz\0"  // Use24GHz
+    "Rede não encontrada. O Miblo só funciona com Wi-Fi de 2,4 GHz.\0"  // WebNotFound
+    "Conectado! Abra o Miblo em:\0"  // WebConnectedAt
+    "Não foi possível conectar. Verifique a rede e tente de novo.\0"  // WebConnectFailed
+    "Tentar de novo\0"  // WebTryAgain
+    "Sem resposta do Miblo. Veja a tela do aparelho.\0"  // WebNoReply
+    "Conexão recusada\0"  // ConnRefused
+    "Confira a senha ou use WPA2\0"  // RefusedHint
+    "Não foi possível conectar\0"  // JoinFailed
+    "Código de erro %u\0"  // ErrorCode
+    "O roteador recusou a conexão. Confira a senha. Se o roteador usa WPA3 ou o modo \"WPA2/WPA3\", mude para WPA2 (o Miblo não suporta WPA3).\0"  // WebRefused
+    "Não foi possível conectar (código %u). Verifique a rede e tente de novo.\0";  // WebFailedCode
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -289,7 +315,20 @@ static const char kPtPT[] MIBLO_ROM =
     "Computadores emparelhados: %u\0"  // WebPairedCount
     "Versão do firmware\0"  // WebVersion
     "Reinícios rápidos restantes para repor: %u\0"  // HardResetCountdown
-    "Deixe ligado para cancelar\0";  // HardResetCancelHint
+    "Deixe ligado para cancelar\0"  // HardResetCancelHint
+    "Rede não encontrada\0"  // NetNotFound
+    "Use uma rede de 2,4 GHz\0"  // Use24GHz
+    "Rede não encontrada. O Miblo só funciona com Wi-Fi de 2,4 GHz.\0"  // WebNotFound
+    "Ligado! Abra o Miblo em:\0"  // WebConnectedAt
+    "Não foi possível ligar. Verifique a rede e tente novamente.\0"  // WebConnectFailed
+    "Tentar novamente\0"  // WebTryAgain
+    "Sem resposta do Miblo. Veja o ecrã do aparelho.\0"  // WebNoReply
+    "Ligação recusada\0"  // ConnRefused
+    "Verifique a palavra-passe ou use WPA2\0"  // RefusedHint
+    "Não foi possível ligar\0"  // JoinFailed
+    "Código de erro %u\0"  // ErrorCode
+    "O router recusou a ligação. Verifique a palavra-passe. Se o router usa WPA3 ou o modo \"WPA2/WPA3\", mude para WPA2 (o Miblo não suporta WPA3).\0"  // WebRefused
+    "Não foi possível ligar (código %u). Verifique a rede e tente novamente.\0";  // WebFailedCode
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -384,7 +423,20 @@ static const char kEs[] MIBLO_ROM =
     "Ordenadores vinculados: %u\0"  // WebPairedCount
     "Versión del firmware\0"  // WebVersion
     "Reinicios rápidos restantes para restablecer: %u\0"  // HardResetCountdown
-    "Déjalo encendido para cancelar\0";  // HardResetCancelHint
+    "Déjalo encendido para cancelar\0"  // HardResetCancelHint
+    "Red no encontrada\0"  // NetNotFound
+    "Usa una red de 2,4 GHz\0"  // Use24GHz
+    "Red no encontrada. Miblo solo funciona con Wi-Fi de 2,4 GHz.\0"  // WebNotFound
+    "¡Conectado! Abre Miblo en:\0"  // WebConnectedAt
+    "No se pudo conectar. Revisa la red e inténtalo de nuevo.\0"  // WebConnectFailed
+    "Reintentar\0"  // WebTryAgain
+    "Miblo no responde. Mira la pantalla del dispositivo.\0"  // WebNoReply
+    "Conexión rechazada\0"  // ConnRefused
+    "Revisa la contraseña o usa WPA2\0"  // RefusedHint
+    "No se pudo conectar\0"  // JoinFailed
+    "Código de error %u\0"  // ErrorCode
+    "El router rechazó la conexión. Revisa la contraseña. Si el router usa WPA3 o el modo \"WPA2/WPA3\", cámbialo a WPA2 (Miblo no admite WPA3).\0"  // WebRefused
+    "No se pudo conectar (código %u). Revisa la red e inténtalo de nuevo.\0";  // WebFailedCode
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -479,7 +531,20 @@ static const char kFr[] MIBLO_ROM =
     "Ordinateurs appairés : %u\0"  // WebPairedCount
     "Version du firmware\0"  // WebVersion
     "Redémarrages rapides restants avant réinitialisation : %u\0"  // HardResetCountdown
-    "Laissez-le allumé pour annuler\0";  // HardResetCancelHint
+    "Laissez-le allumé pour annuler\0"  // HardResetCancelHint
+    "Réseau introuvable\0"  // NetNotFound
+    "Utilisez un réseau 2,4 GHz\0"  // Use24GHz
+    "Réseau introuvable. Miblo ne fonctionne qu'avec le Wi-Fi 2,4 GHz.\0"  // WebNotFound
+    "Connecté ! Ouvrez Miblo sur :\0"  // WebConnectedAt
+    "Connexion impossible. Vérifiez le réseau et réessayez.\0"  // WebConnectFailed
+    "Réessayer\0"  // WebTryAgain
+    "Miblo ne répond pas. Regardez l'écran de l'appareil.\0"  // WebNoReply
+    "Connexion refusée\0"  // ConnRefused
+    "Vérifiez le mot de passe ou WPA2\0"  // RefusedHint
+    "Connexion impossible\0"  // JoinFailed
+    "Code d'erreur %u\0"  // ErrorCode
+    "Le routeur a refusé la connexion. Vérifiez le mot de passe. Si le routeur utilise WPA3 ou le mode \"WPA2/WPA3\", passez-le en WPA2 (Miblo ne prend pas en charge WPA3).\0"  // WebRefused
+    "Connexion impossible (code %u). Vérifiez le réseau et réessayez.\0";  // WebFailedCode
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -574,7 +639,20 @@ static const char kIt[] MIBLO_ROM =
     "Computer abbinati: %u\0"  // WebPairedCount
     "Versione firmware\0"  // WebVersion
     "Riavvii rapidi rimanenti per il reset: %u\0"  // HardResetCountdown
-    "Lascialo acceso per annullare\0";  // HardResetCancelHint
+    "Lascialo acceso per annullare\0"  // HardResetCancelHint
+    "Rete non trovata\0"  // NetNotFound
+    "Usa una rete a 2,4 GHz\0"  // Use24GHz
+    "Rete non trovata. Miblo funziona solo con Wi-Fi a 2,4 GHz.\0"  // WebNotFound
+    "Connesso! Apri Miblo su:\0"  // WebConnectedAt
+    "Impossibile connettersi. Controlla la rete e riprova.\0"  // WebConnectFailed
+    "Riprova\0"  // WebTryAgain
+    "Miblo non risponde. Guarda lo schermo del dispositivo.\0"  // WebNoReply
+    "Connessione rifiutata\0"  // ConnRefused
+    "Controlla la password o usa WPA2\0"  // RefusedHint
+    "Impossibile connettersi\0"  // JoinFailed
+    "Codice di errore %u\0"  // ErrorCode
+    "Il router ha rifiutato la connessione. Controlla la password. Se il router usa WPA3 o la modalità \"WPA2/WPA3\", passa a WPA2 (Miblo non supporta WPA3).\0"  // WebRefused
+    "Impossibile connettersi (codice %u). Controlla la rete e riprova.\0";  // WebFailedCode
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -669,7 +747,20 @@ static const char kDe[] MIBLO_ROM =
     "Gekoppelte Computer: %u\0"  // WebPairedCount
     "Firmware-Version\0"  // WebVersion
     "Verbleibende schnelle Neustarts bis zum Zurücksetzen: %u\0"  // HardResetCountdown
-    "Eingeschaltet lassen zum Abbrechen\0";  // HardResetCancelHint
+    "Eingeschaltet lassen zum Abbrechen\0"  // HardResetCancelHint
+    "Netzwerk nicht gefunden\0"  // NetNotFound
+    "Nutze ein 2,4-GHz-WLAN\0"  // Use24GHz
+    "Netzwerk nicht gefunden. Miblo funktioniert nur mit 2,4-GHz-WLAN.\0"  // WebNotFound
+    "Verbunden! Öffne Miblo unter:\0"  // WebConnectedAt
+    "Verbindung fehlgeschlagen. Prüfe das Netzwerk und versuche es erneut.\0"  // WebConnectFailed
+    "Erneut versuchen\0"  // WebTryAgain
+    "Keine Antwort von Miblo. Schau auf das Display des Geräts.\0"  // WebNoReply
+    "Verbindung abgelehnt\0"  // ConnRefused
+    "Passwort prüfen oder WPA2 nutzen\0"  // RefusedHint
+    "Verbindung fehlgeschlagen\0"  // JoinFailed
+    "Fehlercode %u\0"  // ErrorCode
+    "Der Router hat die Verbindung abgelehnt. Prüfe das Passwort. Nutzt der Router WPA3 oder den Modus \"WPA2/WPA3\", stelle ihn auf WPA2 um (Miblo unterstützt kein WPA3).\0"  // WebRefused
+    "Verbindung fehlgeschlagen (Code %u). Prüfe das Netzwerk und versuche es erneut.\0";  // WebFailedCode
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -764,7 +855,20 @@ static const char kRu[] MIBLO_ROM =
     "Сопряжённых компьютеров: %u\0"  // WebPairedCount
     "Версия прошивки\0"  // WebVersion
     "Осталось быстрых перезапусков до сброса: %u\0"  // HardResetCountdown
-    "Оставьте включённым для отмены\0";  // HardResetCancelHint
+    "Оставьте включённым для отмены\0"  // HardResetCancelHint
+    "Сеть не найдена\0"  // NetNotFound
+    "Нужна сеть 2,4 ГГц\0"  // Use24GHz
+    "Сеть не найдена. Miblo работает только с Wi-Fi 2,4 ГГц.\0"  // WebNotFound
+    "Подключено! Откройте Miblo:\0"  // WebConnectedAt
+    "Не удалось подключиться. Проверьте сеть и попробуйте снова.\0"  // WebConnectFailed
+    "Повторить\0"  // WebTryAgain
+    "Miblo не отвечает. Смотрите на экран устройства.\0"  // WebNoReply
+    "Подключение отклонено\0"  // ConnRefused
+    "Проверьте пароль или WPA2\0"  // RefusedHint
+    "Не удалось подключиться\0"  // JoinFailed
+    "Код ошибки %u\0"  // ErrorCode
+    "Роутер отклонил подключение. Проверьте пароль. Если роутер использует WPA3 или режим \"WPA2/WPA3\", переключите его на WPA2 (Miblo не поддерживает WPA3).\0"  // WebRefused
+    "Не удалось подключиться (код %u). Проверьте сеть и попробуйте снова.\0";  // WebFailedCode
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -859,7 +963,20 @@ static const char kZh[] MIBLO_ROM =
     "已配对电脑：%u\0"  // WebPairedCount
     "固件版本\0"  // WebVersion
     "再快速重启 %u 次即可重置\0"  // HardResetCountdown
-    "保持通电即可取消\0";  // HardResetCancelHint
+    "保持通电即可取消\0"  // HardResetCancelHint
+    "未找到网络\0"  // NetNotFound
+    "请使用 2.4 GHz 网络\0"  // Use24GHz
+    "未找到网络。Miblo 仅支持 2.4 GHz Wi-Fi。\0"  // WebNotFound
+    "已连接！在此打开 Miblo：\0"  // WebConnectedAt
+    "无法连接。请检查网络后重试。\0"  // WebConnectFailed
+    "重试\0"  // WebTryAgain
+    "Miblo 无响应。请查看设备屏幕。\0"  // WebNoReply
+    "连接被拒绝\0"  // ConnRefused
+    "请检查密码或改用 WPA2\0"  // RefusedHint
+    "无法连接\0"  // JoinFailed
+    "错误代码 %u\0"  // ErrorCode
+    "路由器拒绝了连接。请检查密码。如果路由器使用 WPA3 或 \"WPA2/WPA3\" 模式，请改为 WPA2（Miblo 不支持 WPA3）。\0"  // WebRefused
+    "无法连接（代码 %u）。请检查网络后重试。\0";  // WebFailedCode
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

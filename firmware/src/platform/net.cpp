@@ -13,7 +13,7 @@ namespace net {
 static miblo::NetPolicy policy;
 static DNSServer dns;
 static bool apOn = false;
-static bool apHadStations = false;
+static bool autoReconnectOn = true;
 static bool wasConnected = false;
 static uint32_t connId = 0;
 static uint32_t lastRetryMs = 0;
@@ -26,7 +26,18 @@ static char pendingPass[65];
 static char savedSsid[33] = "";
 static char savedPass[65] = "";
 static bool trialCreds = false;
-static uint32_t trialStartMs = 0;
+
+// Station events arrive from the SDK's event callback; loop() hands them to the policy.
+#if defined(ESP8266)
+static WiFiEventHandler onDisc;
+static WiFiEventHandler onAssoc;
+#endif
+static volatile uint32_t discSeq = 0;
+static volatile uint8_t discReason = 0;
+static volatile uint32_t assocSeq = 0;
+static uint32_t seenDiscSeq = 0;
+static uint32_t seenAssocSeq = 0;
+static uint8_t lastReason = 0;  // survives trials: reported by /api/info
 
 static miblo::LinkStatus link() {
   switch (WiFi.status()) {
@@ -79,6 +90,15 @@ void begin(uint32_t nowMs) {
   WiFi.setHostname(ctx.ident.id);
 #endif
   WiFi.setAutoReconnect(true);
+#if defined(ESP8266)
+  onDisc = WiFi.onStationModeDisconnected([](const WiFiEventStationModeDisconnected& e) {
+    // ASSOC_LEAVE is our own doing (WiFi.begin()/disconnect() while associated): not a failure.
+    if (e.reason == WIFI_DISCONNECT_REASON_ASSOC_LEAVE) return;
+    discReason = (uint8_t)e.reason;
+    discSeq = discSeq + 1;
+  });
+  onAssoc = WiFi.onStationModeConnected([](const WiFiEventStationModeConnected&) { assocSeq = assocSeq + 1; });
+#endif
   bool hasCreds = WiFi.SSID().length() > 0;  // saved by the SDK (previous firmware or our own portal)
   strlcpy(savedSsid, WiFi.SSID().c_str(), sizeof(savedSsid));
   strlcpy(savedPass, WiFi.psk().c_str(), sizeof(savedPass));
@@ -88,40 +108,75 @@ void begin(uint32_t nowMs) {
   applyTimezone();
 }
 
+static void syncAutoReconnect(bool apHasStations) {
+  const bool want = miblo::NetPolicy::autoReconnectWanted(apHasStations, trialCreds);
+  if (want != autoReconnectOn) {
+    WiFi.setAutoReconnect(want);
+    autoReconnectOn = want;
+  }
+}
+
+// Tries the submitted network without touching the SDK's saved credentials: a mistyped
+// password or an out-of-range network must never evict a network that already worked.
+static void beginTrial() {
+  WiFi.persistent(false);
+  WiFi.begin(pendingSsid, pendingPass);
+  WiFi.persistent(true);
+}
+
 void loop(uint32_t nowMs) {
+  const bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
+
   if (pendingCreds && nowMs - pendingAtMs >= 500) {
     pendingCreds = false;
-    // Try the submitted network without touching the SDK's saved credentials yet: a mistyped
-    // password or an out-of-range network must never evict a network that already worked.
-    WiFi.persistent(false);
-    WiFi.begin(pendingSsid, pendingPass);
     trialCreds = true;
-    trialStartMs = nowMs;
+    syncAutoReconnect(apHasStations);  // on before the first attempt, even with the phone attached
+    beginTrial();
     policy.credentialsSubmitted(nowMs);
-    lastRetryMs = nowMs;
   }
 
-  miblo::LinkStatus curLink = link();
-  miblo::NetState st = policy.update(curLink, nowMs);
+  if (discSeq != seenDiscSeq) {
+    seenDiscSeq = discSeq;
+    lastReason = discReason;
+    policy.disconnected(lastReason, nowMs);
+  }
+  if (assocSeq != seenAssocSeq) {
+    seenAssocSeq = assocSeq;
+    policy.associated(nowMs);
+  }
 
-  if (trialCreds) {
-    if (curLink == miblo::LinkStatus::Connected) {
-      // It works: let the SDK persist it now.
-      trialCreds = false;
+  const miblo::LinkStatus curLink = link();
+  const miblo::NetState st = policy.update(curLink, nowMs);
+
+  if (trialCreds && !policy.trialActive()) {
+    trialCreds = false;
+    if (st == miblo::NetState::Connected) {
+      // It works: let the SDK persist it now. connect=false: we are already associated, and a
+      // reconnect would hop channels (and drop the phone) a second time.
       strlcpy(savedSsid, pendingSsid, sizeof(savedSsid));
       strlcpy(savedPass, pendingPass, sizeof(savedPass));
       WiFi.persistent(true);
-      WiFi.begin(pendingSsid, pendingPass);
+      WiFi.begin(pendingSsid, pendingPass, 0, nullptr, false);
       storage::markConfigured();  // first network joined from the portal: never codeless OTA again
-    } else if (curLink == miblo::LinkStatus::WrongPassword ||
-               nowMs - trialStartMs >= miblo::NetPolicy::kFallbackMs) {
-      // Wrong password or timed out: drop the attempt and go back to the network that was
-      // already saved, still without ever writing the failed attempt to flash.
-      trialCreds = false;
+    } else {
+      // Wrong password, failure or timeout: drop the attempt and go back to the network that was
+      // already saved, still without ever writing the failed attempt to flash. With nothing saved,
+      // stop the SDK from retrying the failed network in the background.
       WiFi.persistent(false);
-      WiFi.begin(savedSsid, savedPass);
+      if (savedSsid[0]) {
+        WiFi.begin(savedSsid, savedPass);
+      } else {
+#if defined(ESP8266)
+        WiFi.disconnect(false, true);  // persistent(false): clears the RAM config only
+#else
+        WiFi.disconnect();
+#endif
+      }
+      WiFi.persistent(true);
       lastRetryMs = nowMs;
     }
+  } else if (trialCreds && policy.trialRetryDue(nowMs)) {
+    beginTrial();  // nothing heard from the SDK for a while: kick the attempt again
   }
 
   if (policy.apWanted() && !apOn) startAp();
@@ -136,12 +191,9 @@ void loop(uint32_t nowMs) {
   wasConnected = isConnected;
 
   // Auto-reconnect competes with the setup portal for airtime: pause it while a phone or
-  // laptop is attached to the AP, resume once the AP is alone again.
-  bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
-  if (apHasStations != apHadStations) {
-    WiFi.setAutoReconnect(!apHasStations);
-    apHadStations = apHasStations;
-  }
+  // laptop is attached to the AP (unless a submitted network is being tried), resume once the
+  // AP is alone again.
+  syncAutoReconnect(apHasStations);
 
   // While the setup network is up, keep retrying the saved network every 60 s — but not while
   // someone is on the AP, and not in the middle of testing a freshly submitted network.
@@ -154,6 +206,11 @@ void loop(uint32_t nowMs) {
 miblo::NetState state() { return policy.state(); }
 bool apActive() { return apOn; }
 bool connected() { return policy.state() == miblo::NetState::Connected; }
+bool trialBusy() { return pendingCreds || trialCreds; }
+miblo::JoinFailure joinFailure() { return policy.failure(); }
+uint8_t joinFailureCode() { return policy.failureCode(); }
+uint8_t lastDisconnectReason() { return lastReason; }
+int wifiStatus() { return (int)WiFi.status(); }
 uint32_t connectionId() { return connId; }
 
 String ip() {

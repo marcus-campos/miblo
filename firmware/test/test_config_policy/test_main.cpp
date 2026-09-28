@@ -173,7 +173,128 @@ static void test_net_policy_first_boot_and_wrong_password() {
   TEST_ASSERT_EQUAL(NetState::WrongPassword, p.update(LinkStatus::Down, 20000));
   p.credentialsSubmitted(30000);
   TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 34000));
+  TEST_ASSERT_FALSE(p.trialActive());
+  // the setup network lingers so the phone can read the result, then drops
+  TEST_ASSERT_TRUE(p.apWanted());
+  p.update(LinkStatus::Connected, 34000 + NetPolicy::kApLingerMs - 1);
+  TEST_ASSERT_TRUE(p.apWanted());
+  p.update(LinkStatus::Connected, 34000 + NetPolicy::kApLingerMs);
   TEST_ASSERT_FALSE(p.apWanted());
+}
+
+static void test_classify_disconnect_reasons() {
+  TEST_ASSERT_EQUAL(JoinFailure::None, classifyDisconnect(0));
+  TEST_ASSERT_EQUAL(JoinFailure::NotFound, classifyDisconnect(201));
+  for (uint8_t r : {2, 13, 14, 15, 20, 24, 202, 203, 204}) TEST_ASSERT_EQUAL(JoinFailure::Refused, classifyDisconnect(r));
+  for (uint8_t r : {1, 3, 4, 7, 8, 12, 25, 200, 205}) TEST_ASSERT_EQUAL(JoinFailure::Other, classifyDisconnect(r));
+}
+
+// Real unit, first setup: the phone stays on the AP, the first attempt fails. The trial must keep
+// retrying (auto-reconnect on + a re-issued join every kTrialRetryMs of silence) and then connect.
+static void test_trial_retries_until_connected() {
+  NetPolicy p;
+  p.begin(false, 0);
+  TEST_ASSERT_FALSE(NetPolicy::autoReconnectWanted(true, false));  // background: paused with a phone
+  TEST_ASSERT_TRUE(NetPolicy::autoReconnectWanted(true, true));    // trial: never paused
+  TEST_ASSERT_TRUE(NetPolicy::autoReconnectWanted(false, false));
+  p.credentialsSubmitted(1000);
+  TEST_ASSERT_TRUE(p.trialActive());
+  TEST_ASSERT_FALSE(p.trialRetryDue(10999));
+  TEST_ASSERT_TRUE(p.trialRetryDue(11000));  // nothing heard for 10 s: kick it
+  TEST_ASSERT_FALSE(p.trialRetryDue(12000));
+  p.disconnected(1, 15000);  // one-off failures do not end the trial
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 15000));
+  TEST_ASSERT_FALSE(p.trialRetryDue(24999));  // the SDK is still busy retrying
+  TEST_ASSERT_TRUE(p.trialRetryDue(25000));
+  p.associated(30000);
+  TEST_ASSERT_FALSE(p.trialRetryDue(39999));  // waiting for DHCP
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 33000));
+  TEST_ASSERT_FALSE(p.trialActive());
+  TEST_ASSERT_FALSE(p.trialRetryDue(60000));
+}
+
+static void test_trial_network_not_found_fails_after_20s() {
+  NetPolicy p;
+  p.begin(false, 0);
+  p.credentialsSubmitted(1000);
+  uint32_t t = 3000;
+  for (; t < 1000 + 22000; t += 2500) {
+    p.disconnected(201, t);  // NO_AP_FOUND on every SDK retry (5 GHz only / out of range)
+    if (t - 3000 < NetPolicy::kSameReasonMs) {
+      TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, t));
+    }
+  }
+  TEST_ASSERT_EQUAL(NetState::JoinFailed, p.update(LinkStatus::Down, 3000 + NetPolicy::kSameReasonMs));
+  TEST_ASSERT_EQUAL(JoinFailure::NotFound, p.failure());
+  TEST_ASSERT_EQUAL_UINT8(201, p.failureCode());
+  TEST_ASSERT_TRUE(p.apWanted());
+  TEST_ASSERT_FALSE(p.trialActive());
+  TEST_ASSERT_EQUAL(ScreenId::JoinFailed, [&] {
+    ScreenInputs in;
+    in.bootAnimDone = true;
+    in.net = p.state();
+    return selectScreen(in);
+  }());
+  // sticky (the setup screen keeps the reason) until the next submission
+  TEST_ASSERT_EQUAL(NetState::JoinFailed, p.update(LinkStatus::Down, 500000));
+  p.credentialsSubmitted(600000);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.state());
+  TEST_ASSERT_EQUAL(JoinFailure::None, p.failure());
+}
+
+static void test_trial_refused_fails_fast() {
+  NetPolicy p;
+  p.begin(false, 0);
+  p.credentialsSubmitted(0);
+  p.disconnected(15, 2000);  // 4-way handshake timeout: wrong password or WPA3/PMF-only router
+  p.disconnected(15, 4000);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 4000));
+  p.disconnected(15, 6000);
+  TEST_ASSERT_EQUAL(NetState::JoinFailed, p.update(LinkStatus::Down, 6000));
+  TEST_ASSERT_EQUAL(JoinFailure::Refused, p.failure());
+  TEST_ASSERT_EQUAL_UINT8(15, p.failureCode());
+}
+
+static void test_trial_mixed_reasons_do_not_fail_early_then_time_out_with_last_reason() {
+  NetPolicy p;
+  p.begin(false, 0);
+  p.credentialsSubmitted(0);
+  for (uint32_t t = 1000; t < NetPolicy::kFallbackMs; t += 1000) {
+    p.disconnected(t % 2000 ? 200 : 1, t);  // alternating reasons never count as "the same"
+    TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, t));
+  }
+  TEST_ASSERT_EQUAL(NetState::JoinFailed, p.update(LinkStatus::Down, NetPolicy::kFallbackMs));
+  TEST_ASSERT_EQUAL(JoinFailure::Other, p.failure());
+  TEST_ASSERT_EQUAL_UINT8(200, p.failureCode());  // the last one seen (t = 119 s)
+}
+
+static void test_trial_silent_timeout() {
+  NetPolicy p;
+  p.begin(false, 0);
+  p.credentialsSubmitted(0);
+  TEST_ASSERT_EQUAL(NetState::JoinFailed, p.update(LinkStatus::Down, NetPolicy::kFallbackMs));
+  TEST_ASSERT_EQUAL(JoinFailure::Timeout, p.failure());
+  TEST_ASSERT_EQUAL_STRING("timeout", joinStatusName(p.state(), p.failure(), false));
+}
+
+static void test_background_reasons_never_fail_a_saved_network() {
+  NetPolicy p;
+  p.begin(true, 0);
+  for (uint32_t t = 1000; t < 100000; t += 1000) p.disconnected(201, t);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 100000));
+  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, NetPolicy::kFallbackMs));  // as before
+  TEST_ASSERT_FALSE(p.trialRetryDue(200000));
+}
+
+static void test_join_status_names() {
+  TEST_ASSERT_EQUAL_STRING("connecting", joinStatusName(NetState::Portal, JoinFailure::None, true));
+  TEST_ASSERT_EQUAL_STRING("connecting", joinStatusName(NetState::Connecting, JoinFailure::None, false));
+  TEST_ASSERT_EQUAL_STRING("connected", joinStatusName(NetState::Connected, JoinFailure::None, false));
+  TEST_ASSERT_EQUAL_STRING("wrong_password", joinStatusName(NetState::WrongPassword, JoinFailure::None, false));
+  TEST_ASSERT_EQUAL_STRING("idle", joinStatusName(NetState::Portal, JoinFailure::None, false));
+  TEST_ASSERT_EQUAL_STRING("not_found", joinStatusName(NetState::JoinFailed, JoinFailure::NotFound, false));
+  TEST_ASSERT_EQUAL_STRING("refused", joinStatusName(NetState::JoinFailed, JoinFailure::Refused, false));
+  TEST_ASSERT_EQUAL_STRING("failed", joinStatusName(NetState::JoinFailed, JoinFailure::Other, false));
 }
 
 static void test_screen_selection_order() {
@@ -193,6 +314,8 @@ static void test_screen_selection_order() {
   TEST_ASSERT_EQUAL(ScreenId::Setup, selectScreen(in));
   in.net = NetState::WrongPassword;
   TEST_ASSERT_EQUAL(ScreenId::WrongPassword, selectScreen(in));
+  in.net = NetState::JoinFailed;
+  TEST_ASSERT_EQUAL(ScreenId::JoinFailed, selectScreen(in));
   in.net = NetState::Connected;
   TEST_ASSERT_EQUAL(ScreenId::Welcome, selectScreen(in));
   in.paired = true;
@@ -233,5 +356,13 @@ int main() {
   RUN_TEST(test_net_policy_saved_credentials_then_router_down);
   RUN_TEST(test_net_policy_first_boot_and_wrong_password);
   RUN_TEST(test_screen_selection_order);
+  RUN_TEST(test_classify_disconnect_reasons);
+  RUN_TEST(test_trial_retries_until_connected);
+  RUN_TEST(test_trial_network_not_found_fails_after_20s);
+  RUN_TEST(test_trial_refused_fails_fast);
+  RUN_TEST(test_trial_mixed_reasons_do_not_fail_early_then_time_out_with_last_reason);
+  RUN_TEST(test_trial_silent_timeout);
+  RUN_TEST(test_background_reasons_never_fail_a_saved_network);
+  RUN_TEST(test_join_status_names);
   return UNITY_END();
 }

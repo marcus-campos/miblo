@@ -35,15 +35,40 @@ void boot(Lang lang, uint8_t frame) {
   }
 }
 
-void setup(Lang lang, const char* apSsid, bool wrongPassword) {
-  uint32_t h = hashStr(hashInt(hashInt(kHashSeed, (uint32_t)lang), wrongPassword), apSsid);
+void setup(Lang lang, const char* apSsid, SetupNote note, unsigned code) {
+  uint32_t h = hashStr(hashInt(hashInt(hashInt(kHashSeed, (uint32_t)lang), (uint32_t)note), code), apSsid);
   if (!region(0, h, 0, 0, X(240), Y(240))) return;
-  if (wrongPassword) {
-    C().text(X(120), Y(26), t(lang, S::WrongPassword), Font::BodyBold, color::RED, Align::Center, X(232));
-  } else {
-    C().text(X(120), Y(28), t(lang, S::Hello), Font::Title, color::TEXT, Align::Center, X(232));
+  S title = S::WrongPassword;
+  S hint = S::ScanPhone;
+  switch (note) {
+    case SetupNote::None:
+      C().text(X(120), Y(28), t(lang, S::Hello), Font::Title, color::TEXT, Align::Center, X(232));
+      break;
+    case SetupNote::WrongPassword: break;
+    case SetupNote::NotFound:
+      title = S::NetNotFound;
+      hint = S::Use24GHz;
+      break;
+    case SetupNote::Refused:
+      title = S::ConnRefused;
+      hint = S::RefusedHint;
+      break;
+    case SetupNote::Failed:
+      title = S::JoinFailed;
+      if (code) hint = S::ErrorCode;
+      break;
   }
-  C().text(X(120), Y(48), t(lang, S::ScanPhone), Font::Small, color::MUTED, Align::Center, X(232));
+  if (note != SetupNote::None) {
+    C().text(X(120), Y(26), t(lang, title), Font::BodyBold, color::RED, Align::Center, X(232));
+  }
+  if (hint == S::ErrorCode) {
+    char line[48];
+    snprintf(line, sizeof(line), t(lang, S::ErrorCode), code);
+    C().text(X(120), Y(48), line, Font::Small, color::AMBER, Align::Center, X(232));
+  } else {
+    C().text(X(120), Y(48), t(lang, hint), Font::Small, hint == S::ScanPhone ? color::MUTED : color::AMBER,
+             Align::Center, X(232));
+  }
   char payload[64];
   snprintf(payload, sizeof(payload), "WIFI:S:%s;;", apSsid);
   const int scale = Sz(4) < 2 ? 2 : Sz(4);

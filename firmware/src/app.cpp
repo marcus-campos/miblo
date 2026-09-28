@@ -56,6 +56,17 @@ static const char* modeName(Lang lang) {
   return screens::t(lang, S::ModeOverview);
 }
 
+static screens::SetupNote setupNote(miblo::JoinFailure f) {
+  switch (f) {
+    case miblo::JoinFailure::NotFound: return screens::SetupNote::NotFound;
+    case miblo::JoinFailure::Refused: return screens::SetupNote::Refused;
+    case miblo::JoinFailure::None:
+    case miblo::JoinFailure::Other:
+    case miblo::JoinFailure::Timeout: break;
+  }
+  return screens::SetupNote::Failed;
+}
+
 static screens::Clock clockNow() {
   screens::Clock c{};
   time_t now = time(nullptr);
@@ -186,8 +197,13 @@ void loop() {
       screens::hardResetCountdown(lang, hardResetRemaining);
       break;
     case ScreenId::Setup:
+      screens::setup(lang, ctx.ident.apSsid);
+      break;
     case ScreenId::WrongPassword:
-      screens::setup(lang, ctx.ident.apSsid, screen == ScreenId::WrongPassword);
+      screens::setup(lang, ctx.ident.apSsid, screens::SetupNote::WrongPassword);
+      break;
+    case ScreenId::JoinFailed:
+      screens::setup(lang, ctx.ident.apSsid, setupNote(net::joinFailure()), net::joinFailureCode());
       break;
     case ScreenId::Welcome:
       screens::welcome(lang, ctx.pairing.code(), net::ip().c_str());

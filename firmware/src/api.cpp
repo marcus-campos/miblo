@@ -7,6 +7,7 @@
 #include "context.h"
 #include "miblo_utf8.h"
 #include "miblo_version.h"
+#include "platform/net.h"
 #include "platform/storage.h"
 #include "web.h"
 
@@ -24,7 +25,7 @@ static bool authorized() {
 }
 
 static void handleInfo() {
-  // 15 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
+  // 17 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
   // ESP8266; 768 leaves room for future caps.
   StaticJsonDocument<768> doc;
   doc["id"] = ctx.ident.id;
@@ -47,6 +48,10 @@ static void handleInfo() {
   doc["maxBlock"] = maxFreeBlock();
   doc["reset"] = resetReason();
   doc["uptime"] = millis() / 1000;
+  // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
+  // and the current WiFi.status() (wl_status_t).
+  doc["wifiReason"] = net::lastDisconnectReason();
+  doc["wifiStatus"] = net::wifiStatus();
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

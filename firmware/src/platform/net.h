@@ -18,6 +18,15 @@ uint32_t connectionId();
 String ip();
 // Called by the portal: connects to the new network right after the HTTP response goes out.
 void submitCredentials(const char* ssid, const char* pass, uint32_t nowMs);
+// A submitted network is queued or being tried (the portal shows "connecting").
+bool trialBusy();
+// Why the last submitted network was given up on (with NetState::JoinFailed).
+miblo::JoinFailure joinFailure();
+uint8_t joinFailureCode();
+// Diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none yet) and the
+// current WiFi.status() (wl_status_t).
+uint8_t lastDisconnectReason();
+int wifiStatus();
 // Reapplies the timezone (ctx.cfg.tz, IANA name resolved to POSIX via miblo_tz) and NTP.
 void applyTimezone();
 

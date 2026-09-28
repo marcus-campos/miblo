@@ -101,6 +101,19 @@ enum class S : uint8_t {
   WebVersion,
   HardResetCountdown,   // "Quick restarts left to reset: %u"
   HardResetCancelHint,  // "Leave it on to cancel"
+  NetNotFound,          // setup screen title: the submitted network was never seen
+  Use24GHz,             // setup screen hint under NetNotFound
+  WebNotFound,          // portal: "Network not found. Miblo only works with 2.4 GHz Wi-Fi."
+  WebConnectedAt,       // portal: "Connected! Open Miblo at:" + address
+  WebConnectFailed,     // portal: the attempt timed out
+  WebTryAgain,          // portal: link back to the form
+  WebNoReply,           // portal: the phone lost the setup network (e.g. after the channel hop)
+  ConnRefused,          // setup screen title: auth/handshake rejected
+  RefusedHint,          // setup screen hint under ConnRefused
+  JoinFailed,           // setup screen title: any other failure
+  ErrorCode,            // setup screen hint under JoinFailed: "Error code %u"
+  WebRefused,           // portal: wrong password or WPA3/"WPA2/WPA3" router
+  WebFailedCode,        // portal: "Could not connect (code %u). ..."
   Count
 };
 

@@ -48,7 +48,7 @@ static const char kTzJs[] PROGMEM =
     ".catch(()=>{const L=[...new Set([cur,b].filter(z=>z&&z!=='UTC0'))];fill(L,new Set(L));});}";
 
 String tr(Lang lang, S id) {
-  char b[160];
+  char b[256];  // longest entry: WebRefused in Russian (~250 B of UTF-8); test_i18n keeps them under this
   miblo::tr(lang, id, b, sizeof(b));
   return String(b);
 }
@@ -136,7 +136,84 @@ static void langOptions(String& out, Lang selected, bool withAuto) {
   }
 }
 
+static void appendJsonForScript(String& out, const JsonDocument& doc);
+
 // ---------- captive portal (setup network) ----------
+
+// Why the last submitted network failed, for the portal ("" if it did not).
+static String failureText(Lang lang) {
+  switch (net::state()) {
+    case miblo::NetState::WrongPassword: return tr(lang, S::WrongPassword);
+    case miblo::NetState::JoinFailed: break;
+    default: return String();
+  }
+  switch (net::joinFailure()) {
+    case miblo::JoinFailure::NotFound: return tr(lang, S::WebNotFound);
+    case miblo::JoinFailure::Refused: return tr(lang, S::WebRefused);
+    case miblo::JoinFailure::Other: {
+      char b[160];
+      snprintf(b, sizeof(b), tr(lang, S::WebFailedCode).c_str(), (unsigned)net::joinFailureCode());
+      return String(b);
+    }
+    case miblo::JoinFailure::Timeout:
+    case miblo::JoinFailure::None: break;
+  }
+  return tr(lang, S::WebConnectFailed);
+}
+
+// Shown after a submission (and on "/" while it is being tried): polls /api/wifi-status and says
+// how it ended. The decision (and saving the network) happens on the device; if the phone drops
+// off the setup network (the AP follows the router's channel), the page says to look at the screen.
+static void joinStatusPage(Lang lang) {
+  String out;
+  pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str(), 2600);
+  out += F("<h1 id=\"h\">");
+  appendEscaped(out, tr(lang, S::WebConnecting).c_str());
+  out += F("</h1><p id=\"m\" class=\"w\"></p><p id=\"a\"></p><script>const T=");
+  DynamicJsonDocument txt(2048);
+  txt["ok"] = tr(lang, S::WebConnectedAt);
+  txt["wrong_password"] = tr(lang, S::WrongPassword);
+  txt["not_found"] = tr(lang, S::WebNotFound);
+  txt["refused"] = tr(lang, S::WebRefused);
+  txt["timeout"] = tr(lang, S::WebConnectFailed);
+  txt["failed"] = tr(lang, S::WebFailedCode);
+  txt["again"] = tr(lang, S::WebTryAgain);
+  txt["noreply"] = tr(lang, S::WebNoReply);
+  appendJsonForScript(out, txt);
+  out += F(
+      ";const $=k=>document.getElementById(k);let f=0;"
+      "function link(u,t){const e=document.createElement('a');e.href=u;e.textContent=t||u;"
+      "$('a').appendChild(e);$('a').appendChild(document.createElement('br'));}"
+      "function show(j){const s=j.state;"
+      "if(s==='connecting'){setTimeout(poll,2000);return;}"
+      "if(s==='connected'){$('h').textContent=T.ok;link('http://'+j.ip+'/');link('http://'+j.host+'/');return;}"
+      "$('h').textContent=T[s]||(s==='failed'?T.failed.replace('%u',j.code):T.timeout);"
+      "link('/',T.again);}"
+      "function poll(){fetch('/api/wifi-status',{cache:'no-store'}).then(r=>r.json())"
+      ".then(j=>{f=0;show(j);}).catch(()=>{if(++f>=4)$('h').textContent=T.noreply;setTimeout(poll,2000);});}"
+      "setTimeout(poll,1500);</script>");
+  pageEnd(out);
+  srv->send(200, F("text/html; charset=utf-8"), out);
+}
+
+// GET /api/wifi-status: progress of the submitted network, plus diagnostics (last station
+// disconnect reason and WiFi.status()) for field reports.
+static void handleWifiStatus() {
+  StaticJsonDocument<256> doc;
+  doc["state"] = miblo::joinStatusName(net::state(), net::joinFailure(), net::trialBusy());
+  if (net::connected()) {
+    doc["ip"] = net::ip();
+    String host = String(ctx.ident.id) + F(".local");
+    doc["host"] = host;
+  }
+  doc["code"] = net::joinFailureCode();
+  doc["reason"] = net::lastDisconnectReason();
+  doc["status"] = net::wifiStatus();
+  String out;
+  serializeJson(doc, out);
+  srv->sendHeader(F("Cache-Control"), F("no-store"));
+  sendJson(*srv, 200, out.c_str());
+}
 
 static void portalPage() {
   Lang lang = pageLang(*srv);
@@ -144,7 +221,14 @@ static void portalPage() {
   pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
   out += F("<h1>");
   appendEscaped(out, tr(lang, S::WebSetupTitle).c_str());
-  out += F("</h1><form method=\"post\" action=\"/wifi\"><label>");
+  out += F("</h1>");
+  String why = failureText(lang);
+  if (why.length()) {  // the last attempt failed: say why above the form
+    out += F("<p class=\"w\">");
+    appendEscaped(out, why.c_str());
+    out += F("</p>");
+  }
+  out += F("<form method=\"post\" action=\"/wifi\"><label>");
   appendEscaped(out, tr(lang, S::WebChooseNetwork).c_str());
   out += F("</label><select name=\"ssid\" id=\"ssid\" onchange=\"o()\">");
   int n = WiFi.scanNetworks();
@@ -223,15 +307,9 @@ static void handleWifi() {
   if (srv->arg(F("lang")).length()) patch["lang"] = srv->arg(F("lang"));
   if (miblo::applyConfigPatch(ctx.cfg, patch.as<JsonObjectConst>(), nullptr)) ctx.configChanged = true;
 
-  Lang lang = ctx.cfg.lang;
-  String out;
-  pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
-  out += F("<h1>");
-  appendEscaped(out, tr(lang, S::WebConnecting).c_str());
-  out += F("</h1>");
-  pageEnd(out);
-  srv->send(200, F("text/html; charset=utf-8"), out);
+  // Queue first: the page's first poll must already see "connecting".
   net::submitCredentials(ssid.c_str(), pass.c_str(), millis());
+  joinStatusPage(ctx.cfg.lang);
 }
 
 // ---------- settings page (home network) ----------
@@ -372,8 +450,14 @@ static void handleZones() {
 }
 
 static void handleRoot() {
-  if (net::apActive() && !net::connected()) portalPage();
-  else settingsPage();
+  if (net::apActive() && !net::connected()) {
+    // No network scan while a submitted network is being tried: a scan in the middle of the
+    // station's join attempt can abort it. Phones re-probe the captive portal all the time.
+    if (net::trialBusy()) joinStatusPage(pageLang(*srv));
+    else portalPage();
+  } else {
+    settingsPage();
+  }
 }
 
 static void handlePairCode() {
@@ -455,6 +539,7 @@ void begin(WebServerT& server) {
   server.on(F("/wifi"), HTTP_POST, handleWifi);
   server.on(F("/settings"), HTTP_POST, handleSettings);
   server.on(F("/api/zones"), HTTP_GET, handleZones);
+  server.on(F("/api/wifi-status"), HTTP_GET, handleWifiStatus);
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);
   server.on(F("/reset-code"), HTTP_POST, handleResetCode);
   server.on(F("/factory-reset"), HTTP_POST, handleFactoryReset);

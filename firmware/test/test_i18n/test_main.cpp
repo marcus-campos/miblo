@@ -40,6 +40,12 @@ static void test_every_language_has_every_string_with_same_placeholders() {
     for (int i = 0; i < (int)S::Count; i++) {
       TEST_ASSERT_TRUE_MESSAGE(markers(T(Lang::En, (S)i)) == markers(T((Lang)l, (S)i)), langCode((Lang)l));
     }
+    // web.cpp's tr() copies into a 256-byte buffer: no entry may be cut there.
+    p = kLangTables[l];
+    for (int i = 0; i < (int)S::Count; i++) {
+      TEST_ASSERT_TRUE_MESSAGE(strlen(p) < 256, langCode((Lang)l));
+      p += strlen(p) + 1;
+    }
   }
 }
 

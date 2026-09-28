@@ -15,7 +15,7 @@ static void renderSystem(FakeCanvas& fc) {
   screens::reset();
   screens::boot(Lang::En, 1);
   screens::reset();
-  screens::setup(Lang::Ru, "Miblo-Setup-4F2A", true);
+  screens::setup(Lang::Ru, "Miblo-Setup-4F2A", screens::SetupNote::WrongPassword);
   screens::reset();
   screens::welcome(Lang::PtBR, "4827", "192.168.0.42");
   screens::reset();
@@ -29,6 +29,10 @@ static void renderSystem(FakeCanvas& fc) {
   for (int l = 0; l < (int)Lang::Count; l++) {
     screens::reset();
     screens::hardResetCountdown((Lang)l, 3);
+    for (auto note : {screens::SetupNote::NotFound, screens::SetupNote::Refused, screens::SetupNote::Failed}) {
+      screens::reset();
+      screens::setup((Lang)l, "Miblo-Setup-4F2A", note, 204);
+    }
   }
 }
 
@@ -65,14 +69,36 @@ static void test_setup_and_welcome_content() {
   screens::bind(fc);
   screens::reset();
   fc.clearLog();
-  screens::setup(Lang::PtBR, "Miblo-Setup-4F2A", false);
+  screens::setup(Lang::PtBR, "Miblo-Setup-4F2A");
   TEST_ASSERT_TRUE(fc.drew("Olá!"));
   TEST_ASSERT_TRUE(fc.drew("Miblo-Setup-4F2A"));
   TEST_ASSERT_TRUE(fc.calls > 100);  // QR modules
   screens::reset();
   fc.clearLog();
-  screens::setup(Lang::PtBR, "Miblo-Setup-4F2A", true);
+  screens::setup(Lang::PtBR, "Miblo-Setup-4F2A", screens::SetupNote::WrongPassword);
   TEST_ASSERT_TRUE(fc.drew("Senha incorreta"));
+  screens::reset();
+  fc.clearLog();
+  screens::setup(Lang::En, "Miblo-Setup-4F2A", screens::SetupNote::NotFound);
+  TEST_ASSERT_TRUE(fc.drew("Network not found"));
+  TEST_ASSERT_TRUE(fc.drew("Use a 2.4 GHz network"));
+  TEST_ASSERT_TRUE(fc.drew("Miblo-Setup-4F2A"));  // the QR / setup network stay available
+  TEST_ASSERT_TRUE(fc.calls > 100);
+  screens::reset();
+  fc.clearLog();
+  screens::setup(Lang::En, "Miblo-Setup-4F2A", screens::SetupNote::Refused);
+  TEST_ASSERT_TRUE(fc.drew("Connection refused"));
+  TEST_ASSERT_TRUE(fc.drew("Check password or use WPA2"));
+  screens::reset();
+  fc.clearLog();
+  screens::setup(Lang::En, "Miblo-Setup-4F2A", screens::SetupNote::Failed, 200);
+  TEST_ASSERT_TRUE(fc.drew("Could not connect"));
+  TEST_ASSERT_TRUE(fc.drew("Error code 200"));
+  screens::reset();
+  fc.clearLog();
+  screens::setup(Lang::En, "Miblo-Setup-4F2A", screens::SetupNote::Failed, 0);  // timeout, no reason
+  TEST_ASSERT_TRUE(fc.drew("Could not connect"));
+  TEST_ASSERT_TRUE(fc.drew("Scan with your phone"));
   screens::reset();
   fc.clearLog();
   screens::welcome(Lang::En, "4827", "192.168.0.42");

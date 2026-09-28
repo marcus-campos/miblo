@@ -36,7 +36,10 @@ void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens (§4.5) ----
 void boot(Lang lang, uint8_t frame);
-void setup(Lang lang, const char* apSsid, bool wrongPassword);
+// Why the setup screen is shown again after an attempt: a red title + a hint over the QR.
+enum class SetupNote : uint8_t { None, WrongPassword, NotFound, Refused, Failed };
+// `code`: disconnect reason shown with SetupNote::Failed (0 = none).
+void setup(Lang lang, const char* apSsid, SetupNote note = SetupNote::None, unsigned code = 0);
 void welcome(Lang lang, const char* pairCode, const char* ip);
 void paired(Lang lang, const char* host, const char* modeName, const char* mdnsHost);
 void code(Lang lang, miblo::S title, const char* code, uint32_t remainingSec);

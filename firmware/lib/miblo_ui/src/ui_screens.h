@@ -55,7 +55,7 @@ int Sz(int v);
 // Composite primitives.
 void bar(int x, int y, int w, int h, uint8_t pct, uint16_t fg);
 void check(int cx, int cy, int size, uint16_t c);
-// Miblo mascot: simplified flat Sphynx cat (docs/mascot/options.html, "shipped"), about ten
+// Miblo mascot: simplified flat Sphynx cat, about ten
 // flat primitives, drawn only inside the square (cx - Sz(48), cy - Sz(48), 2 * Sz(48)),
 // background included; `small` draws the 48 px variant inside (cx - Sz(24), cy - Sz(24), 2 * Sz(24)).
 void mascot(int cx, int cy, uint8_t frame, bool small = false);
@@ -63,7 +63,7 @@ void mascot(int cx, int cy, uint8_t frame, bool small = false);
 uint8_t mascotPose(uint8_t frame);
 void qr(const char* payload, int x, int y, int scale);
 
-// ---- system screens (§4.5) ----
+// ---- system screens ----
 void boot(Lang lang, uint8_t frame);
 // Why the setup screen is shown again after an attempt: a red title + a hint over the QR.
 enum class SetupNote : uint8_t { None, WrongPassword, NotFound, Refused, Failed };
@@ -78,7 +78,7 @@ void hardResetCountdown(Lang lang, uint8_t remaining);
 void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
                   const char* mdnsHost, const char* pairCode);
 
-// ---- main screens (§4.1–4.4) ----
+// ---- main screens ----
 struct Clock {
   bool valid;      // local time known
   char hhmm[6];    // "14:32" or "--:--"

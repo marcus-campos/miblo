@@ -96,7 +96,7 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap) 
   }
 }
 
-// ---------------- alerts (§4.2) ----------------
+// ---------------- alerts ----------------
 
 void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs) {
   (void)lang;
@@ -364,7 +364,7 @@ static void sessionRows(Lang lang, const Snapshot& s, uint8_t page, uint8_t per,
   }
 }
 
-// ---------------- Adaptive overview (§4.1) ----------------
+// ---------------- Adaptive overview ----------------
 //   Needs you: amber band + compact limits strip + session cards (pending first).
 //   Working:   compact limits strip + session cards + footer (N running, page, clock).
 //   Idle:      big 5h/week limits + last finished session + today's cost.
@@ -468,7 +468,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   if (working) clockRight(hf, clk, fy, color::DIM, color::BG);
 }
 
-// ---------------- Limits mode — L1 (§4.3) ----------------
+// ---------------- Limits mode ----------------
 
 void limits(Lang lang, const Snapshot& s, const Clock& clk) {
   char buf[96];
@@ -529,7 +529,7 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
   }
 }
 
-// ---------------- Sessions mode — S1 (§4.4) ----------------
+// ---------------- Sessions mode ----------------
 // Up to three big cards per page (the same card as the Overview, with more air), paging every
 // 5 s; the header shows the total and the page ("1/2").
 

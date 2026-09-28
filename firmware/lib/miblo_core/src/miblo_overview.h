@@ -6,7 +6,7 @@
 
 namespace miblo {
 
-// ---- Adaptive overview (spec §4.1) ----
+// ---- Adaptive overview ----
 enum class OverviewKind : uint8_t { Attention, Working, Idle };
 
 struct StateCounts {

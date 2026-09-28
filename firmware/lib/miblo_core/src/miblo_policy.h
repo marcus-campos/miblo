@@ -5,7 +5,7 @@
 
 namespace miblo {
 
-// ---- Wi-Fi: when to open the setup network (spec §6) ----
+// ---- Wi-Fi: when to open the setup network ----
 // JoinFailed: a network submitted from the setup page was given up on; failure() says why.
 enum class NetState : uint8_t { Connecting, Connected, Portal, WrongPassword, JoinFailed };
 enum class LinkStatus : uint8_t { Down, Connected, WrongPassword };

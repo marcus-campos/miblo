@@ -1,7 +1,5 @@
 # Miblo
 
-<!-- docs/img/hero.jpg -->
-
 **A tiny desk display for Claude Code.** Miblo sits next to your keyboard and shows what your Claude Code sessions are doing, flashes when one of them needs you (a permission prompt or a question), tells you when a response is really finished, and keeps your 5-hour and weekly usage limits in sight. It is an open-source (MIT) Claude Code plugin plus ESP8266 firmware for an inexpensive off-the-shelf desk clock, so you can buy a ready-made Miblo or build your own in a few minutes.
 
 > **Disclaimer:** Miblo is an independent project. It is not affiliated with, sponsored by or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
@@ -234,7 +232,7 @@ firmware/              ESP8266 firmware (PlatformIO / Arduino)
   scripts/             build.sh, flash-fleet.py (+ tests), bump-version.py, macOS helper
   test/                native unit tests
 fixtures/snapshots/    protocol fixtures shared by plugin and firmware tests
-docs/                  design spec, on-device release checklist
+docs/                  on-device release checklist
 ```
 
 ### Running tests
@@ -269,7 +267,7 @@ Add `firmware/boards/<board>/` and a PlatformIO environment, then declare the sc
 
 ## License
 
-[MIT](LICENSE) © 2026 Marcus Campos.
+[MIT](LICENSE) © 2026 Marcus Vinícius Campos.
 
 Embedded third-party fonts and libraries keep their own licenses:
 

@@ -5,7 +5,7 @@
 
 namespace miblo {
 
-// Alert sequence timings (spec §4.2). All configurable from the page/API.
+// Alert sequence timings. All configurable from the page/API.
 struct AlertTiming {
   bool enabled = true;
   uint32_t flashMs = 1500;

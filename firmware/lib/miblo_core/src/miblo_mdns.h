@@ -4,7 +4,7 @@
 
 namespace miblo {
 
-// Minimal mDNS/DNS-SD responder for `_miblo._tcp.local` (contract: Plan 1, Task 7).
+// Minimal mDNS/DNS-SD responder for `_miblo._tcp.local` (the plugin's lib/mdns.js queries it).
 // Responds to service PTR (and _services._dns-sd._udp), instance SRV/TXT, and host A.
 // Query on port != 5353 (legacy/"one-shot") or with the QU bit → unicast reply to the sender.
 struct MdnsInfo {

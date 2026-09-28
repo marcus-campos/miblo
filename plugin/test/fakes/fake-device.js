@@ -1,7 +1,7 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
 
-// Executable contract of the firmware's HTTP API (spec §5.4): after 5 wrong
+// Executable contract of the firmware's HTTP API: after 5 wrong
 // pairing codes, /api/pair answers 429 for 60 s; up to 4 tokens are kept and
 // the oldest is evicted.
 export const MAX_TOKENS = 4;

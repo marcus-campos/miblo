@@ -33,7 +33,7 @@ constexpr uint16_t DIVIDER = 0x2104;     // #222222
 constexpr uint16_t CARD = 0x10A3;        // #16161a
 constexpr uint16_t CARD_AMBER = 0x18A1;  // #1c160a
 constexpr uint16_t CMD_BG = 0x18C3;      // #1a1a1e
-// Sphynx mascot (docs/mascot/options.html, option "A+B").
+// Sphynx mascot.
 constexpr uint16_t SKIN = 0xF5D5;        // #f2b8a8 warm peach skin
 constexpr uint16_t WRINKLE = 0xBB8F;     // #b8707c forehead wrinkles, mouth
 constexpr uint16_t EAR_IN = 0xE473;      // #e48f9c inner ears

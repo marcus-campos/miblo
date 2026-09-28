@@ -7,7 +7,7 @@ notes.
 
 ## Before you start
 
-- Computer on the same network as the gadget; Claude Code with the Plan 1 plugin installed.
+- Computer on the same network as the gadget; Claude Code with the Miblo plugin installed.
 - Note the gadget's current IP (shown on the reference-firmware screen).
 - **Use a proper power supply.** A weak USB supply (phone charger, laptop port, hub without
   external power) can brown out the device under load. Six consecutive brown-out resets look

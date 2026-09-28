@@ -84,14 +84,14 @@ void check(int cx, int cy, int size, uint16_t c) {
 }
 
 uint8_t mascotPose(uint8_t frame) {
-  // Idle-heavy 8-frame loop (~3.2 s at 400 ms/frame), as in docs/mascot/options.html.
+  // Idle-heavy 8-frame loop (~3.2 s at 400 ms/frame).
   static const uint8_t kSeq[8] = {0, 0, 1, 0, 2, 0, 3, 0};
   return kSeq[frame % 8];
 }
 
 namespace {
 // Mascot drawing helper: design units (a 96x96 box centred on the anchor) scaled by
-// u = num / den with round-half-up, exactly like the JS scaler in docs/mascot/options.html.
+// u = num / den with round-half-up.
 struct MascotPen {
   ui::Canvas& g;
   int cx, cy, num, den;
@@ -113,7 +113,7 @@ struct MascotPen {
 }  // namespace
 
 void mascot(int cx, int cy, uint8_t frame, bool small) {
-  // Simplified Sphynx (docs/mascot/options.html, "shipped"): flat shapes only, so a frame is
+  // Simplified Sphynx: flat shapes only, so a frame is
   // cheap and renders the same on an off-screen 16-colour layer. Big triangular ears with pink
   // insides, a round peach head, round green eyes with dark pupils and a small pink nose.
   // Poses: 0 idle, 1 blink (eyes become thin lines), 2 hop (whole cat up a bit), 3 glance

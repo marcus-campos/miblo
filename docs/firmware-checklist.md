@@ -11,7 +11,7 @@ notes.
 - Note the gadget's current IP (shown on the reference-firmware screen).
 - **Use a proper power supply.** A weak USB supply (phone charger, laptop port, hub without
   external power) can brown out the device under load. Six consecutive brown-out resets look
-  identical to the intentional AirTag-style "6 quick power cycles" factory-reset sequence
+  identical to the intentional "6 quick power cycles" factory-reset sequence
   (checklist item 10) and can trigger an unwanted factory reset. Power the gadget from a proper
   5V/1A (or better) supply for all of the steps below, especially the OTA and stress items.
 - **Keep the stock GeekMagic `.bin` before flashing.** Back up the device's original/stock
@@ -74,7 +74,7 @@ notes.
 9. **Recovery:** power off the router; after ~2 minutes the `Miblo-Setup-XXXX` network and QR
    appear; power the router back on; the gadget returns on its own to the saved network and the
    setup network disappears.
-10. **Power-cycle reset (AirTag-style, no 3-cycle reset):** six quick power-on cycles in a row,
+10. **Power-cycle reset (no 3-cycle reset):** six quick power-on cycles in a row,
     each under 10 s of uptime. From the 3rd through the 5th quick boot, the screen shows an amber
     countdown ("N more quick restarts to reset" / "leave it on to cancel"); leaving the device
     powered on for 10 s at any point clears the counter and cancels the reset (verify this

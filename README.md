@@ -23,22 +23,24 @@
 
 - **Overview** (the default mode) adapts to what you're doing:
   - **While something is running,** your sessions come first. You get up to 3 session cards per page, each with the name, how long it has been in that state and what it's doing now ("Editing Header.tsx", "Bash · npm test"). Above them is a compact `5h / 7d` limits strip.
-  - **When nothing is running,** you see big 5-hour and weekly limits with their reset times, the last session that finished and today's cost.
+  - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s it switches to the Limits screen.
 - **Alerts:**
   - **Amber** when a session needs you (a permission request or a question). You get a flash, then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
   - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert.
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
 - **Sessions mode:** a detailed list of big cards that you can read at arm's length. It pages every 5 s when there are more than 3 sessions.
+- **Desk mode:** after 10 minutes with nothing running (in any mode), the mascot takes the whole screen next to two ring gauges with your 5-hour and weekly limits and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. Any activity brings the normal screens back.
+- **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
 - **9 languages** for the screen and the setup/settings pages: English, Português (BR), Português (PT), Español, Français, Italiano, Deutsch, Русский and 中文.
 
 **Setup and maintenance**
 
-- **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. The time zone and language come from your phone.
+- **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
 - **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, time zone, language and device name.
 - **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
-- **AirTag-style hard reset:** power it on 6 times in quick succession, with an on-screen countdown you can cancel.
+- **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 
 **Privacy**
 
@@ -181,6 +183,8 @@ make fleet-update            # update the older ones; each unit shows a 4-digit 
 
 ## Updating
 
+When a Claude Code session starts, the plugin checks GitHub for a newer release (at most every 6 hours, with a 2-second timeout so it never slows the start). If the plugin or a paired gadget is behind, you get a one-line notice to run `/miblo:update`, at most once a day for the same version.
+
 - **From Claude Code:** `/miblo:update` checks the latest GitHub release and offers to update the **plugin** first, then the **firmware** of each paired gadget that's out of date. Type the 4-digit code shown on the gadget. It takes about a minute, so don't unplug the gadget while it runs. Pairing and settings are kept. If Claude Code asks you to, run `/reload-plugins` afterwards.
 - **From the browser:** open `http://miblo-xxxx.local/update` (or `http://<ip>/update`). The gadget shows a 4-digit code. Type it, choose the `.bin` and upload. The screen shows a progress bar and the gadget reboots when it's done.
 
@@ -190,9 +194,20 @@ The boot screen shows the firmware version and build (for example `v0.2.3 (4534f
 
 - **From the settings page:** `http://miblo-xxxx.local` → **Factory reset**, confirmed with the code shown on the screen.
 - **From Claude Code:** `/miblo:reset <id>`.
-- **Without a computer (AirTag-style):** power-cycle the gadget **6 times in a row**, unplugging it within 10 seconds of each power-on. From the 3rd quick restart on, the screen shows an amber countdown ("Quick restarts left to reset: N"). To cancel, just leave it on for 10 seconds. Only real power-ons count: crashes, updates and software restarts don't.
+- **Without a computer:** see [Hard reset](#hard-reset) below.
 
 A factory reset erases Wi-Fi, pairings and settings, and brings back the setup QR code. Ordinary power cuts erase nothing. If your router is down for 2 minutes, the gadget opens its setup network and keeps retrying the saved one, so changing routers doesn't need a reset.
+
+### Hard reset
+
+Use this when you can't reach the gadget at all, for example after moving it to another network or losing its pairing. You only need the power cable.
+
+1. Plug the gadget in, wait about 2 seconds for the screen to light up, then unplug it. Each power-on must last **less than 10 seconds**.
+2. Repeat until it has been powered on **6 times in a row**.
+3. From the 3rd quick power-on, the screen shows an amber countdown: "Quick restarts left to reset: N".
+4. On the 6th power-on it shows "Factory reset", erases everything and restarts on the setup QR code.
+
+**To cancel,** leave it on for 10 seconds at any point: the count goes back to zero. Only real power-ons count. Crashes, firmware updates and software restarts never add to it.
 
 ### Restoring the stock firmware
 

@@ -38,7 +38,8 @@ enum class ScreenId : uint8_t {
   Disconnected,   // relógio (sem snapshot há 30 s)
   AlertFlash,
   AlertHero,
-  Main            // modo do aparelho (Visão geral, Limites ou Sessões)
+  Main,           // modo do aparelho (Visão geral, Limites ou Sessões)
+  HardResetCountdown  // "N more quick restarts to reset" during the first 10 s of a quick boot
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;
@@ -51,6 +52,7 @@ struct ScreenInputs {
   NetState net = NetState::Connecting;
   bool updating = false;
   bool presenceActive = false;
+  bool hardResetCountdown = false;  // quick-boot countdown still inside its 10 s window
   bool pairCodeRequested = false;
   bool paired = false;
   bool justPaired = false;

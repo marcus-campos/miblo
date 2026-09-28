@@ -52,6 +52,7 @@ NetState NetPolicy::update(LinkStatus link, uint32_t nowMs) {
 ScreenId selectScreen(const ScreenInputs& in) {
   if (in.updating) return ScreenId::Updating;
   if (in.presenceActive) return ScreenId::PresenceCode;
+  if (in.hardResetCountdown) return ScreenId::HardResetCountdown;  // over the boot animation
   if (!in.bootAnimDone) return ScreenId::Boot;
   switch (in.net) {
     case NetState::Portal: return ScreenId::Setup;

@@ -97,7 +97,9 @@ static const char kEn[] MIBLO_ROM =
     "Wrong code\0"  // WebBadCode
     "No limits received yet: run /miblo pair in Claude Code\0"  // WebLimitsHint
     "Paired computers: %u\0"  // WebPairedCount
-    "Firmware version\0";  // WebVersion
+    "Firmware version\0"  // WebVersion
+    "%u more quick restarts to reset\0"  // HardResetCountdown
+    "Leave it on to cancel\0";  // HardResetCancelHint
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -190,7 +192,9 @@ static const char kPtBR[] MIBLO_ROM =
     "Código incorreto\0"  // WebBadCode
     "Nenhum limite recebido ainda: rode /miblo pair no Claude Code\0"  // WebLimitsHint
     "Computadores pareados: %u\0"  // WebPairedCount
-    "Versão do firmware\0";  // WebVersion
+    "Versão do firmware\0"  // WebVersion
+    "Mais %u reinícios rápidos para resetar\0"  // HardResetCountdown
+    "Deixe ligado para cancelar\0";  // HardResetCancelHint
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -283,7 +287,9 @@ static const char kPtPT[] MIBLO_ROM =
     "Código incorreto\0"  // WebBadCode
     "Ainda não chegaram limites: execute /miblo pair no Claude Code\0"  // WebLimitsHint
     "Computadores emparelhados: %u\0"  // WebPairedCount
-    "Versão do firmware\0";  // WebVersion
+    "Versão do firmware\0"  // WebVersion
+    "Mais %u reinícios rápidos para repor\0"  // HardResetCountdown
+    "Deixe ligado para cancelar\0";  // HardResetCancelHint
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -376,7 +382,9 @@ static const char kEs[] MIBLO_ROM =
     "Código incorrecto\0"  // WebBadCode
     "Aún no llegan límites: ejecuta /miblo pair en Claude Code\0"  // WebLimitsHint
     "Ordenadores vinculados: %u\0"  // WebPairedCount
-    "Versión del firmware\0";  // WebVersion
+    "Versión del firmware\0"  // WebVersion
+    "%u reinicios rápidos más para restablecer\0"  // HardResetCountdown
+    "Déjalo encendido para cancelar\0";  // HardResetCancelHint
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -469,7 +477,9 @@ static const char kFr[] MIBLO_ROM =
     "Code incorrect\0"  // WebBadCode
     "Aucune limite reçue : lancez /miblo pair dans Claude Code\0"  // WebLimitsHint
     "Ordinateurs appairés : %u\0"  // WebPairedCount
-    "Version du firmware\0";  // WebVersion
+    "Version du firmware\0"  // WebVersion
+    "Encore %u redémarrages rapides pour réinitialiser\0"  // HardResetCountdown
+    "Laissez-le allumé pour annuler\0";  // HardResetCancelHint
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -562,7 +572,9 @@ static const char kIt[] MIBLO_ROM =
     "Codice errato\0"  // WebBadCode
     "Nessun limite ricevuto: esegui /miblo pair in Claude Code\0"  // WebLimitsHint
     "Computer abbinati: %u\0"  // WebPairedCount
-    "Versione firmware\0";  // WebVersion
+    "Versione firmware\0"  // WebVersion
+    "Ancora %u riavvii rapidi per il reset\0"  // HardResetCountdown
+    "Lascialo acceso per annullare\0";  // HardResetCancelHint
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -655,7 +667,9 @@ static const char kDe[] MIBLO_ROM =
     "Falscher Code\0"  // WebBadCode
     "Noch keine Limits empfangen: führe /miblo pair in Claude Code aus\0"  // WebLimitsHint
     "Gekoppelte Computer: %u\0"  // WebPairedCount
-    "Firmware-Version\0";  // WebVersion
+    "Firmware-Version\0"  // WebVersion
+    "Noch %u schnelle Neustarts zum Zurücksetzen\0"  // HardResetCountdown
+    "Eingeschaltet lassen zum Abbrechen\0";  // HardResetCancelHint
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -748,7 +762,9 @@ static const char kRu[] MIBLO_ROM =
     "Неверный код\0"  // WebBadCode
     "Лимиты ещё не получены: выполните /miblo pair в Claude Code\0"  // WebLimitsHint
     "Сопряжённых компьютеров: %u\0"  // WebPairedCount
-    "Версия прошивки\0";  // WebVersion
+    "Версия прошивки\0"  // WebVersion
+    "Ещё %u быстрых перезапуска для сброса\0"  // HardResetCountdown
+    "Оставьте включённым для отмены\0";  // HardResetCancelHint
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -841,7 +857,9 @@ static const char kZh[] MIBLO_ROM =
     "代码错误\0"  // WebBadCode
     "尚未收到用量限制：请在 Claude Code 中运行 /miblo pair\0"  // WebLimitsHint
     "已配对电脑：%u\0"  // WebPairedCount
-    "固件版本\0";  // WebVersion
+    "固件版本\0"  // WebVersion
+    "再快速重启 %u 次即可重置\0"  // HardResetCountdown
+    "保持通电即可取消\0";  // HardResetCancelHint
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

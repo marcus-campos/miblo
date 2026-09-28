@@ -114,10 +114,13 @@ AlertTiming alertTiming(const Config& cfg) {
   return t;
 }
 
-BootDecision decideBoot(uint8_t storedCount) {
-  uint8_t n = storedCount < kPowerCyclesForReset ? (uint8_t)(storedCount + 1) : 1;
-  if (n >= kPowerCyclesForReset) return BootDecision{0, true};
-  return BootDecision{n, false};
+BootDecision decideBoot(uint8_t storedCount, bool powerOn) {
+  if (!powerOn) return BootDecision{0, false, 0};
+  const uint8_t prev = storedCount < kPowerCyclesForReset ? storedCount : 0;
+  const uint8_t count = (uint8_t)(prev + 1);
+  if (count >= kPowerCyclesForReset) return BootDecision{0, true, 0};
+  const uint8_t remaining = count >= kPowerCycleCountdownFrom ? (uint8_t)(kPowerCyclesForReset - count) : 0;
+  return BootDecision{count, false, remaining};
 }
 
 }  // namespace miblo

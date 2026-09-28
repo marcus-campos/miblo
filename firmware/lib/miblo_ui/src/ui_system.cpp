@@ -106,6 +106,47 @@ void updating(Lang lang, uint8_t pct) {
   }
 }
 
+// Draws `s` centered on at most two lines, breaking at the last space that still fits `maxW`
+// (the second line is cut with "..." by the canvas if it is still too long).
+static void twoLines(const char* s, Font f, uint16_t fg, int cx, int y1, int y2, int maxW) {
+  if (C().textWidth(s, f) <= maxW) {
+    C().text(cx, y1 + (y2 - y1) / 2, s, f, fg, Align::Center, maxW);
+    return;
+  }
+  char first[128];
+  size_t split = 0;
+  for (size_t i = 0; s[i] && i < sizeof(first) - 1; i++) {
+    if (s[i] != ' ') continue;
+    memcpy(first, s, i);
+    first[i] = 0;
+    if (C().textWidth(first, f) > maxW) break;
+    split = i;
+  }
+  if (split == 0) {
+    C().text(cx, y1 + (y2 - y1) / 2, s, f, fg, Align::Center, maxW);
+    return;
+  }
+  memcpy(first, s, split);
+  first[split] = 0;
+  C().text(cx, y1, first, f, fg, Align::Center, maxW);
+  C().text(cx, y2, s + split + 1, f, fg, Align::Center, maxW);
+}
+
+void hardResetCountdown(Lang lang, uint8_t remaining) {
+  uint32_t h = hashInt(hashInt(kHashSeed + 7, (uint32_t)lang), remaining);
+  if (!region(0, h, 0, 0, X(240), Y(240))) return;
+  const int cy = Y(84);
+  const int r = Sz(46);
+  C().arc(X(120), cy, r, r - Sz(5), 0, 360, color::AMBER, color::BG);
+  char n[4];
+  snprintf(n, sizeof(n), "%u", (unsigned)remaining);
+  C().text(X(120), cy + Sz(15), n, Font::NumL, color::AMBER, Align::Center, X(232));
+  char line[128];
+  snprintf(line, sizeof(line), t(lang, S::HardResetCountdown), (unsigned)remaining);
+  twoLines(line, Font::Body, color::TEXT, X(120), Y(162), Y(182), X(224));
+  C().text(X(120), Y(218), t(lang, S::HardResetCancelHint), Font::Small, color::MUTED, Align::Center, X(232));
+}
+
 void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
                   const char* mdnsHost, const char* pairCode) {
   if (region(0, hashInt(kHashSeed, (uint32_t)lang), 0, 0, X(240), Y(30))) {

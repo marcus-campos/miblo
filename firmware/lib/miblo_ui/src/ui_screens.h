@@ -41,6 +41,8 @@ void welcome(Lang lang, const char* pairCode, const char* ip);
 void paired(Lang lang, const char* host, const char* modeName, const char* mdnsHost);
 void code(Lang lang, miblo::S title, const char* code, uint32_t remainingSec);
 void updating(Lang lang, uint8_t pct);
+// Quick-boot hard reset countdown: big amber N + "N more quick restarts to reset".
+void hardResetCountdown(Lang lang, uint8_t remaining);
 void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
                   const char* mdnsHost, const char* pairCode);
 

@@ -31,15 +31,20 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
 void configToJson(const Config& cfg, JsonObject out);
 AlertTiming alertTiming(const Config& cfg);
 
-// ---- Reset de fábrica por liga/desliga (spec §6) ----
-constexpr uint8_t kPowerCyclesForReset = 3;
+// ---- AirTag-style hard reset by quick power cycles (spec §6) ----
+// Each power-on with less than 10 s of uptime counts; the 6th in a row erases everything.
+// From the 3rd quick boot on, the screen shows how many are left ("Leave it on to cancel").
+constexpr uint8_t kPowerCyclesForReset = 6;
+constexpr uint8_t kPowerCycleCountdownFrom = 3;
 constexpr uint32_t kPowerCycleWindowMs = 10000;
 struct BootDecision {
-  uint8_t storeCount;  // valor a gravar na flash agora
+  uint8_t nextCount;  // value to persist right now
   bool factoryReset;
+  uint8_t remaining;  // quick restarts still needed for the reset (0 = show nothing)
 };
-// No boot: incrementa o contador salvo; no 3º boot seguido (cada um com < 10 s de uptime) → reset.
-// Depois de 10 s de uptime o firmware grava 0.
-BootDecision decideBoot(uint8_t storedCount);
+// storedCount: counter persisted by the previous boot (erased flash 0xFF, or any value out of
+// range, counts as 0). powerOn: false for crash/watchdog/OTA/software restarts, which clear the
+// sequence. After 10 s of uptime the firmware persists 0.
+BootDecision decideBoot(uint8_t storedCount, bool powerOn);
 
 }  // namespace miblo

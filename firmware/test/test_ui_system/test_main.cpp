@@ -26,6 +26,28 @@ static void renderSystem(FakeCanvas& fc) {
   screens::updating(Lang::Fr, 42);
   screens::reset();
   screens::disconnected(Lang::It, true, 14, 32, 1, 28, "192.168.0.42", "miblo-4f2a", "4827");
+  for (int l = 0; l < (int)Lang::Count; l++) {
+    screens::reset();
+    screens::hardResetCountdown((Lang)l, 3);
+  }
+}
+
+// Addendum A: quick-boot hard reset countdown.
+static void test_hard_reset_countdown_content() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  fc.clearLog();
+  screens::hardResetCountdown(Lang::En, 2);
+  TEST_ASSERT_TRUE(fc.drew("2"));
+  TEST_ASSERT_TRUE(fc.drew("2 more quick"));  // may wrap onto two lines
+  TEST_ASSERT_TRUE(fc.drew("Leave it on to cancel"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  fc.clearLog();
+  screens::hardResetCountdown(Lang::En, 2);  // unchanged: nothing redrawn
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  screens::hardResetCountdown(Lang::En, 1);
+  TEST_ASSERT_TRUE(fc.drew("1"));
 }
 
 static void test_system_screens_fit_any_resolution() {
@@ -88,5 +110,6 @@ int main() {
   RUN_TEST(test_setup_and_welcome_content);
   RUN_TEST(test_regions_only_redraw_on_change);
   RUN_TEST(test_boot_shows_firmware_version);
+  RUN_TEST(test_hard_reset_countdown_content);
   return UNITY_END();
 }

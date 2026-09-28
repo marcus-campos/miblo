@@ -24,6 +24,7 @@ using miblo::ScreenId;
 static WebServerT server(80);
 static uint32_t bootMs = 0;
 static bool bootCountCleared = false;
+static uint8_t hardResetRemaining = 0;  // > 0: show the quick-boot countdown for the first 10 s
 static bool bootAnimDone = false;
 static ScreenId current = ScreenId::Boot;
 static bool firstFrame = true;
@@ -76,23 +77,37 @@ static void applyConfig() {
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 
+// True for a real power-on (or the reset pin); false after a crash, watchdog, OTA or software
+// restart — those must never count towards the quick-boot hard reset.
+static bool poweredOn() {
+#if defined(ESP8266)
+  const uint32_t reason = ESP.getResetInfoPtr()->reason;
+  return reason == REASON_DEFAULT_RST || reason == REASON_EXT_SYS_RST;
+#else
+  const esp_reset_reason_t reason = esp_reset_reason();
+  return reason == ESP_RST_POWERON || reason == ESP_RST_EXT;
+#endif
+}
+
 void setup() {
   Serial.begin(115200);
+  storage::begin();
+  // AirTag-style hard reset without a button: 6 power-ons in a row, each with less than 10 s of
+  // uptime. Persist the counter before anything slow so a quick unplug still counts.
+  const miblo::BootDecision boot = miblo::decideBoot(storage::readBootCount(), poweredOn());
+  storage::writeBootCount(boot.nextCount);
+  hardResetRemaining = boot.remaining;
+
   board::begin();
   screens::bind(board::canvas());
-
-  storage::begin();
-  // Factory reset without a button: 3 power cycles with less than 10 s of uptime each.
-  miblo::BootDecision boot = miblo::decideBoot(storage::readBootCount());
-  storage::writeBootCount(boot.storeCount);
+  storage::loadConfig(ctx.cfg);  // loaded first: the reset message below uses its language
   if (boot.factoryReset) {
     screens::reset();
-    screens::canvas().text(board::kScreen.w / 2, board::kScreen.h / 2, "Factory reset", ui::Font::Title,
-                           ui::color::RED, ui::Align::Center, board::kScreen.w);
-    storage::factoryReset();
+    screens::canvas().text(screens::X(120), screens::Y(124), screens::t(uiLang(), S::WebFactoryReset),
+                           ui::Font::Title, ui::color::RED, ui::Align::Center, screens::X(232));
+    storage::factoryReset();  // erases config, pairings and SDK Wi-Fi, then restarts into setup
   }
 
-  storage::loadConfig(ctx.cfg);
   storage::loadTokens(ctx.tokens);
   applyConfig();
   char code[5];
@@ -145,6 +160,7 @@ void loop() {
   in.net = net::state();
   in.updating = ctx.updating;
   in.presenceActive = ctx.presence.active(now);
+  in.hardResetCountdown = hardResetRemaining > 0 && !bootCountCleared;
   in.pairCodeRequested = ctx.showPairCode;
   in.paired = ctx.tokens.count() > 0;
   in.justPaired = ctx.justPaired;
@@ -160,6 +176,9 @@ void loop() {
   switch (screen) {
     case ScreenId::Boot:
       screens::boot(lang, (uint8_t)((now - bootMs) / 400));
+      break;
+    case ScreenId::HardResetCountdown:
+      screens::hardResetCountdown(lang, hardResetRemaining);
       break;
     case ScreenId::Setup:
     case ScreenId::WrongPassword:

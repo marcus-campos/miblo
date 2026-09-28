@@ -78,18 +78,40 @@ static void test_config_json_roundtrip() {
 }
 
 static void test_power_cycle_reset_counter() {
-  BootDecision d = decideBoot(0);
-  TEST_ASSERT_EQUAL_UINT8(1, d.storeCount);
-  TEST_ASSERT_FALSE(d.factoryReset);
-  d = decideBoot(d.storeCount);
-  TEST_ASSERT_EQUAL_UINT8(2, d.storeCount);
-  TEST_ASSERT_FALSE(d.factoryReset);
-  d = decideBoot(d.storeCount);
+  // Five quick power-on boots: no reset; countdown 3, 2, 1 on boots 3, 4 and 5.
+  const uint8_t expectedRemaining[] = {0, 0, 3, 2, 1};
+  uint8_t stored = 0;
+  for (uint8_t boot = 1; boot <= 5; boot++) {
+    BootDecision d = decideBoot(stored, true);
+    TEST_ASSERT_FALSE(d.factoryReset);
+    TEST_ASSERT_EQUAL_UINT8(boot, d.nextCount);
+    TEST_ASSERT_EQUAL_UINT8(expectedRemaining[boot - 1], d.remaining);
+    stored = d.nextCount;
+  }
+  // Sixth quick power-on boot: hard reset, counter back to 0, nothing to show.
+  BootDecision d = decideBoot(stored, true);
   TEST_ASSERT_TRUE(d.factoryReset);
-  TEST_ASSERT_EQUAL_UINT8(0, d.storeCount);
-  d = decideBoot(0xFF);  // lixo na flash conta como primeiro boot
-  TEST_ASSERT_EQUAL_UINT8(1, d.storeCount);
+  TEST_ASSERT_EQUAL_UINT8(0, d.nextCount);
+  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+  TEST_ASSERT_EQUAL_UINT8(kPowerCyclesForReset, 6);
+}
+
+static void test_non_power_on_boot_clears_sequence() {
+  BootDecision d = decideBoot(4, false);  // crash/watchdog/OTA restart in the middle
   TEST_ASSERT_FALSE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(0, d.nextCount);
+  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+  d = decideBoot(d.nextCount, true);  // the sequence starts over
+  TEST_ASSERT_EQUAL_UINT8(1, d.nextCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+}
+
+static void test_erased_flash_counts_as_first_boot() {
+  BootDecision d = decideBoot(0xFF, true);
+  TEST_ASSERT_EQUAL_UINT8(1, d.nextCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
 }
 
 static void test_net_policy_saved_credentials_then_router_down() {
@@ -127,6 +149,13 @@ static void test_screen_selection_order() {
   ScreenInputs in;
   in.nowMs = 100000;
   TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));
+  in.hardResetCountdown = true;
+  TEST_ASSERT_EQUAL(ScreenId::HardResetCountdown, selectScreen(in));  // replaces the boot animation
+  in.net = NetState::Portal;
+  in.bootAnimDone = true;
+  TEST_ASSERT_EQUAL(ScreenId::HardResetCountdown, selectScreen(in));  // and the setup screen
+  in.hardResetCountdown = false;
+  in.net = NetState::Connecting;
   in.bootAnimDone = true;
   TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));  // conectando
   in.net = NetState::Portal;
@@ -166,6 +195,8 @@ int main() {
   RUN_TEST(test_invalid_patch_changes_nothing);
   RUN_TEST(test_config_json_roundtrip);
   RUN_TEST(test_power_cycle_reset_counter);
+  RUN_TEST(test_non_power_on_boot_clears_sequence);
+  RUN_TEST(test_erased_flash_counts_as_first_boot);
   RUN_TEST(test_net_policy_saved_credentials_then_router_down);
   RUN_TEST(test_net_policy_first_boot_and_wrong_password);
   RUN_TEST(test_screen_selection_order);

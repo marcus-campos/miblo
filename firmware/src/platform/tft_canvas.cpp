@@ -3,12 +3,12 @@
 #include "miblo_utf8.h"
 
 namespace {
-constexpr uint32_t kEllipsis = 0x2026;  // "…" não existe nas fontes: vira "..."
+constexpr uint32_t kEllipsis = 0x2026;  // "…" doesn't exist in the fonts: becomes "..."
 }
 
 void TftCanvas::begin() {
   u8_.begin(tft_);
-  u8_.setFontMode(1);  // transparente: a região é limpa antes de desenhar
+  u8_.setFontMode(1);  // transparent: the region is cleared before drawing
   u8_.setFontDirection(0);
 }
 
@@ -29,13 +29,13 @@ int TftCanvas::ascent(ui::Font f) {
 int TftCanvas::glyphAdvance(ui::Font f, uint32_t cp, const uint8_t** font) {
   const uint8_t* fnt = fontFor(f, cp);
   if (font) *font = fnt;
-  if (!fnt) return ascent(f) * 2 / 3 + 3;  // largura do retângulo de glyph ausente
+  if (!fnt) return ascent(f) * 2 / 3 + 3;  // width of the missing-glyph rectangle
   u8_.setFont(fnt);
   return u8g2_GetGlyphWidth(&u8_.u8g2, (uint16_t)cp);
 }
 
-// Largura de `s`. Se passar de maxW, *end aponta para onde cortar de modo que prefixo + "..."
-// caiba, e o retorno é a largura do prefixo + "...". Sem corte, *end = nullptr.
+// Width of `s`. If it exceeds maxW, *end points to where to cut so that prefix + "..."
+// fits, and the return value is the width of prefix + "...". If not cut, *end = nullptr.
 int TftCanvas::layout(const char* s, ui::Font f, int maxW, const char** end) {
   const int dots = glyphAdvance(f, '.', nullptr) * 3;
   int w = 0;
@@ -73,7 +73,7 @@ int TftCanvas::drawRun(int x, int y, const char* s, const char* end, ui::Font f,
       u8_.drawGlyph(x, y, (uint16_t)cp);
     } else {
       const int h = ascent(f);
-      tft_.drawRect(x + 1, y - h, adv - 2, h, fg);  // glyph ausente: retângulo, nunca trava
+      tft_.drawRect(x + 1, y - h, adv - 2, h, fg);  // missing glyph: rectangle, never crashes
     }
     x += adv;
   }

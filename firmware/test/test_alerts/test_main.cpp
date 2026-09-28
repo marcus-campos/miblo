@@ -65,7 +65,7 @@ static void test_dedupe_by_id() {
   session("d", SessionState::Done);
   alert(7, AlertKind::Done, "d");
   q.ingest(snap, 0);
-  q.ingest(snap, 10);  // o mesmo alerta chega em snapshots seguidos
+  q.ingest(snap, 10);  // the same alert arrives in consecutive snapshots
   TEST_ASSERT_EQUAL_UINT8(1, q.queued());
   TEST_ASSERT_EQUAL_UINT32(7, q.lastSeenId());
   q.update(snap, 0);
@@ -102,8 +102,8 @@ static void test_answered_alert_ends_early_and_stale_queue_is_dropped() {
   q.ingest(snap, 0);
   q.update(snap, 0);
   q.update(snap, 1500);
-  snap.sessions[0].st = SessionState::Running;  // usuário aprovou
-  snap.sessions[1].st = SessionState::Running;  // e respondeu a outra
+  snap.sessions[0].st = SessionState::Running;  // user approved it
+  snap.sessions[1].st = SessionState::Running;  // and answered the other one
   TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, 2000).phase);
   TEST_ASSERT_EQUAL_UINT8(0, q.queued());
 }
@@ -116,7 +116,7 @@ static void test_reminder_every_interval_while_pending() {
   q.ingest(snap, 0);
   q.update(snap, 0);
   q.update(snap, 1500);
-  q.update(snap, 11500);  // herói terminou em 11,5 s
+  q.update(snap, 11500);  // hero finished at 11.5 s
   TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, 131499).phase);
   const AlertView& v = q.update(snap, 131500);
   TEST_ASSERT_EQUAL(AlertPhase::Flash, v.phase);
@@ -128,7 +128,7 @@ static void test_reminder_for_pending_seen_without_alert_and_can_be_disabled() {
   AlertSequencer q;
   reset();
   session("x", SessionState::Question);
-  q.ingest(snap, 0);  // o gadget ligou com a pendência já em andamento (alerta expirou no bridge)
+  q.ingest(snap, 0);  // the gadget booted with the pending item already in progress (alert expired on the bridge)
   TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, 1000).phase);
   TEST_ASSERT_EQUAL(AlertKind::Question, q.update(snap, 121000).kind);
 
@@ -150,7 +150,7 @@ static void test_bridge_restart_resets_dedupe() {
   q.update(snap, 0);
   q.update(snap, 1500);
   q.update(snap, 6500);
-  reset(1);  // seq voltou: bridge novo, ids recomeçam
+  reset(1);  // seq went backwards: new bridge, ids start over
   session("b", SessionState::Done);
   alert(1, AlertKind::Done, "b");
   q.ingest(snap, 7000);

@@ -29,8 +29,8 @@ static std::vector<std::string> markers(const std::string& s) {
 
 static void test_every_language_has_every_string_with_same_placeholders() {
   for (int l = 0; l < (int)Lang::Count; l++) {
-    // a tabela tem exatamente S::Count entradas: a entrada seguinte à última é a string vazia
-    // que o compilador põe no fim do literal (o "\0" final + o terminador implícito).
+    // the table has exactly S::Count entries: the entry after the last one is the empty string
+    // the compiler puts at the end of the literal (the final "\0" plus the implicit terminator).
     const char* p = kLangTables[l];
     for (int i = 0; i < (int)S::Count; i++) {
       TEST_ASSERT_TRUE_MESSAGE(strlen(p) > 0, langCode((Lang)l));
@@ -56,7 +56,7 @@ static void test_known_strings() {
 
 static void test_tr_truncates_on_utf8_boundary() {
   char b[8];
-  tr(Lang::Zh, S::WaitingComputer, b, sizeof(b));  // "等待电脑连接": 3 bytes por caractere
+  tr(Lang::Zh, S::WaitingComputer, b, sizeof(b));  // "等待电脑连接": 3 bytes per character
   TEST_ASSERT_EQUAL_STRING("等待", b);
   tr(Lang::En, S::Count, b, sizeof(b));
   TEST_ASSERT_EQUAL_STRING("", b);

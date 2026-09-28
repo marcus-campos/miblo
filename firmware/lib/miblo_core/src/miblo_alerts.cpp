@@ -44,7 +44,7 @@ void AlertSequencer::sortQueue(const Snapshot& s) {
     int i = findSession(s, a.sid);
     return i < 0 ? UINT32_MAX : s.sessions[i].since;
   };
-  // inserção: fila pequena (≤ 8)
+  // insertion sort: queue is small (<= 8)
   for (int i = 1; i < qn_; i++) {
     AlertItem cur = queue_[i];
     int j = i - 1;
@@ -63,7 +63,7 @@ void AlertSequencer::sortQueue(const Snapshot& s) {
 
 void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
   (void)nowMs;
-  if (haveSeq_ && s.seq < lastSeq_) maxId_ = 0;  // o bridge reiniciou: ids recomeçam do 1
+  if (haveSeq_ && s.seq < lastSeq_) maxId_ = 0;  // the bridge restarted: ids start over from 1
   haveSeq_ = true;
   lastSeq_ = s.seq;
   for (int i = 0; i < s.alertCount; i++) {
@@ -108,7 +108,7 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
   if (view_.phase != AlertPhase::None) {
     uint32_t elapsed = nowMs - view_.phaseStartMs;
     if (!stillValid(s, view_.kind, view_.sid)) {
-      view_.phase = AlertPhase::None;  // respondida/dispensada pelo uso
+      view_.phase = AlertPhase::None;  // answered/dismissed by usage
     } else if (view_.phase == AlertPhase::Flash && elapsed >= t_.flashMs) {
       view_.phase = AlertPhase::Hero;
       view_.phaseStartMs = nowMs;

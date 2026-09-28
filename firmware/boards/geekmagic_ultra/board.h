@@ -3,9 +3,9 @@
 
 #include "ui_canvas.h"
 
-// Placa: GeekMagic "Ultra" — ESP8266 ESP-12E/F, ST7789 240x240, sem botões nem touch.
-// Os pinos também vão como -D para o TFT_eSPI no platformio.ini ([env:geekmagic_ultra]);
-// board.cpp confere que os dois lugares batem.
+// Board: GeekMagic "Ultra" — ESP8266 ESP-12E/F, ST7789 240x240, no buttons or touch.
+// The pins are also passed as -D to TFT_eSPI in platformio.ini ([env:geekmagic_ultra]);
+// board.cpp checks that both places match.
 namespace board {
 
 constexpr const char* kName = "geekmagic_ultra";
@@ -16,13 +16,13 @@ constexpr uint8_t kPinSclk = 14;
 constexpr uint8_t kPinCs = 15;
 constexpr uint8_t kPinDc = 0;
 constexpr uint8_t kPinRst = 2;
-constexpr uint8_t kPinBacklight = 5;  // ativo em nível BAIXO
+constexpr uint8_t kPinBacklight = 5;  // active LOW
 
-// Capacidades extras anunciadas em /api/info ("buttons", "touch", "buzzer", "led"). Ultra: nenhuma.
+// Extra capabilities announced in /api/info ("buttons", "touch", "buzzer", "led"). Ultra: none.
 constexpr uint8_t kCapCount = 0;
 inline const char* cap(uint8_t) { return ""; }
 
-// Entradas físicas. Ultra não tem: sempre vazio (o seam existe para placas futuras).
+// Physical inputs. Ultra has none: always empty (the seam exists for future boards).
 struct Inputs {
   bool button;
   bool touched;
@@ -30,7 +30,7 @@ struct Inputs {
   int16_t y;
 };
 
-void begin();                        // tela + luz de fundo
+void begin();                        // screen + backlight
 ui::Canvas& canvas();
 void setBacklight(uint8_t percent);  // 0..100
 Inputs readInputs();

@@ -1,6 +1,6 @@
 #pragma once
 
-// Versão do firmware. scripts/build.sh lê esta linha para nomear dist/miblo-<versão>.bin.
+// Firmware version. scripts/build.sh reads this line to name dist/miblo-<version>.bin.
 #define MIBLO_FW_VERSION "0.1.0"
 // Build identity: scripts/build.sh passes the git short hash (-D MIBLO_BUILD=\"<sha>\");
 // any other build (pio run, tests) is "dev".

@@ -59,13 +59,13 @@ void check(int cx, int cy, int size, uint16_t c) {
 }
 
 void mascot(int cx, int cy, uint8_t frame) {
-  // Placeholder do Miblo: bolha coral com olhos. 0 = normal, 1 = piscando, 2 = pulinho.
+  // Miblo placeholder: coral blob with eyes. 0 = normal, 1 = blinking, 2 = little hop.
   const int u = Sz(1) < 1 ? 1 : Sz(1);
   const int bounce = (frame % 3 == 2) ? -6 * u : 0;
   g_canvas->fillRect(cx - 46 * u, cy - 46 * u, 92 * u, 92 * u, color::BG);
   const int top = cy - 32 * u + bounce;
   g_canvas->fillRoundRect(cx - 40 * u, top, 80 * u, 60 * u, 24 * u, color::CORAL);
-  g_canvas->fillRect(cx - 26 * u, top + 58 * u, 12 * u, 8 * u, color::CORAL);  // pezinhos
+  g_canvas->fillRect(cx - 26 * u, top + 58 * u, 12 * u, 8 * u, color::CORAL);  // little feet
   g_canvas->fillRect(cx + 14 * u, top + 58 * u, 12 * u, 8 * u, color::CORAL);
   const int eyeY = top + 26 * u;
   if (frame % 3 == 1) {
@@ -81,7 +81,7 @@ void mascot(int cx, int cy, uint8_t frame) {
 
 void qr(const char* payload, int x, int y, int scale) {
   QRCode code;
-  uint8_t data[(29 * 29 + 7) / 8];  // = qrcode_getBufferSize(3): versão 3, 29×29 módulos
+  uint8_t data[(29 * 29 + 7) / 8];  // = qrcode_getBufferSize(3): version 3, 29x29 modules
   qrcode_initText(&code, data, 3, ECC_LOW, payload);
   const int quiet = 2;
   const int size = (code.size + quiet * 2) * scale;

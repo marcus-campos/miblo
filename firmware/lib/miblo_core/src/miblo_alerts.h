@@ -5,13 +5,13 @@
 
 namespace miblo {
 
-// Tempos da sequência de alerta (spec §4.2). Todos configuráveis pela página/API.
+// Alert sequence timings (spec §4.2). All configurable from the page/API.
 struct AlertTiming {
   bool enabled = true;
   uint32_t flashMs = 1500;
-  uint32_t heroPermMs = 10000;   // herói de "precisa de você" (permissão/pergunta)
-  uint32_t heroDoneMs = 5000;    // herói de "terminou"
-  uint32_t reminderMs = 120000;  // 0 = sem lembrete
+  uint32_t heroPermMs = 10000;   // hero for "needs you" (permission/question)
+  uint32_t heroDoneMs = 5000;    // hero for "finished"
+  uint32_t reminderMs = 120000;  // 0 = no reminder
 };
 
 enum class AlertPhase : uint8_t { None, Flash, Hero };
@@ -23,15 +23,15 @@ struct AlertView {
   uint32_t phaseStartMs;
 };
 
-// Fila de alertas: deduplica pelo `id` (maior id já visto), âmbar antes de azul, e a cada
-// `reminderMs` repete flash + herói enquanto houver sessão pendente.
+// Alert queue: deduplicates by `id` (highest id seen so far), amber before blue, and every
+// `reminderMs` repeats flash + hero while a session is still pending.
 class AlertSequencer {
  public:
   void setTiming(const AlertTiming& t);
   const AlertTiming& timing() const { return t_; }
-  // A cada snapshot aceito.
+  // On every accepted snapshot.
   void ingest(const Snapshot& s, uint32_t nowMs);
-  // A cada volta do loop: avança as fases e devolve o que deve estar na tela.
+  // On every loop iteration: advances the phases and returns what should be on screen.
   const AlertView& update(const Snapshot& s, uint32_t nowMs);
   uint32_t lastSeenId() const { return maxId_; }
   uint8_t queued() const { return qn_; }

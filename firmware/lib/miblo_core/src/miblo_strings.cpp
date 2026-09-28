@@ -1,6 +1,6 @@
-// Tabelas de strings (UTF-8) — uma string compactada por idioma, entradas separadas por \0.
-// A ordem das entradas segue exatamente o enum miblo::S (miblo_i18n.h).
-// test_i18n confere a contagem e os marcadores %s/%u de cada idioma.
+// String tables (UTF-8) — one packed string per language, entries separated by \0.
+// The entry order exactly follows the miblo::S enum (miblo_i18n.h).
+// test_i18n checks the count and the %s/%u placeholders for each language.
 #include "miblo_i18n.h"
 #include "miblo_rom.h"
 

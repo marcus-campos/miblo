@@ -4,13 +4,13 @@
 
 namespace miblo {
 
-// "0042" a partir de um número aleatório.
+// "0042" from a random number.
 void formatCode(uint32_t rnd, char out[5]);
-// Token de 128 bits em hexadecimal minúsculo (32 caracteres + NUL).
+// 128-bit token as lowercase hex (32 characters + NUL).
 void makeToken(const uint8_t rnd[16], char out[33]);
-// "Bearer <token>" → token. false se o cabeçalho não tiver esse formato ou o token não couber.
+// "Bearer <token>" → token. false if the header isn't in that format or the token doesn't fit.
 bool bearerToken(const char* header, char* out, size_t cap);
-// Comparação em tempo constante (não vaza o tamanho do prefixo correto).
+// Constant-time comparison (doesn't leak the length of the matching prefix).
 bool constantTimeEquals(const char* a, const char* b);
 // Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
 // first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
@@ -67,7 +67,7 @@ class PairingGuard {
 struct TokenEntry {
   char token[33];
   char host[33];
-  uint32_t order;  // maior = mais recente
+  uint32_t order;  // higher = more recent
 };
 
 // Up to 4 paired computers. Every pairing appends a new token (host names are truncated and
@@ -87,9 +87,9 @@ class TokenStore {
   uint8_t n_ = 0;
 };
 
-// Código de presença física: ao abrir o portão do /update (POST /update/open) ou pedir o reset de
-// fábrica pelo navegador, a tela mostra um código de 4 dígitos, válido por 5 min; o POST precisa
-// dele. Brute-force lockout (EscalatingLockout, survives re-opens): failures accumulate across
+// Physical presence code: when opening the /update gate (POST /update/open) or requesting a
+// factory reset from the browser, the screen shows a 4-digit code, valid for 5 min; the POST
+// needs it. Brute-force lockout (EscalatingLockout, survives re-opens): failures accumulate across
 // re-opens (a new code does not grant fresh guesses); on the 5th the gate closes and refuses to
 // open again for 60 s, doubling on each further lockout (capped at 1 h). Only a correct code
 // resets the failures and the escalation.

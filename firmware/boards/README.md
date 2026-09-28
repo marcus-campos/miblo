@@ -1,30 +1,30 @@
-# Placas suportadas pelo firmware Miblo
+# Boards supported by the Miblo firmware
 
-| Placa | Env do PlatformIO | Chip | Tela | Entradas (`caps`) |
+| Board | PlatformIO env | Chip | Screen | Inputs (`caps`) |
 |---|---|---|---|---|
-| GeekMagic "Ultra" | `geekmagic_ultra` | ESP8266 (ESP-12E/F, 4 MB) | ST7789 240×240 | nenhuma |
+| GeekMagic "Ultra" | `geekmagic_ultra` | ESP8266 (ESP-12E/F, 4 MB) | ST7789 240×240 | none |
 
-## Camadas
+## Layers
 
-- `lib/miblo_core/` — lógica pura (snapshot, alertas, i18n, pareamento, mDNS…). Não muda por placa.
-- `lib/miblo_ui/` — todas as telas, desenhadas via `ui::Canvas` numa grade de 240 escalada pelo
-  `ScreenSpec {w, h}` da placa (`X()`, `Y()`, `Sz()` em `ui_base.cpp`).
-- `boards/<placa>/` — `board.h`/`board.cpp`: nome, tamanho da tela, pinos, luz de fundo, pilhas de
-  fontes por `ui::Font`, `Inputs` e `caps`.
-- `src/platform/` — Wi-Fi, servidor web, mDNS, OTA e LittleFS atrás de `#if defined(ESP8266) / ESP32`
-  (`platform.h`). Só o ESP8266 compila hoje; o ramo ESP32 marca o que precisará de ajuste.
+- `lib/miblo_core/` — pure logic (snapshot, alerts, i18n, pairing, mDNS…). Does not change per board.
+- `lib/miblo_ui/` — all screens, drawn via `ui::Canvas` on a 240 grid scaled by the board's
+  `ScreenSpec {w, h}` (`X()`, `Y()`, `Sz()` in `ui_base.cpp`).
+- `boards/<board>/` — `board.h`/`board.cpp`: name, screen size, pins, backlight, font
+  stacks per `ui::Font`, `Inputs`, and `caps`.
+- `src/platform/` — Wi-Fi, web server, mDNS, OTA, and LittleFS behind `#if defined(ESP8266) / ESP32`
+  (`platform.h`). Only ESP8266 compiles today; the ESP32 branch flags what will need adjusting.
 
-## Como adicionar uma placa
+## How to add a board
 
-1. Crie `boards/<placa>/board.h` e `board.cpp` implementando a mesma interface de
+1. Create `boards/<board>/board.h` and `board.cpp` implementing the same interface as
    `boards/geekmagic_ultra/board.h` (`kName`, `kScreen`, `kCapCount`/`cap()`, `begin()`, `canvas()`,
-   `setBacklight()`, `readInputs()`). Se a tela usa TFT_eSPI, reutilize `src/platform/tft_canvas.h`
-   e escolha fontes u8g2 maiores para telas maiores (a pilha precisa terminar em uma fonte CJK).
-2. Se o chip coloca `.rodata` na RAM (ESP8266), crie um `miblo_rom_*.h` com `MIBLO_ROM`/`mibloRomByte`
-   em PROGMEM; em ESP32 não é necessário (omita `-D MIBLO_ROM_IMPL`).
-3. Adicione `[env:<placa>]` ao `platformio.ini` com `-I boards/<placa>`, `build_src_filter = +<*> +<../boards/<placa>/>`,
-   as flags do driver de tela e o layout de flash (reserve espaço para duas imagens por causa do OTA).
-4. Declare as capacidades em `kCapCount`/`cap()` (`"buttons"`, `"touch"`, `"buzzer"`, `"led"`);
-   elas saem em `GET /api/info` junto com `board` e `screen {w, h}`.
-5. Rode `.venv/bin/pio test -e native` (os testes de UI já desenham em 240×240, 320×240, 480×320 e
-   170×320) e `scripts/build.sh <placa>` → `dist/miblo-<placa>-<versão>.bin`.
+   `setBacklight()`, `readInputs()`). If the screen uses TFT_eSPI, reuse `src/platform/tft_canvas.h`
+   and pick larger u8g2 fonts for larger screens (the stack must end in a CJK font).
+2. If the chip puts `.rodata` in RAM (ESP8266), create a `miblo_rom_*.h` with `MIBLO_ROM`/`mibloRomByte`
+   in PROGMEM; on ESP32 this isn't necessary (omit `-D MIBLO_ROM_IMPL`).
+3. Add `[env:<board>]` to `platformio.ini` with `-I boards/<board>`, `build_src_filter = +<*> +<../boards/<board>/>`,
+   the screen driver flags, and the flash layout (reserve space for two images because of OTA).
+4. Declare the capabilities in `kCapCount`/`cap()` (`"buttons"`, `"touch"`, `"buzzer"`, `"led"`);
+   they're exposed in `GET /api/info` alongside `board` and `screen {w, h}`.
+5. Run `.venv/bin/pio test -e native` (the UI tests already draw at 240×240, 320×240, 480×320, and
+   170×320) and `scripts/build.sh <board>` → `dist/miblo-<board>-<version>.bin`.

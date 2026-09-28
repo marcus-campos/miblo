@@ -17,16 +17,16 @@ struct Config {
   bool alerts = true;
   uint8_t heroPermSec = 10;  // 3..60
   uint8_t heroDoneSec = 5;   // 2..60
-  uint8_t reminderMin = 2;   // 0..30 (0 = sem lembrete)
+  uint8_t reminderMin = 2;   // 0..30 (0 = no reminder)
   bool discreet = false;
-  char tz[48] = "UTC0";      // TZ POSIX, ex. "<-03>3"
-  char name[64] = "";        // ≤ 20 caracteres; vazio = nome padrão "Miblo-XXXX"
+  char tz[48] = "UTC0";      // POSIX TZ, e.g. "<-03>3"
+  char name[64] = "";        // <= 20 characters; empty = default name "Miblo-XXXX"
   Lang lang = Lang::En;
-  bool langSet = false;      // false = idioma automático (Accept-Language)
+  bool langSet = false;      // false = automatic language (Accept-Language)
 };
 
-// Valida todos os campos presentes e só então aplica. Campos desconhecidos são ignorados.
-// Em erro, `cfg` não muda e `*badField` (se não nulo) aponta para o nome do campo inválido.
+// Validates all present fields and only then applies them. Unknown fields are ignored.
+// On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField);
 void configToJson(const Config& cfg, JsonObject out);
 AlertTiming alertTiming(const Config& cfg);

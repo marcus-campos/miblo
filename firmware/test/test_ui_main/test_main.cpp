@@ -92,7 +92,7 @@ static void test_overview_attention_content() {
   TEST_ASSERT_TRUE(fc.drew("62%"));
   TEST_ASSERT_TRUE(fc.drew("esperando há 0:42"));
   TEST_ASSERT_TRUE(fc.drew("Editando Header.tsx"));
-  // segunda chamada com os mesmos dados: nada é redesenhado
+  // second call with the same data: nothing is redrawn
   fc.clearLog();
   screens::overview(Lang::PtBR, snap, pager, 100, testClock(), false);
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
@@ -125,7 +125,7 @@ static void test_limits_arc_and_cost_fallback() {
   screens::limits(Lang::En, snap, testClock());
   TEST_ASSERT_EQUAL_INT(2, (int)fc.arcs.size());
   TEST_ASSERT_EQUAL_INT(270, fc.arcs[0]);
-  TEST_ASSERT_EQUAL_INT(167, fc.arcs[1]);  // 62% de 270°
+  TEST_ASSERT_EQUAL_INT(167, fc.arcs[1]);  // 62% of 270°
   snap.hasUsage = false;
   screens::reset();
   fc.clearLog();
@@ -182,9 +182,9 @@ static void test_sessions_pages_and_flash_blinks() {
   fc.clearLog();
   screens::flash(Lang::En, AlertKind::Done, "docs", 0);
   int first = fc.calls;
-  screens::flash(Lang::En, AlertKind::Done, "docs", 100);  // mesma fase: nada muda
+  screens::flash(Lang::En, AlertKind::Done, "docs", 100);  // same phase: nothing changes
   TEST_ASSERT_EQUAL_INT(first, fc.calls);
-  screens::flash(Lang::En, AlertKind::Done, "docs", 260);  // próxima fase: redesenha
+  screens::flash(Lang::En, AlertKind::Done, "docs", 260);  // next phase: redraws
   TEST_ASSERT_TRUE(fc.calls > first);
 }
 

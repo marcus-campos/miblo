@@ -40,7 +40,7 @@ class Writer {
   void bytes(const void* p, size_t len) {
     for (size_t i = 0; i < len; i++) u8(((const uint8_t*)p)[i]);
   }
-  // Nome em labels separados por '.', sem compressão. `first` é um label único (pode ter '.').
+  // Name as labels separated by '.', without compression. `first` is a single label (may contain '.').
   void name(const char* first, const char* rest) {
     if (first) label(first, strlen(first));
     const char* p = rest;
@@ -73,7 +73,7 @@ class Writer {
   bool ok_ = true;
 };
 
-// Lê um nome (com ponteiros de compressão) para `dst` como "a.b.c". Retorna o offset após o nome.
+// Reads a name (with compression pointers) into `dst` as "a.b.c". Returns the offset after the name.
 bool readName(const uint8_t* pkt, size_t len, size_t off, char* dst, size_t cap, size_t& next) {
   size_t used = 0;
   bool jumped = false;
@@ -110,7 +110,7 @@ bool sameName(const char* a, const char* b) {
   return *a == 0 && *b == 0;
 }
 
-// "<instance>._miblo._tcp.local" e "<host>.local" para comparação.
+// "<instance>._miblo._tcp.local" and "<host>.local", for comparison.
 void join(char* dst, size_t cap, const char* a, const char* b) {
   size_t la = strlen(a);
   size_t lb = strlen(b);
@@ -143,8 +143,8 @@ void writeSrv(Writer& w, const MdnsInfo& info, uint32_t ttl, uint16_t flush) {
   rrHeader(w, T_SRV, CLASS_IN | flush, ttl);
   size_t at = w.mark();
   w.u16(0);
-  w.u16(0);  // prioridade
-  w.u16(0);  // peso
+  w.u16(0);  // priority
+  w.u16(0);  // weight
   w.u16(info.port);
   w.name(info.host, "local");
   w.patch16(at, (uint16_t)(w.mark() - at - 2));
@@ -189,7 +189,7 @@ MdnsReply mdnsRespond(const uint8_t* pkt, size_t len, uint16_t srcPort, const Md
   MdnsReply none{0, false};
   if (len < 12) return none;
   uint16_t flags = (uint16_t)((pkt[2] << 8) | pkt[3]);
-  if (flags & 0x8000) return none;  // é resposta, não consulta
+  if (flags & 0x8000) return none;  // it's a response, not a query
   uint16_t qd = (uint16_t)((pkt[4] << 8) | pkt[5]);
   if (qd == 0 || qd > 16) return none;
 
@@ -227,14 +227,14 @@ MdnsReply mdnsRespond(const uint8_t* pkt, size_t len, uint16_t srcPort, const Md
   const uint16_t flush = legacy ? 0 : CACHE_FLUSH;
   Writer w(out, cap);
   w.u16(legacy ? (uint16_t)((pkt[0] << 8) | pkt[1]) : 0);  // id
-  w.u16(0x8400);                                             // resposta autoritativa
+  w.u16(0x8400);                                             // authoritative answer
   w.u16(legacy ? qd : 0);
   size_t anAt = w.mark();
   w.u16(0);
   w.u16(0);
   size_t arAt = w.mark();
   w.u16(0);
-  if (legacy) w.bytes(pkt + qStart, qEnd - qStart);  // ecoa as perguntas
+  if (legacy) w.bytes(pkt + qStart, qEnd - qStart);  // echo the questions
 
   uint16_t an = 0;
   uint16_t ar = 0;

@@ -4,15 +4,15 @@
 
 namespace miblo {
 
-// Decodifica o próximo code point de `p` e avança o ponteiro.
-// Byte inválido ou sequência truncada → U+FFFD, avançando 1 byte. Fim da string → 0 (não avança).
+// Decodes the next code point from `p` and advances the pointer.
+// Invalid byte or truncated sequence → U+FFFD, advancing 1 byte. End of string → 0 (doesn't advance).
 uint32_t utf8Next(const char*& p);
 
-// Quantidade de code points.
+// Number of code points.
 size_t utf8Length(const char* s);
 
-// Copia no máximo `maxChars` code points de `src` para `dst` (capacidade `cap` bytes, sempre
-// terminada em NUL), sem nunca cortar uma sequência UTF-8 no meio. Retorna os bytes escritos.
+// Copies at most `maxChars` code points from `src` to `dst` (capacity `cap` bytes, always
+// NUL-terminated), never cutting a UTF-8 sequence in the middle. Returns the bytes written.
 size_t utf8Copy(char* dst, size_t cap, const char* src, size_t maxChars = (size_t)-1);
 
 }  // namespace miblo

@@ -8,10 +8,10 @@
 #include "miblo_security.h"
 #include "miblo_snapshot.h"
 
-// Estado compartilhado entre os módulos de hardware. Os módulos (web, api, net) só alteram o
-// estado e levantam flags; o loop do app (app.cpp) reage às flags.
+// State shared between the hardware modules. The modules (web, api, net) only change the
+// state and raise flags; the app loop (app.cpp) reacts to the flags.
 struct Identity {
-  char id[16];           // "miblo-4f2a" (ID do mDNS/TXT e host)
+  char id[16];           // "miblo-4f2a" (mDNS/TXT and host ID)
   char defaultName[16];  // "Miblo-4F2A"
   char apSsid[24];       // "Miblo-Setup-4F2A"
 };
@@ -30,7 +30,7 @@ struct Context {
   uint32_t lastSnapshotMs = 0;
   bool usageEverSeen = false;
 
-  // flags para o loop principal
+  // flags for the main loop
   bool configChanged = false;
   bool factoryResetRequested = false;
   bool rebootRequested = false;
@@ -46,7 +46,7 @@ struct Context {
 
 extern Context ctx;
 
-// Idioma da tela: o escolhido na página ou, em modo automático, o último negociado.
+// Screen language: the one chosen on the page or, in automatic mode, the last one negotiated.
 inline miblo::Lang uiLang() { return ctx.cfg.lang; }
-// Nome do aparelho: o configurado ou "Miblo-XXXX".
+// Device name: the configured one or "Miblo-XXXX".
 inline const char* deviceName() { return ctx.cfg.name[0] ? ctx.cfg.name : ctx.ident.defaultName; }

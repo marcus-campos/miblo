@@ -33,7 +33,7 @@ bool langFromCode(const char* code, Lang& out) {
   return false;
 }
 
-// Mapeia uma tag de idioma (ex.: "pt-br", "zh-Hans-CN", "fr") para Lang.
+// Maps a language tag (e.g. "pt-br", "zh-Hans-CN", "fr") to Lang.
 static bool matchTag(const char* tag, size_t len, Lang& out) {
   char buf[16];
   if (len == 0 || len >= sizeof(buf)) return false;
@@ -45,7 +45,7 @@ static bool matchTag(const char* tag, size_t len, Lang& out) {
     primary[p] = buf[p];
     p++;
   }
-  if (p < len && buf[p] != '-' && buf[p] != '_') return false;  // primária com > 3 letras
+  if (p < len && buf[p] != '-' && buf[p] != '_') return false;  // primary tag longer than 3 letters
   const char* region = (p < len) ? buf + p + 1 : "";
   if (strcmp(primary, "pt") == 0) {
     out = (region[0] == 0 || strcmp(region, "br") == 0) ? Lang::PtBR : Lang::PtPT;
@@ -108,7 +108,7 @@ void tr(Lang lang, S id, char* out, size_t cap) {
   while (mibloRomByte(p + len)) len++;
   if (len >= cap) {
     len = cap - 1;
-    // não cortar no meio de uma sequência UTF-8
+    // don't cut in the middle of a UTF-8 sequence
     while (len > 0 && (mibloRomByte(p + len) & 0xC0) == 0x80) len--;
   }
   for (size_t i = 0; i < len; i++) out[i] = (char)mibloRomByte(p + i);

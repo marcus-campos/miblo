@@ -8,14 +8,14 @@
 
 static_assert(TFT_MOSI == board::kPinMosi && TFT_SCLK == board::kPinSclk && TFT_CS == board::kPinCs &&
                   TFT_DC == board::kPinDc && TFT_RST == board::kPinRst && TFT_BL == board::kPinBacklight,
-              "pinos do platformio.ini diferentes de boards/geekmagic_ultra/board.h");
-static_assert(TFT_WIDTH == board::kScreen.w && TFT_HEIGHT == board::kScreen.h, "tamanho da tela");
+              "pins in platformio.ini differ from boards/geekmagic_ultra/board.h");
+static_assert(TFT_WIDTH == board::kScreen.w && TFT_HEIGHT == board::kScreen.h, "screen size mismatch");
 
 namespace board {
 
 namespace {
 
-// Pilhas de fontes por ui::Font (latim → cirílico → CJK). Vendorizadas em lib/U8g2TFT.
+// Font stacks per ui::Font (Latin -> Cyrillic -> CJK). Vendored in lib/U8g2TFT.
 const uint8_t* const kSmall[] = {u8g2_font_helvR10_te, u8g2_font_6x13_t_cyrillic, u8g2_font_wqy14_t_gb2312a, nullptr};
 const uint8_t* const kSmallBold[] = {u8g2_font_helvB10_te, u8g2_font_6x13B_t_cyrillic, u8g2_font_wqy14_t_gb2312a,
                                      nullptr};
@@ -27,7 +27,7 @@ const uint8_t* const kHero[] = {u8g2_font_helvB24_te, u8g2_font_inr24_t_cyrillic
 const uint8_t* const kNumL[] = {u8g2_font_fub30_tn, u8g2_font_fub20_tf, u8g2_font_helvB18_te, nullptr};
 const uint8_t* const kNumM[] = {u8g2_font_fub20_tf, u8g2_font_helvB12_te, nullptr};
 const TftCanvas::FontStack kStacks[] = {kSmall, kSmallBold, kBody, kBodyBold, kTitle, kHero, kNumL, kNumM};
-static_assert(sizeof(kStacks) / sizeof(kStacks[0]) == (size_t)ui::Font::Count, "uma pilha por ui::Font");
+static_assert(sizeof(kStacks) / sizeof(kStacks[0]) == (size_t)ui::Font::Count, "one stack per ui::Font");
 
 TFT_eSPI tft;
 TftCanvas tftCanvas(tft, kScreen, kStacks);
@@ -48,7 +48,7 @@ ui::Canvas& canvas() { return tftCanvas; }
 void setBacklight(uint8_t percent) {
   if (percent > 100) percent = 100;
   const uint32_t duty = (uint32_t)percent * 255 / 100;
-  analogWrite(kPinBacklight, 255 - duty);  // ativo em nível BAIXO
+  analogWrite(kPinBacklight, 255 - duty);  // active LOW
 }
 
 Inputs readInputs() { return Inputs{false, false, 0, 0}; }

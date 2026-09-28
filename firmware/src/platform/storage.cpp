@@ -12,7 +12,7 @@ static const char* kBoot = "/miblo/boot.cnt";
 
 bool begin() {
 #if defined(ESP32)
-  if (!LittleFS.begin(true)) {  // true = formata se não montar
+  if (!LittleFS.begin(true)) {  // true = format if it can't mount
 #else
   if (!LittleFS.begin()) {
 #endif
@@ -112,7 +112,7 @@ void factoryReset() {
   LittleFS.remove(kBoot);
   WiFi.persistent(true);
 #if defined(ESP8266)
-  WiFi.disconnect(true);  // com persistent(true), apaga SSID/senha salvos no SDK
+  WiFi.disconnect(true);  // with persistent(true), erases the SSID/password saved in the SDK
   ESP.eraseConfig();
 #else
   WiFi.disconnect(true, true);

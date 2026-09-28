@@ -68,7 +68,7 @@ static void test_setup_and_welcome_content() {
   screens::setup(Lang::PtBR, "Miblo-Setup-4F2A", false);
   TEST_ASSERT_TRUE(fc.drew("Olá!"));
   TEST_ASSERT_TRUE(fc.drew("Miblo-Setup-4F2A"));
-  TEST_ASSERT_TRUE(fc.calls > 100);  // módulos do QR
+  TEST_ASSERT_TRUE(fc.calls > 100);  // QR modules
   screens::reset();
   fc.clearLog();
   screens::setup(Lang::PtBR, "Miblo-Setup-4F2A", true);
@@ -92,7 +92,7 @@ static void test_regions_only_redraw_on_change() {
   fc.clearLog();
   screens::code(Lang::En, S::CodeUpdate, "1234", 299);
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
-  screens::code(Lang::En, S::CodeUpdate, "1234", 298);  // só a contagem muda
+  screens::code(Lang::En, S::CodeUpdate, "1234", 298);  // only the countdown changes
   TEST_ASSERT_TRUE(fc.drew("expires in 4:58"));
   TEST_ASSERT_FALSE(fc.drew("1234"));
 }

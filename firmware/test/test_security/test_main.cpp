@@ -46,8 +46,8 @@ static void test_pairing_lockout_after_five_bad_codes() {
   g.setCode("4827");
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", 0));
   for (int i = 0; i < 4; i++) TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", 1000));
-  TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("1111", 2000));  // 5º erro → bloqueia
-  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 2001));  // nem o certo passa
+  TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("1111", 2000));  // 5th failure -> locks
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 2001));  // not even the right one passes
   TEST_ASSERT_EQUAL_UINT32(59999, g.lockRemainingMs(2001));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 61999));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", 62000));
@@ -110,7 +110,7 @@ static void test_token_store_up_to_four_replacing_oldest() {
   s.add("t3", "wsl");
   s.add("t4", "linux");
   TEST_ASSERT_EQUAL_UINT8(4, s.count());
-  s.add("t5", "new");  // cheio: sai o mais antigo (t1)
+  s.add("t5", "new");  // full: the oldest one (t1) is evicted
   TEST_ASSERT_EQUAL_UINT8(4, s.count());
   TEST_ASSERT_FALSE(s.matches("t1"));
   TEST_ASSERT_TRUE(s.matches("t5"));
@@ -258,12 +258,12 @@ static void test_presence_gate() {
   g.open(PresenceGate::Purpose::Update, "1234", 1000);
   TEST_ASSERT_TRUE(g.active(1000));
   TEST_ASSERT_EQUAL_UINT32(300000, g.remainingMs(1000));
-  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "1234", 2000));  // outro propósito
+  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "1234", 2000));  // different purpose
   TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "1234", 2000));
-  TEST_ASSERT_FALSE(g.active(301000));  // expirou
+  TEST_ASSERT_FALSE(g.active(301000));  // expired
   g.open(PresenceGate::Purpose::Reset, "9999", 0);
   for (int i = 0; i < 5; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 10));
-  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "9999", 10));  // fechado após 5 erros
+  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "9999", 10));  // closed after 5 failures
 }
 
 int main() {

@@ -53,14 +53,14 @@ static void test_invalid_patch_changes_nothing() {
   const char* bad = nullptr;
   TEST_ASSERT_FALSE(patch(c, "{\"mode\":\"sessions\",\"brightness\":101}", &bad));
   TEST_ASSERT_EQUAL_STRING("brightness", bad);
-  TEST_ASSERT_EQUAL(Mode::Overview, c.mode);  // nem o campo válido foi aplicado
+  TEST_ASSERT_EQUAL(Mode::Overview, c.mode);  // not even the valid field was applied
   TEST_ASSERT_FALSE(patch(c, "{\"mode\":\"grid\"}", &bad));
   TEST_ASSERT_EQUAL_STRING("mode", bad);
   TEST_ASSERT_FALSE(patch(c, "{\"alerts\":1}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"tz\":\"America/Sao Paulo\"}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"lang\":\"ja\"}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"name\":\"123456789012345678901\"}", &bad));
-  TEST_ASSERT_TRUE(patch(c, "{\"name\":\"项目项目项目项目项目项目项目项目项目项目\"}"));  // 20 caracteres
+  TEST_ASSERT_TRUE(patch(c, "{\"name\":\"项目项目项目项目项目项目项目项目项目项目\"}"));  // 20 characters
 }
 
 static void test_config_json_roundtrip() {
@@ -151,12 +151,12 @@ static void test_net_policy_saved_credentials_then_router_down() {
   TEST_ASSERT_EQUAL(NetState::Connecting, p.state());
   TEST_ASSERT_FALSE(p.apWanted());
   TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 3000));
-  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 10000));  // roteador caiu
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 10000));  // router dropped
   TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 129999));
   TEST_ASSERT_FALSE(p.apWanted());
-  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, 130000));  // 2 min → rede de setup
+  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, 130000));  // 2 min -> setup network
   TEST_ASSERT_TRUE(p.apWanted());
-  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 200000));  // voltou sozinho
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 200000));  // came back on its own
   TEST_ASSERT_FALSE(p.apWanted());
 }
 
@@ -188,7 +188,7 @@ static void test_screen_selection_order() {
   in.hardResetCountdown = false;
   in.net = NetState::Connecting;
   in.bootAnimDone = true;
-  TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));  // conectando
+  TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));  // connecting
   in.net = NetState::Portal;
   TEST_ASSERT_EQUAL(ScreenId::Setup, selectScreen(in));
   in.net = NetState::WrongPassword;
@@ -200,12 +200,12 @@ static void test_screen_selection_order() {
   in.pairedAtMs = 97000;
   TEST_ASSERT_EQUAL(ScreenId::Paired, selectScreen(in));
   in.pairedAtMs = 95000;
-  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // pareado, sem snapshot ainda
+  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // paired, no snapshot yet
   in.hasSnapshot = true;
   in.lastSnapshotMs = 71000;
   TEST_ASSERT_EQUAL(ScreenId::Main, selectScreen(in));
   in.lastSnapshotMs = 70000;
-  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // 30 s sem snapshot
+  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // 30 s with no snapshot
   in.lastSnapshotMs = 99000;
   in.alert = AlertPhase::Flash;
   TEST_ASSERT_EQUAL(ScreenId::AlertFlash, selectScreen(in));

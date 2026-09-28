@@ -81,7 +81,7 @@ void RunTracker::clear() {
 }
 
 void RunTracker::observe(const Snapshot& s) {
-  // esquece sessões que sumiram do snapshot
+  // forget sessions that dropped out of the snapshot
   for (auto& e : entries_) {
     if (e.used && findSession(s, e.id) < 0) e = Entry{};
   }
@@ -162,7 +162,7 @@ uint32_t hashStr(uint32_t h, const char* s) {
     h ^= (uint8_t)*s++;
     h *= 16777619u;
   }
-  h ^= 0xFF;  // separador, para "ab"+"c" ≠ "a"+"bc"
+  h ^= 0xFF;  // separator, so "ab"+"c" != "a"+"bc"
   h *= 16777619u;
   return h;
 }

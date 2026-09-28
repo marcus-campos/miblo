@@ -5,18 +5,18 @@
 
 namespace miblo {
 
-// ---- Wi-Fi: quando abrir a rede de setup (spec §6) ----
+// ---- Wi-Fi: when to open the setup network (spec §6) ----
 enum class NetState : uint8_t { Connecting, Connected, Portal, WrongPassword };
 enum class LinkStatus : uint8_t { Down, Connected, WrongPassword };
 
 class NetPolicy {
  public:
-  static constexpr uint32_t kFallbackMs = 120000;  // 2 min sem conexão → abre a rede de setup
+  static constexpr uint32_t kFallbackMs = 120000;  // 2 min with no connection -> open the setup network
   void begin(bool hasCredentials, uint32_t nowMs);
   void credentialsSubmitted(uint32_t nowMs);
   NetState update(LinkStatus link, uint32_t nowMs);
   NetState state() const { return state_; }
-  // Rede de setup (AP) deve estar no ar? A conexão com a rede salva continua sendo tentada.
+  // Should the setup network (AP) be up? Connecting to the saved network keeps being retried.
   bool apWanted() const { return ap_; }
 
  private:
@@ -25,20 +25,20 @@ class NetPolicy {
   uint32_t sinceMs_ = 0;
 };
 
-// ---- Qual tela mostrar ----
+// ---- Which screen to show ----
 enum class ScreenId : uint8_t {
-  Boot,           // mascote + "Conectando ao Wi-Fi"
-  Setup,          // QR + nome da rede de setup
-  WrongPassword,  // Setup com "Senha incorreta"
-  Welcome,        // Wi-Fi conectado + comando + código de pareamento + IP
-  Paired,         // "Pareado com <host>"
-  PairCode,       // código de pareamento pedido pela página
-  PresenceCode,   // código para update/reset pelo navegador
-  Updating,       // barra de progresso do OTA
-  Disconnected,   // relógio (sem snapshot há 30 s)
+  Boot,           // mascot + "Connecting to Wi-Fi"
+  Setup,          // QR + setup network name
+  WrongPassword,  // Setup with "Wrong password"
+  Welcome,        // Wi-Fi connected + command + pairing code + IP
+  Paired,         // "Paired with <host>"
+  PairCode,       // pairing code requested by the page
+  PresenceCode,   // code for update/reset from the browser
+  Updating,       // OTA progress bar
+  Disconnected,   // clock (no snapshot for 30 s)
   AlertFlash,
   AlertHero,
-  Main,           // modo do aparelho (Visão geral, Limites ou Sessões)
+  Main,           // device mode (Overview, Limits, or Sessions)
   HardResetCountdown  // quick-restarts-left countdown during the first 10 s of a quick boot
 };
 

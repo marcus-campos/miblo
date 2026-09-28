@@ -8,7 +8,7 @@
 
 namespace miblo {
 
-// 4 KB bastam no ESP8266 (slots de 16 bytes, strings zero-copy); no host 64-bit os slots dobram.
+// 4 KB is enough on the ESP8266 (16-byte slots, zero-copy strings); on a 64-bit host the slots double.
 static constexpr size_t kDocCapacity = sizeof(void*) == 4 ? 4096 : 8192;
 
 bool parseSessionState(const char* s, SessionState& out) {

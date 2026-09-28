@@ -4,7 +4,7 @@
 #include "miblo_config.h"
 #include "miblo_security.h"
 
-// Persistência em LittleFS (arquivos JSON pequenos). As credenciais de Wi-Fi ficam no SDK.
+// Persistence on LittleFS (small JSON files). Wi-Fi credentials stay in the SDK.
 namespace storage {
 
 bool begin();
@@ -14,7 +14,7 @@ bool loadTokens(miblo::TokenStore& tokens);
 bool saveTokens(const miblo::TokenStore& tokens);
 uint8_t readBootCount();
 void writeBootCount(uint8_t n);
-// Apaga configuração, pareamentos e o Wi-Fi salvo no SDK, e reinicia. Não retorna.
+// Erases config, pairings, and the Wi-Fi saved in the SDK, then reboots. Does not return.
 void factoryReset();
 
 }  // namespace storage

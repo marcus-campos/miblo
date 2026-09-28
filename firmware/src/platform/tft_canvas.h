@@ -4,9 +4,9 @@
 
 #include "ui_canvas.h"
 
-// Canvas sobre TFT_eSPI + fontes u8g2 (UTF-8). Serve para qualquer placa com TFT_eSPI; a placa
-// informa o tamanho da tela e, para cada ui::Font, uma pilha de fontes u8g2 (terminada em
-// nullptr): o primeiro que tiver o glyph desenha o caractere; nenhum → retângulo.
+// Canvas on top of TFT_eSPI + u8g2 fonts (UTF-8). Works for any board with TFT_eSPI; the board
+// supplies the screen size and, for each ui::Font, a stack of u8g2 fonts (nullptr-terminated):
+// the first one that has the glyph draws the character; none → rectangle.
 class TftCanvas : public ui::Canvas {
  public:
   using FontStack = const uint8_t* const*;

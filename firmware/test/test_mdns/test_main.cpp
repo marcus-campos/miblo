@@ -39,7 +39,7 @@ static void putName(std::vector<uint8_t>& b, const std::string& name) {
   b.push_back(0);
 }
 
-// Mesma consulta que plugin/lib/mdns.js buildQuery(): id 0, 1 pergunta, PTR, classe IN + bit QU.
+// Same query as plugin/lib/mdns.js buildQuery(): id 0, 1 question, PTR, class IN + QU bit.
 static std::vector<uint8_t> query(const std::string& name, uint16_t type, bool qu, uint16_t id = 0) {
   std::vector<uint8_t> b = {(uint8_t)(id >> 8), (uint8_t)id, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0};
   putName(b, name);
@@ -53,7 +53,7 @@ static std::vector<uint8_t> query(const std::string& name, uint16_t type, bool q
 struct Rec {
   std::string name;
   uint16_t type;
-  std::string data;  // PTR/SRV-target: nome; A: "a.b.c.d"; TXT: strings unidas por '|'; SRV: "porta target"
+  std::string data;  // PTR/SRV-target: name; A: "a.b.c.d"; TXT: strings joined by '|'; SRV: "port target"
 };
 
 static std::string readName(const uint8_t* p, size_t len, size_t& off) {
@@ -130,7 +130,7 @@ static void test_bridge_query_gets_unicast_answer_with_everything() {
   TEST_ASSERT_TRUE(r.unicast);
   uint16_t id, qd, an, ar;
   auto recs = parse(out, r.len, id, qd, an, ar);
-  TEST_ASSERT_EQUAL_UINT16(1, qd);  // legacy: pergunta ecoada
+  TEST_ASSERT_EQUAL_UINT16(1, qd);  // legacy: question echoed back
   TEST_ASSERT_EQUAL_UINT16(1, an);
   TEST_ASSERT_EQUAL_UINT16(3, ar);
   const Rec* ptr = find(recs, 12);
@@ -196,12 +196,12 @@ static void test_ignores_other_names_responses_and_garbage() {
   auto q = query("_http._tcp.local", 12, true);
   TEST_ASSERT_EQUAL(0, mdnsRespond(q.data(), q.size(), 5353, in, out, sizeof(out)).len);
   q = query("_miblo._tcp.local", 12, true);
-  q[2] = 0x84;  // é uma resposta de outro aparelho
+  q[2] = 0x84;  // it's a response from another device
   TEST_ASSERT_EQUAL(0, mdnsRespond(q.data(), q.size(), 5353, in, out, sizeof(out)).len);
   uint8_t garbage[] = {0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 60, 'x'};
   TEST_ASSERT_EQUAL(0, mdnsRespond(garbage, sizeof(garbage), 5353, in, out, sizeof(out)).len);
   q = query("_miblo._tcp.local", 12, true);
-  TEST_ASSERT_EQUAL(0, mdnsRespond(q.data(), q.size(), 5353, in, out, 40).len);  // não cabe
+  TEST_ASSERT_EQUAL(0, mdnsRespond(q.data(), q.size(), 5353, in, out, 40).len);  // doesn't fit
 }
 
 static void test_announcement_contains_all_records() {

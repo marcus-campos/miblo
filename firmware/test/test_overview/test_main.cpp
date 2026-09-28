@@ -50,7 +50,7 @@ static void test_hero_priority_and_tie_break() {
   TEST_ASSERT_EQUAL_INT(2, selectHero(snap, true));
   add("p-new", SessionState::Perm, 50);
   add("p-old", SessionState::Perm, 10);
-  TEST_ASSERT_EQUAL_INT(4, selectHero(snap, false));  // quem espera há mais tempo
+  TEST_ASSERT_EQUAL_INT(4, selectHero(snap, false));  // whoever has been waiting longest
   TEST_ASSERT_EQUAL_INT(4, selectHero(snap, true));
 }
 
@@ -72,7 +72,7 @@ static void test_run_tracker_measures_a_full_response() {
   snap.sessions[0].st = SessionState::Running;
   snap.sessions[0].since = 200;
   rt.observe(snap);
-  snap.sessions[0].st = SessionState::Perm;  // pendência no meio não reinicia a contagem
+  snap.sessions[0].st = SessionState::Perm;  // a pending state in the middle doesn't restart the count
   snap.sessions[0].since = 230;
   rt.observe(snap);
   TEST_ASSERT_FALSE(rt.stats("s1", dur));
@@ -81,7 +81,7 @@ static void test_run_tracker_measures_a_full_response() {
   rt.observe(snap);
   TEST_ASSERT_TRUE(rt.stats("s1", dur));
   TEST_ASSERT_EQUAL_UINT32(258, dur);
-  snap.sessions[0].st = SessionState::Idle;  // novo ciclo: estatística some
+  snap.sessions[0].st = SessionState::Idle;  // new cycle: stats disappear
   rt.observe(snap);
   TEST_ASSERT_FALSE(rt.stats("s1", dur));
 }
@@ -90,7 +90,7 @@ static void test_run_tracker_unknown_start_and_forgetting() {
   RunTracker rt;
   uint32_t dur;
   reset();
-  add("late", SessionState::Done, 500);  // já chegou terminado: sem estatística
+  add("late", SessionState::Done, 500);  // arrived already finished: no stats
   add("run", SessionState::Running, 100);
   rt.observe(snap);
   TEST_ASSERT_FALSE(rt.stats("late", dur));
@@ -99,7 +99,7 @@ static void test_run_tracker_unknown_start_and_forgetting() {
   rt.observe(snap);
   TEST_ASSERT_TRUE(rt.stats("run", dur));
   TEST_ASSERT_EQUAL_UINT32(60, dur);
-  reset();  // sessão sumiu → esquecida
+  reset();  // session disappeared -> forgotten
   rt.observe(snap);
   TEST_ASSERT_FALSE(rt.stats("run", dur));
 }
@@ -115,7 +115,7 @@ static void test_pager_rotates_every_period() {
   TEST_ASSERT_EQUAL_UINT8(2, p.update(9, 11000));
   TEST_ASSERT_EQUAL_UINT8(0, p.update(9, 16000));
   TEST_ASSERT_EQUAL_UINT8(1, p.update(9, 21000));
-  TEST_ASSERT_EQUAL_UINT8(0, p.update(3, 21001));  // lista encolheu: volta para a página 0
+  TEST_ASSERT_EQUAL_UINT8(0, p.update(3, 21001));  // list shrank: back to page 0
   TEST_ASSERT_EQUAL_UINT8(0, p.update(3, 60000));
 }
 
@@ -129,7 +129,7 @@ static void test_region_cache() {
   TEST_ASSERT_TRUE(rc.changed(1, h2));
   rc.invalidate();
   TEST_ASSERT_TRUE(rc.changed(0, h2));
-  TEST_ASSERT_TRUE(rc.changed(200, h2));  // fora do intervalo: sempre desenha
+  TEST_ASSERT_TRUE(rc.changed(200, h2));  // out of range: always redraws
   TEST_ASSERT_NOT_EQUAL(hashStr(hashStr(kHashSeed, "ab"), "c"), hashStr(hashStr(kHashSeed, "a"), "bc"));
   TEST_ASSERT_NOT_EQUAL(hashInt(kHashSeed, 1), hashInt(kHashSeed, 2));
 }

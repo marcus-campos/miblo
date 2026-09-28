@@ -6,18 +6,18 @@
 
 namespace miblo {
 
-// Verbo localizado para as ferramentas conhecidas do Claude Code. Bash e desconhecidas → false
-// (o nome da ferramenta é mostrado como veio).
+// Localized verb for the known Claude Code tools. Bash and unknown ones → false
+// (the tool name is shown as-is).
 bool toolVerb(const char* tool, S& out);
 
-// Atividade de uma sessão rodando:
-//   verbo conhecido → "Editando Header.tsx" (ou só "Editando" sem det / em modo discreto)
-//   outras          → "Bash · npm test"    (ou só "Bash")
-//   sem ferramenta  → "Trabalhando"
+// Activity text for a running session:
+//   known verb → "Editing Header.tsx" (or just "Editing" without det / in discreet mode)
+//   other      → "Bash · npm test"    (or just "Bash")
+//   no tool    → "Working"
 void activityText(Lang lang, const char* tool, const char* det, bool discreet, char* out, size_t cap);
 
-// Linha de estado de uma sessão para as listas:
-//   perm → "permissão · Bash", question → "pergunta", done → "terminou", idle → "ociosa",
+// Status line for a session, for the lists:
+//   perm → "permission · Bash", question → "question", done → "finished", idle → "idle",
 //   running → activityText(...).
 void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, size_t cap);
 

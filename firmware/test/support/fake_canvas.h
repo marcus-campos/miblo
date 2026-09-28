@@ -1,5 +1,5 @@
 #pragma once
-// Canvas falso para testar layouts no host: registra textos/arcos e confere se tudo cabe na tela.
+// Fake canvas for testing layouts on the host: records texts/arcs and checks that everything fits on screen.
 #include <stdlib.h>
 
 #include <string>
@@ -23,7 +23,7 @@ class FakeCanvas : public ui::Canvas {
     box(cx - r, cy - r, 2 * r, 2 * r);
     arcs.push_back(a1 - a0);
   }
-  // Texto: 6 px por caractere, 10 px de altura acima da linha de base.
+  // Text: 6 px per character, 10 px tall above the baseline.
   int text(int x, int y, const char* s, ui::Font, uint16_t, ui::Align a, int maxW) override {
     int w = textWidth(s, ui::Font::Small);
     if (w > maxW) w = maxW;

@@ -34,7 +34,7 @@ static void test_utf8_length_counts_code_points() {
 
 static void test_utf8_copy_never_splits_sequences() {
   char buf[6];
-  utf8Copy(buf, sizeof(buf), "项目项目");  // 3 bytes cada; só 1 cabe em 5 bytes + NUL
+  utf8Copy(buf, sizeof(buf), "项目项目");  // 3 bytes each; only 1 fits in 5 bytes + NUL
   TEST_ASSERT_EQUAL_STRING("项", buf);
   utf8Copy(buf, sizeof(buf), "abcdefgh", 3);
   TEST_ASSERT_EQUAL_STRING("abc", buf);

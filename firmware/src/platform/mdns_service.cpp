@@ -49,7 +49,7 @@ static void sendMulticast(const uint8_t* data, size_t len) {
 }
 
 void announce() {
-  announcesLeft = 2;  // RFC 6762: pelo menos dois anúncios, 1 s de intervalo
+  announcesLeft = 2;  // RFC 6762: at least two announcements, 1 s apart
   nextAnnounceMs = millis();
 }
 

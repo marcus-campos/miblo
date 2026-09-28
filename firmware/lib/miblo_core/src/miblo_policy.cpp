@@ -16,7 +16,7 @@ void NetPolicy::begin(bool hasCredentials, uint32_t nowMs) {
 void NetPolicy::credentialsSubmitted(uint32_t nowMs) {
   state_ = NetState::Connecting;
   sinceMs_ = nowMs;
-  // o AP continua no ar para o celular ver o resultado; cai quando conectar
+  // the AP stays up so the phone can see the result; it drops once connected
 }
 
 NetState NetPolicy::update(LinkStatus link, uint32_t nowMs) {

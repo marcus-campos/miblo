@@ -47,7 +47,7 @@ void setup(Lang lang, const char* apSsid, bool wrongPassword) {
   char payload[64];
   snprintf(payload, sizeof(payload), "WIFI:S:%s;;", apSsid);
   const int scale = Sz(4) < 2 ? 2 : Sz(4);
-  const int size = (29 + 4) * scale;  // QR versão 3 (29 módulos) + margem de 2 módulos
+  const int size = (29 + 4) * scale;  // QR version 3 (29 modules) + 2-module quiet zone
   qr(payload, (X(240) - size) / 2, Y(56), scale);
   C().text(X(120), Y(206), t(lang, S::OrJoin), Font::Small, color::MUTED, Align::Center, X(232));
   C().text(X(120), Y(228), apSsid, Font::BodyBold, color::AMBER, Align::Center, X(232));

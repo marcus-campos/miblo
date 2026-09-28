@@ -1,11 +1,11 @@
 #pragma once
 #include <stdint.h>
 
-// Anuncia e responde `_miblo._tcp.local` e `miblo-xxxx.local` (respondedor próprio: ver miblo_mdns).
+// Announces and responds to `_miblo._tcp.local` and `miblo-xxxx.local` (own responder: see miblo_mdns).
 namespace mdns {
 
 void loop(uint32_t nowMs);
-// Reanuncia (ex.: o nome do aparelho mudou).
+// Re-announces (e.g. the device name changed).
 void announce();
 
 }  // namespace mdns

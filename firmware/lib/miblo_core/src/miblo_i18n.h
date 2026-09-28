@@ -6,7 +6,7 @@ namespace miblo {
 
 enum class Lang : uint8_t { En, PtBR, PtPT, Es, Fr, It, De, Ru, Zh, Count };
 
-// Identificadores das strings. A ordem é a mesma das tabelas em miblo_strings.cpp.
+// String identifiers. The order matches the tables in miblo_strings.cpp.
 enum class S : uint8_t {
   Connecting,
   Hello,
@@ -104,20 +104,20 @@ enum class S : uint8_t {
   Count
 };
 
-// Tabelas por idioma (MIBLO_ROM), indexadas por Lang.
+// Per-language tables (MIBLO_ROM), indexed by Lang.
 extern const char* const kLangTables[];
 
 // "en", "pt-BR", "pt-PT", "es", "fr", "it", "de", "ru", "zh".
 const char* langCode(Lang lang);
-// Nome do idioma no próprio idioma ("Português (Brasil)"), para o seletor da página.
+// Language name in its own language ("Português (Brasil)"), for the page's selector.
 const char* langName(Lang lang);
-// Código exato (sem diferenciar maiúsculas) → Lang. Retorna false se não suportado.
+// Exact code (case-insensitive) → Lang. Returns false if not supported.
 bool langFromCode(const char* code, Lang& out);
-// Escolhe o idioma a partir do cabeçalho Accept-Language (maior q vence; empate → ordem).
-// "pt" sem região → pt-BR; "pt-XX" (outra região) → pt-PT; "zh-*" → zh; nada suportado → en.
+// Picks the language from the Accept-Language header (highest q wins; tie → order).
+// "pt" with no region → pt-BR; "pt-XX" (other region) → pt-PT; "zh-*" → zh; nothing supported → en.
 Lang negotiateLang(const char* acceptLanguage);
 
-// Copia a string traduzida para `out` (sempre terminada em NUL, sem cortar UTF-8 no meio).
+// Copies the translated string into `out` (always NUL-terminated, never cutting UTF-8 mid-codepoint).
 void tr(Lang lang, S id, char* out, size_t cap);
 
 }  // namespace miblo

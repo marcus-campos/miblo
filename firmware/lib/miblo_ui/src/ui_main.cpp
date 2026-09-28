@@ -21,7 +21,7 @@ using ui::Align;
 using ui::Font;
 namespace color = ui::color;
 
-// Regiões (ids do RegionCache) das telas principais.
+// Regions (RegionCache ids) of the main screens.
 enum : uint8_t { R_HEADER = 0, R_LIMITS = 1, R_WEEK = 2, R_DIVIDER = 3, R_ROW0 = 4, R_BODY = 9, R_FOOT = 10 };
 
 static ui::Canvas& C() { return canvas(); }
@@ -50,7 +50,7 @@ static uint32_t since(const SessionRow& r, const Clock& clk) {
   return (clk.epoch && clk.epoch > r.since) ? clk.epoch - r.since : 0;
 }
 
-// "Opus · ctx 71% · 412k tok" (partes ausentes são omitidas; tok = tokens de contexto da sessão).
+// "Opus · ctx 71% · 412k tok" (missing parts are omitted; tok = the session's context tokens).
 static void metaLine(const SessionRow& r, char* out, size_t cap) {
   char tmp[48];
   out[0] = 0;
@@ -83,16 +83,16 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap) 
   }
 }
 
-// ---------------- alertas (§4.2) ----------------
+// ---------------- alerts (§4.2) ----------------
 
 void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs) {
   (void)lang;
   const bool amber = kind != AlertKind::Done;
-  const bool on = ((elapsedMs / 250) % 2) == 0;  // pisca a cada 250 ms
+  const bool on = ((elapsedMs / 250) % 2) == 0;  // blinks every 250 ms
   const uint16_t bg = on ? (amber ? color::AMBER : color::FLASH_BLUE) : color::BG;
   const uint16_t fg = on ? (amber ? color::BLACK : color::WHITE) : (amber ? color::AMBER : color::BLUE);
   if (!region(R_BODY, hashStr(hashInt(hashInt(kHashSeed, amber), on), name), 0, 0, X(240), Y(240), bg)) return;
-  if (amber) {  // "!" num círculo
+  if (amber) {  // "!" in a circle
     C().fillCircle(X(120), Y(90), Sz(30), fg);
     C().fillRect(X(116), Y(70), Sz(8), Y(26), bg);
     C().fillRect(X(116), Y(102), Sz(8), Sz(8), bg);
@@ -168,13 +168,13 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
   }
 }
 
-// ---------------- blocos compartilhados ----------------
+// ---------------- shared blocks ----------------
 
 static void clockRight(const Clock& clk, int y, uint16_t c) {
   C().text(X(228), y, clk.hhmm, Font::Small, c, Align::Right, X(60));
 }
 
-// "reseta 16:42 · em 2h10"
+// "resets 16:42 · in 2h10"
 static void resetLine(Lang lang, const miblo::UsageWindow& w, const Clock& clk, uint32_t fallbackNow, bool withCountdown,
                       char* out, size_t cap) {
   char when[32];
@@ -193,7 +193,7 @@ static void resetLine(Lang lang, const miblo::UsageWindow& w, const Clock& clk, 
   snprintf(out, cap, "%s%s%s", a, kDot, b);
 }
 
-// Custo do dia quando não há limites (conta sem assinatura) ou "limites indisponíveis".
+// Today's cost when there are no limits (account without a subscription), or "limits unavailable".
 static void noLimits(Lang lang, const Snapshot& s, int cy) {
   if (s.todayUsd > 0.0f) {
     char usd[16];
@@ -207,7 +207,7 @@ static void noLimits(Lang lang, const Snapshot& s, int cy) {
   }
 }
 
-// Limites grandes da Visão geral: y 26..146 da grade.
+// Big limits in the Overview: y 26..146 of the grid.
 static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
   uint32_t h = hashInt(hashInt(kHashSeed, (uint32_t)lang), clk.epoch / 60);
   h = hashInt(hashInt(hashInt(h, s.hasUsage), s.h5.present ? s.h5.pct : 255), s.h5.reset);
@@ -244,7 +244,7 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
   }
 }
 
-// Uma linha da lista compacta (Visão geral), com linha de base y.
+// One row of the compact list (Overview), with baseline y.
 static void listRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock& clk, bool discreet, int y) {
   char line[160];
   line[0] = 0;
@@ -266,7 +266,7 @@ static void listRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock& c
   C().text(X(124), y, line, Font::Small, pending ? color::AMBER : color::MUTED, Align::Left, X(104));
 }
 
-// ---------------- Visão geral adaptativa (§4.1) ----------------
+// ---------------- Adaptive overview (§4.1) ----------------
 
 void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet) {
   const OverviewKind kind = miblo::classifyOverview(s);
@@ -279,7 +279,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   uint32_t h = hashInt(hashInt(hashInt(kHashSeed, (uint32_t)kind), c.pending), c.running);
   h = hashStr(hashStr(hashInt(h, (uint32_t)lang), clk.hhmm), heroName);
   if (region(R_HEADER, h, 0, 0, X(240), Y(26))) {
-    if (kind == OverviewKind::Attention) {  // faixa âmbar fixa: "1 AGUARDANDO · api-server"
+    if (kind == OverviewKind::Attention) {  // fixed amber band: "1 WAITING · api-server"
       C().fillRect(0, 0, X(240), Y(22), color::AMBER);
       snprintf(tmp, sizeof(tmp), t(lang, S::NWaiting), (unsigned)c.pending);
       snprintf(buf, sizeof(buf), "%s%s%s", tmp, kDot, heroName);
@@ -302,7 +302,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
 
   const int ys[4] = {Y(168), Y(186), Y(204), Y(222)};
   if (kind == OverviewKind::Idle) {
-    // rodapé: última sessão que terminou + custo do dia
+    // footer: most recently finished session + today's cost
     const int last = miblo::lastFinished(s);
     buf[0] = 0;
     if (last >= 0) {
@@ -320,7 +320,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     if (region(R_ROW0 + 1, hashStr(kHashSeed + 1, buf), 0, ys[1] - Y(13), X(240), Y(18))) {
       C().text(X(12), ys[1], buf, Font::Small, color::DIM, Align::Left, X(216));
     }
-    (void)region(R_ROW0 + 2, 0, 0, ys[2] - Y(13), X(240), Y(18));  // limpa linhas da lista anterior
+    (void)region(R_ROW0 + 2, 0, 0, ys[2] - Y(13), X(240), Y(18));  // clears leftover list rows
     (void)region(R_ROW0 + 3, 0, 0, ys[3] - Y(13), X(240), Y(18));
     return;
   }
@@ -332,7 +332,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   }
 }
 
-// ---------------- Modo Limites — L1 (§4.3) ----------------
+// ---------------- Limits mode — L1 (§4.3) ----------------
 
 void limits(Lang lang, const Snapshot& s, const Clock& clk) {
   char buf[96];
@@ -351,7 +351,7 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
       const int cy = Y(104);
       const int r = Sz(78);
       const int ir = Sz(64);
-      // arco de 270° com a abertura embaixo
+      // 270-degree arc with the gap at the bottom
       C().arc(cx, cy, r, ir, 45, 315, color::TRACK, color::BG);
       if (pct > 0) {
         int end = 45 + 270 * pct / 100;
@@ -386,7 +386,7 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
   }
 }
 
-// ---------------- Modo Sessões — S1 (§4.4) ----------------
+// ---------------- Sessions mode — S1 (§4.4) ----------------
 
 void sessions(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet) {
   char buf[160];
@@ -405,7 +405,7 @@ void sessions(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     if (region(R_ROW0, hashInt(kHashSeed + 9, (uint32_t)lang), 0, Y(24), X(240), Y(216))) {
       C().text(X(120), Y(130), t(lang, S::NoSessions), Font::Body, color::MUTED, Align::Center, X(232));
     }
-    for (uint8_t i = 1; i < 4; i++) (void)region(R_ROW0 + i, 0xFFFFFFFFu, 0, 0, 0, 0);  // força redesenho depois
+    for (uint8_t i = 1; i < 4; i++) (void)region(R_ROW0 + i, 0xFFFFFFFFu, 0, 0, 0, 0);  // force a redraw later
     return;
   }
   for (uint8_t i = 0; i < 4; i++) {

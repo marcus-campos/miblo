@@ -1,0 +1,157 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unity.h>
+
+#include <string>
+#include <vector>
+
+#include "miblo_snapshot.h"
+
+using namespace miblo;
+
+void setUp() {}
+void tearDown() {}
+
+// O `pio test` roda o programa com cwd = firmware/. Os fixtures são gerados pelos testes do
+// bridge (Plano 1, Task 4) em <repo>/fixtures/snapshots.
+static std::string loadFixture(const char* name) {
+  const char* dirs[] = {"../fixtures/snapshots/", "fixtures/snapshots/", "../../fixtures/snapshots/"};
+  for (const char* d : dirs) {
+    std::string path = std::string(d) + name;
+    FILE* f = fopen(path.c_str(), "rb");
+    if (!f) continue;
+    std::string data;
+    char buf[512];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), f)) > 0) data.append(buf, n);
+    fclose(f);
+    return data;
+  }
+  TEST_FAIL_MESSAGE("fixture não encontrado — rode os testes de contrato do bridge (Plano 1, Task 4)");
+  return "";
+}
+
+static Snapshot snap;
+
+static ParseResult parseText(std::string text, Snapshot& out) {
+  std::vector<char> buf(text.begin(), text.end());
+  buf.push_back(0);
+  return parseSnapshot(buf.data(), text.size(), out);
+}
+
+static void test_attention_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("attention.json"), snap));
+  TEST_ASSERT_EQUAL_UINT32(42, snap.seq);
+  TEST_ASSERT_EQUAL_STRING("MacBook-Marcus", snap.host);
+  TEST_ASSERT_TRUE(snap.hasUsage);
+  TEST_ASSERT_TRUE(snap.h5.present);
+  TEST_ASSERT_EQUAL_UINT8(62, snap.h5.pct);
+  TEST_ASSERT_EQUAL_UINT32(7800, snap.h5.reset - snap.now);
+  TEST_ASSERT_EQUAL_UINT8(38, snap.d7.pct);
+  TEST_ASSERT_EQUAL_UINT32(240000, snap.d7.reset - snap.now);
+  TEST_ASSERT_EQUAL_UINT8(4, snap.count);
+  TEST_ASSERT_EQUAL_UINT16(0, snap.more);
+  TEST_ASSERT_TRUE(snap.todayUsd > 0.0f);
+
+  const SessionRow& a = snap.sessions[0];
+  TEST_ASSERT_EQUAL_STRING("11111111", a.id);
+  TEST_ASSERT_EQUAL_STRING("api-server", a.name);
+  TEST_ASSERT_EQUAL(SessionState::Perm, a.st);
+  TEST_ASSERT_EQUAL_STRING("Bash", a.tool);
+  TEST_ASSERT_EQUAL_STRING("npm run migrate", a.det);
+  TEST_ASSERT_EQUAL_STRING("Opus", a.model);
+  TEST_ASSERT_EQUAL_INT16(71, a.ctx);
+  TEST_ASSERT_TRUE(a.tok > 0);  // tokens de contexto da sessão (valor exato é do bridge)
+  TEST_ASSERT_TRUE(a.since <= snap.now);
+
+  TEST_ASSERT_EQUAL(SessionState::Question, snap.sessions[1].st);
+  TEST_ASSERT_EQUAL_STRING("infra", snap.sessions[1].name);
+  TEST_ASSERT_EQUAL_INT16(-1, snap.sessions[1].ctx);
+  TEST_ASSERT_EQUAL_INT64(-1, snap.sessions[1].tok);
+  TEST_ASSERT_EQUAL(SessionState::Running, snap.sessions[2].st);
+  TEST_ASSERT_EQUAL_STRING("Header.tsx", snap.sessions[2].det);
+  TEST_ASSERT_EQUAL(SessionState::Idle, snap.sessions[3].st);
+
+  TEST_ASSERT_EQUAL_UINT8(2, snap.alertCount);
+  TEST_ASSERT_EQUAL_UINT32(1, snap.alerts[0].id);
+  TEST_ASSERT_EQUAL(AlertKind::Perm, snap.alerts[0].kind);
+  TEST_ASSERT_EQUAL_STRING("11111111", snap.alerts[0].sid);
+  TEST_ASSERT_EQUAL(AlertKind::Question, snap.alerts[1].kind);
+  TEST_ASSERT_EQUAL_INT(1, findSession(snap, "22222222"));
+  TEST_ASSERT_EQUAL_INT(-1, findSession(snap, "nope"));
+}
+
+static void test_working_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("working.json"), snap));
+  TEST_ASSERT_EQUAL_UINT8(2, snap.count);
+  TEST_ASSERT_EQUAL(SessionState::Running, snap.sessions[0].st);
+  TEST_ASSERT_EQUAL(SessionState::Running, snap.sessions[1].st);
+  TEST_ASSERT_EQUAL_STRING("npm test", snap.sessions[1].det);
+  TEST_ASSERT_EQUAL_UINT8(0, snap.alertCount);
+}
+
+static void test_idle_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("idle.json"), snap));
+  TEST_ASSERT_EQUAL_UINT8(1, snap.count);
+  TEST_ASSERT_EQUAL(SessionState::Done, snap.sessions[0].st);
+  TEST_ASSERT_EQUAL_STRING("docs", snap.sessions[0].name);
+  TEST_ASSERT_EQUAL_UINT8(1, snap.alertCount);
+  TEST_ASSERT_EQUAL(AlertKind::Done, snap.alerts[0].kind);
+}
+
+static void test_overflow_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("overflow.json"), snap));
+  TEST_ASSERT_FALSE(snap.hasUsage);
+  TEST_ASSERT_EQUAL_UINT8(8, snap.count);
+  TEST_ASSERT_EQUAL_UINT16(2, snap.more);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, snap.todayUsd);
+}
+
+static void test_unknown_fields_are_ignored_and_extra_sessions_go_to_more() {
+  std::string json = "{\"v\":1,\"seq\":1,\"now\":100,\"future\":{\"x\":[1,2,3]},\"usage\":null,\"today\":{\"tok\":5,\"usd\":1.25},\"sessions\":[";
+  for (int i = 0; i < 10; i++) {
+    if (i) json += ",";
+    json += "{\"id\":\"s" + std::to_string(i) + "\",\"name\":\"p\",\"st\":\"running\",\"newField\":true}";
+  }
+  json += "],\"more\":1,\"alerts\":[{\"id\":5,\"kind\":\"alien\",\"sid\":\"s0\"},{\"id\":6,\"kind\":\"done\",\"sid\":\"s1\"}]}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(json, snap));
+  TEST_ASSERT_EQUAL_UINT8(8, snap.count);
+  TEST_ASSERT_EQUAL_UINT16(3, snap.more);
+  TEST_ASSERT_FALSE(snap.hasUsage);
+  TEST_ASSERT_EQUAL_FLOAT(1.25f, snap.todayUsd);  // campo antigo today.tok é ignorado
+  TEST_ASSERT_EQUAL_UINT8(1, snap.alertCount);
+  TEST_ASSERT_EQUAL_UINT32(6, snap.alerts[0].id);
+}
+
+static void test_truncates_long_strings_by_characters() {
+  std::string json = "{\"v\":1,\"sessions\":[{\"id\":\"abcdefghijkl\",\"name\":\"";
+  for (int i = 0; i < 30; i++) json += "项";
+  json += "\",\"st\":\"perm\"}]}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(json, snap));
+  TEST_ASSERT_EQUAL_STRING("abcdefgh", snap.sessions[0].id);
+  TEST_ASSERT_EQUAL(60u, strlen(snap.sessions[0].name));  // 20 caracteres × 3 bytes
+}
+
+static void test_errors_leave_previous_snapshot_untouched() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText("{\"v\":1,\"seq\":7,\"host\":\"keep\"}", snap));
+  TEST_ASSERT_EQUAL(ParseResult::BadJson, parseText("{\"v\":1,\"seq\":8", snap));
+  TEST_ASSERT_EQUAL(ParseResult::BadJson, parseText("[1,2]", snap));
+  TEST_ASSERT_EQUAL(ParseResult::BadVersion, parseText("{\"seq\":9}", snap));
+  std::string big = "{\"v\":1,\"host\":\"" + std::string(3100, 'x') + "\"}";
+  TEST_ASSERT_EQUAL(ParseResult::TooLarge, parseText(big, snap));
+  TEST_ASSERT_EQUAL_UINT32(7, snap.seq);
+  TEST_ASSERT_EQUAL_STRING("keep", snap.host);
+}
+
+int main() {
+  UNITY_BEGIN();
+  RUN_TEST(test_attention_fixture);
+  RUN_TEST(test_working_fixture);
+  RUN_TEST(test_idle_fixture);
+  RUN_TEST(test_overflow_fixture);
+  RUN_TEST(test_unknown_fields_are_ignored_and_extra_sessions_go_to_more);
+  RUN_TEST(test_truncates_long_strings_by_characters);
+  RUN_TEST(test_errors_leave_previous_snapshot_untouched);
+  return UNITY_END();
+}

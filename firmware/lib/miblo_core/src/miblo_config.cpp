@@ -33,6 +33,14 @@ static bool intIn(JsonVariantConst v, int lo, int hi, uint8_t& out) {
   return true;
 }
 
+static bool intIn16(JsonVariantConst v, int lo, int hi, uint16_t& out) {
+  if (!v.is<int>()) return false;
+  int x = v.as<int>();
+  if (x < lo || x > hi) return false;
+  out = (uint16_t)x;
+  return true;
+}
+
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField) {
   Config next = cfg;
   const char* bad = nullptr;
@@ -73,11 +81,22 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
         ok = langFromCode(s, next.lang);
         if (ok) next.langSet = true;
       }
+    } else if (strcmp(k, "rotate") == 0) {
+      ok = v.is<bool>();
+      if (ok) next.rotate = v.as<bool>();
+    } else if (strcmp(k, "rotateEverySec") == 0) {
+      ok = intIn16(v, 10, 3600, next.rotateEverySec);
+    } else if (strcmp(k, "rotateShowSec") == 0) {
+      ok = intIn16(v, 3, 300, next.rotateShowSec);
     }
     if (!ok) {
       bad = k;
       break;
     }
+  }
+  // Cross-field rule, checked on the merged result: the Limits slot must be shorter than the period.
+  if (!bad && next.rotateShowSec >= next.rotateEverySec) {
+    bad = patch["rotateShowSec"].isNull() ? "rotateEverySec" : "rotateShowSec";
   }
   if (bad) {
     if (badField) *badField = bad;
@@ -98,6 +117,9 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["tz"] = cfg.tz;
   out["name"] = cfg.name;
   out["lang"] = cfg.langSet ? langCode(cfg.lang) : "";
+  out["rotate"] = cfg.rotate;
+  out["rotateEverySec"] = cfg.rotateEverySec;
+  out["rotateShowSec"] = cfg.rotateShowSec;
 }
 
 AlertTiming alertTiming(const Config& cfg) {
@@ -106,6 +128,14 @@ AlertTiming alertTiming(const Config& cfg) {
   t.heroPermMs = (uint32_t)cfg.heroPermSec * 1000;
   t.heroDoneMs = (uint32_t)cfg.heroDoneSec * 1000;
   t.reminderMs = (uint32_t)cfg.reminderMin * 60000;
+  return t;
+}
+
+RotationTiming rotationTiming(const Config& cfg) {
+  RotationTiming t;
+  t.enabled = cfg.rotate && cfg.mode == Mode::Overview;
+  t.everyMs = (uint32_t)cfg.rotateEverySec * 1000;
+  t.showMs = (uint32_t)cfg.rotateShowSec * 1000;
   return t;
 }
 

@@ -342,6 +342,134 @@ static void test_screen_selection_order() {
   TEST_ASSERT_EQUAL(ScreenId::Updating, selectScreen(in));
 }
 
+static void test_rotation_config_defaults_validation_and_json() {
+  Config c;
+  TEST_ASSERT_FALSE(c.rotate);
+  TEST_ASSERT_EQUAL_UINT16(60, c.rotateEverySec);
+  TEST_ASSERT_EQUAL_UINT16(10, c.rotateShowSec);
+  TEST_ASSERT_FALSE(rotationTiming(c).enabled);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"rotate\":true,\"rotateEverySec\":3600,\"rotateShowSec\":300}"));
+  TEST_ASSERT_TRUE(c.rotate);
+  TEST_ASSERT_EQUAL_UINT16(3600, c.rotateEverySec);
+  TEST_ASSERT_EQUAL_UINT16(300, c.rotateShowSec);
+  RotationTiming t = rotationTiming(c);
+  TEST_ASSERT_TRUE(t.enabled);
+  TEST_ASSERT_EQUAL_UINT32(3600000, t.everyMs);
+  TEST_ASSERT_EQUAL_UINT32(300000, t.showMs);
+  // Only in Overview mode.
+  TEST_ASSERT_TRUE(patch(c, "{\"mode\":\"limits\"}"));
+  TEST_ASSERT_FALSE(rotationTiming(c).enabled);
+  // Ranges and types.
+  TEST_ASSERT_FALSE(patch(c, "{\"rotateEverySec\":9}", &bad));
+  TEST_ASSERT_EQUAL_STRING("rotateEverySec", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"rotateEverySec\":3601}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"rotateShowSec\":2}", &bad));
+  TEST_ASSERT_EQUAL_STRING("rotateShowSec", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"rotateShowSec\":301}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"rotate\":1}", &bad));
+  TEST_ASSERT_EQUAL_STRING("rotate", bad);
+  // show < every, on the merged result; all-or-nothing.
+  TEST_ASSERT_FALSE(patch(c, "{\"rotate\":false,\"rotateEverySec\":20,\"rotateShowSec\":20}", &bad));
+  TEST_ASSERT_EQUAL_STRING("rotateShowSec", bad);
+  TEST_ASSERT_TRUE(c.rotate);
+  TEST_ASSERT_EQUAL_UINT16(3600, c.rotateEverySec);
+  TEST_ASSERT_FALSE(patch(c, "{\"rotateEverySec\":200}", &bad));  // current show is 300
+  TEST_ASSERT_EQUAL_STRING("rotateEverySec", bad);
+  TEST_ASSERT_TRUE(patch(c, "{\"rotateEverySec\":20,\"rotateShowSec\":5}"));
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_TRUE(doc["rotate"].as<bool>());
+  TEST_ASSERT_EQUAL(20, doc["rotateEverySec"].as<int>());
+  TEST_ASSERT_EQUAL(5, doc["rotateShowSec"].as<int>());
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_TRUE(b.rotate);
+  TEST_ASSERT_EQUAL_UINT16(20, b.rotateEverySec);
+  TEST_ASSERT_EQUAL_UINT16(5, b.rotateShowSec);
+}
+
+static RotationTiming rot(bool on, uint32_t everySec, uint32_t showSec) {
+  RotationTiming t;
+  t.enabled = on;
+  t.everyMs = everySec * 1000;
+  t.showMs = showSec * 1000;
+  return t;
+}
+
+static void test_rotation_default_off_never_shows_limits() {
+  RotationClock r;
+  RotationTiming t;  // defaults: disabled
+  for (uint32_t ms = 0; ms < 600000; ms += 100) TEST_ASSERT_FALSE(r.update(t, false, ms));
+}
+
+static void test_rotation_period_and_show_timing() {
+  RotationClock r;
+  const RotationTiming t = rot(true, 60, 10);
+  TEST_ASSERT_FALSE(r.update(t, false, 1000));
+  TEST_ASSERT_FALSE(r.update(t, false, 1000 + 49999));
+  TEST_ASSERT_TRUE(r.update(t, false, 1000 + 50000));  // Overview for every - show
+  TEST_ASSERT_TRUE(r.showingLimits());
+  TEST_ASSERT_TRUE(r.update(t, false, 1000 + 59999));
+  TEST_ASSERT_FALSE(r.update(t, false, 1000 + 60000));  // Limits for show
+  TEST_ASSERT_FALSE(r.update(t, false, 1000 + 109999));
+  TEST_ASSERT_TRUE(r.update(t, false, 1000 + 110000));  // one Limits slot every 60 s
+  TEST_ASSERT_FALSE(r.update(t, false, 1000 + 120000));
+}
+
+static void test_rotation_pending_blocks_and_restarts_wait() {
+  RotationClock r;
+  const RotationTiming t = rot(true, 20, 5);
+  TEST_ASSERT_FALSE(r.update(t, false, 0));
+  // Something pending from 10 s to 40 s: never rotates away meanwhile.
+  for (uint32_t ms = 10000; ms <= 40000; ms += 100) TEST_ASSERT_FALSE(r.update(t, true, ms));
+  TEST_ASSERT_FALSE(r.update(t, false, 40100));
+  TEST_ASSERT_FALSE(r.update(t, false, 40000 + 14999));
+  TEST_ASSERT_TRUE(r.update(t, false, 40000 + 15000));  // a full Overview wait after the last blocked frame
+}
+
+static void test_rotation_alert_preempts_limits_slot() {
+  RotationClock r;
+  const RotationTiming t = rot(true, 20, 5);
+  r.update(t, false, 0);
+  TEST_ASSERT_TRUE(r.update(t, false, 15000));
+  TEST_ASSERT_FALSE(r.update(t, true, 16000));  // alert: Limits ends immediately
+  TEST_ASSERT_FALSE(r.showingLimits());
+  TEST_ASSERT_FALSE(r.update(t, false, 17000));  // slot not resumed after the alert
+  TEST_ASSERT_FALSE(r.update(t, false, 16000 + 14999));
+  TEST_ASSERT_TRUE(r.update(t, false, 16000 + 15000));
+}
+
+static void test_rotation_config_change_resets_cycle() {
+  RotationClock r;
+  RotationTiming t = rot(true, 20, 5);
+  r.update(t, false, 0);
+  TEST_ASSERT_TRUE(r.update(t, false, 15000));
+  t = rot(true, 30, 5);
+  TEST_ASSERT_FALSE(r.update(t, false, 16000));  // new timing: back to Overview, wait restarts
+  TEST_ASSERT_FALSE(r.update(t, false, 16000 + 24999));
+  TEST_ASSERT_TRUE(r.update(t, false, 16000 + 25000));
+  // Turning it off and on again also restarts the wait.
+  TEST_ASSERT_FALSE(r.update(rot(false, 30, 5), false, 50000));
+  TEST_ASSERT_FALSE(r.update(t, false, 50100));
+  TEST_ASSERT_FALSE(r.update(t, false, 50100 + 24999));
+  TEST_ASSERT_TRUE(r.update(t, false, 50100 + 25000));
+  // A malformed timing (show >= every) never shows Limits.
+  RotationClock r2;
+  for (uint32_t ms = 0; ms < 120000; ms += 500) TEST_ASSERT_FALSE(r2.update(rot(true, 10, 10), false, ms));
+}
+
+static void test_rotation_survives_millis_wrap() {
+  RotationClock r;
+  const RotationTiming t = rot(true, 20, 5);
+  const uint32_t start = 0xFFFFFFFFu - 5000;
+  TEST_ASSERT_FALSE(r.update(t, false, start));
+  TEST_ASSERT_FALSE(r.update(t, false, start + 14999));  // wraps past 0
+  TEST_ASSERT_TRUE(r.update(t, false, start + 15000));
+  TEST_ASSERT_TRUE(r.update(t, false, start + 19999));
+  TEST_ASSERT_FALSE(r.update(t, false, start + 20000));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -364,5 +492,12 @@ int main() {
   RUN_TEST(test_trial_silent_timeout);
   RUN_TEST(test_background_reasons_never_fail_a_saved_network);
   RUN_TEST(test_join_status_names);
+  RUN_TEST(test_rotation_config_defaults_validation_and_json);
+  RUN_TEST(test_rotation_default_off_never_shows_limits);
+  RUN_TEST(test_rotation_period_and_show_timing);
+  RUN_TEST(test_rotation_pending_blocks_and_restarts_wait);
+  RUN_TEST(test_rotation_alert_preempts_limits_slot);
+  RUN_TEST(test_rotation_config_change_resets_cycle);
+  RUN_TEST(test_rotation_survives_millis_wrap);
   return UNITY_END();
 }

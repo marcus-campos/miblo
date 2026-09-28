@@ -164,4 +164,27 @@ ScreenId selectScreen(const ScreenInputs& in) {
   return ScreenId::Main;
 }
 
+bool RotationClock::update(const RotationTiming& t, bool blocked, uint32_t nowMs) {
+  const bool changed =
+      !started_ || t.enabled != last_.enabled || t.everyMs != last_.everyMs || t.showMs != last_.showMs;
+  if (changed || !t.enabled || blocked || t.showMs >= t.everyMs) {
+    started_ = true;
+    last_ = t;
+    limits_ = false;
+    sinceMs_ = nowMs;  // the next Limits slot is a full Overview wait away
+    return false;
+  }
+  const uint32_t elapsed = nowMs - sinceMs_;
+  if (limits_) {
+    if (elapsed >= t.showMs) {
+      limits_ = false;
+      sinceMs_ = nowMs;
+    }
+  } else if (elapsed >= t.everyMs - t.showMs) {
+    limits_ = true;
+    sinceMs_ = nowMs;
+  }
+  return limits_;
+}
+
 }  // namespace miblo

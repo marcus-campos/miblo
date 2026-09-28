@@ -83,6 +83,9 @@ enum class S : uint8_t {
   WebHeroDone,
   WebReminder,
   WebDiscreet,
+  WebRotate,  // Overview mode: alternate with Limits
+  WebRotateEvery,
+  WebRotateShow,
   WebDeviceName,
   WebSave,
   WebSaved,

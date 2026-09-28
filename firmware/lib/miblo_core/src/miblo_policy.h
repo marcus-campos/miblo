@@ -113,4 +113,31 @@ struct ScreenInputs {
 
 ScreenId selectScreen(const ScreenInputs& in);
 
+// ---- Optional Overview/Limits rotation ----
+// With rotation on (and the device in Overview mode), Limits takes over the main screen for
+// `showMs` once every `everyMs` (period between two Limits slots; showMs < everyMs), so Overview
+// stays up for everyMs - showMs in between. See rotationTiming() in miblo_config.h.
+struct RotationTiming {
+  bool enabled = false;
+  uint32_t everyMs = 60000;
+  uint32_t showMs = 10000;
+};
+
+class RotationClock {
+ public:
+  // Call on every frame. `blocked`: something needs the user or the main screen is not showing
+  // (an alert flash/hero, a session waiting on a permission/question, any other screen). While
+  // blocked it never rotates away, and a Limits slot in progress ends at once; the Overview wait
+  // then restarts from the moment it unblocks. A timing change also restarts the cycle.
+  // Returns true while Limits should replace Overview. Safe across millis() wrap.
+  bool update(const RotationTiming& t, bool blocked, uint32_t nowMs);
+  bool showingLimits() const { return limits_; }
+
+ private:
+  RotationTiming last_;
+  bool started_ = false;
+  bool limits_ = false;
+  uint32_t sinceMs_ = 0;
+};
+
 }  // namespace miblo

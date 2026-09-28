@@ -4,6 +4,7 @@
 
 #include "miblo_alerts.h"
 #include "miblo_i18n.h"
+#include "miblo_policy.h"
 
 namespace miblo {
 
@@ -23,6 +24,9 @@ struct Config {
   char name[64] = "";        // <= 20 characters; empty = default name "Miblo-XXXX"
   Lang lang = Lang::En;
   bool langSet = false;      // false = automatic language (Accept-Language)
+  bool rotate = false;           // Overview mode: alternate with Limits now and then
+  uint16_t rotateEverySec = 60;  // 10..3600: period between two Limits slots
+  uint16_t rotateShowSec = 10;   // 3..300 and < rotateEverySec: how long Limits stays up
 };
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
@@ -30,6 +34,8 @@ struct Config {
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField);
 void configToJson(const Config& cfg, JsonObject out);
 AlertTiming alertTiming(const Config& cfg);
+// Enabled only when rotation is on and the device is in Overview mode.
+RotationTiming rotationTiming(const Config& cfg);
 
 // ---- AirTag-style hard reset by quick power cycles (spec §6) ----
 // Each power-on with less than 10 s of uptime counts; the 6th in a row erases everything.

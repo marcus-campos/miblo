@@ -82,6 +82,9 @@ static const char kEn[] MIBLO_ROM =
     "Highlight: finished (s)\0"  // WebHeroDone
     "Reminder every (min, 0 = off)\0"  // WebReminder
     "Discreet mode (hide commands and files)\0"  // WebDiscreet
+    "Alternate with limits\0"  // WebRotate
+    "Show limits every (s)\0"  // WebRotateEvery
+    "Keep limits on screen for (s)\0"  // WebRotateShow
     "Device name\0"  // WebDeviceName
     "Save\0"  // WebSave
     "Saved\0"  // WebSaved
@@ -190,6 +193,9 @@ static const char kPtBR[] MIBLO_ROM =
     "Destaque: terminou (s)\0"  // WebHeroDone
     "Lembrete a cada (min, 0 = desligado)\0"  // WebReminder
     "Modo discreto (oculta comandos e arquivos)\0"  // WebDiscreet
+    "Alternar com os limites\0"  // WebRotate
+    "Mostrar limites a cada (s)\0"  // WebRotateEvery
+    "Manter os limites por (s)\0"  // WebRotateShow
     "Nome do aparelho\0"  // WebDeviceName
     "Salvar\0"  // WebSave
     "Salvo\0"  // WebSaved
@@ -298,6 +304,9 @@ static const char kPtPT[] MIBLO_ROM =
     "Destaque: terminou (s)\0"  // WebHeroDone
     "Lembrete a cada (min, 0 = desligado)\0"  // WebReminder
     "Modo discreto (oculta comandos e ficheiros)\0"  // WebDiscreet
+    "Alternar com os limites\0"  // WebRotate
+    "Mostrar limites a cada (s)\0"  // WebRotateEvery
+    "Manter os limites durante (s)\0"  // WebRotateShow
     "Nome do aparelho\0"  // WebDeviceName
     "Guardar\0"  // WebSave
     "Guardado\0"  // WebSaved
@@ -406,6 +415,9 @@ static const char kEs[] MIBLO_ROM =
     "Destacado: terminó (s)\0"  // WebHeroDone
     "Recordatorio cada (min, 0 = desactivado)\0"  // WebReminder
     "Modo discreto (oculta comandos y archivos)\0"  // WebDiscreet
+    "Alternar con los límites\0"  // WebRotate
+    "Mostrar límites cada (s)\0"  // WebRotateEvery
+    "Mantener los límites durante (s)\0"  // WebRotateShow
     "Nombre del dispositivo\0"  // WebDeviceName
     "Guardar\0"  // WebSave
     "Guardado\0"  // WebSaved
@@ -514,6 +526,9 @@ static const char kFr[] MIBLO_ROM =
     "Mise en avant : terminé (s)\0"  // WebHeroDone
     "Rappel toutes les (min, 0 = désactivé)\0"  // WebReminder
     "Mode discret (masque commandes et fichiers)\0"  // WebDiscreet
+    "Alterner avec les limites\0"  // WebRotate
+    "Afficher les limites toutes les (s)\0"  // WebRotateEvery
+    "Garder les limites pendant (s)\0"  // WebRotateShow
     "Nom de l'appareil\0"  // WebDeviceName
     "Enregistrer\0"  // WebSave
     "Enregistré\0"  // WebSaved
@@ -622,6 +637,9 @@ static const char kIt[] MIBLO_ROM =
     "Evidenza: finito (s)\0"  // WebHeroDone
     "Promemoria ogni (min, 0 = spento)\0"  // WebReminder
     "Modalità discreta (nasconde comandi e file)\0"  // WebDiscreet
+    "Alterna con i limiti\0"  // WebRotate
+    "Mostra i limiti ogni (s)\0"  // WebRotateEvery
+    "Mantieni i limiti per (s)\0"  // WebRotateShow
     "Nome del dispositivo\0"  // WebDeviceName
     "Salva\0"  // WebSave
     "Salvato\0"  // WebSaved
@@ -730,6 +748,9 @@ static const char kDe[] MIBLO_ROM =
     "Hervorhebung: fertig (s)\0"  // WebHeroDone
     "Erinnerung alle (min, 0 = aus)\0"  // WebReminder
     "Diskreter Modus (verbirgt Befehle und Dateien)\0"  // WebDiscreet
+    "Mit Limits abwechseln\0"  // WebRotate
+    "Limits anzeigen alle (s)\0"  // WebRotateEvery
+    "Limits anzeigen für (s)\0"  // WebRotateShow
     "Gerätename\0"  // WebDeviceName
     "Speichern\0"  // WebSave
     "Gespeichert\0"  // WebSaved
@@ -838,6 +859,9 @@ static const char kRu[] MIBLO_ROM =
     "Выделение: готово (с)\0"  // WebHeroDone
     "Напоминание каждые (мин, 0 = выкл.)\0"  // WebReminder
     "Скрытный режим (без команд и файлов)\0"  // WebDiscreet
+    "Чередовать с лимитами\0"  // WebRotate
+    "Показывать лимиты каждые (с)\0"  // WebRotateEvery
+    "Держать лимиты на экране (с)\0"  // WebRotateShow
     "Имя устройства\0"  // WebDeviceName
     "Сохранить\0"  // WebSave
     "Сохранено\0"  // WebSaved
@@ -946,6 +970,9 @@ static const char kZh[] MIBLO_ROM =
     "突出显示：已完成（秒）\0"  // WebHeroDone
     "提醒间隔（分钟，0 = 关闭）\0"  // WebReminder
     "低调模式（隐藏命令和文件）\0"  // WebDiscreet
+    "与用量限制交替显示\0"  // WebRotate
+    "用量限制显示间隔（秒）\0"  // WebRotateEvery
+    "用量限制显示时长（秒）\0"  // WebRotateShow
     "设备名称\0"  // WebDeviceName
     "保存\0"  // WebSave
     "已保存\0"  // WebSaved

@@ -150,6 +150,70 @@ test('mode sends config to all or to one gadget; invalid mode returns 2', async 
   }
 });
 
+test('rotate turns the Overview/Limits rotation on and off with timings', async () => {
+  const dev = await startFakeDevice();
+  const d = deps();
+  try {
+    assert.equal((await run(['rotate', 'on'], d)).code, 2);  // nothing paired yet
+    await run(['pair', dev.addr, '4827'], d);
+    const st0 = await run(['rotate', '--status'], d);
+    assert.equal(st0.code, 0);
+    assert.match(st0.out, /Miblo-4F2A \(miblo-4f2a\): rotation off/);
+
+    const on = await run(['rotate', 'on', '90', '12'], d);
+    assert.equal(on.code, 0);
+    assert.match(on.out, /Rotation on \(Limits every 90 s, for 12 s\) on 1 gadget/);
+    assert.deepEqual(
+      { rotate: dev.state.config.rotate, every: dev.state.config.rotateEverySec, show: dev.state.config.rotateShowSec },
+      { rotate: true, every: 90, show: 12 });
+    assert.match((await run(['rotate', '--status', 'miblo-4f2a'], d)).out, /rotation on, Limits every 90 s for 12 s/);
+
+    const off = await run(['rotate', 'off', 'miblo-4f2a'], d);
+    assert.match(off.out, /Rotation off on 1 gadget/);
+    assert.equal(dev.state.config.rotate, false);
+    assert.equal(dev.state.config.rotateEverySec, 90);  // timings kept
+
+    assert.equal((await run(['rotate', 'on', 'nope'], d)).code, 2);  // unknown id
+  } finally {
+    await dev.close();
+  }
+});
+
+test('rotate validates arguments client-side with clear messages', async () => {
+  const d = deps();
+  const cases = [
+    [[], /"on" or "off"/],
+    [['maybe'], /"on" or "off"/],
+    [['on', '5'], /every-seconds must be a whole number from 10 to 3600 \(got 5\)/],
+    [['on', '3601'], /from 10 to 3600/],
+    [['on', '60', '2'], /show-seconds must be a whole number from 3 to 300 \(got 2\)/],
+    [['on', '60', '301'], /from 3 to 300/],
+    [['on', '60', '12.5'], /whole number/],
+    [['on', '20', '20'], /show-seconds \(20\) must be shorter than every-seconds \(20\)/],
+    [['on', '60', '10', '5'], /Too many numbers/],
+    [['on', 'a', 'b'], /Unexpected argument "b"/],
+  ];
+  for (const [args, re] of cases) {
+    const r = await run(['rotate', ...args], d);
+    assert.equal(r.code, 2, args.join(' '));
+    assert.match(r.out, re, args.join(' '));
+  }
+});
+
+test('rotate reports a device-side rejection (show not shorter than the stored period)', async () => {
+  const dev = await startFakeDevice();
+  const d = deps();
+  try {
+    await run(['pair', dev.addr, '4827'], d);
+    const r = await run(['rotate', 'on', '10'], d);  // stored show is 10 s: 10 >= 10
+    assert.equal(r.code, 1);
+    assert.match(r.out, /rejected rotateEverySec: show-seconds must be shorter than every-seconds/);
+    assert.equal(dev.state.config.rotate, undefined);  // all-or-nothing
+  } finally {
+    await dev.close();
+  }
+});
+
 test('reset sends the command and forgets the pairing', async () => {
   const dev = await startFakeDevice();
   const d = deps();

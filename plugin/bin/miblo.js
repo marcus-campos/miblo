@@ -15,6 +15,7 @@ const USAGE = [
   '  pair <ip[:port]> <code>',
   '  status',
   '  mode <overview|limits|sessions> [id]',
+  '  rotate <on|off> [every-seconds] [show-seconds] [id] | rotate --status [id]',
   '  reset <id>',
   '  link-statusline | unlink-statusline',
 ].join('\n');
@@ -46,6 +47,102 @@ async function defaultFetchStatus() {
   } catch {
     return null;
   }
+}
+
+// ---- rotate: optional Overview/Limits alternation (firmware miblo_config.h) ----
+// Limits replaces Overview for `show` seconds once every `every` seconds (Overview mode only;
+// alerts and sessions waiting on the user always win).
+export const ROTATE_EVERY = { min: 10, max: 3600 };
+export const ROTATE_SHOW = { min: 3, max: 300 };
+const ROTATE_USAGE = 'Usage: rotate <on|off> [every-seconds] [show-seconds] [id]  (or: rotate --status [id])';
+
+// -> { patch } or { error }. Positional numbers are every/show; any other word is the gadget id.
+export function parseRotateArgs(args) {
+  const [state, ...rest] = args;
+  if (state !== 'on' && state !== 'off') return { error: `First argument must be "on" or "off".\n${ROTATE_USAGE}` };
+  const nums = [];
+  let id;
+  for (const a of rest) {
+    if (/^[+-]?\d+(\.\d+)?$/.test(a)) nums.push(Number(a));
+    else if (id === undefined) id = a;
+    else return { error: `Unexpected argument "${String(a).slice(0, 40)}".\n${ROTATE_USAGE}` };
+  }
+  if (nums.length > 2) return { error: `Too many numbers: give at most every-seconds and show-seconds.\n${ROTATE_USAGE}` };
+  const [every, show] = nums;
+  const inRange = (v, r) => Number.isInteger(v) && v >= r.min && v <= r.max;
+  if (every !== undefined && !inRange(every, ROTATE_EVERY)) {
+    return { error: `every-seconds must be a whole number from ${ROTATE_EVERY.min} to ${ROTATE_EVERY.max} (got ${every}).` };
+  }
+  if (show !== undefined && !inRange(show, ROTATE_SHOW)) {
+    return { error: `show-seconds must be a whole number from ${ROTATE_SHOW.min} to ${ROTATE_SHOW.max} (got ${show}).` };
+  }
+  if (every !== undefined && show !== undefined && show >= every) {
+    return { error: `show-seconds (${show}) must be shorter than every-seconds (${every}).` };
+  }
+  const patch = { rotate: state === 'on' };
+  if (every !== undefined) patch.rotateEverySec = every;
+  if (show !== undefined) patch.rotateShowSec = show;
+  return { patch, id };
+}
+
+const describeRotation = (r) =>
+  r.rotate ? `on, Limits every ${r.rotateEverySec} s for ${r.rotateShowSec} s` : 'off';
+
+async function rotate(args, store, client) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  const parsed = args[0] === '--status' ? null : parseRotateArgs(args);
+  if (parsed?.error) return fail(2, parsed.error);
+  const devices = store.list();
+  if (!devices.length) return fail(2, 'No paired Miblo gadgets. Run /miblo:pair first.');
+
+  if (!parsed) {
+    const id = args[1];
+    const targets = devices.filter((d) => !id || d.id === id);
+    if (!targets.length) return fail(2, `No paired gadget with id ${cleanId(id)}.`);
+    const lines = [];
+    for (const d of targets) {
+      const label = `${cleanName(d.name)} (${cleanId(d.id)})`;
+      try {
+        const info = await client.info(d.addr);
+        if (typeof info?.rotate !== 'boolean') lines.push(`${label}: rotation not supported by this firmware (update it)`);
+        else lines.push(`${label}: rotation ${describeRotation(info)}`);
+      } catch {
+        lines.push(`${label}: offline`);
+      }
+    }
+    return ok(lines.join('\n'));
+  }
+
+  const { patch, id } = parsed;
+  const targets = devices.filter((d) => !id || d.id === id);
+  if (!targets.length) return fail(2, `No paired gadget with id ${cleanId(id)}.`);
+  let done = 0;
+  const problems = [];
+  for (const d of targets) {
+    try {
+      await client.setConfig(d.addr, d.token, patch);
+      done++;
+    } catch (e) {
+      const label = cleanName(d.name);
+      if (e.status === 400 && e.data?.field) {
+        const field = String(e.data.field).replace(/[^A-Za-z]/g, '').slice(0, 20);
+        problems.push(field.startsWith('rotate')
+          ? `${label} rejected ${field}: show-seconds must be shorter than every-seconds (${ROTATE_SHOW.min}-${ROTATE_SHOW.max} and ${ROTATE_EVERY.min}-${ROTATE_EVERY.max}); pass both numbers.`
+          : `${label} rejected ${field}.`);
+      } else if (e.status === 400) {
+        problems.push(`${label} does not support rotation yet (update its firmware).`);
+      } else {
+        problems.push(`${label} is offline.`);
+      }
+    }
+  }
+  const parts = [];
+  if (patch.rotateEverySec) parts.push(`Limits every ${patch.rotateEverySec} s`);
+  if (patch.rotateShowSec) parts.push(`for ${patch.rotateShowSec} s`);
+  const what = patch.rotate ? `Rotation on${parts.length ? ` (${parts.join(', ')})` : ''}` : 'Rotation off';
+  const out = [`${what} on ${done} gadget(s).`, ...problems].join('\n');
+  return done ? ok(out) : fail(1, out);
 }
 
 export async function run(argv, deps) {
@@ -121,6 +218,8 @@ export async function run(argv, deps) {
       }
       return ok(`Mode set to ${mode} on ${done} gadget(s).`);
     }
+    case 'rotate':
+      return rotate(args, store, client);
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);

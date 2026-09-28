@@ -52,6 +52,10 @@ static void handleInfo() {
   // and the current WiFi.status() (wl_status_t).
   doc["wifiReason"] = net::lastDisconnectReason();
   doc["wifiStatus"] = net::wifiStatus();
+  // Overview/Limits rotation settings (read back by `/miblo:rotate`).
+  doc["rotate"] = ctx.cfg.rotate;
+  doc["rotateEverySec"] = ctx.cfg.rotateEverySec;
+  doc["rotateShowSec"] = ctx.cfg.rotateShowSec;
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

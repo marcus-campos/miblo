@@ -55,6 +55,20 @@ python3 firmware/scripts/flash-fleet.py --subnet 192.168.0.0/24 --update
 
 It prints a line per step per unit and a final table (host, before, after, result, seconds), and exits non-zero if any unit failed. Use `--host <ip>` (repeatable) instead of `--subnet` for specific units.
 
+**Straight out of the box (macOS, `--via-ap`).** Factory units are on no network: each one broadcasts its own Wi‑Fi. With `--via-ap` the Mac joins those networks itself, one unit at a time (one radio), and talks to the device at `192.168.4.1`:
+
+- stock GeekMagic network (`GIFTV`, `SmallTV`, `GeekMagic`…; change with `--stock-ssid REGEX`, add `--stock-pass` if yours has a password) → installer upload → joins the new `Miblo-Installer-XXXX` → full image → joins `Miblo-Setup-XXXX` and checks the version;
+- `Miblo-Installer-XXXX` → full image, then the same check;
+- `Miblo-Setup-XXXX` (installed, not configured) → skipped when up to date, otherwise updated right away (no `--update` needed): without a code when the unit allows it, else it asks for the 4‑digit code on the screen (units that need a code are skipped when the script is not run from a terminal).
+
+```sh
+python3 firmware/scripts/flash-fleet.py --via-ap --dry-run   # scan and show the plan, join nothing
+python3 firmware/scripts/flash-fleet.py --via-ap             # every unit in range, then stop
+python3 firmware/scripts/flash-fleet.py --via-ap --loop      # keep going as you power units on; Ctrl-C to stop
+```
+
+The Mac goes back to its Wi‑Fi network at the end (also on errors and Ctrl‑C; a warning is printed if it can't). `--max N` stops after N units, `--iface` picks the Wi‑Fi interface. macOS only reveals network names to apps with Location Services access: if the script says names are hidden, enable it for your terminal app in System Settings → Privacy & Security → Location Services.
+
 ## Reset
 
 - From the gadget's page (`http://miblo-xxxx.local`) → Factory reset (confirm with the on‑screen code), or `/miblo:reset <id>`.

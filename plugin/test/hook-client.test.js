@@ -17,6 +17,19 @@ test('pickEvent forwards only the whitelisted fields, tool_input cut to 200 char
   assert.deepEqual(pickEvent({ session_id: 5 }), {});
 });
 
+test('pickEvent forwards agent_id/agent_type and only type/status of background_tasks', () => {
+  const raw = {
+    session_id: 's1', hook_event_name: 'Stop', agent_id: 'a1', agent_type: 'Explore',
+    last_assistant_message: 'secret',
+    background_tasks: [{ id: 't1', type: 'shell', status: 'running', command: 'secret cmd', description: 'x' }, null],
+    session_crons: [{ prompt: 'secret' }],
+  };
+  assert.deepEqual(pickEvent(raw), {
+    session_id: 's1', hook_event_name: 'Stop', agent_id: 'a1', agent_type: 'Explore',
+    background_tasks: [{ type: 'shell', status: 'running' }, {}],
+  });
+});
+
 test('pid is attached on SessionStart and UserPromptSubmit only', () => {
   assert.equal(wantsPid({ hook_event_name: 'SessionStart' }), true);
   assert.equal(wantsPid({ hook_event_name: 'UserPromptSubmit' }), true);

@@ -1,9 +1,12 @@
 // Pure delivery logic of bin/hook.js, with all I/O injected so it can be tested.
 
-const TOP_FIELDS = ['session_id', 'hook_event_name', 'cwd', 'tool_name', 'notification_type'];
+const TOP_FIELDS = ['session_id', 'hook_event_name', 'cwd', 'tool_name', 'notification_type', 'agent_id', 'agent_type'];
 // Only what describeTool reads; everything else (file contents, diffs...) stays local.
 const TOOL_FIELDS = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description'];
 const TOOL_FIELD_MAX = 200;
+// Stop/SubagentStop list the in-flight background work; only its shape is needed.
+const TASK_FIELDS = ['type', 'status'];
+const TASKS_MAX = 64;
 const PID_EVENTS = new Set(['SessionStart', 'UserPromptSubmit']);
 
 export const POLL_EVERY_MS = 100;
@@ -20,6 +23,13 @@ export function pickEvent(raw) {
       if (typeof evt.tool_input[k] === 'string') ti[k] = evt.tool_input[k].slice(0, TOOL_FIELD_MAX);
     }
     out.tool_input = ti;
+  }
+  if (Array.isArray(evt.background_tasks)) {
+    out.background_tasks = evt.background_tasks.slice(0, TASKS_MAX).map((t) => {
+      const o = {};
+      for (const k of TASK_FIELDS) if (typeof t?.[k] === 'string') o[k] = t[k].slice(0, TOOL_FIELD_MAX);
+      return o;
+    });
   }
   return out;
 }

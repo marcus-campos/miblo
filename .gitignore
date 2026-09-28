@@ -5,3 +5,4 @@ node_modules/
 firmware/.venv/
 firmware/dist/
 firmware/.pio/
+.claude/worktrees/

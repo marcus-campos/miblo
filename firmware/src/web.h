@@ -3,14 +3,16 @@
 
 #include "miblo_i18n.h"
 
-// Páginas para humanos (localizadas): portal cativo de Wi-Fi e página de configuração.
+// Pages for humans (localized): the Wi-Fi captive portal and the settings page.
 namespace web {
 
 void begin(WebServerT& server);
 
-// Helpers reutilizados pela página de update (ota.cpp).
+// Helpers reused by the update page (ota.cpp).
 miblo::Lang pageLang(WebServerT& server);
-void pageStart(String& out, miblo::Lang lang, const char* title);
+// reserveHint: expected page size, so the String doesn't reallocate mid-build (~1500 for the
+// small pages, 7000 for the settings page).
+void pageStart(String& out, miblo::Lang lang, const char* title, size_t reserveHint = 1500);
 void pageEnd(String& out);
 void appendEscaped(String& out, const char* s);
 String tr(miblo::Lang lang, miblo::S id);

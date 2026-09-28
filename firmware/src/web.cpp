@@ -23,8 +23,8 @@ static const char kCss[] PROGMEM =
     "button.s{background:#333;color:#eee}button.d{background:#ef4444;color:#fff}.m{color:#888}.w{color:#f5a524}"
     "a{color:#60a5fa}";
 
-// Monta um POSIX TZ a partir do fuso do navegador (offset de janeiro/julho + regra de horário de
-// verão por região). Sem horário de verão → offset fixo, ex. "<-03>3".
+// Builds a POSIX TZ string from the browser's offset (January/July offset + a per-region DST
+// rule). No DST → fixed offset, e.g. "<-03>3".
 static const char kTzJs[] PROGMEM =
     "function posixTz(){const y=new Date().getFullYear();"
     "const jan=-new Date(y,0,1).getTimezoneOffset(),jul=-new Date(y,6,1).getTimezoneOffset();"
@@ -61,18 +61,24 @@ void sendJson(WebServerT& server, int code, const char* json) {
   server.send(code, F("application/json"), json);
 }
 
+// Content-Length is collected in web::begin(); reject oversized bodies before parsing them.
+static bool bodyTooLarge() {
+  String cl = srv->header(F("Content-Length"));
+  return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
+}
+
 Lang pageLang(WebServerT& server) {
   if (ctx.cfg.langSet) return ctx.cfg.lang;
   Lang l = miblo::negotiateLang(server.header(F("Accept-Language")).c_str());
-  if (l != ctx.cfg.lang) {  // modo automático: a tela acompanha o idioma do último navegador
+  if (l != ctx.cfg.lang) {  // automatic mode: the screen follows the last browser's language
     ctx.cfg.lang = l;
     ctx.configChanged = true;
   }
   return l;
 }
 
-void pageStart(String& out, Lang lang, const char* title) {
-  out.reserve(7000);
+void pageStart(String& out, Lang lang, const char* title, size_t reserveHint) {
+  out.reserve(reserveHint);
   out += F("<!doctype html><html lang=\"");
   out += miblo::langCode(lang);
   out += F("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
@@ -100,7 +106,7 @@ static void langOptions(String& out, Lang selected, bool withAuto) {
   }
 }
 
-// ---------- portal cativo (rede de setup) ----------
+// ---------- captive portal (setup network) ----------
 
 static void portalPage() {
   Lang lang = pageLang(*srv);
@@ -115,7 +121,7 @@ static void portalPage() {
   if (n > 32) n = 32;
   int order[32];
   for (int i = 0; i < n; i++) order[i] = i;
-  for (int i = 1; i < n; i++) {  // ordena por sinal (inserção; n é pequeno)
+  for (int i = 1; i < n; i++) {  // sort by signal strength (insertion sort; n is small)
     int cur = order[i];
     int j = i - 1;
     while (j >= 0 && WiFi.RSSI(order[j]) < WiFi.RSSI(cur)) {
@@ -166,6 +172,10 @@ static void portalPage() {
 }
 
 static void handleWifi() {
+  if (bodyTooLarge()) {
+    srv->send(413, F("text/plain"), F("payload too large"));
+    return;
+  }
   String ssid = srv->arg(F("ssid"));
   if (ssid.length() == 0) ssid = srv->arg(F("ssid_other"));
   String pass = srv->arg(F("pass"));
@@ -189,12 +199,21 @@ static void handleWifi() {
   net::submitCredentials(ssid.c_str(), pass.c_str(), millis());
 }
 
-// ---------- página de configuração (rede de casa) ----------
+// ---------- settings page (home network) ----------
+
+// Serializes `doc` into `out`, escaping "<" so a JSON string value (a device name, a paired
+// host…) can never close the surrounding <script> tag early (stored XSS).
+static void appendJsonForScript(String& out, const JsonDocument& doc) {
+  String tmp;
+  serializeJson(doc, tmp);
+  tmp.replace("<", "\\u003c");
+  out += tmp;
+}
 
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName());
+  pageStart(out, lang, deviceName(), 7000);
   out += F("<h1>");
   appendEscaped(out, deviceName());
   out += F("</h1><p class=\"m\">");
@@ -261,14 +280,14 @@ static void settingsPage() {
 
   DynamicJsonDocument cfg(768);
   miblo::configToJson(ctx.cfg, cfg.to<JsonObject>());
-  serializeJson(cfg, out);
+  appendJsonForScript(out, cfg);
   out += F(";const T=");
   DynamicJsonDocument txt(768);
   txt["saved"] = tr(lang, S::WebSaved);
   txt["failed"] = tr(lang, S::WebFailed);
   txt["hint"] = tr(lang, S::WebCodeHint);
   txt["bad"] = tr(lang, S::WebBadCode);
-  serializeJson(txt, out);
+  appendJsonForScript(out, txt);
   out += F(";");
   out += FPSTR(kTzJs);
   out += F(
@@ -290,6 +309,10 @@ static void settingsPage() {
 }
 
 static void handleSettings() {
+  if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
+    sendJson(*srv, 413, "{\"error\":\"too large\"}");
+    return;
+  }
   DynamicJsonDocument doc(1024);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
     sendJson(*srv, 400, "{\"error\":\"bad json\"}");
@@ -343,7 +366,7 @@ static bool captiveRedirect() {
 
 void begin(WebServerT& server) {
   srv = &server;
-  // Content-Length: progresso do OTA (ota.cpp); Authorization: API (api.cpp).
+  // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API (api.cpp).
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length");
   server.on(F("/"), HTTP_GET, handleRoot);
   server.on(F("/wifi"), HTTP_POST, handleWifi);
@@ -351,7 +374,7 @@ void begin(WebServerT& server) {
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);
   server.on(F("/reset-code"), HTTP_POST, handleResetCode);
   server.on(F("/factory-reset"), HTTP_POST, handleFactoryReset);
-  // Detecção de portal cativo (Android, iOS/macOS, Windows): tudo vai para a página de setup.
+  // Captive-portal detection (Android, iOS/macOS, Windows): everything goes to the setup page.
   for (const char* path : {"/generate_204", "/gen_204", "/hotspot-detect.html", "/library/test/success.html",
                            "/ncsi.txt", "/connecttest.txt", "/redirect", "/fwlink"}) {
     server.on(path, HTTP_GET, [] {

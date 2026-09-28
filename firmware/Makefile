@@ -4,7 +4,8 @@
 #   make release                    ask the version, test, build, commit; then offer tag + GitHub release
 #   make fleet-plan                 find units on the bench network, print what would happen
 #   make fleet                      install Miblo on every stock/installer unit found
-#   make fleet-update               also update units already on an older Miblo (asks each code)
+#   make fleet-update               find already-configured units via mDNS, update older ones (asks each code)
+#   make fleet-update-plan          same, but only print what would happen (nothing is touched)
 #   make fleet HOSTS="192.168.0.41 192.168.0.42"   only these units
 #   make fleet-ap-plan              scan nearby Wi-Fi for GIFTV/SmallTV/GeekMagic/Miblo-* units (no joining)
 #   make fleet-ap                   flash/update every unit through its own access point (sequential)
@@ -19,10 +20,15 @@
 # Access-point mode scans through a small helper app: allow "MibloWiFiScan" to use your location
 # when macOS asks (System Settings -> Privacy & Security -> Location Services).
 #
+# fleet-update finds already-configured units itself (mDNS, --discover): no HOSTS= and no SUBNET
+# needed. HOSTS still overrides it (given units only, no discovery); a SUBNET set on the command
+# line is added alongside the mDNS search, not instead of it.
+#
 # Variables (override on the command line):
 #   BOARD   board name in the image files          (default geekmagic_ultra)
-#   SUBNET  network to scan, CIDR                   (default: this Mac's /24, auto-detected)
-#   HOSTS   space-separated unit IPs; skips the scan when set
+#   SUBNET  network to scan, CIDR                   (default: this Mac's /24, auto-detected; fleet-update
+#                                                     only scans it when set explicitly, see above)
+#   HOSTS   space-separated unit IPs; skips the scan (and, for fleet-update, mDNS discovery) when set
 #   JOBS    units flashed in parallel               (default 50)
 #   SSIDS   unit networks for the fleet-ap targets, each passed as --ssid (no scan needed)
 #   ARGS    extra flags passed to flash-fleet.py    (e.g. ARGS="--build 9d4215b", ARGS="--try-ssid MyTV")
@@ -43,6 +49,13 @@ FLEET   := $(PYTHON) scripts/flash-fleet.py --board $(BOARD) --jobs $(JOBS)
 TARGETS := $(if $(strip $(HOSTS)),$(foreach h,$(HOSTS),--host $(h)),--subnet $(SUBNET))
 AP      := $(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap $(foreach s,$(SSIDS),--ssid $(s))
 
+# fleet-update: --discover (mDNS) finds already-configured units on its own; HOSTS overrides it
+# (given units only); SUBNET is added alongside --discover, but only when set explicitly on the
+# command line or in the environment, not from this file's own auto-detected default above.
+SUBNET_EXPLICIT := $(filter-out file undefined,$(origin SUBNET))
+UPDATE_TARGETS  := $(if $(strip $(HOSTS)),$(foreach h,$(HOSTS),--host $(h)),\
+                     --discover$(if $(SUBNET_EXPLICIT), --subnet $(SUBNET)))
+
 # Images for the version the sources declare; rebuilt when missing or older than any source.
 VER     := $(shell sed -n 's/.*MIBLO_FW_VERSION "\(.*\)".*/\1/p' include/miblo_version.h)
 IMAGES  := dist/miblo-$(BOARD)-$(VER).bin dist/miblo-loader-$(BOARD)-$(VER).bin
@@ -55,7 +68,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: help build test release images fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-test check-target
+.PHONY: help build test release images fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -81,8 +94,11 @@ fleet-plan: check-target
 fleet: check-target images
 	$(FLEET) $(TARGETS) $(ARGS)
 
-fleet-update: check-target images
-	$(FLEET) $(TARGETS) --update $(ARGS)
+fleet-update: images
+	$(FLEET) $(UPDATE_TARGETS) --update $(ARGS)
+
+fleet-update-plan:
+	$(FLEET) $(UPDATE_TARGETS) --update --dry-run $(ARGS)
 
 fleet-test:
 	$(PYTHON) -m unittest -v scripts/test_flash_fleet.py

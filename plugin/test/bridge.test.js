@@ -148,3 +148,14 @@ test('/health reports the version; POST /shutdown invokes the shutdown callback'
     await http.stop();
   }
 });
+
+test('a failing debounced push is logged, not thrown', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const lines = [];
+  const badHost = { toString() { throw new Error('boom'); } };
+  const bridge = createBridge({ dataDir, discoverFn: async () => [], host: badHost, log: (m) => lines.push(m) });
+  bridge.schedule();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /push failed: Error: boom/);
+});

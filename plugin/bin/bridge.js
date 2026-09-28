@@ -12,6 +12,7 @@ import { DeviceManager } from '../lib/device-manager.js';
 import { discover } from '../lib/mdns.js';
 import { createBridgeServer } from '../lib/bridge-server.js';
 import { isLinked, installTap } from '../lib/statusline-link.js';
+import { createLogger, errText } from '../lib/logger.js';
 
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {} }) {
   const tracker = new SessionTracker({ now });
@@ -28,7 +29,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     await devices.pushAll(snapshot);
   };
   const schedule = () => {
-    if (!timer) timer = setTimeout(() => push().catch(() => {}), DEBOUNCE_MS);
+    if (!timer) timer = setTimeout(() => push().catch((e) => log(`push failed: ${errText(e)}`)), DEBOUNCE_MS);
   };
 
   const server = createBridgeServer({
@@ -67,8 +68,15 @@ function main() {
   } catch {
     // the status line keeps working with the previous copy of the tap
   }
+  const log = createLogger(path.join(dataDir, 'bridge.log'));
+  process.on('unhandledRejection', (e) => log(`unhandledRejection: ${errText(e)}`));
+  process.on('uncaughtException', (e) => {
+    log(`uncaughtException: ${errText(e)}`);
+    process.exit(1);
+  });
   const bridge = createBridge({
     dataDir,
+    log,
     version: pluginVersion(),
     onShutdown: () => {
       bridge.server.close(() => process.exit(0));
@@ -76,9 +84,13 @@ function main() {
       setTimeout(() => process.exit(0), 1000).unref();
     },
   });
-  bridge.server.on('error', (e) => process.exit(e.code === 'EADDRINUSE' ? 0 : 1));
+  bridge.server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') process.exit(0);
+    log(`server error: ${errText(e)}`);
+    process.exit(1);
+  });
   bridge.server.listen(PORT, HOST);
-  setInterval(() => bridge.push().catch(() => {}), HEARTBEAT_MS);
+  setInterval(() => bridge.push().catch((e) => log(`heartbeat push failed: ${errText(e)}`)), HEARTBEAT_MS);
   setInterval(() => {
     if (bridge.tracker.sweep()) bridge.schedule();
     if (bridge.idleFor() > IDLE_EXIT_MS) process.exit(0);

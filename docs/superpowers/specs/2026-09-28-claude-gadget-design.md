@@ -1,8 +1,8 @@
-# Pulse — gadget de mesa para status do Claude Code (Fase A)
+# Miblo — gadget de mesa para status do Claude Code (Fase A)
 
 - **Data:** 2026-09-28
 - **Status:** design aprovado, aguardando revisão do spec
-- **Nome:** "Pulse" é provisório (ver [Riscos de produto](#riscos-de-produto))
+- **Nome:** **Miblo** (pendente de busca de marca WIPO/INPI classe 9 — ver §10). Os mockups ainda usam o nome provisório "Pulse"
 - **Mockups:** `docs/superpowers/specs/mockups/*.html` (abrir no navegador)
 
 ## 1. Objetivo
@@ -37,53 +37,69 @@ Nome e marca definitivos, gravação de firmware em lote, manual e embalagem, ve
 | Modo Limites | L1 — medidor em arco grande |
 | Modo Sessões | S1 — lista detalhada, rolagem automática a cada 5s |
 | Alertas | Flash + herói temporário, em todos os modos (desligável por aparelho) |
+| Fonte de limites/métricas | JSON oficial da status line do Claude Code, encadeado com consentimento (§3.2) — sem endpoints não documentados |
+| Mercado | Internacional: telas em EN (padrão), PT e ES |
+| Identidade | Nome **Miblo**; mascote na tela de boot/loading (arte final do mascote na Fase B; Fase A usa um placeholder de poucos quadros) |
 
 ## 3. Arquitetura
 
 Mockup: `mockups/architecture.html`.
 
 ```
-Claude Code ──hooks──▶ hook.js ──HTTP 127.0.0.1──▶ bridge (Node) ──HTTP LAN──▶ gadget(s)
-                                                     │  ▲                         │
-                                        transcripts ─┘  └─ endpoint de uso       └─ mDNS _cgadget._tcp
+Claude Code ──hooks (async)──▶ hook.js ──────────┐
+            ──statusLine─────▶ statusline-tap.js ─┼─HTTP 127.0.0.1──▶ bridge (Node) ──HTTP LAN──▶ gadget(s)
+                                   │              │                                            │
+                  status line original do usuário (saída idêntica)          mDNS _miblo._tcp ──┘
 ```
 
 ### 3.1 `hook.js` (plugin)
 
-- Registrado para os hooks: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SessionEnd`.
+- Registrado com `"async": true` para os hooks: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PermissionRequest`, `PostToolUse`, `Notification` (matcher `elicitation_dialog`), `Stop`, `SessionEnd`.
 - Lê o JSON do hook no stdin, acrescenta o PID do processo pai (Claude Code) e repassa via `POST http://127.0.0.1:<porta>/event`.
 - Se o bridge não responder, sobe o bridge como processo destacado (detached) e reenvia uma vez.
-- **Invariante:** nunca atrasa nem quebra o Claude Code. Timeout total de 300ms, sempre termina com código 0, sem saída no stdout.
+- **Invariante:** nunca atrasa nem quebra o Claude Code. Roda em background (`async`), timeout interno de 1s, sempre termina com código 0, sem saída no stdout.
 
-### 3.2 Bridge (serviço local)
+### 3.2 `statusline-tap.js` (métricas oficiais)
 
-Processo Node único por usuário, escutando só em `127.0.0.1`. A porta e o estado de pareamento ficam num diretório de dados do plugin. Encerra sozinho após 30 min sem nenhuma sessão ativa.
+Plugins não podem definir `statusLine` (só `agent`/`subagentStatusLine`). Por isso, com **consentimento do usuário**, `/miblo pair` substitui o `statusLine` de `~/.claude/settings.json` por `statusline-tap.js`, salvando o comando original em `${CLAUDE_PLUGIN_DATA}/statusline-original.json`.
+
+- Lê o JSON da status line no stdin, repassa uma cópia (fire-and-forget, timeout 200ms) para `POST /statusline` no bridge.
+- Executa o comando original do usuário com o mesmo stdin e devolve **exatamente** a sua saída (stdout e código). Sem comando original, não imprime nada.
+- Fornece por sessão (`session_id`): `rate_limits.five_hour` / `seven_day` (`used_percentage`, `resets_at`), `context_window.used_percentage`, `context_window.total_input_tokens` / `total_output_tokens`, `model.display_name`, `cost.total_cost_usd`.
+- `/miblo unlink-statusline` restaura o comando original. Se o usuário recusar o encadeamento, o gadget funciona só com os estados das sessões (sem limites/tokens/ctx).
+
+### 3.3 Bridge (serviço local)
+
+Processo Node único por usuário, escutando só em `127.0.0.1`. A porta e o estado de pareamento ficam em `${CLAUDE_PLUGIN_DATA}`. Encerra sozinho após 30 min sem nenhuma sessão ativa.
 
 Unidades (cada uma testável isoladamente):
 
 - **SessionTracker** — máquina de estados por sessão (§5.1); produz a lista de sessões e a fila de alertas.
-- **TranscriptReader** — lê incrementalmente o `.jsonl` do transcript (o caminho chega nos hooks) e extrai o modelo, o total de tokens de entrada/saída e o % de contexto da última mensagem do assistente.
-- **UsageClient** — a cada 60s, consulta os limites de uso com a credencial OAuth do Claude Code (macOS: Keychain; Linux/Windows: `~/.claude/.credentials.json`). Degrada com elegância (§7).
+- **MetricsStore** — guarda a última leitura da status line por sessão e os limites globais (a leitura mais recente de qualquer sessão); calcula os tokens do dia a partir dos deltas de `total_*_tokens`.
 - **DeviceManager** — descoberta mDNS, pareamento, envio do snapshot, reenvio com espera crescente e OTA.
 - **SnapshotBuilder** — monta o JSON do protocolo (§5.3) a partir das outras unidades, aplicando os limites de tamanho.
 
-### 3.3 Comandos `/gadget`
+### 3.4 Comando `/miblo`
 
-- `/gadget pair [ip]` — descobre gadgets (ou usa o IP informado), pede o código de 4 dígitos exibido na tela e salva o token. Roda automaticamente na primeira instalação.
-- `/gadget status` — sessões, limites e gadgets pareados (online/offline).
-- `/gadget mode <visao|limites|sessoes> [gadget]`
-- `/gadget update` — envia o firmware mais recente para os gadgets pareados.
-- `/gadget reset [gadget]` — reset de fábrica remoto.
+Um único comando do plugin com subcomandos:
 
-### 3.4 Firmware (ESP8266, PlatformIO/Arduino)
+- `/miblo pair [ip]` — descobre gadgets (ou usa o IP informado), pede o código de 4 dígitos exibido na tela e salva o token. Pergunta se pode encadear a status line (§3.2). Roda automaticamente na primeira instalação.
+- `/miblo status` — sessões, limites e gadgets pareados (online/offline).
+- `/miblo mode <overview|limits|sessions> [gadget]`
+- `/miblo update` — envia o firmware mais recente para os gadgets pareados.
+- `/miblo reset [gadget]` — reset de fábrica remoto.
+- `/miblo unlink-statusline` — desfaz o encadeamento da status line.
 
-- **Rede:** setup por captive portal; mDNS `pulse-xxxx.local`; anuncia `_cgadget._tcp` com o ID do aparelho.
+### 3.5 Firmware (ESP8266, PlatformIO/Arduino)
+
+- **Rede:** setup por captive portal; mDNS `miblo-xxxx.local`; anuncia `_miblo._tcp` com o ID do aparelho.
 - **API HTTP:** `POST /api/state` (exige `Authorization: Bearer <token>`), `POST /api/pair`, `GET /api/info` (ID, versão, modo, pareado?), `POST /api/config`, `POST /update` (OTA, protegido por token).
-- **Página de configuração** (`http://pulse-xxxx.local`): modo, brilho, alertas liga/desliga, durações (herói de permissão, herói de término, intervalo do lembrete), modo discreto, fuso horário, nome do aparelho, reset de fábrica, update de firmware.
+- **Página de configuração** (`http://miblo-xxxx.local`): modo, brilho, alertas liga/desliga, durações (herói de permissão, herói de término, intervalo do lembrete), modo discreto, fuso horário, nome do aparelho, reset de fábrica, update de firmware.
 - **Renderizador:** desenha por regiões/sprites parciais (RAM livre ~80 KB < framebuffer de 115 KB); a tela só é redesenhada nas regiões que mudaram.
 - **AlertQueue:** fila de alertas, deduplicada pelo `id`, com âmbar antes de azul.
 - **Watchdog de conexão:** 30s sem snapshot → tela "desconectado" com relógio (via NTP).
 - **Persistência:** WiFi, token, modo e configurações em flash (LittleFS/EEPROM).
+- **i18n:** todas as strings da tela e da página vêm de tabelas por idioma — inglês (padrão), português e espanhol. O idioma é detectado pelo `Accept-Language` do celular no captive portal e pode ser trocado na página de configuração.
 
 ## 4. Telas
 
@@ -111,7 +127,7 @@ Mockups: `mockups/overview-adaptive.html`, `mockups/alert-flow.html`.
 
 ### 4.3 Modo Limites (L1)
 
-Mockup: `mockups/modes.html`. Arco grande com o % da janela de 5h e o tempo até o reset. Abaixo, barras da semana (geral e, quando existir, por modelo — ex. "Semana Opus"). Cores de alerta a partir de 80% e 95%.
+Mockup: `mockups/modes.html`. Arco grande com o % da janela de 5h e o tempo até o reset. Abaixo, a barra da semana. Cores de alerta a partir de 80% e 95%.
 
 ### 4.4 Modo Sessões (S1)
 
@@ -119,7 +135,7 @@ Mockup: `mockups/modes.html`. Uma linha por sessão: nome do projeto, estado (co
 
 ### 4.5 Telas de sistema
 
-Setup (QR de WiFi + nome da rede), WiFi conectado + comando de instalação + código de pareamento + IP, "Pareado com <host>", "Desconectado" com relógio, "Atualizando firmware…" com barra de progresso, "Senha incorreta".
+**Boot/loading com o mascote do Miblo** (animação curta de poucos quadros, também usada enquanto conecta ao WiFi), Setup (QR de WiFi + nome da rede), WiFi conectado + comando de instalação + código de pareamento + IP, "Pareado com <host>", "Desconectado" com relógio, "Atualizando firmware…" com barra de progresso, "Senha incorreta".
 
 ## 5. Dados
 
@@ -132,22 +148,24 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 | `SessionStart` | cria a sessão em `idle`; nome = basename do `cwd` (desambiguado com sufixo se repetir) |
 | `UserPromptSubmit` | → `running`; limpa `done` |
 | `PreToolUse` (ferramenta ≠ `AskUserQuestion`) | → `running`; atividade = ferramenta + detalhe curto (arquivo sem caminho, comando truncado) |
-| `PreToolUse` (`AskUserQuestion`) | → `question`; gera alerta âmbar |
-| `Notification` do tipo `permission_prompt` | → `perm`; gera alerta âmbar |
+| `PreToolUse` (`AskUserQuestion`) ou `Notification` com `notification_type = elicitation_dialog` | → `question`; gera alerta âmbar |
+| `PermissionRequest` | → `perm`; atividade = ferramenta + comando/arquivo de `tool_input`; gera alerta âmbar |
 | `PostToolUse` | `perm`/`question` → `running` |
 | `Stop` | → `done`; gera alerta azul |
+| Qualquer outro evento da sessão enquanto em `perm`/`question` | sai da pendência (permissão negada não gera `PostToolUse`) |
 | `SessionEnd` ou PID do Claude inexistente | remove a sessão |
 
 - O PID é verificado a cada 15s, para cobrir terminais fechados à força.
 - Modo discreto: a atividade mostra só o tipo da ferramenta.
-- A lista exata de campos e tipos de `Notification` deve ser confirmada contra a versão atual do Claude Code na implementação. Se `permission_prompt` não estiver disponível, usar o hook `PermissionRequest`.
 
 ### 5.2 Métricas
 
-- **Tokens/ctx/modelo:** a partir do transcript, lendo só o que foi acrescentado desde a última leitura. O % de contexto é calculado pelo uso da última resposta ÷ janela do modelo.
-- **Tokens do dia:** soma por dia local de todas as sessões vistas pelo bridge.
-- **Limites:** janela de 5h, semanal e semanal por modelo (quando o retorno tiver), com os horários de reset.
-- **Usuário de chave de API** (sem assinatura): não há limites. A área de limites mostra o custo estimado do dia.
+- **Fonte única: a status line** (§3.2), documentada oficialmente pelo Claude Code.
+- **ctx/modelo por sessão:** `context_window.used_percentage` e `model.display_name` da leitura mais recente da sessão.
+- **Tokens por sessão:** `total_input_tokens + total_output_tokens`. **Tokens do dia:** soma dos deltas positivos por sessão, zerada à meia-noite local.
+- **Limites:** `rate_limits.five_hour` e `rate_limits.seven_day` da leitura mais recente de qualquer sessão. Cada janela pode vir ausente; o bridge mantém o último valor até o `resets_at` passar e então o descarta.
+- **Sem assinatura Pro/Max** (chave de API): `rate_limits` nunca vem. A área de limites mostra o custo do dia (soma dos deltas de `cost.total_cost_usd`).
+- **Sem status line encadeada:** `usage: null` e sessões sem ctx/tokens.
 
 ### 5.3 Protocolo bridge → gadget
 
@@ -161,13 +179,12 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
   "host": "MacBook-Marcus",
   "usage": {
     "h5":  {"pct": 62, "reset": 1790607800},
-    "d7":  {"pct": 38, "reset": 1790830000},
-    "d7_opus": {"pct": 71, "reset": 1790830000}
+    "d7":  {"pct": 38, "reset": 1790830000}
   },
-  "today": {"in": 1200000, "out": 310000},
+  "today": {"tok": 1510000, "usd": 4.8},
   "sessions": [
     {"id": "a1", "name": "api-server", "st": "perm", "act": "Bash · npm run migrate",
-     "since": 1790599958, "model": "opus", "ctx": 71, "tok": 412000}
+     "since": 1790599958, "model": "Opus", "ctx": 71, "tok": 412000}
   ],
   "more": 0,
   "alerts": [{"id": 311, "kind": "perm", "sid": "a1"}]
@@ -187,55 +204,56 @@ O gadget exibe um código de 4 dígitos. `POST /api/pair {code, host}` → gadge
 
 Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 
-1. Ligar na tomada → a tela mostra um QR de WiFi (`WIFI:S:Pulse-Setup-XXXX;;`) e o nome da rede.
+1. Ligar na tomada → a tela mostra um QR de WiFi (`WIFI:S:Miblo-Setup-XXXX;;`) e o nome da rede.
 2. O celular conecta e o captive portal abre sozinho: escolher a rede, digitar a senha; o fuso é detectado pelo navegador.
 3. A tela do gadget mostra: WiFi conectado, comando `/plugin install ...`, código de pareamento e IP.
-4. No Claude Code: instalar o plugin → o `/gadget pair` roda automaticamente → encontra o gadget e pede o código.
+4. No Claude Code: instalar o plugin → o `/miblo pair` roda automaticamente → encontra o gadget e pede o código.
 5. A tela mostra "Pareado com <host>" e entra no modo Visão geral.
 
 ### Exceções
 
 - **Senha errada** → volta ao passo 1 com "Senha incorreta".
-- **mDNS indisponível** (WSL2, rede corporativa) → `/gadget pair <ip>`.
+- **mDNS indisponível** (WSL2, rede corporativa) → `/miblo pair <ip>`.
 - **Vários gadgets** → a lista mostra todos; o código identifica qual.
-- **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/gadget status`.
+- **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/miblo status`.
 - **Roteador fora do ar** → o gadget mantém as credenciais; após 2 min sem conexão, abre a rede de setup **e continua tentando** a rede salva.
-- **Reset de fábrica (sem botão)** → 3 ciclos de liga/desliga em menos de 10s (contador persistido na flash, zerado após 10s de uptime), pela página web ou com `/gadget reset`.
+- **Reset de fábrica (sem botão)** → 3 ciclos de liga/desliga em menos de 10s (contador persistido na flash, zerado após 10s de uptime), pela página web ou com `/miblo reset`.
 
 ## 7. Tratamento de erros
 
 | Falha | Comportamento |
 |---|---|
 | Bridge fora do ar | Os hooks tentam subir o bridge; o Claude Code nunca é afetado |
-| Endpoint de limites falha/muda/401 | `usage: null`; o gadget mostra "limites indisponíveis"; nova tentativa em 60s com espera crescente até 10 min |
-| Gadget inacessível | Espera crescente (1s → 60s); redescoberta mDNS; aparece como offline em `/gadget status` |
+| Status line não encadeada ou sem `rate_limits` | `usage: null`; o gadget mostra "limites indisponíveis" (com dica "rode /miblo pair" na página) |
+| Status line original do usuário falha | O tap devolve a mesma saída/código de erro — o comportamento do usuário não muda |
+| Gadget inacessível | Espera crescente (1s → 60s); redescoberta mDNS; aparece como offline em `/miblo status` |
 | Snapshot ausente por 30s | Gadget mostra "desconectado" + relógio |
 | JSON inválido/grande demais | Gadget responde 400 e mantém a última tela válida |
-| Transcript ilegível | Métricas da sessão ficam vazias; o estado continua vindo dos hooks |
 | OTA falha no meio | O ESP8266 mantém a imagem anterior (OTA padrão com verificação); o bridge informa o erro |
 
 ## 8. Testes
 
-- **Bridge — unitários** (`node:test`, sem dependências): testes em tabela de evento → estado para todas as transições de §5.1, incluindo PID morto, dedupe e prioridade de alertas; TranscriptReader com fixtures `.jsonl`; UsageClient com respostas simuladas (sucesso, 401, formato inesperado, timeout); SnapshotBuilder com os limites de tamanho.
-- **Hook** — teste de que `hook.js` termina em < 300ms e com código 0 com o bridge fora do ar.
+- **Bridge — unitários** (`node:test`, sem dependências): testes em tabela de evento → estado para todas as transições de §5.1, incluindo PID morto, dedupe e prioridade de alertas; MetricsStore com fixtures de JSON de status line (com/sem `rate_limits`, janela expirada, deltas, virada do dia); SnapshotBuilder com os limites de tamanho.
+- **Hook e tap** — `hook.js` termina com código 0 e sem stdout com o bridge fora do ar; `statusline-tap.js` devolve byte a byte a saída do comando original (e nada quando não há original), com o bridge fora do ar.
+- **Settings** — encadear/desencadear a status line preserva o resto do `settings.json` e é idempotente.
 - **Contrato** — os mesmos arquivos em `fixtures/snapshots/*.json` são gerados/validados pelos testes do bridge e consumidos pelos testes do firmware.
 - **Firmware — lógica** (`pio test -e native`): parse do snapshot, escolha do herói, AlertQueue (dedupe, ordem, lembrete), rotação de páginas, contador de reset por liga/desliga.
 - **Preview de telas** — script que gera PNGs de cada tela a partir das fixtures de snapshot, para revisão visual e fotos do anúncio.
-- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, reset por liga/desliga, dois gadgets, computador desligado, OTA via `/gadget update`.
+- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, reset por liga/desliga, dois gadgets, computador desligado, OTA via `/miblo update`.
 
 ## 9. Ordem de construção
 
 0. **Teste de hardware** — baixar o firmware oficial da GeekMagic (para restauração); gravar por OTA um firmware mínimo que acende a tela, desenha texto e **já inclui OTA**; confirmar pinos da tela e da luz de fundo, tamanho da flash e se a página de update original aceita o `.bin`. Nenhuma outra etapa começa antes disso.
-1. Bridge — núcleo (SessionTracker, TranscriptReader, UsageClient, SnapshotBuilder).
-2. Bridge — plugin (`hook.js`, subida automática, `/gadget status`).
+1. Bridge — núcleo (SessionTracker, MetricsStore, SnapshotBuilder).
+2. Bridge — plugin (`hook.js`, `statusline-tap.js`, subida automática, `/miblo status`).
 3. Firmware — base (captive portal + QR, mDNS, pareamento, API, página de configuração, OTA).
 4. Firmware — telas (Visão geral adaptativa, alertas, Limites, Sessões, sistema).
-5. Integração (`/gadget pair/mode/update/reset`, reset por liga/desliga, vários gadgets, checklist manual).
+5. Integração (`/miblo pair/mode/update/reset`, reset por liga/desliga, vários gadgets, checklist manual).
 
 ## 10. Riscos de produto
 
 1. **Marca** — "Claude" e o logo da Anthropic são marcas registradas. O produto, a caixa e o anúncio não devem usar o nome nem o logo como marca. Usar um nome próprio + "compatível com Claude Code". As telas do gadget usam o nome do produto, e não o logo da Anthropic.
-2. **Endpoint de limites** — não documentado e acessado com a credencial OAuth do usuário; pode mudar sem aviso. Verificar os termos da Anthropic antes da venda. A funcionalidade é opcional e degrada com elegância.
+2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. Mitigação: só com consentimento, comando original salvo, reversível com `/miblo unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo status` avisa).
 3. **Anatel** — verificar se o GeekMagic tem homologação e se a revenda com firmware alterado mantém a conformidade.
 4. **Hardware** — pinos e comportamento do OTA da GeekMagic Ultra ainda não confirmados (etapa 0). Revisões futuras do hardware podem mudar o chip, então o firmware verifica o ID da flash e o modelo em `/api/info`.
 5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 2 KB do snapshot existem por isso.

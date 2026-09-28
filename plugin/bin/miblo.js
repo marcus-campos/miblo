@@ -89,7 +89,7 @@ export async function run(argv, deps) {
           await client.setConfig(d.addr, d.token, { mode });
           done++;
         } catch {
-          // gadget offline: reportado pela contagem
+          // gadget offline: reflected in the count
         }
       }
       return ok(`Mode set to ${mode} on ${done} gadget(s).`);

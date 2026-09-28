@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// SessionStart síncrono: lembra, no máximo 1x/24h, de parear um gadget.
+// Synchronous SessionStart: reminds, at most once per 24 h, to pair a gadget.
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -29,7 +29,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       if (msg) process.stdout.write(msg);
     }
   } catch {
-    // nunca atrapalhar o início da sessão
+    // never get in the way of the session start
   }
   process.exitCode = 0;
 }

@@ -31,13 +31,13 @@ test('pushes to every paired device and marks it online', async () => {
 
 test('backs off after failures', async () => {
   const { mgr, pushes, advance } = setup({ failAddrs: new Set(['10.0.0.5:80']) });
-  await mgr.pushAll({});          // falha 1 → espera 1s
-  await mgr.pushAll({});          // ignorado (em espera)
+  await mgr.pushAll({});          // failure 1 -> wait 1s
+  await mgr.pushAll({});          // skipped (backing off)
   assert.equal(pushes.length, 1);
   advance(1000);
-  await mgr.pushAll({});          // falha 2 → espera 2s
+  await mgr.pushAll({});          // failure 2 -> wait 2s
   advance(1999);
-  await mgr.pushAll({});          // ainda em espera
+  await mgr.pushAll({});          // still backing off
   assert.equal(pushes.length, 2);
   assert.equal(mgr.status()[0].online, false);
 });
@@ -47,7 +47,7 @@ test('relocates via discovery after 3 failures', async () => {
   for (const wait of [0, 1000, 2000]) { s.advance(wait); await s.mgr.pushAll({}); }
   assert.equal(s.discovers(), 1);
   assert.equal(s.store.list()[0].addr, '10.0.0.9:80');
-  await s.mgr.pushAll({});        // sem espera após relocalizar
+  await s.mgr.pushAll({});        // no wait after relocating
   assert.equal(s.pushes.at(-1), '10.0.0.9:80');
   assert.equal(s.mgr.status()[0].online, true);
 });

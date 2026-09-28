@@ -47,7 +47,7 @@ export class DeviceManager {
         h.nextTry = 0;
       }
     } catch {
-      // descoberta falhou: mantém o backoff
+      // discovery failed: keep the backoff
     }
   }
 }

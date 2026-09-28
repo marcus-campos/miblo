@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { buildQuery, parseMessage, resolveDevices, discover } from '../lib/mdns.js';
 
-// Encoder usado só nos testes para montar respostas como as de um gadget.
+// Test-only encoder that builds responses like a gadget's.
 const enc = (name) => Buffer.concat([...name.split('.').filter(Boolean).map((l) => Buffer.concat([Buffer.from([Buffer.byteLength(l)]), Buffer.from(l)])), Buffer.from([0])]);
 function rr(name, type, rdata) {
   const head = Buffer.alloc(10);

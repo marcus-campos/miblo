@@ -19,7 +19,13 @@ bool begin() {
     LittleFS.format();
     if (!LittleFS.begin()) return false;
   }
-  if (!LittleFS.exists("/miblo")) LittleFS.mkdir("/miblo");
+  if (!LittleFS.exists("/miblo")) {
+    // First Miblo boot over another firmware's LittleFS: start from a clean filesystem so no
+    // foreign files eat the 1 MB partition (and nothing stale is ever read as ours).
+    LittleFS.format();
+    if (!LittleFS.begin()) return false;
+    LittleFS.mkdir("/miblo");
+  }
   return true;
 }
 

@@ -121,25 +121,26 @@ void code(Lang lang, S title, const char* codeStr, uint32_t remainingSec) {
     C().text(X(120), Y(64), t(lang, title), Font::Body, color::TEXT, Align::Center, X(232));
     C().text(X(120), Y(132), codeStr, Font::NumL, color::AMBER, Align::Center, X(232));
   }
-  if (region(1, hashInt(kHashSeed, remainingSec), 0, Y(150), X(240), Y(40))) {
-    char left[16];
-    char line[64];
-    miblo::formatElapsed(remainingSec, left, sizeof(left));
-    snprintf(line, sizeof(line), t(lang, S::ExpiresIn), left);
-    C().text(X(120), Y(174), line, Font::Small, color::MUTED, Align::Center, X(232));
-  }
+  // The countdown ticks every second: updated in place, never cleared.
+  char left[16];
+  char line[64];
+  miblo::formatElapsed(remainingSec, left, sizeof(left));
+  snprintf(line, sizeof(line), t(lang, S::ExpiresIn), left);
+  field(1, h, X(120), Y(174), line, Font::Small, color::MUTED, color::BG, Align::Center, X(232));
 }
 
 void updating(Lang lang, uint8_t pct) {
   if (region(0, hashInt(kHashSeed, (uint32_t)lang), 0, Y(40), X(240), Y(60))) {
     C().text(X(120), Y(84), t(lang, S::Updating), Font::Title, color::TEXT, Align::Center, X(232));
   }
-  if (region(1, hashInt(kHashSeed, pct), 0, Y(104), X(240), Y(60))) {
+  Compose progress;
+  if (progress.begin(1, hashInt(kHashSeed, pct), 0, Y(104), X(240), Y(60))) {
     bar(X(30), Y(110), X(180), Y(14), pct, color::CORAL);
     char b[8];
     snprintf(b, sizeof(b), "%u%%", (unsigned)pct);
     C().text(X(120), Y(154), b, Font::Body, color::TEXT, Align::Center, X(232));
   }
+  progress.end();
   if (region(2, hashInt(kHashSeed + 1, (uint32_t)lang), 0, Y(176), X(240), Y(30))) {
     C().text(X(120), Y(196), t(lang, S::DoNotUnplug), Font::Small, color::MUTED, Align::Center, X(232));
   }
@@ -193,7 +194,8 @@ void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int
   }
   uint32_t ht = timeValid ? hashInt(hashInt(kHashSeed, (uint32_t)(hour * 60 + minute)), (uint32_t)(wday * 32 + mday))
                           : 1;
-  if (region(1, hashInt(ht, (uint32_t)lang), 0, Y(60), X(240), Y(90))) {
+  Compose clock;  // big clock: composed off-screen when memory allows (no flash each minute)
+  if (clock.begin(1, hashInt(ht, (uint32_t)lang), 0, Y(60), X(240), Y(90))) {
     char hhmm[8];
     if (timeValid) miblo::formatHHMM(hour, minute, hhmm, sizeof(hhmm));
     else strcpy(hhmm, "--:--");
@@ -204,6 +206,7 @@ void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int
       C().text(X(120), Y(140), date, Font::Small, color::MUTED, Align::Center, X(232));
     }
   }
+  clock.end();
   uint32_t hf = hashStr(hashStr(hashStr(hashInt(kHashSeed, (uint32_t)lang), ip), mdnsHost), pairCode);
   if (region(2, hf, 0, Y(156), X(240), Y(84))) {
     C().text(X(120), Y(176), t(lang, S::WaitingComputer), Font::Small, color::MUTED, Align::Center, X(232));

@@ -13,6 +13,10 @@ void formatAgo(uint32_t secs, char* out, size_t cap);
 // Countdown: 30 → "<1min", 2700 → "45min", 7800 → "2h10", 240000 → "2d18h".
 void formatCountdown(uint32_t secs, char* out, size_t cap);
 
+// Time in a state, minute granularity (changes at most once a minute, so the screen doesn't
+// tick every second): 30 → "<1m", 192 → "3m", 4320 → "1h12", 180000 → "2d2h".
+void formatInState(uint32_t secs, char* out, size_t cap);
+
 // Tokens (always rounded down): 950 → "950", 1500 → "1.5k", 12300 → "12.3k",
 // 98000 → "98k", 412000 → "412k", 1510000 → "1.5M", 2000000 → "2M", 123456789 → "123M".
 void formatTokens(uint64_t tok, char* out, size_t cap);

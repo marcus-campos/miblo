@@ -7,10 +7,11 @@
 // Canvas on top of TFT_eSPI + u8g2 fonts (UTF-8). Works for any board with TFT_eSPI; the board
 // supplies the screen size and, for each ui::Font, a stack of u8g2 fonts (nullptr-terminated):
 // the first one that has the glyph draws the character; none → rectangle.
-// Layers (ui::Canvas::beginLayer): a 4-bit TFT_eSprite with a 16-colour palette of the UI
-// colours (w * h / 2 bytes, 4.6 KB for the 96x96 mascot), created on demand and freed by
-// releaseLayer() on every screen switch. Only the flat shape primitives go to the layer; text,
-// wide lines and arcs always draw straight to the panel.
+// Layers (ui::Canvas::beginLayer): a 4-bit TFT_eSprite (w * h / 2 bytes, 4.6 KB for the 96x96
+// mascot, ~7.4 KB for a session card) whose 16-colour palette is filled with the exact colours
+// as they are first used, created on demand (only if 16 KB of heap remain) and freed by
+// releaseLayer(). Shapes and text go to the layer; wide lines become flat (no anti-aliasing);
+// arcs always draw straight to the panel.
 class TftCanvas : public ui::Canvas {
  public:
   using FontStack = const uint8_t* const*;
@@ -39,14 +40,13 @@ class TftCanvas : public ui::Canvas {
     if (layer_) spr_.fillTriangle(x0 - lx_, y0 - ly_, x1 - lx_, y1 - ly_, x2 - lx_, y2 - ly_, idx(c));
     else tft_.fillTriangle(x0, y0, x1, y1, x2, y2, c);
   }
-  void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) override {
-    tft_.drawWideLine(x0, y0, x1, y1, width, c, bg);
-  }
+  void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) override;
   void arc(int cx, int cy, int r, int ir, int a0, int a1, uint16_t fg, uint16_t bg) override {
     tft_.drawSmoothArc(cx, cy, r, ir, a0, a1, fg, bg, true);
   }
   int text(int x, int y, const char* s, ui::Font f, uint16_t fg, ui::Align a, int maxW) override;
   int textWidth(const char* s, ui::Font f) override;
+  int textBox(int x, int y, const char* s, ui::Font f, uint16_t fg, uint16_t bg, ui::Align a, int boxW) override;
   bool beginLayer(int x, int y, int w, int h) override;
   void endLayer() override;
   void releaseLayer() override;
@@ -60,10 +60,15 @@ class TftCanvas : public ui::Canvas {
   const FontStack* stacks_;
   U8g2_for_TFT_eSPI u8_;
 
-  static uint8_t idx(uint16_t c);  // RGB565 -> nearest layer palette index
+  uint16_t pal_[16] = {};  // the layer's palette, filled as colours are used
+  uint8_t palN_ = 0;
+
+  uint8_t idx(uint16_t c);  // RGB565 -> layer palette index (added if there is room, else nearest)
   const uint8_t* fontFor(ui::Font f, uint32_t cp);
   int glyphAdvance(ui::Font f, uint32_t cp, const uint8_t** font);
   int ascent(ui::Font f);
+  int descent(ui::Font f);
   int layout(const char* s, ui::Font f, int maxW, const char** end);
-  int drawRun(int x, int y, const char* s, const char* end, ui::Font f, uint16_t fg);
+  // Draws glyphs from s to end (nullptr = the whole string); bg < 0 = transparent.
+  int drawRun(int x, int y, const char* s, const char* end, ui::Font f, uint16_t fg, int32_t bg);
 };

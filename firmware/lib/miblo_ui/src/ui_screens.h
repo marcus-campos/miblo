@@ -23,6 +23,28 @@ void reset();
 bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg = ui::color::BG);
 // Like region() but without clearing: for areas that repaint their own background.
 bool dirty(uint8_t id, uint32_t hash);
+// Like region(), but the redraw is composed off-screen when the canvas has a layer (memory
+// permitting) and pushed in one go on end() / at the end of the scope, so the region never
+// flashes its background colour; otherwise it is cleared and drawn directly. For whole-region
+// changes (paging, state changes). Arcs don't go to layers: keep them out of these regions.
+class Compose {
+ public:
+  Compose() = default;
+  Compose(const Compose&) = delete;
+  Compose& operator=(const Compose&) = delete;
+  ~Compose() { end(); }
+  // true if the region changed (and was started: filled with bg, off-screen if possible).
+  bool begin(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg = ui::color::BG);
+  // Pushes the layer (if any) and frees it.
+  void end();
+
+ private:
+  bool layered_ = false;
+};
+// A value that changes in place (timer, clock, %, countdown): redrawn only when `s` (or the
+// salt, e.g. its region's hash) changes, with Canvas::textBox — never cleared first.
+bool field(uint8_t id, uint32_t salt, int x, int y, const char* s, ui::Font f, uint16_t fg, uint16_t bg,
+           ui::Align a, int boxW);
 // Translated text (4 rotating buffers).
 const char* t(Lang lang, miblo::S id);
 // Scale from the 240 grid: X for horizontal widths/positions, Y for vertical, Sz for sizes.

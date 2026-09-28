@@ -12,8 +12,8 @@ class FakeCanvas : public ui::Canvas {
  public:
   explicit FakeCanvas(ui::ScreenSpec s) : spec_(s) {}
   ui::ScreenSpec spec() const override { return spec_; }
-  void fillRect(int x, int y, int w, int h, uint16_t c) override { fill(x, y, w, h, c); }
-  void fillRoundRect(int x, int y, int w, int h, int, uint16_t c) override { fill(x, y, w, h, c); }
+  void fillRect(int x, int y, int w, int h, uint16_t c) override { paint(x, y, w, h, c); }
+  void fillRoundRect(int x, int y, int w, int h, int, uint16_t c) override { paint(x, y, w, h, c); }
   void drawRect(int x, int y, int w, int h, uint16_t) override { box(x, y, w, h); }
   void fillCircle(int cx, int cy, int r, uint16_t) override { box(cx - r, cy - r, 2 * r, 2 * r); }
   void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t) override {
@@ -31,16 +31,26 @@ class FakeCanvas : public ui::Canvas {
     arcs.push_back(a1 - a0);
   }
   // Text: 6 px per character, 10 px tall above the baseline.
-  int text(int x, int y, const char* s, ui::Font, uint16_t, ui::Align a, int maxW) override {
+  int text(int x, int y, const char* s, ui::Font f, uint16_t, ui::Align a, int maxW) override {
     int w = textWidth(s, ui::Font::Small);
     if (w > maxW) w = maxW;
     const int left = a == ui::Align::Left ? x : (a == ui::Align::Center ? x - w / 2 : x - w);
     box(left, y - 10, w, 10);
     texts.push_back(s ? s : "");
+    fonts.push_back(f);
     textBgs.push_back(colorAt(left + (w > 0 ? w / 2 : 0), y - 5));
     return w;
   }
   int textWidth(const char* s, ui::Font) override { return 6 * (int)miblo::utf8Length(s ? s : ""); }
+  // Text box: 10 px above the baseline, 3 below, boxW wide; painted with bg (never a clear).
+  int textBox(int x, int y, const char* s, ui::Font f, uint16_t fg, uint16_t bg, ui::Align a, int boxW) override {
+    const int bx = a == ui::Align::Left ? x : (a == ui::Align::Center ? x - boxW / 2 : x - boxW);
+    fill(bx, y - 10, boxW, 13, bg);
+    boxTexts++;
+    const int w = text(x, y, s, f, fg, a, boxW);
+    textBgs.back() = bg;
+    return w;
+  }
   // Layers: recorded (a layer is "available" unless layerSupported = false); primitives drawn
   // while a layer is open are counted in layerCalls.
   bool beginLayer(int x, int y, int w, int h) override {
@@ -62,6 +72,13 @@ class FakeCanvas : public ui::Canvas {
     }
     return false;
   }
+  // Font of the first drawn text containing `needle` (Font::Count if not drawn).
+  ui::Font fontOf(const std::string& needle) const {
+    for (size_t i = 0; i < texts.size(); i++) {
+      if (texts[i].find(needle) != std::string::npos) return fonts[i];
+    }
+    return ui::Font::Count;
+  }
   // Background colour under the first drawn text containing `needle` (-1 if not drawn).
   int bgOf(const std::string& needle) const {
     for (size_t i = 0; i < texts.size(); i++) {
@@ -79,15 +96,19 @@ class FakeCanvas : public ui::Canvas {
   }
   void clearLog() {
     texts.clear();
+    fonts.clear();
     textBgs.clear();
     arcs.clear();
     calls = 0;
     layerCalls = 0;
+    panelFills = 0;
+    boxTexts = 0;
     layerBegins = layerEnds = layerReleases = 0;
   }
 
   ui::ScreenSpec spec_;
   std::vector<std::string> texts;
+  std::vector<ui::Font> fonts;
   std::vector<int> textBgs;  // colour under each text (what a transparent font shows around it)
   std::vector<int> arcs;
   int calls = 0;
@@ -95,6 +116,8 @@ class FakeCanvas : public ui::Canvas {
   bool layerSupported = true;
   bool inLayer = false;
   int layerCalls = 0;
+  int panelFills = 0;  // fillRect/fillRoundRect straight on the panel (outside a layer): a visible clear
+  int boxTexts = 0;    // textBox() calls (in-place value updates)
   int layerBegins = 0, layerEnds = 0, layerReleases = 0;
   int lastLayer[4] = {0, 0, 0, 0};
 
@@ -104,6 +127,10 @@ class FakeCanvas : public ui::Canvas {
     uint16_t c;
   };
   std::vector<Fill> fills;
+  void paint(int x, int y, int w, int h, uint16_t c) {
+    if (!inLayer) panelFills++;
+    fill(x, y, w, h, c);
+  }
   void fill(int x, int y, int w, int h, uint16_t c) {
     box(x, y, w, h);
     if (x <= 0 && y <= 0 && x + w >= spec_.w && y + h >= spec_.h) fills.clear();  // full clear: older fills are hidden

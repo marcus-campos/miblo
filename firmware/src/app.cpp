@@ -31,7 +31,7 @@ static bool firstFrame = true;
 static Lang drawnLang = Lang::En;
 static uint32_t lastFrameMs = 0;
 static miblo::Pager listPager(3, 5000);  // Overview: 3 session cards per page
-static miblo::Pager sessionPager(4, 5000);
+static miblo::Pager sessionPager(3, 5000);  // Sessions mode: 3 big cards per page
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;

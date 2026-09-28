@@ -60,13 +60,19 @@ class Canvas {
   // Missing glyph in the fonts → rectangle, never crashes.
   virtual int text(int x, int y, const char* s, Font f, uint16_t fg, Align a, int maxW) = 0;
   virtual int textWidth(const char* s, Font f) = 0;
+  // Text on a solid background, for values that change in place (timers, clock, %): paints the
+  // box (boxW wide, anchored at x like the text, from the font's top to its bottom) in `bg`
+  // together with the text, without clearing it first, so the old value is replaced with no
+  // flash and a shorter string still covers the old glyphs. Truncates like text().
+  virtual int textBox(int x, int y, const char* s, Font f, uint16_t fg, uint16_t bg, Align a, int boxW) = 0;
 
-  // Optional off-screen layer, used to animate small areas without flicker. beginLayer() asks
-  // the board to redirect the shape primitives (fillRect, fillRoundRect, drawRect, fillCircle,
-  // fillTriangle) inside the screen rectangle (x, y, w, h) to an off-screen buffer; endLayer()
-  // pushes that buffer to the panel in one go. Coordinates stay screen-absolute. Returns false
-  // when the board has no layer (or no memory for it): the caller then just draws directly.
-  // Layers may reduce colours to a small palette: keep them to flat, non-anti-aliased shapes.
+  // Optional off-screen layer, used to redraw an area without flicker. beginLayer() asks the
+  // board to redirect the drawing primitives (shapes, wide lines and text — not arcs) inside
+  // the screen rectangle (x, y, w, h) to an off-screen buffer; endLayer() pushes that buffer to
+  // the panel in one go. Coordinates stay screen-absolute. The layer's previous content is
+  // undefined: the caller repaints all of it. Returns false when the board has no layer (or no
+  // memory for it): the caller then just draws directly.
+  // Layers may reduce colours to a small palette (16 per layer) and drop anti-aliasing.
   virtual bool beginLayer(int x, int y, int w, int h) {
     (void)x, (void)y, (void)w, (void)h;
     return false;

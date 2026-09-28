@@ -134,7 +134,7 @@ static void test_overview_attention_content() {
   TEST_ASSERT_TRUE(fc.drew("38%"));
   TEST_ASSERT_FALSE(fc.drew("Sessão 5h"));
   TEST_ASSERT_TRUE(fc.drew("permissão · Bash"));
-  TEST_ASSERT_TRUE(fc.drew("0:42"));  // time waiting, on the card
+  TEST_ASSERT_TRUE(fc.drew("<1m"));  // time waiting, on the card (minute granularity)
   TEST_ASSERT_TRUE(fc.drew("Editando Header.tsx"));
   // second call with the same data: nothing is redrawn
   fc.clearLog();
@@ -213,17 +213,24 @@ static void test_sessions_pages_and_flash_blinks() {
   attention();
   session("55555555", "worker", SessionState::Running, "Bash", "npm test", 18);
   snap.more = 3;
-  Pager pager(4, 5000);
+  Pager pager(3, 5000);
   screens::reset();
   fc.clearLog();
   screens::sessions(Lang::En, snap, pager, 0, testClock(), false);
   TEST_ASSERT_TRUE(fc.drew("SESSIONS · 8"));
   TEST_ASSERT_TRUE(fc.drew("1/2"));
-  TEST_ASSERT_TRUE(fc.drew("Opus · ctx 71% · 412k tok"));
+  TEST_ASSERT_TRUE(fc.drew("api-server"));
+  TEST_ASSERT_TRUE(fc.drew("infra"));
+  TEST_ASSERT_TRUE(fc.drew("front-app"));
+  TEST_ASSERT_FALSE(fc.drew("docs"));  // 3 per page
+  TEST_ASSERT_FALSE(fc.drew("ctx"));   // no model · ctx · tokens line in this mode
+  TEST_ASSERT_FALSE(fc.drew("412k"));
   fc.clearLog();
   screens::sessions(Lang::En, snap, pager, 5000, testClock(), false);
   TEST_ASSERT_TRUE(fc.drew("2/2"));
+  TEST_ASSERT_TRUE(fc.drew("docs"));
   TEST_ASSERT_TRUE(fc.drew("worker"));
+  TEST_ASSERT_FALSE(fc.drew("api-server"));
 
   screens::reset();
   fc.clearLog();
@@ -253,7 +260,7 @@ static void test_overview_working_is_sessions_first() {
     TEST_ASSERT_TRUE(fc.drew("Bash · npm test"));
     TEST_ASSERT_TRUE(fc.drew("search"));
     TEST_ASSERT_TRUE(fc.drew("Searching TODO"));
-    TEST_ASSERT_TRUE(fc.drew("3:12"));
+    TEST_ASSERT_TRUE(fc.drew("3m"));
     // compact limits strip instead of the big limits
     TEST_ASSERT_TRUE(fc.drew("5h"));
     TEST_ASSERT_TRUE(fc.drew("30%"));
@@ -275,12 +282,17 @@ static void test_overview_working_is_sessions_first() {
   fc.clearLog();
   screens::overview(Lang::En, snap, pager, 100, testClock(), false);
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
-  // one second later only the time regions change, never the cards' text
+  // one second later nothing changes on screen (times have minute granularity)
   screens::Clock later = testClock();
   later.epoch += 1;
   screens::overview(Lang::En, snap, pager, 200, later, false);
-  TEST_ASSERT_TRUE(fc.drew("3:13"));
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  // a minute later only the times change, in place, never the cards' text
+  later.epoch += 60;
+  screens::overview(Lang::En, snap, pager, 300, later, false);
+  TEST_ASSERT_TRUE(fc.drew("4m"));
   TEST_ASSERT_FALSE(fc.drew("front-app"));
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
   // discreet mode: the verb stays, the detail goes
   screens::reset();
   fc.clearLog();
@@ -383,13 +395,150 @@ static void test_text_background_is_region_background() {
   screens::overview(Lang::En, snap, pager, 0, testClock(), false);
   TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.bgOf("30%"));
   TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.bgOf("13%"));
-  TEST_ASSERT_EQUAL_INT(ui::color::CARD, fc.bgOf("3:12"));  // time region cleared with the card colour
+  TEST_ASSERT_EQUAL_INT(ui::color::CARD, fc.bgOf("3m"));  // time box painted with the card colour
   idle();
   screens::reset();
   fc.clearLog();
   screens::overview(Lang::En, snap, pager, 0, testClock(), false);
   TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.bgOf("62%"));  // NumL
   TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.bgOf("38%"));  // NumM
+}
+
+// Sessions mode (S1): at most 3 big cards per page on every resolution — name in BodyBold,
+// activity in Small, time in state; no model/ctx/tokens line; pending cards stay amber.
+static void test_sessions_mode_is_legible() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    attention();
+    session("55555555", "worker", SessionState::Running, "Bash", "npm test", 18);
+    Pager pager(3, 5000);
+    screens::reset();
+    fc.clearLog();
+    screens::sessions(Lang::En, snap, pager, 0, testClock(), false);
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    TEST_ASSERT_TRUE(fc.drew("1/2"));
+    TEST_ASSERT_EQUAL_INT((int)ui::Font::BodyBold, (int)fc.fontOf("api-server"));
+    TEST_ASSERT_EQUAL_INT((int)ui::Font::Small, (int)fc.fontOf("permission · Bash"));
+    TEST_ASSERT_EQUAL_INT((int)ui::Font::Small, (int)fc.fontOf("Editing Header.tsx"));
+    TEST_ASSERT_TRUE(fc.drew("<1m"));
+    TEST_ASSERT_TRUE(fc.drew("3m"));
+    TEST_ASSERT_FALSE(fc.drew("docs"));
+    TEST_ASSERT_FALSE(fc.drew("Opus"));
+    TEST_ASSERT_EQUAL_INT(ui::color::CARD_AMBER, fc.bgOf("permission · Bash"));
+    TEST_ASSERT_EQUAL_INT(ui::color::CARD, fc.bgOf("Editing Header.tsx"));
+    // page 2: the other two sessions, the third slot empty
+    fc.clearLog();
+    screens::sessions(Lang::En, snap, pager, 5000, testClock(), false);
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    TEST_ASSERT_TRUE(fc.drew("2/2"));
+    TEST_ASSERT_TRUE(fc.drew("docs"));
+    TEST_ASSERT_TRUE(fc.drew("worker"));
+    TEST_ASSERT_FALSE(fc.drew("front-app"));
+  }
+  // no sessions, then sessions again: every row comes back
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  attention();
+  const uint8_t n = snap.count;
+  snap.count = 0;
+  screens::reset();
+  screens::sessions(Lang::En, snap, pager, 0, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("No active sessions"));
+  snap.count = n;
+  fc.clearLog();
+  screens::sessions(Lang::En, snap, pager, 100, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("api-server"));
+  TEST_ASSERT_TRUE(fc.drew("infra"));
+  TEST_ASSERT_TRUE(fc.drew("front-app"));
+  TEST_ASSERT_TRUE(fc.drew("<1m"));
+}
+
+// Ticks never clear anything: an unchanged snapshot one second later draws nothing; a 10 s
+// heartbeat (new seq/now) redraws at most the values that changed, in place (textBox), with no
+// clear and no session name redrawn; a minute later only the time boxes change.
+static void renderScreen(int which, Pager& pager, uint32_t ms, const screens::Clock& clk) {
+  switch (which) {
+    case 0: working(); break;
+    case 1: attention(); break;
+    case 2: idle(); break;
+    default: attention(); break;
+  }
+  snap.h5.reset += 30;  // countdown "2h10" not on a minute boundary at the start
+  snap.seq = (uint32_t)(clk.epoch - NOW);  // volatile fields follow the clock
+  snap.now = clk.epoch;
+  RunTracker runs;
+  switch (which) {
+    case 3: screens::limits(Lang::En, snap, clk); break;
+    case 4: screens::sessions(Lang::En, snap, pager, ms, clk, false); break;
+    case 5: screens::hero(Lang::En, snap, 0, AlertKind::Perm, false, clk, runs); break;
+    default: screens::overview(Lang::En, snap, pager, ms, clk, false); break;
+  }
+}
+
+static void test_ticks_update_in_place() {
+  const bool layers[] = {true, false};
+  for (bool withLayer : layers) {
+    for (int which = 0; which < 6; which++) {
+      FakeCanvas fc({240, 240});
+      fc.layerSupported = withLayer;
+      screens::bind(fc);
+      Pager pager(3, 5000);  // no page flip within this test
+      screens::Clock clk = testClock();
+      screens::reset();
+      renderScreen(which, pager, 0, clk);
+      TEST_ASSERT_TRUE(fc.texts.size() > 2);
+      fc.clearLog();
+      clk.epoch += 1;
+      renderScreen(which, pager, 100, clk);
+      TEST_ASSERT_EQUAL_INT(0, fc.calls);  // +1 s: nothing at all
+      clk.epoch += 10;
+      renderScreen(which, pager, 200, clk);  // heartbeat
+      TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+      TEST_ASSERT_EQUAL_INT((int)fc.texts.size(), fc.boxTexts);
+      TEST_ASSERT_FALSE(fc.drew("api-server"));
+      TEST_ASSERT_FALSE(fc.drew("front-app"));
+      fc.clearLog();
+      clk.epoch += 60;
+      renderScreen(which, pager, 300, clk);  // a minute later: timers move, in place
+      TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+      TEST_ASSERT_EQUAL_INT((int)fc.texts.size(), fc.boxTexts);
+      TEST_ASSERT_FALSE(fc.drew("front-app"));
+      if (which == 0) TEST_ASSERT_TRUE(fc.drew("4m"));
+      if (which == 5) TEST_ASSERT_TRUE(fc.drew("waiting 1m"));
+    }
+  }
+}
+
+// Paging recomposes whole cards off-screen when the canvas has a layer, one push per card,
+// and frees the layer right after; without a layer it still draws everything directly.
+static void test_paging_uses_layer() {
+  const bool layers[] = {true, false};
+  for (bool withLayer : layers) {
+    FakeCanvas fc({240, 240});
+    fc.layerSupported = withLayer;
+    screens::bind(fc);
+    attention();
+    session("55555555", "worker", SessionState::Running, "Bash", "npm test", 18);
+    Pager pager(3, 5000);
+    screens::reset();
+    screens::sessions(Lang::En, snap, pager, 0, testClock(), false);
+    fc.clearLog();
+    screens::sessions(Lang::En, snap, pager, 5000, testClock(), false);
+    TEST_ASSERT_TRUE(fc.drew("docs"));
+    TEST_ASSERT_TRUE(fc.drew("worker"));
+    if (withLayer) {
+      TEST_ASSERT_EQUAL_INT(3, fc.layerEnds);  // the three cards
+      TEST_ASSERT_EQUAL_INT(3, fc.layerReleases);
+      TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+      TEST_ASSERT_FALSE(fc.inLayer);
+    } else {
+      TEST_ASSERT_EQUAL_INT(0, fc.layerEnds);
+      TEST_ASSERT_TRUE(fc.panelFills > 0);
+    }
+  }
 }
 
 // Alert flash: every phase repaints the whole screen first, and the name sits on that phase's colour.
@@ -427,5 +576,8 @@ int main() {
   RUN_TEST(test_overview_idle_keeps_big_limits);
   RUN_TEST(test_text_background_is_region_background);
   RUN_TEST(test_flash_text_on_phase_background);
+  RUN_TEST(test_sessions_mode_is_legible);
+  RUN_TEST(test_ticks_update_in_place);
+  RUN_TEST(test_paging_uses_layer);
   return UNITY_END();
 }

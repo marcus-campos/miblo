@@ -54,9 +54,14 @@ notes.
    clock; with 4+ sessions the cards page every 5 s), Needs you (amber band, compact strip, pending
    cards first in amber; request something that needs a permission), All done (nothing running:
    big 5h/week limits, last finished session, today's cost). No text has a dark box/halo around it
-   (big "30%" digits, the amber flash name). `/miblo:mode limits` shows the limits arc; `/miblo:mode sessions` shows the session
-   list, paging every 5 s when there are more than 4 sessions; `/miblo:mode overview` returns to
-   the adaptive view.
+   (big "30%" digits, the amber flash name). Times in state read "<1m", "3m", "1h12" and change at
+   most once a minute. Nothing blinks while you watch for a minute: the clock, timers and
+   countdowns change in place (no dark flash of their area), and cards only redraw when they
+   page or change state. `/miblo:mode limits` shows the limits arc; `/miblo:mode sessions` shows
+   the session list — at most 3 big cards per page (state dot + name in bold + time in state on
+   line 1, the activity on line 2, cut with "..."; no model/ctx/tokens line; pending cards
+   amber), readable at arm's length, with "1/2" in the header and paging every 5 s when there are
+   more than 3 sessions; `/miblo:mode overview` returns to the adaptive view.
 6. **Alerts:** permission request causes an amber flash (~1.5 s), a hero screen (~10 s) with the
    command and "waiting for …", then a summary with the band; no response for 2 min repeats the
    alert; approving it clears the band. `Stop` causes a blue flash and a hero screen (~5 s, with

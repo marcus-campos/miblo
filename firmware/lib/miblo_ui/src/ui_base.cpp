@@ -38,6 +38,28 @@ bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg) 
   return true;
 }
 
+bool Compose::begin(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg) {
+  end();
+  if (!dirty(id, hash)) return false;
+  layered_ = g_canvas->beginLayer(x, y, w, h);
+  g_canvas->fillRect(x, y, w, h, bg);
+  return true;
+}
+
+void Compose::end() {
+  if (!layered_) return;
+  layered_ = false;
+  g_canvas->endLayer();
+  g_canvas->releaseLayer();  // rows are recomposed rarely: give the memory back right away
+}
+
+bool field(uint8_t id, uint32_t salt, int x, int y, const char* s, ui::Font f, uint16_t fg, uint16_t bg,
+           ui::Align a, int boxW) {
+  if (!dirty(id, miblo::hashStr(salt, s))) return false;
+  g_canvas->textBox(x, y, s, f, fg, bg, a, boxW);
+  return true;
+}
+
 const char* t(Lang lang, miblo::S id) {
   static char buf[4][128];
   static uint8_t next = 0;

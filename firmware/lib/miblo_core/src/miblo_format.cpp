@@ -39,6 +39,18 @@ void formatCountdown(uint32_t secs, char* out, size_t cap) {
   }
 }
 
+void formatInState(uint32_t secs, char* out, size_t cap) {
+  if (secs < 60) {
+    snprintf(out, cap, "<1m");
+  } else if (secs < 3600) {
+    snprintf(out, cap, "%um", (unsigned)(secs / 60));
+  } else if (secs < 86400) {
+    snprintf(out, cap, "%uh%02u", (unsigned)(secs / 3600), (unsigned)((secs / 60) % 60));
+  } else {
+    snprintf(out, cap, "%ud%uh", (unsigned)(secs / 86400), (unsigned)((secs / 3600) % 24));
+  }
+}
+
 static void withTenths(uint64_t tenths, char suffix, char* out, size_t cap) {
   unsigned whole = (unsigned)(tenths / 10);
   unsigned frac = (unsigned)(tenths % 10);

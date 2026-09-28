@@ -76,6 +76,18 @@ static void test_format_countdown() {
   TEST_ASSERT_EQUAL_STRING("2d18h", b);
 }
 
+static void test_format_in_state() {
+  char b[16];
+  formatInState(30, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("<1m", b);
+  formatInState(192, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("3m", b);
+  formatInState(4320, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("1h12", b);
+  formatInState(180000, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("2d2h", b);
+}
+
 static void test_format_tokens() {
   char b[16];
   const struct {
@@ -107,6 +119,7 @@ int main() {
   RUN_TEST(test_utf8_length_counts_code_points);
   RUN_TEST(test_utf8_copy_never_splits_sequences);
   RUN_TEST(test_format_elapsed);
+  RUN_TEST(test_format_in_state);
   RUN_TEST(test_format_ago);
   RUN_TEST(test_format_countdown);
   RUN_TEST(test_format_tokens);

@@ -75,7 +75,7 @@ uint32_t hashInt(uint32_t h, uint32_t v);
 
 class RegionCache {
  public:
-  static constexpr uint8_t kRegions = 16;
+  static constexpr uint8_t kRegions = 24;
   // true (and remembers it) if the region's content changed since the last draw.
   bool changed(uint8_t region, uint32_t hash);
   void invalidate();

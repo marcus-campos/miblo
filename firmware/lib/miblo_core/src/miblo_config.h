@@ -43,8 +43,9 @@ struct BootDecision {
   uint8_t remaining;  // quick restarts still needed for the reset (0 = show nothing)
 };
 // storedCount: counter persisted by the previous boot (erased flash 0xFF, or any value out of
-// range, counts as 0). powerOn: false for crash/watchdog/OTA/software restarts, which clear the
-// sequence. After 10 s of uptime the firmware persists 0.
+// range, counts as 0). powerOn: false for crash/watchdog/OTA/software restarts, which keep the
+// stored count as-is (no increment, no reset, nothing shown). After 10 s of uptime the firmware
+// persists 0.
 BootDecision decideBoot(uint8_t storedCount, bool powerOn);
 
 }  // namespace miblo

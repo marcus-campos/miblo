@@ -96,15 +96,46 @@ static void test_power_cycle_reset_counter() {
   TEST_ASSERT_EQUAL_UINT8(6, kPowerCyclesForReset);
 }
 
-static void test_non_power_on_boot_clears_sequence() {
-  BootDecision d = decideBoot(4, false);  // crash/watchdog/OTA restart in the middle
+static void test_non_power_on_boot_keeps_sequence() {
+  // A crash/watchdog/OTA restart in the middle keeps the stored count: no increment, no countdown.
+  BootDecision d = decideBoot(4, false);
   TEST_ASSERT_FALSE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(4, d.nextCount);
+  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+  d = decideBoot(d.nextCount, true);  // the sequence continues where it was
+  TEST_ASSERT_EQUAL_UINT8(5, d.nextCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(1, d.remaining);
+  // Out-of-range stored values are clamped (count as 0) on non-power-on boots too.
+  d = decideBoot(0xFF, false);
   TEST_ASSERT_EQUAL_UINT8(0, d.nextCount);
-  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
-  d = decideBoot(d.nextCount, true);  // the sequence starts over
-  TEST_ASSERT_EQUAL_UINT8(1, d.nextCount);
   TEST_ASSERT_FALSE(d.factoryReset);
-  TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+}
+
+static void test_crash_between_quick_power_ons_does_not_break_sequence() {
+  uint8_t stored = 0;
+  uint8_t powerOns = 0;
+  bool reset = false;
+  // Power-on, crash, power-on, crash, ... : only the 6th power-on triggers the reset.
+  for (int i = 0; i < 20 && !reset; i++) {
+    const bool powerOn = (i % 2) == 0;
+    BootDecision d = decideBoot(stored, powerOn);
+    if (!powerOn) TEST_ASSERT_FALSE(d.factoryReset);  // a crash never triggers the reset
+    if (powerOn) powerOns++;
+    reset = d.factoryReset;
+    stored = d.nextCount;
+  }
+  TEST_ASSERT_TRUE(reset);
+  TEST_ASSERT_EQUAL_UINT8(kPowerCyclesForReset, powerOns);
+}
+
+static void test_crash_never_triggers_reset() {
+  for (int stored = 0; stored < 256; stored++) {
+    BootDecision d = decideBoot((uint8_t)stored, false);
+    TEST_ASSERT_FALSE(d.factoryReset);
+    TEST_ASSERT_TRUE(d.nextCount < kPowerCyclesForReset);
+    TEST_ASSERT_EQUAL_UINT8(0, d.remaining);
+  }
 }
 
 static void test_erased_flash_counts_as_first_boot() {
@@ -195,7 +226,9 @@ int main() {
   RUN_TEST(test_invalid_patch_changes_nothing);
   RUN_TEST(test_config_json_roundtrip);
   RUN_TEST(test_power_cycle_reset_counter);
-  RUN_TEST(test_non_power_on_boot_clears_sequence);
+  RUN_TEST(test_non_power_on_boot_keeps_sequence);
+  RUN_TEST(test_crash_between_quick_power_ons_does_not_break_sequence);
+  RUN_TEST(test_crash_never_triggers_reset);
   RUN_TEST(test_erased_flash_counts_as_first_boot);
   RUN_TEST(test_net_policy_saved_credentials_then_router_down);
   RUN_TEST(test_net_policy_first_boot_and_wrong_password);

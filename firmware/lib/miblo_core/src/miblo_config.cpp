@@ -115,8 +115,10 @@ AlertTiming alertTiming(const Config& cfg) {
 }
 
 BootDecision decideBoot(uint8_t storedCount, bool powerOn) {
-  if (!powerOn) return BootDecision{0, false, 0};
   const uint8_t prev = storedCount < kPowerCyclesForReset ? storedCount : 0;
+  // Crash/watchdog/OTA/software restart: neither counts nor breaks the sequence (a crash between
+  // two quick power-ons must not lose the progress), and never triggers the reset by itself.
+  if (!powerOn) return BootDecision{prev, false, 0};
   const uint8_t count = (uint8_t)(prev + 1);
   if (count >= kPowerCyclesForReset) return BootDecision{0, true, 0};
   const uint8_t remaining = count >= kPowerCycleCountdownFrom ? (uint8_t)(kPowerCyclesForReset - count) : 0;

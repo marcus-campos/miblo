@@ -49,9 +49,12 @@ notes.
    "Paired with <host>" for 5 s, then "Disconnected"/clock until the first snapshot. `GET
    http://<ip>/api/info` shows `paired: true`, `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`,
    `caps: []`. Five wrong codes in a row cause a 429 for 60 s.
-5. **Screens:** with real sessions — Working (running count, big weekly hours, list), Needs you
-   (amber band; request something that needs a permission), All done (finished sessions, today's
-   cost). `/miblo:mode limits` shows the limits arc; `/miblo:mode sessions` shows the session
+5. **Screens:** with real sessions — Working (compact `5h ▓░ 30%  7d ▓░ 13%` strip on top, up to
+   3 session cards with name, time in state and current activity, footer "N RUNNING · 1/2" +
+   clock; with 4+ sessions the cards page every 5 s), Needs you (amber band, compact strip, pending
+   cards first in amber; request something that needs a permission), All done (nothing running:
+   big 5h/week limits, last finished session, today's cost). No text has a dark box/halo around it
+   (big "30%" digits, the amber flash name). `/miblo:mode limits` shows the limits arc; `/miblo:mode sessions` shows the session
    list, paging every 5 s when there are more than 4 sessions; `/miblo:mode overview` returns to
    the adaptive view.
 6. **Alerts:** permission request causes an amber flash (~1.5 s), a hero screen (~10 s) with the

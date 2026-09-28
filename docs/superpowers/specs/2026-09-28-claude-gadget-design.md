@@ -110,10 +110,15 @@ Um comando do plugin por ação (Claude Code namespacea comandos de plugin por n
 
 Mockups: `mockups/overview-adaptive.html`, `mockups/alert-flow.html`.
 
-- **Precisa de você** (existe sessão em permissão/pergunta): faixa âmbar fixa no topo com "N AGUARDANDO · <sessão>"; limites em tamanho grande; sessões pendentes no topo da lista compacta, em âmbar.
-- **Trabalhando** (há sessões rodando, nenhuma pendente): limites grandes (5h com % e horário de reset; semanal menor); lista curta das sessões com a atividade atual.
-- **Tudo pronto / ocioso:** limites grandes; no rodapé, a última sessão que terminou e o custo do dia.
-- Lista com mais itens do que cabe: rotaciona a cada 5s.
+Regra: enquanto houver algo rodando ou pendente, **as sessões são o conteúdo principal**; os limites grandes só aparecem quando nada está rodando.
+
+- **Faixa compacta de limites** (uma linha, usada em Trabalhando e Precisa de você): `5h ▓▓░ 30%   7d ▓░ 13%` — barras finas + %, com cor de nível (≥80% âmbar, ≥95% vermelho); janela ausente → "--". Sem dados de uso (conta sem assinatura) → custo do dia ("hoje $3,50") ou "limites indisponíveis".
+- **Cartões de sessão** (3 por página no grid 240x240; a geometria escala com X()/Y()/Sz()): linha 1 = ponto de estado + nome + tempo no estado alinhado à direita (pendente/rodando: "3:12"; terminou/ociosa: "2m"); linha 2 = o que está fazendo (`sessionLine`: "Editando Header.tsx", "Bash · npm test", "permissão · Bash", "terminou"). Cartões pendentes em âmbar. Ordem = a do snapshot (pendente → rodando → terminou → ociosa). Mais sessões do que cabem: pagina a cada 5 s e o rodapé mostra "1/2"; sessões fora do snapshot aparecem como "+N". O modo discreto oculta o detalhe (arquivo/comando), mantém o verbo. O tempo de cada cartão é uma região própria, então o tique de 1 s não redesenha o cartão.
+- **Precisa de você** (existe sessão em permissão/pergunta): faixa âmbar fixa no topo com "N AGUARDANDO · <sessão>" + relógio; faixa compacta de limites; cartões de sessão (pendentes primeiro); rodapé com página/"+N". O fluxo flash → herói (§4.2) não muda.
+- **Trabalhando** (há sessões rodando, nenhuma pendente): faixa compacta de limites no topo; cartões de sessão; rodapé "N RODANDO · 1/2 · +N" + relógio.
+- **Tudo pronto / ocioso** (nada rodando nem pendente): cabeçalho "TUDO PRONTO" + relógio; limites grandes (5h com % e horário de reset; semanal menor); no rodapé, a última sessão que terminou e o custo do dia.
+- Troca de layout (ex.: ocioso → trabalhando) limpa a tela inteira; dentro do mesmo layout só as regiões alteradas são redesenhadas.
+- Texto nunca desenha fundo próprio (fonte em modo transparente): fica sobre a cor com que a região foi limpa (fundo, cartão, faixa âmbar, cor do flash).
 
 ### 4.2 Alertas (todos os modos)
 

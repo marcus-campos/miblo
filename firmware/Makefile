@@ -6,6 +6,9 @@
 #   make fleet                      install Miblo on every stock/installer unit found
 #   make fleet-update               also update units already on an older Miblo (asks each code)
 #   make fleet HOSTS="192.168.0.41 192.168.0.42"   only these units
+#   make fleet-ap-plan              scan nearby Wi-Fi for GIFTV/SmallTV/GeekMagic/Miblo-* units (no joining)
+#   make fleet-ap                   flash/update every unit through its own access point (sequential)
+#   make fleet-ap-loop              keep scanning: plug units in one after another (Ctrl-C to stop)
 #
 # Variables (override on the command line):
 #   BOARD   board name in the image files          (default geekmagic_ultra)
@@ -28,7 +31,7 @@ SUBNET ?= $(shell ip=$$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr
 FLEET   := $(PYTHON) scripts/flash-fleet.py --board $(BOARD) --jobs $(JOBS)
 TARGETS := $(if $(strip $(HOSTS)),$(foreach h,$(HOSTS),--host $(h)),--subnet $(SUBNET))
 
-.PHONY: help build test release fleet-plan fleet fleet-update fleet-test check-target
+.PHONY: help build test release fleet-ap-plan fleet-ap fleet-ap-loop fleet-plan fleet fleet-update fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -90,3 +93,16 @@ release:
 	  command -v gh >/dev/null && gh run list --workflow release.yml --limit 1 || true; \
 	  echo "https://github.com/marcus-campos/miblo/releases/tag/$$tag";; \
 	*) echo "Not tagged. Later: git tag -a $$tag -m $$tag && git push origin $$branch $$tag";; esac
+
+# Access-point mode (macOS): the Mac joins each unit's own Wi-Fi, flashes it at 192.168.4.1 and
+# rejoins the original network at the end. Needs Location Services for your terminal app.
+fleet-ap-plan:
+	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap --dry-run $(ARGS)
+
+fleet-ap:
+	@ls dist/miblo-loader-$(BOARD)-*.bin dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
+	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap $(ARGS)
+
+fleet-ap-loop:
+	@ls dist/miblo-loader-$(BOARD)-*.bin dist/miblo-$(BOARD)-*.bin >/dev/null 2>&1 || $(MAKE) build
+	$(PYTHON) scripts/flash-fleet.py --board $(BOARD) --via-ap --loop $(ARGS)

@@ -192,8 +192,8 @@ void loop() {
 
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
   updateBacklight();
-  static const miblo::Snapshot kEmpty{};
-  const miblo::AlertView& alert = ctx.alerts.update(ctx.hasSnapshot ? ctx.snap : kEmpty, now);
+  // Before the first snapshot ctx.snap is all zeros (parseSnapshot only writes it on success).
+  const miblo::AlertView& alert = ctx.alerts.update(ctx.snap, now);
 
   miblo::ScreenInputs in;
   in.nowMs = now;

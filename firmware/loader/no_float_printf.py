@@ -1,6 +1,7 @@
-# PlatformIO extra script for the loader env: drops the framework's forced float printf/scanf
-# support ("-u _printf_float -u _scanf_float", ~10 KB). The loader never formats floats, and every
-# byte counts: the image must fit the stock GeekMagic firmware's small OTA space.
+# PlatformIO extra script: drops the framework's forced float printf/scanf support
+# ("-u _printf_float -u _scanf_float", ~10 KB). Used by the loader (its image must fit the stock
+# GeekMagic firmware's small OTA space) and by the firmware; neither formats or scans floats
+# with printf/scanf.
 Import("env")  # noqa: F821  (injected by PlatformIO/SCons)
 
 flags = list(env["LINKFLAGS"])  # noqa: F821

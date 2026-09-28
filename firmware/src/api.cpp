@@ -14,7 +14,6 @@
 namespace api {
 
 static WebServerT* srv = nullptr;
-static char body[miblo::kSnapshotMaxBytes + 1];
 
 static void json(int code, const char* s) { web::sendJson(*srv, code, s); }
 
@@ -123,9 +122,11 @@ static void handleState() {
     json(400, "{\"error\":\"too large\"}");
     return;
   }
-  memcpy(body, plain.c_str(), plain.length());
-  body[plain.length()] = 0;
-  miblo::ParseResult r = miblo::parseSnapshot(body, plain.length(), ctx.snap);
+  // Parsed in place, in the server's own copy of the body (zero-copy JSON: it gets modified,
+  // and nothing reads it afterwards): no second 3 KB buffer.
+  miblo::ParseResult r = plain.length()
+                             ? miblo::parseSnapshot(const_cast<String&>(plain).begin(), plain.length(), ctx.snap)
+                             : miblo::ParseResult::BadJson;
   if (r != miblo::ParseResult::Ok) {
     json(400, r == miblo::ParseResult::BadVersion ? "{\"error\":\"bad version\"}" : "{\"error\":\"bad json\"}");
     return;  // the last valid screen stays up

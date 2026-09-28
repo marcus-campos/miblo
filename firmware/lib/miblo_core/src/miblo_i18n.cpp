@@ -65,6 +65,21 @@ static bool matchTag(const char* tag, size_t len, Lang& out) {
   return false;
 }
 
+// "q=0.8" weight x 1000 (rounded to 3 decimals), without atof: pulling the libc float parser
+// in for this costs ~4 KB of flash.
+static int qValue(const char* s) {
+  while (*s == ' ') s++;
+  int v = 0;
+  while (*s >= '0' && *s <= '9') v = v * 10 + (*s++ - '0');
+  v *= 1000;
+  if (*s == '.') {
+    s++;
+    for (int scale = 100; scale > 0 && *s >= '0' && *s <= '9'; scale /= 10) v += (*s++ - '0') * scale;
+    if (*s >= '5' && *s <= '9') v++;  // 4th decimal: round half up
+  }
+  return v;
+}
+
 Lang negotiateLang(const char* header) {
   Lang best = Lang::En;
   int bestQ = -1;
@@ -80,7 +95,7 @@ Lang negotiateLang(const char* header) {
     if (*p == ';') {
       const char* qs = strstr(p, "q=");
       const char* next = strchr(p, ',');
-      if (qs && (!next || qs < next)) q = (int)(atof(qs + 2) * 1000.0 + 0.5);
+      if (qs && (!next || qs < next)) q = qValue(qs + 2);
     }
     while (*p && *p != ',') p++;
     Lang l;

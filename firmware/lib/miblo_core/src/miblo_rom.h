@@ -11,4 +11,5 @@
 #else
 #define MIBLO_ROM
 inline uint8_t mibloRomByte(const char* p) { return (uint8_t)*p; }
+inline void mibloRomCopy(void* dst, const void* src, size_t n) { memcpy(dst, src, n); }
 #endif

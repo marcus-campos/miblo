@@ -10,9 +10,14 @@ void begin(WebServerT& server);
 
 // Helpers reused by the update page (ota.cpp).
 miblo::Lang pageLang(WebServerT& server);
-// reserveHint: expected page size, so the String doesn't reallocate mid-build (~1500 for the
-// small pages, 7000 for the settings page).
-void pageStart(String& out, miblo::Lang lang, const char* title, size_t reserveHint = 1500);
+// Pages are streamed as a chunked response, so a page never sits whole in the heap:
+// pageStart() sends the headers and the <head>; pageFlush() sends what `out` holds once it
+// passes kPageChunk bytes (always with force); pageSendP() streams a PROGMEM blob straight from
+// flash; pageEnd() sends the rest and ends the response. Nothing else may be sent after it.
+constexpr size_t kPageChunk = 1024;
+void pageStart(String& out, miblo::Lang lang, const char* title);
+void pageFlush(String& out, bool force = false);
+void pageSendP(String& out, PGM_P blob);
 void pageEnd(String& out);
 void appendEscaped(String& out, const char* s);
 String tr(miblo::Lang lang, miblo::S id);

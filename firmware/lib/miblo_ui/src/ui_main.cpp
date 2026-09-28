@@ -5,6 +5,7 @@
 #include "miblo_activity.h"
 #include "miblo_format.h"
 #include "miblo_policy.h"
+#include "miblo_rom.h"
 #include "ui_screens.h"
 
 namespace screens {
@@ -580,7 +581,7 @@ constexpr Gaze F = Gaze::Front, FO = Gaze::Focus, OT = Gaze::Other, UP = Gaze::U
 constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy;
 
 // Under half of the limits used: idles, checks both gauges, hops, dozes off for a bit.
-const Step kCalm[] = {
+const Step kCalm[] MIBLO_ROM = {
     {2200, 0, 0, F, O, P_DOWN, 0},   {150, 0, 0, F, CL, P_DOWN, 0},    {1400, 0, 0, F, O, P_DOWN, 0},
     {1600, 0, 0, FO, O, P_DOWN, 0},  {1600, 0, 0, OT, O, P_DOWN, 0},   {600, 0, 0, F, O, P_DOWN, 0},
     {250, 0, -4, F, O, P_DOWN, 0},   {250, 0, 0, F, O, P_DOWN, 0},     {250, 0, -4, F, O, P_DOWN, 0},
@@ -590,7 +591,7 @@ const Step kCalm[] = {
     {150, 0, 0, F, CL, P_DOWN, 0},   {1500, 0, 0, F, O, P_DOWN, 0},
 };
 // 50-79%: keeps an eye on the fuller gauge and bats at it.
-const Step kWatchful[] = {
+const Step kWatchful[] MIBLO_ROM = {
     {1500, 0, 0, F, O, P_DOWN, 0},   {2000, 0, 0, FO, O, P_DOWN, 0},  {150, 0, 0, FO, CL, P_DOWN, 0},
     {1200, 0, 0, FO, O, P_DOWN, 0},  {400, 0, 0, FO, O, P_REACH, 0},  {300, 0, 0, FO, O, P_DOWN, 0},
     {400, 0, 0, FO, O, P_REACH, 0},  {300, 0, 0, FO, O, P_DOWN, 0},   {1500, 0, 0, OT, O, P_DOWN, 0},
@@ -598,7 +599,7 @@ const Step kWatchful[] = {
     {250, 0, -4, F, O, P_DOWN, 0},   {250, 0, 0, F, O, P_DOWN, 0},
 };
 // 80-94%: wide eyes on the gauge, sweating, a nervous shiver.
-const Step kWorried[] = {
+const Step kWorried[] MIBLO_ROM = {
     {1200, 0, 0, FO, W, P_DOWN, 0},      {1500, 0, 0, FO, W, P_DOWN, kSweat}, {120, 0, 0, F, CL, P_DOWN, kSweat},
     {800, 0, 0, F, O, P_DOWN, kSweat},   {1400, 0, 0, FO, W, P_DOWN, kSweat}, {120, -2, 0, FO, W, P_DOWN, kSweat},
     {120, 2, 0, FO, W, P_DOWN, kSweat},  {120, -2, 0, FO, W, P_DOWN, kSweat}, {120, 2, 0, FO, W, P_DOWN, kSweat},
@@ -606,7 +607,7 @@ const Step kWorried[] = {
     {1000, 0, 0, F, O, P_DOWN, 0},
 };
 // 95% and up: alarmed, jumps, shivers, covers its eyes and peeks.
-const Step kScared[] = {
+const Step kScared[] MIBLO_ROM = {
     {800, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {200, 0, -5, FO, W, P_DOWN, kAlarm | kMouthO},
     {200, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {200, 0, -5, FO, W, P_DOWN, kAlarm | kMouthO},
     {200, 0, 0, FO, W, P_DOWN, kAlarm | kMouthO},   {100, -2, 0, FO, W, P_DOWN, kAlarm | kSweat},
@@ -617,7 +618,7 @@ const Step kScared[] = {
     {1000, 0, 0, FO, W, P_DOWN, kSweat | kMouthO},  {150, 0, 0, F, CL, P_DOWN, kSweat},
 };
 // Disconnected: looks left and right for the computer, up, sighs.
-const Step kSearching[] = {
+const Step kSearching[] MIBLO_ROM = {
     {1500, 0, 0, F, O, P_DOWN, 0},   {1200, 0, 0, FO, O, P_DOWN, 0},  {1200, 0, 0, OT, O, P_DOWN, 0},
     {150, 0, 0, F, CL, P_DOWN, 0},   {1000, 0, 0, UP, O, P_DOWN, 0},  {1200, 0, 0, F, O, P_DOWN, 0},
     {800, 0, 0, FO, O, P_DOWN, 0},   {800, 0, 0, OT, O, P_DOWN, 0},   {250, 0, -4, F, O, P_DOWN, 0},
@@ -625,22 +626,29 @@ const Step kSearching[] = {
     {1200, 0, 0, F, O, P_DOWN, 0},
 };
 // Disconnected for long: asleep, now and then half-opening an eye.
-const Step kAsleep[] = {
+const Step kAsleep[] MIBLO_ROM = {
     {1400, 0, 0, F, CL, P_DOWN, kZ1}, {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2}, {1400, 0, 0, F, CL, P_DOWN, kZ1},
     {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2}, {1400, 0, 0, F, CL, P_DOWN, kZ1}, {1400, 0, 0, F, CL, P_DOWN, kZ1 | kZ2},
     {1200, 0, 0, UP, SL, P_DOWN, 0},  {1400, 0, 0, F, CL, P_DOWN, 0},
 };
 
+// The tables live in flash (MIBLO_ROM): each step is copied out before use.
 template <size_t N>
-const Step& stepAt(const Step (&seq)[N], uint32_t ms) {
+Step stepAt(const Step (&seq)[N], uint32_t ms) {
+  Step st;
   uint32_t total = 0;
-  for (const Step& st : seq) total += st.ms;
+  for (size_t i = 0; i < N; i++) {
+    mibloRomCopy(&st, &seq[i], sizeof(st));
+    total += st.ms;
+  }
   uint32_t t = ms % total;
-  for (const Step& st : seq) {
+  for (size_t i = 0; i < N; i++) {
+    mibloRomCopy(&st, &seq[i], sizeof(st));
     if (t < st.ms) return st;
     t -= st.ms;
   }
-  return seq[0];
+  mibloRomCopy(&st, &seq[0], sizeof(st));
+  return st;
 }
 }  // namespace
 
@@ -658,15 +666,17 @@ uint8_t deskPct(const miblo::UsageWindow& w, uint32_t nowEpoch) {
 }
 
 MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
-  const Step* st = nullptr;
+  Step step;
   switch (mood) {
-    case DeskMood::Calm: st = &stepAt(kCalm, ms); break;
-    case DeskMood::Watchful: st = &stepAt(kWatchful, ms); break;
-    case DeskMood::Worried: st = &stepAt(kWorried, ms); break;
-    case DeskMood::Scared: st = &stepAt(kScared, ms); break;
-    case DeskMood::Searching: st = &stepAt(kSearching, ms); break;
-    case DeskMood::Asleep: st = &stepAt(kAsleep, ms); break;
+    case DeskMood::Calm: step = stepAt(kCalm, ms); break;
+    case DeskMood::Watchful: step = stepAt(kWatchful, ms); break;
+    case DeskMood::Worried: step = stepAt(kWorried, ms); break;
+    case DeskMood::Scared: step = stepAt(kScared, ms); break;
+    case DeskMood::Searching: step = stepAt(kSearching, ms); break;
+    case DeskMood::Asleep:
+    default: step = stepAt(kAsleep, ms); break;
   }
+  const Step* st = &step;
   MascotLook k{st->dx, st->dy, 0, 0, st->eyes, Paws::Down, st->extras};
   const int8_t side = focusLeft ? -3 : 3;  // the gauges sit below the cat: gaze down and sideways
   switch (st->gaze) {

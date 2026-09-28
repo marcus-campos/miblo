@@ -4,3 +4,5 @@
 #include <pgmspace.h>
 #define MIBLO_ROM PROGMEM
 inline uint8_t mibloRomByte(const char* p) { return pgm_read_byte(p); }
+// Structs in flash: copied out whole (flash reads must be 32-bit aligned).
+inline void mibloRomCopy(void* dst, const void* src, size_t n) { memcpy_P(dst, src, n); }

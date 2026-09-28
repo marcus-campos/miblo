@@ -102,7 +102,6 @@ static void page() {
            ".then(r=>r.text().then(x=>{$('st').textContent=r.ok?T.ok:(r.status===403?T.bad:T.failed+': '+x);}))"
            ".catch(()=>{$('st').textContent=T.failed;});}</script>");
   web::pageEnd(out);
-  srv->send(200, F("text/html; charset=utf-8"), out);
 }
 
 static void upload() {

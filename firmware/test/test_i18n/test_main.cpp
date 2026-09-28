@@ -104,6 +104,10 @@ static void test_negotiate_accept_language() {
       {"de-CH;q=0.5, en;q=0.4", Lang::De},
       {"fr;q=0.8, es;q=0.8", Lang::Fr},
       {"*;q=0.5", Lang::En},
+      {"fr;q=0.8, es;q=0.7999", Lang::Fr},   // 0.7999 rounds to 0.800: a tie keeps the first
+      {"fr;q=0.8, es;q=0.8005", Lang::Es},   // 0.8005 rounds up to 0.801
+      {"fr;q=0.25, de;q=0.3", Lang::De},
+      {"fr;q=0, en;q=1", Lang::En},
   };
   for (const auto& c : cases) {
     TEST_ASSERT_EQUAL_MESSAGE((int)c.expected, (int)negotiateLang(c.header), c.header ? c.header : "null");

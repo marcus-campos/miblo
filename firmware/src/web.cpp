@@ -107,19 +107,36 @@ Lang pageLang(WebServerT& server) {
   return l;
 }
 
-void pageStart(String& out, Lang lang, const char* title, size_t reserveHint) {
-  out.reserve(reserveHint);
+void pageStart(String& out, Lang lang, const char* title) {
+  srv->setContentLength(CONTENT_LENGTH_UNKNOWN);
+  srv->send(200, F("text/html; charset=utf-8"), "");
+  out.reserve(kPageChunk + 256);
   out += F("<!doctype html><html lang=\"");
   out += miblo::langCode(lang);
   out += F("\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
            "<title>");
   appendEscaped(out, title);
   out += F("</title><style>");
-  out += FPSTR(kCss);
+  pageSendP(out, kCss);
   out += F("</style></head><body>");
 }
 
-void pageEnd(String& out) { out += F("</body></html>"); }
+void pageFlush(String& out, bool force) {
+  if (!out.length() || (!force && out.length() < kPageChunk)) return;
+  srv->sendContent(out);
+  out.remove(0);  // keeps the reserved buffer for the next chunk
+}
+
+void pageSendP(String& out, PGM_P blob) {
+  pageFlush(out, true);
+  srv->sendContent_P(blob);
+}
+
+void pageEnd(String& out) {
+  out += F("</body></html>");
+  pageFlush(out, true);
+  srv->sendContent("");  // zero-length chunk: end of the response
+}
 
 static void langOptions(String& out, Lang selected, bool withAuto) {
   if (withAuto) {
@@ -168,7 +185,7 @@ static String failureText(Lang lang) {
 // off the setup network (the AP follows the router's channel), the page says to look at the screen.
 static void joinStatusPage(Lang lang) {
   String out;
-  pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str(), 2600);
+  pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
   out += F("<h1 id=\"h\">");
   appendEscaped(out, tr(lang, S::WebConnecting).c_str());
   out += F("</h1><p id=\"m\" class=\"w\"></p><p id=\"a\"></p><script>const T=");
@@ -195,7 +212,6 @@ static void joinStatusPage(Lang lang) {
       ".then(j=>{f=0;show(j);}).catch(()=>{if(++f>=4)$('h').textContent=T.noreply;setTimeout(poll,2000);});}"
       "setTimeout(poll,1500);</script>");
   pageEnd(out);
-  srv->send(200, F("text/html; charset=utf-8"), out);
 }
 
 // GET /api/wifi-status: progress of the submitted network, plus diagnostics (last station
@@ -263,6 +279,7 @@ static void portalPage() {
     appendEscaped(out, ssid.c_str());
     out += F("</option>");
     shown++;
+    pageFlush(out);
   }
   WiFi.scanDelete();
   out += F("<option value=\"\">");
@@ -282,12 +299,11 @@ static void portalPage() {
   out += F("</select><button>");
   appendEscaped(out, tr(lang, S::WebConnect).c_str());
   out += F("</button></form><script>");
-  out += FPSTR(kTzJs);
+  pageSendP(out, kTzJs);
   out += F("{const t=document.getElementById('tz');tzFill(t,t.dataset.cur,null);}"
            "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();"
            "</script>");
   pageEnd(out);
-  srv->send(200, F("text/html; charset=utf-8"), out);
 }
 
 static void handleWifi() {
@@ -331,7 +347,7 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName(), 8600);
+  pageStart(out, lang, deviceName());
   out += F("<h1>");
   appendEscaped(out, deviceName());
   out += F("</h1><p class=\"m\">");
@@ -356,6 +372,7 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::ModeLimits).c_str());
   out += F("</option><option value=\"sessions\">");
   appendEscaped(out, tr(lang, S::ModeSessions).c_str());
+  pageFlush(out);
   out += F("</option></select><label>");
   appendEscaped(out, tr(lang, S::WebBrightness).c_str());
   out += F("</label><input id=\"brightness\" type=\"range\" min=\"5\" max=\"100\"><label><input id=\"alerts\" "
@@ -376,6 +393,7 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::WebRotateEvery).c_str());
   out += F("</label><input id=\"rotateEverySec\" type=\"number\" min=\"10\" max=\"3600\"><label>");
   appendEscaped(out, tr(lang, S::WebRotateShow).c_str());
+  pageFlush(out);
   out += F("</label><input id=\"rotateShowSec\" type=\"number\" min=\"3\" max=\"300\"><label><input id=\"night\" "
            "type=\"checkbox\">");
   appendEscaped(out, tr(lang, S::WebNight).c_str());
@@ -395,6 +413,7 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
   out += F("</label><select id=\"lang\">");
   langOptions(out, lang, true);
+  pageFlush(out);
   out += F("</select><button onclick=\"save()\">");
   appendEscaped(out, tr(lang, S::WebSave).c_str());
   out += F("</button><p id=\"st\" class=\"m\"></p><h2>");
@@ -409,6 +428,7 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::WebResetConfirm).c_str());
   out += F("</p><button class=\"d\" onclick=\"rst()\">");
   appendEscaped(out, tr(lang, S::WebFactoryReset).c_str());
+  pageFlush(out);
   out += F("</button><script>const C=");
 
   DynamicJsonDocument cfg(768);
@@ -422,7 +442,7 @@ static void settingsPage() {
   txt["bad"] = tr(lang, S::WebBadCode);
   appendJsonForScript(out, txt);
   out += F(";");
-  out += FPSTR(kTzJs);
+  pageSendP(out, kTzJs);
   out += F(
       "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
       // Night times travel as minutes of the day; the page shows them as HH:MM.
@@ -442,7 +462,6 @@ static void settingsPage() {
       "tzFill($('tz'),C.tz,ch=>{if(ch)save();});"
       "</script>");
   pageEnd(out);
-  srv->send(200, F("text/html; charset=utf-8"), out);
 }
 
 static void handleSettings() {

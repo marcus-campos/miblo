@@ -8,6 +8,7 @@ once; the result (lib/U8g2TFT/) is committed.
 
 Usage: firmware/.venv/bin/python firmware/scripts/vendor_u8g2.py
 """
+import codecs
 import os
 import re
 import sys
@@ -36,6 +37,13 @@ FONTS = [
     "u8g2_font_wqy14_t_gb2312a",
 ]
 
+# Fonts only used for a few characters: vendored as a subset (same glyph data and metrics, the
+# other glyphs dropped) under a new name. fub20 draws percentages and "--" (NumM) and the "%"
+# fallback of the big numbers (NumL), so the full 5.4 KB font is not needed.
+SUBSETS = {
+    "u8g2_font_fub20_tf": ("u8g2_font_fub20_miblo", " %+,-./0123456789:"),
+}
+
 PATCH = """
 /* --- Miblo: fonts in flash on the ESP8266 (same as official u8g2) --- */
 #if defined(ESP8266)
@@ -53,6 +61,47 @@ def fetch(path):
     with urllib.request.urlopen(f"{BASE}/{path}", timeout=120) as r:
         # latin-1 preserves the bytes exactly (some comments are not valid UTF-8)
         return r.read().decode("latin-1")
+
+
+def font_bytes(lines):
+    """The bytes of a u8g2 font from its C definition lines."""
+    body = "\n".join(lines)
+    body = body[body.index("=") + 1:]
+    lits = re.findall(r'"((?:[^"\\]|\\.)*)"', body, re.S)
+    return b"".join(codecs.escape_decode(l.encode("latin-1"))[0] for l in lits)
+
+
+def subset_font(data, chars):
+    """u8g2 font with only the 8-bit glyphs in `chars` (no Unicode section).
+
+    Layout: 23-byte header (glyph count at 0; offsets of 'A', 'a' and the Unicode table at
+    17..22, big endian, relative to byte 23), then glyph records [encoding, size, bits...]
+    ended by [0, 0], then the Unicode table ([0, 4, 0xFF, 0xFF] = empty).
+    """
+    keep = {ord(c) for c in chars}
+    glyphs, p = [], 23
+    while data[p + 1]:
+        if data[p] in keep:
+            glyphs.append(data[p:p + data[p + 1]])
+        p += data[p + 1]
+    body = b"".join(glyphs) + b"\0\0"
+    uni = len(body)
+    header = bytearray(data[:23])
+    header[0] = len(glyphs)
+    header[17:21] = b"\0\0\0\0"  # no 'A'/'a' shortcuts: lookups scan from the first glyph
+    header[21], header[22] = uni >> 8, uni & 0xFF
+    return bytes(header) + body + b"\0\4\377\377"
+
+
+def font_c(name, data):
+    """C definition of a font, in the u8g2 style (octal escapes, 64 bytes per line)."""
+    out = [f'const uint8_t {name}[{len(data) + 1}] U8G2_FONT_SECTION("{name}") = ']
+    for i in range(0, len(data), 64):
+        # 3-digit octal escapes: a following digit can never be read as part of one
+        chunk = "".join(chr(b) if 32 <= b < 127 and chr(b) not in '"\\?' else f"\\{b:03o}" for b in data[i:i + 64])
+        out.append(f'  "{chunk}"')
+    out[-1] += ";"
+    return out
 
 
 def main():
@@ -83,9 +132,14 @@ def main():
         end = start
         while not source[end].rstrip().endswith('";'):
             end += 1
-        out.extend(source[start:end + 1])
+        lines = source[start:end + 1]
+        if font in SUBSETS:
+            name, chars = SUBSETS[font]
+            lines = font_c(name, subset_font(font_bytes(lines), chars))
+            font = name
+        out.extend(lines)
         out.append("")
-        size = int(re.search(r"\[(\d+)\]", source[start]).group(1))
+        size = int(re.search(r"\[(\d+)\]", lines[0]).group(1))
         total += size
         print(f"  {font}: {size} bytes")
     with open(os.path.join(DEST, "miblo_fonts.c"), "w", encoding="latin-1") as f:

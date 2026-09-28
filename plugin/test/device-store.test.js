@@ -32,3 +32,18 @@ test('file is private to the user', { skip: process.platform === 'win32' }, () =
   const mode = fs.statSync(path.join(dir, 'devices.json')).mode & 0o777;
   assert.equal(mode, 0o600);
 });
+
+test('writes leave no temp files behind and use a unique temp name', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-store-'));
+  const store = new DeviceStore(dir);
+  const seen = [];
+  const orig = fs.renameSync;
+  fs.renameSync = (from, to) => { seen.push(path.basename(from)); return orig(from, to); };
+  try {
+    store.upsert({ id: 'a', name: 'A', addr: 'x:80', token: 't' });
+  } finally {
+    fs.renameSync = orig;
+  }
+  assert.match(seen[0], new RegExp(`^devices\\.json\\.${process.pid}\\.\\d+\\.tmp$`));
+  assert.deepEqual(fs.readdirSync(dir), ['devices.json']);
+});

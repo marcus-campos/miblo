@@ -29,7 +29,7 @@ export class DeviceStore {
 
   #write(devices) {
     fs.mkdirSync(path.dirname(this.file), { recursive: true });
-    const tmp = `${this.file}.tmp`;
+    const tmp = `${this.file}.${process.pid}.${Date.now()}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify({ devices }, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, this.file);
     fs.chmodSync(this.file, 0o600);

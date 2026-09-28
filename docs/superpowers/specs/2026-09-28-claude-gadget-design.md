@@ -32,7 +32,7 @@ Nome e marca definitivos, gravação de firmware em lote, manual e embalagem, ve
 | Sistemas operacionais | macOS, Windows (incl. WSL) e Linux |
 | Vários gadgets | Mesmo firmware; cada aparelho escolhe seu **modo**: Visão geral (padrão), Limites ou Sessões |
 | Transporte | Rede local; o **computador envia** para o gadget (push HTTP), com descoberta por mDNS |
-| Lado do computador | Plugin do Claude Code em Node.js sem dependências externas |
+| Lado do computador | Plugin do Claude Code em Node.js ≥ 18 sem dependências externas (requisito a comunicar no anúncio: o Claude Code nativo não traz Node) |
 | Tela Visão geral | Adaptativa (mistura das propostas A + B) — ver §4.1 |
 | Modo Limites | L1 — medidor em arco grande |
 | Modo Sessões | S1 — lista detalhada, rolagem automática a cada 5s |
@@ -93,7 +93,8 @@ Um único comando do plugin com subcomandos:
 ### 3.5 Firmware (ESP8266, PlatformIO/Arduino)
 
 - **Rede:** setup por captive portal; mDNS `miblo-xxxx.local`; anuncia `_miblo._tcp` com o ID do aparelho.
-- **API HTTP:** `POST /api/state` (exige `Authorization: Bearer <token>`), `POST /api/pair`, `GET /api/info` (ID, versão, modo, pareado?), `POST /api/config`, `POST /update` (OTA, protegido por token).
+- **API HTTP:** `GET /api/info → {id, name, fw, proto, paired}`; `POST /api/pair {code, host} → {token}` (403 com código errado); `POST /api/state`, `POST /api/config {mode?, …}`, `POST /api/reset` e `POST /update` (OTA) exigem `Authorization: Bearer <token>` (401 sem token válido). O gadget falso em `plugin/test/fakes/fake-device.js` é a referência executável deste contrato.
+- **mDNS:** serviço `_miblo._tcp` com TXT `id=<id>`, `name=<nome>`, `fw=<versão>`; responde a consultas com bit QU/porta de origem ≠ 5353 (unicast).
 - **Página de configuração** (`http://miblo-xxxx.local`): modo, brilho, alertas liga/desliga, durações (herói de permissão, herói de término, intervalo do lembrete), modo discreto, fuso horário, nome do aparelho, reset de fábrica, update de firmware.
 - **Renderizador:** desenha por regiões/sprites parciais (RAM livre ~80 KB < framebuffer de 115 KB); a tela só é redesenhada nas regiões que mudaram.
 - **AlertQueue:** fila de alertas, deduplicada pelo `id`, com âmbar antes de azul.
@@ -170,7 +171,7 @@ Estados: `idle`, `running`, `perm`, `question`, `done`.
 
 ### 5.3 Protocolo bridge → gadget
 
-`POST /api/state`, `Authorization: Bearer <token>`, corpo < 2 KB:
+`POST /api/state`, `Authorization: Bearer <token>`, corpo ≤ 3 KB (se exceder, o bridge move sessões do fim da lista para `more`):
 
 ```json
 {
@@ -257,5 +258,5 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 2. **Encadear a status line** — altera o `~/.claude/settings.json` do usuário. Mitigação: só com consentimento, comando original salvo, reversível com `/miblo unlink-statusline`. Se o usuário trocar a status line depois, o encadeamento se desfaz (o bridge detecta ausência de leituras e `/miblo status` avisa).
 3. **Anatel** — verificar se o GeekMagic tem homologação e se a revenda com firmware alterado mantém a conformidade.
 4. **Hardware** — pinos e comportamento do OTA da GeekMagic Ultra ainda não confirmados (etapa 0). Revisões futuras do hardware podem mudar o chip, então o firmware verifica o ID da flash e o modelo em `/api/info`.
-5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 2 KB do snapshot existem por isso.
+5. **RAM do ESP8266** — ~80 KB livres; o renderizador por regiões e o limite de 3 KB do snapshot existem por isso.
 6. **Fontes CJK/cirílico na flash** — o orçamento de 4 MB precisa acomodar 2× firmware (OTA) + LittleFS com fontes (~1 MB). Confirmar o tamanho da flash na etapa 0; se for 2 MB, a fonte chinesa dinâmica é reduzida às strings fixas e nomes de projeto em chinês mostram `□`.

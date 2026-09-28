@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import httpMod from 'node:http';
 import { startFakeDevice } from './fakes/fake-device.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
@@ -89,6 +90,60 @@ test('cost counts from zero only for sessions whose SessionStart the bridge saw'
     await http.post('/statusline', { session_id: 'new', cost: { total_cost_usd: 2 } });
     await http.post('/statusline', { session_id: 'old', cost: { total_cost_usd: 40 } });
     assert.deepEqual(bridge.metrics.today(), { usd: 2 });
+  } finally {
+    await http.stop();
+  }
+});
+
+function rawRequest(port, { method = 'GET', path: p = '/health', headers = {}, body } = {}) {
+  return new Promise((resolve, reject) => {
+    const req = httpMod.request({ host: '127.0.0.1', port, method, path: p, headers, setHost: false }, (res) => {
+      res.resume();
+      res.on('end', () => resolve(res.statusCode));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+test('rejects foreign Host, any Origin, and non-JSON POST bodies', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const bridge = createBridge({ dataDir, discoverFn: async () => [] });
+  const http = await started(bridge);
+  const port = bridge.server.address().port;
+  const json = { 'content-type': 'application/json' };
+  try {
+    assert.equal(await rawRequest(port, { headers: { host: `127.0.0.1:${port}` } }), 200);
+    assert.equal(await rawRequest(port, { headers: { host: `localhost:${port}` } }), 200);
+    assert.equal(await rawRequest(port, { headers: { host: `evil.example:${port}` } }), 403);
+    assert.equal(await rawRequest(port, { headers: { host: '127.0.0.1:1' } }), 403);
+    assert.equal(await rawRequest(port, { headers: {} }), 400); // node rejects HTTP/1.1 without Host
+    assert.equal(await rawRequest(port, { headers: { host: `127.0.0.1:${port}`, origin: 'https://evil.example' } }), 403);
+    const ev = JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' });
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, 'content-type': 'text/plain' }, body: ev }), 415);
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}` }, body: ev }), 415);
+    assert.equal(bridge.tracker.sessions().length, 0);
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, ...json, 'content-type': 'application/json; charset=utf-8' }, body: ev }), 200);
+    assert.equal(bridge.tracker.sessions().length, 1);
+  } finally {
+    await http.stop();
+  }
+});
+
+test('/health reports the version; POST /shutdown invokes the shutdown callback', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  let shutdowns = 0;
+  const bridge = createBridge({ dataDir, discoverFn: async () => [], version: '9.9.9', onShutdown: () => { shutdowns++; } });
+  const http = await started(bridge);
+  try {
+    assert.deepEqual(await (await fetch(http.base + '/health')).json(), { ok: true, app: 'miblo-bridge', version: '9.9.9' });
+    assert.equal((await fetch(http.base + '/shutdown', { method: 'POST' })).status, 415);
+    assert.equal(shutdowns, 0);
+    const r = await http.post('/shutdown', {});
+    assert.equal(r.status, 200);
+    await r.text();
+    await new Promise((res) => setTimeout(res, 20));
+    assert.equal(shutdowns, 1);
   } finally {
     await http.stop();
   }

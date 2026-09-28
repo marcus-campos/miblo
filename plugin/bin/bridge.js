@@ -2,7 +2,7 @@
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath } from '../lib/constants.js';
+import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion } from '../lib/constants.js';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
 import { buildSnapshot } from '../lib/snapshot-builder.js';
@@ -13,7 +13,7 @@ import { discover } from '../lib/mdns.js';
 import { createBridgeServer } from '../lib/bridge-server.js';
 import { isLinked, installTap } from '../lib/statusline-link.js';
 
-export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname() }) {
+export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {} }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now });
   const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now });
@@ -32,6 +32,8 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   };
 
   const server = createBridgeServer({
+    version,
+    onShutdown,
     onEvent(evt) {
       if (evt?.hook_event_name === 'SessionEnd') metrics.forget(evt.session_id);
       if (tracker.handle(evt)) schedule();
@@ -65,7 +67,15 @@ function main() {
   } catch {
     // the status line keeps working with the previous copy of the tap
   }
-  const bridge = createBridge({ dataDir });
+  const bridge = createBridge({
+    dataDir,
+    version: pluginVersion(),
+    onShutdown: () => {
+      bridge.server.close(() => process.exit(0));
+      bridge.server.closeIdleConnections?.();
+      setTimeout(() => process.exit(0), 1000).unref();
+    },
+  });
   bridge.server.on('error', (e) => process.exit(e.code === 'EADDRINUSE' ? 0 : 1));
   bridge.server.listen(PORT, HOST);
   setInterval(() => bridge.push().catch(() => {}), HEARTBEAT_MS);

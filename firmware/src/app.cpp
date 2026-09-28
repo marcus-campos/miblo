@@ -30,7 +30,7 @@ static ScreenId current = ScreenId::Boot;
 static bool firstFrame = true;
 static Lang drawnLang = Lang::En;
 static uint32_t lastFrameMs = 0;
-static miblo::Pager listPager(4, 5000);
+static miblo::Pager listPager(3, 5000);  // Overview: 3 session cards per page
 static miblo::Pager sessionPager(4, 5000);
 
 static void enter(ScreenId s) {

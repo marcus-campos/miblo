@@ -69,6 +69,10 @@ int TftCanvas::drawRun(int x, int y, const char* s, const char* end, ui::Font f,
     const int adv = glyphAdvance(f, cp, &fnt);
     if (fnt) {
       u8_.setFont(fnt);
+      // u8g2_SetFont() resets the font mode to opaque on every font change, which painted each
+      // glyph's box in the (black) background colour: keep it transparent so the text sits on
+      // whatever colour the region was cleared with.
+      u8_.setFontMode(1);
       u8_.setForegroundColor(fg);
       u8_.drawGlyph(x, y, (uint16_t)cp);
     } else {

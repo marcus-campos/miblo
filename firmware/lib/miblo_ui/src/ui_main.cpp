@@ -22,7 +22,11 @@ using ui::Font;
 namespace color = ui::color;
 
 // Regions (RegionCache ids) of the main screens.
-enum : uint8_t { R_HEADER = 0, R_LIMITS = 1, R_WEEK = 2, R_DIVIDER = 3, R_ROW0 = 4, R_BODY = 9, R_FOOT = 10 };
+enum : uint8_t {
+  R_HEADER = 0, R_LIMITS = 1, R_WEEK = 2, R_DIVIDER = 3, R_ROW0 = 4, R_BODY = 9, R_FOOT = 10, R_TIME0 = 11
+};
+// Session cards per page in the Overview (Working / Needs you).
+constexpr uint8_t kOverviewRows = 3;
 
 static ui::Canvas& C() { return canvas(); }
 static const char* const kDot = " \xC2\xB7 ";  // " · "
@@ -88,7 +92,7 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap) 
 void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs) {
   (void)lang;
   const bool amber = kind != AlertKind::Done;
-  const bool on = ((elapsedMs / 250) % 2) == 0;  // blinks every 250 ms
+  const bool on = ((elapsedMs / kFlashPhaseMs) % 2) == 0;
   const uint16_t bg = on ? (amber ? color::AMBER : color::FLASH_BLUE) : color::BG;
   const uint16_t fg = on ? (amber ? color::BLACK : color::WHITE) : (amber ? color::AMBER : color::BLUE);
   if (!region(R_BODY, hashStr(hashInt(hashInt(kHashSeed, amber), on), name), 0, 0, X(240), Y(240), bg)) return;
@@ -244,91 +248,194 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
   }
 }
 
-// One row of the compact list (Overview), with baseline y.
-static void listRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock& clk, bool discreet, int y) {
-  char line[160];
-  line[0] = 0;
-  if (r) {
-    if (isPending(r->st)) {
-      char tmp[24];
-      miblo::formatElapsed(since(*r, clk), tmp, sizeof(tmp));
-      snprintf(line, sizeof(line), t(lang, S::WaitingFor), tmp);
+// Compact limits strip (one row, baseline y): "5h ▓▓░ 30%   7d ▓░ 13%". Without usage data
+// (account without a subscription) it shows today's cost instead. Drawn in region `id`.
+static void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg) {
+  uint32_t hs = hashInt(hashInt(kHashSeed + 3, (uint32_t)lang), s.hasUsage);
+  hs = hashInt(hashInt(hs, s.h5.present ? s.h5.pct : 255), s.d7.present ? s.d7.pct : 255);
+  hs = hashInt(hashInt(hs, (uint32_t)(s.todayUsd * 100)), (uint32_t)top);
+  if (!region(id, hs, 0, top, X(240), h, bg)) return;
+  char buf[64];
+  if (!s.hasUsage) {
+    if (s.todayUsd > 0.0f) {
+      char usd[16];
+      miblo::formatUsd(s.todayUsd, usd, sizeof(usd));
+      snprintf(buf, sizeof(buf), t(lang, S::CostToday), usd);
+      C().text(X(10), y, buf, Font::SmallBold, color::TEXT, Align::Left, X(220));
     } else {
-      miblo::sessionLine(lang, *r, discreet, line, sizeof(line));
+      C().text(X(10), y, t(lang, S::LimitsUnavailable), Font::Small, color::DIM, Align::Left, X(220));
     }
+    return;
   }
-  const uint32_t h = r ? hashStr(hashStr(hashInt(kHashSeed, (uint32_t)r->st), r->name), line) : 7;
-  if (!region(R_ROW0 + slot, h, 0, y - Y(13), X(240), Y(18))) return;
-  if (!r) return;
-  const bool pending = isPending(r->st);
-  C().fillCircle(X(16), y - Y(4), Sz(3), stateColor(r->st));
-  C().text(X(26), y, r->name, Font::SmallBold, pending ? color::AMBER : color::TEXT, Align::Left, X(92));
-  C().text(X(124), y, line, Font::Small, pending ? color::AMBER : color::MUTED, Align::Left, X(104));
+  struct Win {
+    const char* label;
+    const miblo::UsageWindow* w;
+    uint16_t base;
+    int x;
+  };
+  const Win wins[2] = {{"5h", &s.h5, color::CORAL, X(10)}, {"7d", &s.d7, color::VIOLET, X(124)}};
+  const int barH = Y(5) < 2 ? 2 : Y(5);
+  for (const Win& win : wins) {
+    C().text(win.x, y, win.label, Font::Small, color::MUTED, Align::Left, X(20));
+    const bool present = win.w->present;
+    const uint8_t pct = present ? win.w->pct : 0;
+    bar(win.x + X(20), y - Y(8), X(48), barH, pct, levelColor(pct, win.base));
+    if (present) snprintf(buf, sizeof(buf), "%u%%", pct);
+    else snprintf(buf, sizeof(buf), "--");
+    C().text(win.x + X(72), y, buf, Font::SmallBold, present ? levelColor(pct, color::TEXT) : color::DIM, Align::Left,
+             X(34));
+  }
+}
+
+// Geometry of the session rows (Working / Needs you), in pixels.
+struct RowGeom {
+  int top;    // y of the first row
+  int pitch;  // row height (card + gap)
+  int l1;     // baseline of line 1, relative to the row top
+  int l2;     // baseline of line 2
+};
+
+// One session card of the Overview: line 1 = state dot + name + time in state (right);
+// line 2 = what it is doing (sessionLine: "Editing Header.tsx", "Bash · npm test", "finished").
+// The time lives in its own region (on the card colour) so the per-second tick doesn't
+// redraw the whole card.
+static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock& clk, bool discreet,
+                       const RowGeom& g) {
+  const int y0 = g.top + slot * g.pitch;
+  char line[160];
+  char timeStr[16];
+  line[0] = 0;
+  timeStr[0] = 0;
+  if (r) {
+    miblo::sessionLine(lang, *r, discreet, line, sizeof(line));
+    if (isPending(r->st) || r->st == SessionState::Running) miblo::formatElapsed(since(*r, clk), timeStr, sizeof(timeStr));
+    else miblo::formatAgo(since(*r, clk), timeStr, sizeof(timeStr));
+  }
+  const bool pending = r && isPending(r->st);
+  const uint16_t cardBg = r ? (pending ? color::CARD_AMBER : color::CARD) : color::BG;
+  uint32_t h = hashInt(hashInt(kHashSeed + 5, (uint32_t)g.top), (uint32_t)g.pitch);
+  if (r) h = hashStr(hashStr(hashInt(h, (uint32_t)r->st), r->name), line);
+  if (region(R_ROW0 + slot, h, 0, y0, X(240), g.pitch) && r) {
+    const uint16_t sc = stateColor(r->st);
+    C().fillRect(X(8), y0 + Y(2), X(224), g.pitch - Y(4), cardBg);
+    C().fillRect(X(8), y0 + Y(2), Sz(3), g.pitch - Y(4), sc);
+    C().fillCircle(X(20), y0 + g.l1 - Y(5), Sz(4), sc);
+    C().text(X(30), y0 + g.l1, r->name, Font::BodyBold, pending ? color::AMBER : color::TEXT, Align::Left, X(130));
+    C().text(X(16), y0 + g.l2, line, Font::Small, r->st == SessionState::Running ? color::MUTED : sc, Align::Left,
+             X(208));
+  }
+  // Time in state, right-aligned on line 1; its hash depends on the card's, so a redrawn card
+  // always gets its time back.
+  if (region(R_TIME0 + slot, hashStr(h, timeStr), X(164), y0 + g.l1 - Y(15), X(66), Y(20), cardBg) && r) {
+    C().text(X(226), y0 + g.l1, timeStr, Font::Small, pending ? color::AMBER : color::DIM, Align::Right, X(62));
+  }
 }
 
 // ---------------- Adaptive overview (§4.1) ----------------
+//   Needs you: amber band + compact limits strip + session cards (pending first).
+//   Working:   compact limits strip + session cards + footer (N running, page, clock).
+//   Idle:      big 5h/week limits + last finished session + today's cost.
+
+static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
+  char buf[128];
+  char tmp[48];
+  if (region(R_HEADER, hashStr(hashInt(kHashSeed + 7, (uint32_t)lang), clk.hhmm), 0, 0, X(240), Y(26))) {
+    check(X(17), Y(12), Sz(12), color::BLUE);
+    C().text(X(28), Y(18), t(lang, S::AllDone), Font::SmallBold, color::BLUE, Align::Left, X(150));
+    clockRight(clk, Y(18), color::DIM);
+  }
+  limitsBlock(lang, s, clk);
+  if (region(R_DIVIDER, 1, 0, Y(150), X(240), 2)) C().fillRect(X(12), Y(150), X(216), 1, color::DIVIDER);
+
+  // footer: most recently finished session + today's cost
+  const int y0 = Y(168);
+  const int y1 = Y(186);
+  const int last = miblo::lastFinished(s);
+  buf[0] = 0;
+  if (last >= 0) {
+    miblo::formatAgo(since(s.sessions[last], clk), tmp, sizeof(tmp));
+    snprintf(buf, sizeof(buf), t(lang, S::FinishedAgo), s.sessions[last].name, tmp);
+  }
+  if (region(R_ROW0, hashStr(kHashSeed, buf), 0, y0 - Y(13), X(240), Y(18))) {
+    C().text(X(12), y0, buf, Font::Small, color::MUTED, Align::Left, X(216));
+  }
+  buf[0] = 0;
+  if (s.todayUsd > 0.0f) {
+    miblo::formatUsd(s.todayUsd, tmp, sizeof(tmp));
+    snprintf(buf, sizeof(buf), t(lang, S::CostToday), tmp);
+  }
+  if (region(R_ROW0 + 1, hashStr(kHashSeed + 1, buf), 0, y1 - Y(13), X(240), Y(18))) {
+    C().text(X(12), y1, buf, Font::Small, color::DIM, Align::Left, X(216));
+  }
+}
 
 void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet) {
   const OverviewKind kind = miblo::classifyOverview(s);
+  // The three layouts tile the screen differently: switching layout clears everything.
+  static bool haveKind = false;
+  static OverviewKind lastKind = OverviewKind::Idle;
+  if (haveKind && kind != lastKind) reset();
+  haveKind = true;
+  lastKind = kind;
+  if (kind == OverviewKind::Idle) {
+    overviewIdle(lang, s, clk);
+    return;
+  }
+
   const miblo::StateCounts c = miblo::countStates(s);
   char buf[128];
   char tmp[48];
-
-  const int heroIdx = miblo::selectHero(s, false);
-  const char* heroName = heroIdx >= 0 ? s.sessions[heroIdx].name : "";
-  uint32_t h = hashInt(hashInt(hashInt(kHashSeed, (uint32_t)kind), c.pending), c.running);
-  h = hashStr(hashStr(hashInt(h, (uint32_t)lang), clk.hhmm), heroName);
-  if (region(R_HEADER, h, 0, 0, X(240), Y(26))) {
-    if (kind == OverviewKind::Attention) {  // fixed amber band: "1 WAITING · api-server"
+  RowGeom g;
+  if (kind == OverviewKind::Attention) {
+    const int heroIdx = miblo::selectHero(s, false);
+    const char* heroName = heroIdx >= 0 ? s.sessions[heroIdx].name : "";
+    const uint32_t h = hashInt(hashInt(kHashSeed + 11, c.pending), (uint32_t)lang);
+    if (region(R_HEADER, hashStr(hashStr(h, clk.hhmm), heroName), 0, 0, X(240), Y(24))) {
+      // fixed amber band: "1 WAITING · api-server"
       C().fillRect(0, 0, X(240), Y(22), color::AMBER);
       snprintf(tmp, sizeof(tmp), t(lang, S::NWaiting), (unsigned)c.pending);
       snprintf(buf, sizeof(buf), "%s%s%s", tmp, kDot, heroName);
       C().text(X(10), Y(16), buf, Font::SmallBold, color::BLACK, Align::Left, X(180));
       clockRight(clk, Y(16), color::BLACK);
-    } else if (kind == OverviewKind::Working) {
-      C().fillCircle(X(16), Y(13), Sz(4), color::GREEN);
-      snprintf(buf, sizeof(buf), t(lang, S::NRunning), (unsigned)c.running);
-      C().text(X(26), Y(18), buf, Font::SmallBold, color::GREEN, Align::Left, X(150));
-      clockRight(clk, Y(18), color::DIM);
-    } else {
-      check(X(17), Y(12), Sz(12), color::BLUE);
-      C().text(X(28), Y(18), t(lang, S::AllDone), Font::SmallBold, color::BLUE, Align::Left, X(150));
-      clockRight(clk, Y(18), color::DIM);
     }
+    compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);
+    g = {Y(46), Y(52), Y(20), Y(40)};
+  } else {
+    compactLimits(R_HEADER, lang, s, 0, Y(26), Y(17), color::BG);
+    g = {Y(26), Y(58), Y(24), Y(46)};
   }
 
-  limitsBlock(lang, s, clk);
-  if (region(R_DIVIDER, 1, 0, Y(150), X(240), 2)) C().fillRect(X(12), Y(150), X(216), 1, color::DIVIDER);
-
-  const int ys[4] = {Y(168), Y(186), Y(204), Y(222)};
-  if (kind == OverviewKind::Idle) {
-    // footer: most recently finished session + today's cost
-    const int last = miblo::lastFinished(s);
-    buf[0] = 0;
-    if (last >= 0) {
-      miblo::formatAgo(since(s.sessions[last], clk), tmp, sizeof(tmp));
-      snprintf(buf, sizeof(buf), t(lang, S::FinishedAgo), s.sessions[last].name, tmp);
-    }
-    if (region(R_ROW0, hashStr(kHashSeed, buf), 0, ys[0] - Y(13), X(240), Y(18))) {
-      C().text(X(12), ys[0], buf, Font::Small, color::MUTED, Align::Left, X(216));
-    }
-    buf[0] = 0;
-    if (s.todayUsd > 0.0f) {
-      miblo::formatUsd(s.todayUsd, tmp, sizeof(tmp));
-      snprintf(buf, sizeof(buf), t(lang, S::CostToday), tmp);
-    }
-    if (region(R_ROW0 + 1, hashStr(kHashSeed + 1, buf), 0, ys[1] - Y(13), X(240), Y(18))) {
-      C().text(X(12), ys[1], buf, Font::Small, color::DIM, Align::Left, X(216));
-    }
-    (void)region(R_ROW0 + 2, 0, 0, ys[2] - Y(13), X(240), Y(18));  // clears leftover list rows
-    (void)region(R_ROW0 + 3, 0, 0, ys[3] - Y(13), X(240), Y(18));
-    return;
-  }
-
+  const uint8_t per = pager.perPage() < kOverviewRows ? pager.perPage() : kOverviewRows;
   const uint8_t page = pager.update(s.count, nowMs);
-  for (uint8_t i = 0; i < 4; i++) {
-    const int idx = page * pager.perPage() + i;
-    listRow(i, lang, idx < s.count ? &s.sessions[idx] : nullptr, clk, discreet, ys[i]);
+  const uint8_t pages = pager.pageCount(s.count);
+  for (uint8_t i = 0; i < kOverviewRows; i++) {
+    const int idx = page * per + i;
+    sessionRow(i, lang, i < per && idx < s.count ? &s.sessions[idx] : nullptr, clk, discreet, g);
+  }
+
+  // footer: "2 RUNNING · 1/2 · +3" + clock (the clock is in the amber band when something waits)
+  const bool working = kind == OverviewKind::Working;
+  const int footTop = g.top + kOverviewRows * g.pitch;
+  const int fy = footTop + (Y(240) - footTop) / 2 + Y(5);
+  buf[0] = 0;
+  if (working) snprintf(buf, sizeof(buf), t(lang, S::NRunning), (unsigned)c.running);
+  if (pages > 1) {
+    snprintf(tmp, sizeof(tmp), "%s%u/%u", buf[0] ? kDot : "", (unsigned)page + 1, (unsigned)pages);
+    strncat(buf, tmp, sizeof(buf) - strlen(buf) - 1);
+  }
+  if (s.more) {
+    snprintf(tmp, sizeof(tmp), "%s+%u", buf[0] ? kDot : "", (unsigned)s.more);
+    strncat(buf, tmp, sizeof(buf) - strlen(buf) - 1);
+  }
+  if (region(R_FOOT, hashStr(hashStr(hashInt(kHashSeed + 13, working), buf), working ? clk.hhmm : ""), 0, footTop,
+             X(240), Y(240) - footTop)) {
+    int x = X(12);
+    if (working) {
+      C().fillCircle(X(16), fy - Y(5), Sz(4), color::GREEN);
+      x = X(26);
+    }
+    C().text(x, fy, buf, Font::SmallBold, working ? color::GREEN : color::DIM, Align::Left, X(150));
+    if (working) clockRight(clk, fy, color::DIM);
   }
 }
 

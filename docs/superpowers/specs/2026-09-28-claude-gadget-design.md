@@ -221,7 +221,7 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 - **Vários gadgets** → a lista mostra todos; o código identifica qual.
 - **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/miblo status`.
 - **Roteador fora do ar** → o gadget mantém as credenciais; após 2 min sem conexão, abre a rede de setup **e continua tentando** a rede salva.
-- **Reset de fábrica** → só por comando explícito: pela página do gadget (confirmado com o código de 4 dígitos mostrado na tela) ou por `/miblo reset` (token do pareamento). Quedas de energia nunca apagam nada — Wi-Fi, pareamento e configurações ficam na flash. Trocar de roteador não exige reset: após 2 min sem conexão o gadget abre a rede de setup.
+- **Reset de fábrica** → (a) pela página do gadget, confirmado com o código de 4 dígitos mostrado na tela; (b) por `/miblo reset` (token do pareamento); (c) **hard reset estilo AirTag**: 6 boots rápidos seguidos (cada um desligado antes de 10 s de uptime; o contador zera após 10 s ligado). A partir do 3º boot rápido a tela mostra "Mais N reinícios rápidos para resetar · deixe ligado para cancelar" (N = 3, 2, 1); no 6º, reset de fábrica e tela de setup. Só contam boots por energia (`REASON_DEFAULT_RST`/`REASON_EXT_SYS_RST`) — crash, watchdog, OTA e reinício por software não contam. Quedas de energia comuns não apagam nada: Wi-Fi, pareamento e configurações ficam na flash; trocar de roteador não exige reset (após 2 min sem conexão o gadget abre a rede de setup).
 
 ## 7. Tratamento de erros
 

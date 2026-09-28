@@ -24,10 +24,13 @@ static bool authorized() {
 }
 
 static void handleInfo() {
-  StaticJsonDocument<384> doc;
+  // 15 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
+  // ESP8266; 768 leaves room for future caps.
+  StaticJsonDocument<768> doc;
   doc["id"] = ctx.ident.id;
   doc["name"] = deviceName();
   doc["fw"] = MIBLO_FW_VERSION;
+  doc["build"] = MIBLO_BUILD;
   doc["proto"] = MIBLO_PROTO;
   doc["paired"] = ctx.tokens.count() > 0;
   doc["board"] = board::kName;
@@ -39,6 +42,11 @@ static void handleInfo() {
   char flash[12];
   snprintf(flash, sizeof(flash), "%06x", (unsigned)flashChipId());
   doc["flash"] = flash;
+  // Diagnostics (field reports): free heap, largest allocatable block, last reset, uptime (s).
+  doc["heap"] = freeHeap();
+  doc["maxBlock"] = maxFreeBlock();
+  doc["reset"] = resetReason();
+  doc["uptime"] = millis() / 1000;
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

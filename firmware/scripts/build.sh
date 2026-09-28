@@ -32,6 +32,14 @@ if [ -z "$VERSION" ]; then
   exit 1
 fi
 
+# Build identity: the git short hash, shown on the boot screen and in GET /api/info ("build").
+# Without git (e.g. a source tarball) the firmware falls back to "dev" (include/miblo_version.h).
+SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || true)"
+if [ -n "$SHA" ]; then
+  export PLATFORMIO_BUILD_FLAGS="${PLATFORMIO_BUILD_FLAGS:-} -D MIBLO_BUILD=\\\"$SHA\\\""
+  echo "Build: $SHA"
+fi
+
 cd "$ROOT"
 "$PIO" test -e native
 "$PIO" run -e "$BOARD"

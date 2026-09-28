@@ -29,8 +29,8 @@ void boot(Lang lang, uint8_t frame) {
   }
   // Controller-requested: firmware version, small and muted, near the bottom.
   if (region(2, hashInt(kHashSeed, 2u), 0, Y(224), X(240), Y(16))) {
-    char ver[16];
-    snprintf(ver, sizeof(ver), "v%s", MIBLO_FW_VERSION);
+    char ver[40];
+    snprintf(ver, sizeof(ver), "v%s (%s)", MIBLO_FW_VERSION, MIBLO_BUILD);
     C().text(X(120), Y(236), ver, Font::Small, color::FAINT, Align::Center, X(232));
   }
 }

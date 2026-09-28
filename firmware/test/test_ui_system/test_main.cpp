@@ -104,7 +104,7 @@ static void test_boot_shows_firmware_version() {
   screens::reset();
   fc.clearLog();
   screens::boot(Lang::En, 1);
-  TEST_ASSERT_TRUE(fc.drew(MIBLO_FW_VERSION));
+  TEST_ASSERT_TRUE(fc.drew("v" MIBLO_FW_VERSION " (" MIBLO_BUILD ")"));
 }
 
 int main() {

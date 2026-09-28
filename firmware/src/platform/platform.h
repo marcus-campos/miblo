@@ -12,6 +12,9 @@ using WebServerT = ESP8266WebServer;
 inline uint32_t hwRandom() { return RANDOM_REG32; }  // gerador de hardware
 inline uint32_t chipId() { return ESP.getChipId(); }
 inline uint32_t flashChipId() { return ESP.getFlashChipId(); }
+inline uint32_t freeHeap() { return ESP.getFreeHeap(); }
+inline uint32_t maxFreeBlock() { return ESP.getMaxFreeBlockSize(); }
+inline String resetReason() { return ESP.getResetReason(); }
 #elif defined(ESP32)
 #include <LittleFS.h>
 #include <Update.h>
@@ -21,6 +24,9 @@ using WebServerT = WebServer;
 inline uint32_t hwRandom() { return esp_random(); }
 inline uint32_t chipId() { return (uint32_t)ESP.getEfuseMac(); }
 inline uint32_t flashChipId() { return ESP.getFlashChipSize(); }
+inline uint32_t freeHeap() { return ESP.getFreeHeap(); }
+inline uint32_t maxFreeBlock() { return ESP.getMaxAllocHeap(); }
+inline String resetReason() { return String((int)esp_reset_reason()); }
 #else
 #error "Miblo: plataforma não suportada (use ESP8266 ou ESP32)"
 #endif

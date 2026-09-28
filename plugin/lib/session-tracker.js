@@ -1,7 +1,8 @@
 import { describeTool } from './describe-tool.js';
 import { ALERT_TTL_MS, SESSION_TTL_MS, WORKER_TTL_MS } from './constants.js';
 
-const PRIORITY = { perm: 0, question: 1, done: 2, running: 3, idle: 4 };
+// Display order: waiting on the user, then still working, then finished, then idle.
+const PRIORITY = { perm: 0, question: 1, running: 2, done: 3, idle: 4 };
 const ALERTING = new Set(['perm', 'question', 'done']);
 // background_tasks entries are documented as in flight; drop any finished one defensively.
 const FINISHED = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled']);

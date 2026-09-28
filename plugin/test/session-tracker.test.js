@@ -112,6 +112,7 @@ test('since is the time the state was entered', () => {
   assert.equal(tracker.sessions()[0].since, t0 + 5000);
 });
 
+// Waiting on the user (permission, question), then still working, then finished, then idle.
 test('sessions are ordered by priority then since', () => {
   const { tracker, clock, ev } = setup();
   ev('a', 'SessionStart');
@@ -125,7 +126,7 @@ test('sessions are ordered by priority then since', () => {
   ev('e', 'PermissionRequest', { tool_name: 'Bash', tool_input: {} });
   clock.advance(1);
   ev('f', 'PermissionRequest', { tool_name: 'Bash', tool_input: {} });
-  assert.deepEqual(tracker.sessions().map((s) => s.id), ['e', 'f', 'd', 'c', 'b', 'a']);
+  assert.deepEqual(tracker.sessions().map((s) => s.id), ['e', 'f', 'd', 'b', 'c', 'a']);
 });
 
 test('SessionEnd removes the session', () => {

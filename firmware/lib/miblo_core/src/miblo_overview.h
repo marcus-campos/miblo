@@ -16,7 +16,8 @@ struct StateCounts {
   uint8_t idle;
 };
 
-// perm 0, question 1, done 2, running 3, idle 4 (same order as the bridge).
+// Hero priority: perm 0, question 1, done 2, running 3, idle 4. (The bridge sends the sessions
+// already in display order: waiting on the user, running, finished, idle.)
 uint8_t stateRank(SessionState st);
 StateCounts countStates(const Snapshot& s);
 // Attention if there's a pending item; Working if a session is running; otherwise Idle.

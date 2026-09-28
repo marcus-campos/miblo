@@ -123,7 +123,9 @@ void pageEnd(String& out) { out += F("</body></html>"); }
 
 static void langOptions(String& out, Lang selected, bool withAuto) {
   if (withAuto) {
-    out += F("<option value=\"\">Auto</option>");
+    out += F("<option value=\"\">");
+    appendEscaped(out, tr(selected, S::WebAuto).c_str());
+    out += F("</option>");
   }
   for (int i = 0; i < (int)Lang::Count; i++) {
     out += F("<option value=\"");

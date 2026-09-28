@@ -25,7 +25,7 @@ static bool authorized() {
 }
 
 static void handleInfo() {
-  // 17 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
+  // 19 top-level members + screen{2} + caps + copied strings (flash, reset): ~450 B on the
   // ESP8266; 768 leaves room for future caps.
   StaticJsonDocument<768> doc;
   doc["id"] = ctx.ident.id;
@@ -35,6 +35,8 @@ static void handleInfo() {
   doc["proto"] = MIBLO_PROTO;
   doc["paired"] = ctx.tokens.count() > 0;
   doc["board"] = board::kName;
+  doc["lang"] = miblo::langCode(uiLang());  // the language the screen is drawn in
+  doc["langSet"] = ctx.cfg.langSet;          // false = automatic (follows the last browser)
   JsonObject screen = doc.createNestedObject("screen");
   screen["w"] = board::kScreen.w;
   screen["h"] = board::kScreen.h;

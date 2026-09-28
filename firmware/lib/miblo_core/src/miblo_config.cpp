@@ -100,6 +100,17 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["lang"] = cfg.langSet ? langCode(cfg.lang) : "";
 }
 
+void configToStored(const Config& cfg, JsonObject out) {
+  configToJson(cfg, out);
+  if (!cfg.langSet) out["langAuto"] = langCode(cfg.lang);
+}
+
+void restoreStoredLang(Config& cfg, JsonObjectConst stored) {
+  if (cfg.langSet) return;
+  Lang l;
+  if (langFromCode(stored["langAuto"] | "", l)) cfg.lang = l;
+}
+
 AlertTiming alertTiming(const Config& cfg) {
   AlertTiming t;
   t.enabled = cfg.alerts;

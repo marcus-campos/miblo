@@ -114,6 +114,13 @@ enum class S : uint8_t {
   ErrorCode,            // setup screen hint under JoinFailed: "Error code %u"
   WebRefused,           // portal: wrong password or WPA3/"WPA2/WPA3" router
   WebFailedCode,        // portal: "Could not connect (code %u). ..."
+  WaitAgent1,           // activity of a Stop waiting on background work: "Waiting on %u agent"
+  WaitAgentsN,          // "Waiting on %u agents"
+  WaitTask1,            // "Waiting on %u task"
+  WaitTasksN,           // "Waiting on %u tasks"
+  Short5h,              // compact limits strip label for the 5-hour window ("5h")
+  Short7d,              // compact limits strip label for the weekly window ("7d")
+  WebAuto,              // settings page: automatic language option ("Auto")
   Count
 };
 

@@ -77,6 +77,56 @@ static void test_config_json_roundtrip() {
   TEST_ASSERT_EQUAL_STRING("X", b.name);
 }
 
+// What loadConfig/saveConfig do (src/platform/storage.cpp): the flash round-trip must keep the
+// screen language, explicit or automatic (the negotiated one), across a reboot.
+static Config storedRoundTrip(const Config& a) {
+  StaticJsonDocument<1024> doc;
+  configToStored(a, doc.to<JsonObject>());
+  char text[1024];
+  serializeJson(doc, text, sizeof(text));
+  StaticJsonDocument<1024> in;
+  TEST_ASSERT_FALSE(deserializeJson(in, text));
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, in.as<JsonObjectConst>(), nullptr));
+  restoreStoredLang(b, in.as<JsonObjectConst>());
+  return b;
+}
+
+static void test_language_survives_reboot() {
+  Config explicitLang;
+  TEST_ASSERT_TRUE(patch(explicitLang, "{\"lang\":\"pt-BR\"}"));
+  Config b = storedRoundTrip(explicitLang);
+  TEST_ASSERT_TRUE(b.langSet);
+  TEST_ASSERT_EQUAL(Lang::PtBR, b.lang);
+
+  // Automatic mode: the language negotiated from the browser (web.cpp pageLang) was lost on
+  // reboot (configToJson writes "lang":"" then) and the screen fell back to English.
+  Config autoLang;
+  autoLang.lang = Lang::PtBR;
+  b = storedRoundTrip(autoLang);
+  TEST_ASSERT_FALSE(b.langSet);
+  TEST_ASSERT_EQUAL(Lang::PtBR, b.lang);
+
+  // The API/page view is unchanged: automatic mode still reads as "".
+  StaticJsonDocument<512> doc;
+  configToJson(autoLang, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING("", doc["lang"]);
+  TEST_ASSERT_TRUE(doc["langAuto"].isNull());
+
+  // Explicit wins over a stale langAuto; a bad langAuto is ignored.
+  StaticJsonDocument<256> in;
+  deserializeJson(in, "{\"lang\":\"de\",\"langAuto\":\"fr\"}");
+  Config c;
+  TEST_ASSERT_TRUE(applyConfigPatch(c, in.as<JsonObjectConst>(), nullptr));
+  restoreStoredLang(c, in.as<JsonObjectConst>());
+  TEST_ASSERT_EQUAL(Lang::De, c.lang);
+  deserializeJson(in, "{\"lang\":\"\",\"langAuto\":\"xx\"}");
+  Config d;
+  TEST_ASSERT_TRUE(applyConfigPatch(d, in.as<JsonObjectConst>(), nullptr));
+  restoreStoredLang(d, in.as<JsonObjectConst>());
+  TEST_ASSERT_EQUAL(Lang::En, d.lang);
+}
+
 static void test_power_cycle_reset_counter() {
   // Five quick power-on boots: no reset; countdown 3, 2, 1 on boots 3, 4 and 5.
   const uint8_t expectedRemaining[] = {0, 0, 3, 2, 1};
@@ -348,6 +398,7 @@ int main() {
   RUN_TEST(test_patch_applies_valid_fields_and_ignores_unknown);
   RUN_TEST(test_invalid_patch_changes_nothing);
   RUN_TEST(test_config_json_roundtrip);
+  RUN_TEST(test_language_survives_reboot);
   RUN_TEST(test_power_cycle_reset_counter);
   RUN_TEST(test_non_power_on_boot_keeps_sequence);
   RUN_TEST(test_crash_between_quick_power_ons_does_not_break_sequence);

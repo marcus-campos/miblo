@@ -290,7 +290,8 @@ static void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int
     uint16_t base;
     int x;
   };
-  const Win wins[2] = {{"5h", &s.h5, color::CORAL, X(10)}, {"7d", &s.d7, color::VIOLET, X(124)}};
+  const Win wins[2] = {{t(lang, S::Short5h), &s.h5, color::CORAL, X(10)},
+                       {t(lang, S::Short7d), &s.d7, color::VIOLET, X(124)}};
   const int barH = Y(5) < 2 ? 2 : Y(5);
   for (const Win& win : wins) {
     C().text(win.x, y, win.label, Font::Small, color::MUTED, Align::Left, X(20));

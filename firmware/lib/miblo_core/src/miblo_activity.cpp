@@ -1,6 +1,7 @@
 #include "miblo_activity.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace miblo {
@@ -25,10 +26,59 @@ bool toolVerb(const char* tool, S& out) {
   return false;
 }
 
+// Parses an unsigned count that is the whole string ("5"). False on anything else.
+static bool parseCount(const char* s, unsigned& out) {
+  if (!s || *s < '0' || *s > '9') return false;
+  char* end = nullptr;
+  const unsigned long v = strtoul(s, &end, 10);
+  if (*end || v > 9999) return false;
+  out = (unsigned)v;
+  return true;
+}
+
+bool backgroundWait(const char* tool, const char* det, bool& agents, unsigned& count) {
+  if (!tool) return false;
+  if (strcmp(tool, kWaitAgents) == 0 || strcmp(tool, kWaitTasks) == 0) {
+    agents = strcmp(tool, kWaitAgents) == 0;
+    if (!parseCount(det, count)) count = 0;
+    return true;
+  }
+  // Plugins before 0.2.3 sent tool "Agent" + det "waiting 2 agents" / "waiting 1 task".
+  if (strcmp(tool, "Agent") != 0 || !det || strncmp(det, "waiting ", 8) != 0) return false;
+  char num[8];
+  const char* p = det + 8;
+  size_t n = 0;
+  while (p[n] >= '0' && p[n] <= '9' && n < sizeof(num) - 1) {
+    num[n] = p[n];
+    n++;
+  }
+  num[n] = 0;
+  if (n == 0 || !parseCount(num, count) || p[n] != ' ') return false;
+  const char* word = p + n + 1;
+  if (strcmp(word, "agent") == 0 || strcmp(word, "agents") == 0) agents = true;
+  else if (strcmp(word, "task") == 0 || strcmp(word, "tasks") == 0) agents = false;
+  else return false;
+  return true;
+}
+
 void activityText(Lang lang, const char* tool, const char* det, bool discreet, char* out, size_t cap) {
   const bool hasDet = !discreet && det && det[0];
   if (!tool || !tool[0]) {
     tr(lang, S::VerbWorking, out, cap);
+    return;
+  }
+  bool agents = true;
+  unsigned count = 0;
+  if (backgroundWait(tool, det, agents, count)) {
+    // The count is not a secret (no file or command): shown in discreet mode too.
+    if (count == 0) {
+      tr(lang, S::VerbAgent, out, cap);
+      return;
+    }
+    char fmt[64];
+    tr(lang, agents ? (count == 1 ? S::WaitAgent1 : S::WaitAgentsN) : (count == 1 ? S::WaitTask1 : S::WaitTasksN),
+       fmt, sizeof(fmt));
+    snprintf(out, cap, fmt, count);
     return;
   }
   S verb;

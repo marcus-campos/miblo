@@ -10,7 +10,17 @@ namespace miblo {
 // (the tool name is shown as-is).
 bool toolVerb(const char* tool, S& out);
 
+// Reserved activity tools the plugin sends while a Stop waits on background work; det = the
+// count ("2"). Localized on the device ("Aguardando 2 agentes").
+constexpr const char* kWaitAgents = "_wait_agents";
+constexpr const char* kWaitTasks = "_wait_tasks";
+
+// True if tool/det describe a background wait: the structured form above, or the English one of
+// older plugins (tool "Agent", det "waiting 2 agents" / "waiting 1 task"). count 0 = unknown.
+bool backgroundWait(const char* tool, const char* det, bool& agents, unsigned& count);
+
 // Activity text for a running session:
+//   background wait → "Waiting on 2 agents" (localized)
 //   known verb → "Editing Header.tsx" (or just "Editing" without det / in discreet mode)
 //   other      → "Bash · npm test"    (or just "Bash")
 //   no tool    → "Working"

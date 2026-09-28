@@ -70,9 +70,11 @@ export async function run(argv, deps) {
         if (!info.id) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
         const token = await client.pair(addr, code, hostname);
         store.upsert({ id: info.id, name: info.name, addr, token });
-        if (!info.lang) {
-          // Best-effort: the device reported no explicit language, so seed it from the
-          // host's locale. Never let this fail the pair itself.
+        if (info.langSet !== true) {
+          // Best-effort: the language was never chosen explicitly (automatic mode, or a
+          // firmware before 0.2.3 that does not report it), so seed it from the host's
+          // locale. A language picked on the settings page is never overwritten. Never let
+          // this fail the pair itself.
           const lang = mapLocaleToLang(locale);
           if (lang) {
             try { await client.setConfig(addr, token, { lang }); } catch { /* best-effort */ }

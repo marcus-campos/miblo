@@ -562,6 +562,191 @@ static void test_flash_text_on_phase_background() {
   }
 }
 
+// English words that must never reach a pt-BR screen (whole words, ASCII-case-insensitive).
+// Legit Latin text on the screens: tool names (Bash), file names, "Miblo", "Wi-Fi", "Opus",
+// "ctx"/"tok" (Claude Code jargon), the time units "m"/"h"/"d" and the URL.
+static const char* const kEnglishOnly[] = {
+    "running", "sessions", "session", "waiting", "wait", "agent", "agents", "task", "tasks", "finished",
+    "idle", "week", "limits", "limit", "today", "done", "needs", "you", "all", "asked", "permission",
+    "question", "resets", "reset", "in", "editing", "reading", "searching", "fetching", "working",
+    "cost", "unavailable", "took", "ago", "no", "connecting", "connected", "disconnected", "updating",
+    "unplug", "pairing", "paired", "code", "expires", "scan", "phone", "join", "network", "wrong",
+    "password", "for", "the", "computer", "overview", "left", "restarts", "leave", "cancel", "error",
+    "could", "not", "found", "refused", "and", "on", "of", "to",
+};
+
+static std::string lower(const std::string& w) {
+  std::string o = w;
+  for (auto& c : o) if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  return o;
+}
+
+// First denylisted word in `text`, or "". Words are runs of ASCII letters/digits; a run touching
+// a non-ASCII byte is part of a localized word ("SESSÕES" → "SESS", skipped).
+static std::string englishWord(const std::string& text) {
+  size_t i = 0;
+  while (i < text.size()) {
+    auto alnum = [&](size_t k) {
+      const char c = text[k];
+      return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9');
+    };
+    if (!alnum(i)) {
+      i++;
+      continue;
+    }
+    size_t j = i;
+    while (j < text.size() && alnum(j)) j++;
+    const bool glued = (i > 0 && (unsigned char)text[i - 1] >= 0x80) ||
+                       (j < text.size() && (unsigned char)text[j] >= 0x80);
+    const std::string w = lower(text.substr(i, j - i));
+    if (!glued) {
+      for (const char* bad : kEnglishOnly) {
+        if (w == bad) return text.substr(i, j - i);
+      }
+    }
+    i = j;
+  }
+  return "";
+}
+
+// Every screen, in pt-BR, with states that exercise every string (background waits from both
+// plugin generations, "+N more", no usage data, pages, alerts): no English word may be drawn.
+static void test_pt_br_screens_have_no_english() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  const Lang L = Lang::PtBR;
+  const screens::Clock clk = testClock();
+  RunTracker runs;
+  auto check = [&](const char* what) {
+    for (const auto& t : fc.texts) {
+      const std::string w = englishWord(t);
+      if (!w.empty()) {
+        char msg[256];
+        snprintf(msg, sizeof(msg), "%s: English \"%s\" in \"%s\"", what, w.c_str(), t.c_str());
+        TEST_FAIL_MESSAGE(msg);
+      }
+    }
+    fc.clearLog();
+  };
+  // sanity: the checker catches the bug this test guards against
+  TEST_ASSERT_EQUAL_STRING("waiting", englishWord("Agente waiting 5 tasks").c_str());
+  TEST_ASSERT_EQUAL_STRING("", englishWord("SESSÕES · 3").c_str());
+
+  auto withWaits = [&]() {
+    working();
+    session("77777777", "bg-new", SessionState::Running, "_wait_tasks", "5", 30);
+    session("88888888", "bg-old", SessionState::Running, "Agent", "waiting 2 agents", 40);
+    snap.more = 3;
+    // background waits on the first page
+    SessionRow tmp = snap.sessions[0];
+    snap.sessions[0] = snap.sessions[4];
+    snap.sessions[4] = tmp;
+    tmp = snap.sessions[1];
+    snap.sessions[1] = snap.sessions[5];
+    snap.sessions[5] = tmp;
+  };
+  for (int page = 0; page < 3; page++) {
+    Pager pager(3, 5000);
+    withWaits();
+    screens::reset();
+    screens::overview(L, snap, pager, (uint32_t)page * 5000, clk, false);
+    if (page == 0) {
+      TEST_ASSERT_TRUE(fc.drew("Aguardando 5 tarefas"));
+      TEST_ASSERT_TRUE(fc.drew("Aguardando 2 agentes"));
+    }
+    check("overview working");
+    screens::reset();
+    screens::sessions(L, snap, pager, (uint32_t)page * 5000, clk, false);
+    check("sessions");
+    screens::reset();
+    screens::sessions(L, snap, pager, (uint32_t)page * 5000, clk, true);
+    check("sessions discreet");
+    attention();
+    snap.more = 2;
+    screens::reset();
+    screens::overview(L, snap, pager, (uint32_t)page * 5000, clk, false);
+    check("overview attention");
+  }
+  Pager pager(3, 5000);
+  idle();
+  screens::reset();
+  screens::overview(L, snap, pager, 0, clk, false);
+  check("overview idle");
+  screens::reset();
+  screens::limits(L, snap, clk);
+  check("limits");
+  for (float usd : {0.0f, 2.5f}) {
+    idle();
+    snap.hasUsage = false;
+    snap.todayUsd = usd;
+    screens::reset();
+    screens::overview(L, snap, pager, 0, clk, false);
+    check("overview idle, no usage");
+    screens::reset();
+    screens::limits(L, snap, clk);
+    check("limits, no usage");
+    withWaits();
+    snap.hasUsage = false;
+    snap.todayUsd = usd;
+    screens::reset();
+    screens::overview(L, snap, pager, 0, clk, false);
+    check("overview working, no usage");
+  }
+  memset(&snap, 0, sizeof(snap));
+  screens::reset();
+  screens::sessions(L, snap, pager, 0, clk, false);
+  check("sessions empty");
+
+  attention();
+  for (AlertKind k : {AlertKind::Perm, AlertKind::Question, AlertKind::Done}) {
+    screens::reset();
+    screens::flash(L, k, "api-server", 0);
+    check("flash");
+  }
+  screens::reset();
+  screens::hero(L, snap, 0, AlertKind::Perm, false, clk, runs);
+  check("hero perm");
+  screens::reset();
+  screens::hero(L, snap, 1, AlertKind::Question, false, clk, runs);
+  check("hero question");
+  runs.observe(snap);
+  idle();
+  runs.observe(snap);
+  screens::reset();
+  screens::hero(L, snap, 0, AlertKind::Done, false, clk, runs);
+  check("hero done");
+
+  screens::reset();
+  screens::boot(L, 1);
+  check("boot");
+  for (auto note : {screens::SetupNote::None, screens::SetupNote::WrongPassword, screens::SetupNote::NotFound,
+                    screens::SetupNote::Refused, screens::SetupNote::Failed}) {
+    screens::reset();
+    screens::setup(L, "Miblo-Setup-4F2A", note, 204);
+    check("setup");
+  }
+  screens::reset();
+  screens::welcome(L, "4827", "192.168.0.42");
+  check("welcome");
+  screens::reset();
+  screens::paired(L, "MacBook", screens::t(L, S::ModeOverview), "miblo-4f2a");
+  check("paired");
+  for (S title : {S::PairingCode, S::CodeUpdate, S::CodeReset}) {
+    screens::reset();
+    screens::code(L, title, "1234", 299);
+    check("code");
+  }
+  screens::reset();
+  screens::updating(L, 42);
+  check("updating");
+  screens::reset();
+  screens::hardResetCountdown(L, 3);
+  check("hard reset");
+  screens::reset();
+  screens::disconnected(L, true, 14, 32, 1, 28, "192.168.0.42", "miblo-4f2a", "4827");
+  check("disconnected");
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_main_screens_fit_any_resolution);
@@ -579,5 +764,6 @@ int main() {
   RUN_TEST(test_sessions_mode_is_legible);
   RUN_TEST(test_ticks_update_in_place);
   RUN_TEST(test_paging_uses_layer);
+  RUN_TEST(test_pt_br_screens_have_no_english);
   return UNITY_END();
 }

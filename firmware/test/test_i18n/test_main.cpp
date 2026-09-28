@@ -130,6 +130,28 @@ static void test_activity_text() {
   TEST_ASSERT_EQUAL_STRING("工作中", act(Lang::Zh, nullptr, nullptr).c_str());
 }
 
+static void test_background_wait_is_localized() {
+  // Structured form (plugin >= 0.2.3): tool "_wait_agents" / "_wait_tasks", det = count.
+  TEST_ASSERT_EQUAL_STRING("Aguardando 5 tarefas", act(Lang::PtBR, "_wait_tasks", "5").c_str());
+  TEST_ASSERT_EQUAL_STRING("Aguardando 2 agentes", act(Lang::PtBR, "_wait_agents", "2").c_str());
+  TEST_ASSERT_EQUAL_STRING("Aguardando 1 agente", act(Lang::PtBR, "_wait_agents", "1").c_str());
+  TEST_ASSERT_EQUAL_STRING("Waiting on 1 task", act(Lang::En, "_wait_tasks", "1").c_str());
+  TEST_ASSERT_EQUAL_STRING("Wartet auf 3 Agenten", act(Lang::De, "_wait_agents", "3").c_str());
+  TEST_ASSERT_EQUAL_STRING("等待 4 个任务", act(Lang::Zh, "_wait_tasks", "4").c_str());
+  // the count is not sensitive: shown in discreet mode too
+  TEST_ASSERT_EQUAL_STRING("Aguardando 2 agentes", act(Lang::PtBR, "_wait_agents", "2", true).c_str());
+  // no/garbled count: just the localized agent word, never the raw tool id
+  TEST_ASSERT_EQUAL_STRING("Agente", act(Lang::PtBR, "_wait_agents", "").c_str());
+  TEST_ASSERT_EQUAL_STRING("Agente", act(Lang::PtBR, "_wait_tasks", "x9").c_str());
+  // Older plugins: tool "Agent" + English det.
+  TEST_ASSERT_EQUAL_STRING("Aguardando 5 tarefas", act(Lang::PtBR, "Agent", "waiting 5 tasks").c_str());
+  TEST_ASSERT_EQUAL_STRING("Aguardando 1 agente", act(Lang::PtBR, "Agent", "waiting 1 agent").c_str());
+  TEST_ASSERT_EQUAL_STRING("Esperando 12 agentes", act(Lang::Es, "Agent", "waiting 12 agents").c_str());
+  // anything else from "Agent" stays a normal activity
+  TEST_ASSERT_EQUAL_STRING("Agente waiting for review", act(Lang::PtBR, "Agent", "waiting for review").c_str());
+  TEST_ASSERT_EQUAL_STRING("Agente Find usages", act(Lang::PtBR, "Agent", "Find usages").c_str());
+}
+
 static void test_session_line() {
   SessionRow r{};
   strcpy(r.tool, "Bash");
@@ -160,6 +182,7 @@ int main() {
   RUN_TEST(test_lang_codes_roundtrip);
   RUN_TEST(test_negotiate_accept_language);
   RUN_TEST(test_activity_text);
+  RUN_TEST(test_background_wait_is_localized);
   RUN_TEST(test_session_line);
   return UNITY_END();
 }

@@ -6,7 +6,9 @@ const ALERTING = new Set(['perm', 'question', 'done']);
 // background_tasks entries are documented as in flight; drop any finished one defensively.
 const FINISHED = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled']);
 
-const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+// Reserved activity tools for a Stop that waits on background work (det = the count).
+export const WAIT_AGENTS = '_wait_agents';
+export const WAIT_TASKS = '_wait_tasks';
 
 export function pidAlive(pid) {
   if (!pid) return true;
@@ -28,7 +30,7 @@ export class SessionTracker {
   #lastSeen = new Map();
   // session id -> Map(agent_id -> last event time) of its running subagents.
   #workers = new Map();
-  // session id -> the "waiting N agents" detail shown while its Stop waits.
+  // session id -> the { tool, det } activity shown while its Stop waits (see #pending).
   #waitDet = new Map();
 
   constructor({ now = () => Date.now(), isAlive = pidAlive } = {}) {
@@ -92,8 +94,7 @@ export class SessionTracker {
         if (wait) {
           s.waiting = true;
           this.#enter(s, 'running');
-          s.tool = 'Agent';
-          s.det = wait;
+          Object.assign(s, wait);
           this.#waitDet.set(s.id, wait);
         } else {
           s.waiting = false;
@@ -184,22 +185,24 @@ export class SessionTracker {
     } else if (s.st === 'perm' && s.permBy === agentId) {
       s.permBy = null;
       this.#enter(s, 'running');
-      if (s.waiting) Object.assign(s, { tool: 'Agent', det: this.#waitDet.get(s.id) ?? '' });
+      if (s.waiting) Object.assign(s, this.#waitDet.get(s.id) ?? { tool: WAIT_AGENTS, det: '' });
     }
   }
 
-  // Plain-English description of the background work a Stop waits on, or '' if none.
+  // Structured activity for the background work a Stop waits on, or null if none:
+  // { tool: '_wait_agents' | '_wait_tasks', det: '<count>' }. The gadget localizes it
+  // ("aguardando 2 agentes"), so no English text goes over the wire.
   // Stop's background_tasks (the task registry) is authoritative when present;
   // older Claude Code versions lack it, so fall back to the tracked subagents.
   #pending(sid, evt) {
     if (Array.isArray(evt.background_tasks)) {
       const tasks = evt.background_tasks.filter((t) => !FINISHED.has(t?.status));
-      if (tasks.length === 0) return '';
+      if (tasks.length === 0) return null;
       const agentsOnly = tasks.every((t) => t?.type === 'subagent');
-      return `waiting ${plural(tasks.length, agentsOnly ? 'agent' : 'task')}`;
+      return { tool: agentsOnly ? WAIT_AGENTS : WAIT_TASKS, det: String(tasks.length) };
     }
     const n = this.#liveWorkers(sid);
-    return n ? `waiting ${plural(n, 'agent')}` : '';
+    return n ? { tool: WAIT_AGENTS, det: String(n) } : null;
   }
 
   // Drops workers silent for WORKER_TTL_MS and returns how many are left.

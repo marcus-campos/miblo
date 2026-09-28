@@ -75,13 +75,14 @@ bool loadConfig(miblo::Config& cfg) {
     loaded = miblo::Config();
     if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), nullptr)) return false;
   }
+  miblo::restoreStoredLang(loaded, doc.as<JsonObjectConst>());
   cfg = loaded;
   return true;
 }
 
 bool saveConfig(const miblo::Config& cfg) {
   DynamicJsonDocument doc(1024);
-  miblo::configToJson(cfg, doc.to<JsonObject>());
+  miblo::configToStored(cfg, doc.to<JsonObject>());
   File f = LittleFS.open(kConfig, "w");
   if (!f) return false;
   bool ok = serializeJson(doc, f) > 0;

@@ -24,7 +24,11 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
   const server = http.createServer(async (req, res) => {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
     const body = req.method === 'POST' ? await readBody(req) : null;
-    if (req.method === 'GET' && req.url === '/api/info') return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0 });
+    if (req.method === 'GET' && req.url === '/api/info') {
+      // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
+      const langSet = Boolean(state.config.lang);
+      return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet });
+    }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
         // Matches the firmware's 429 {"error":"locked","retryAfter":<seconds>} contract

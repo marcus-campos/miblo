@@ -112,7 +112,14 @@ static const char kEn[] MIBLO_ROM =
     "Could not connect\0"  // JoinFailed
     "Error code %u\0"  // ErrorCode
     "The router refused the connection. Check the password. If the router uses WPA3 or \"WPA2/WPA3\" mode, switch it to WPA2 (Miblo does not support WPA3).\0"  // WebRefused
-    "Could not connect (code %u). Check the network and try again.\0";  // WebFailedCode
+    "Could not connect (code %u). Check the network and try again.\0"  // WebFailedCode
+    "Waiting on %u agent\0"  // WaitAgent1
+    "Waiting on %u agents\0"  // WaitAgentsN
+    "Waiting on %u task\0"  // WaitTask1
+    "Waiting on %u tasks\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7d\0"  // Short7d
+    "Auto\0";  // WebAuto
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -220,7 +227,14 @@ static const char kPtBR[] MIBLO_ROM =
     "Não foi possível conectar\0"  // JoinFailed
     "Código de erro %u\0"  // ErrorCode
     "O roteador recusou a conexão. Confira a senha. Se o roteador usa WPA3 ou o modo \"WPA2/WPA3\", mude para WPA2 (o Miblo não suporta WPA3).\0"  // WebRefused
-    "Não foi possível conectar (código %u). Verifique a rede e tente de novo.\0";  // WebFailedCode
+    "Não foi possível conectar (código %u). Verifique a rede e tente de novo.\0"  // WebFailedCode
+    "Aguardando %u agente\0"  // WaitAgent1
+    "Aguardando %u agentes\0"  // WaitAgentsN
+    "Aguardando %u tarefa\0"  // WaitTask1
+    "Aguardando %u tarefas\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7d\0"  // Short7d
+    "Automático\0";  // WebAuto
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -328,7 +342,14 @@ static const char kPtPT[] MIBLO_ROM =
     "Não foi possível ligar\0"  // JoinFailed
     "Código de erro %u\0"  // ErrorCode
     "O router recusou a ligação. Verifique a palavra-passe. Se o router usa WPA3 ou o modo \"WPA2/WPA3\", mude para WPA2 (o Miblo não suporta WPA3).\0"  // WebRefused
-    "Não foi possível ligar (código %u). Verifique a rede e tente novamente.\0";  // WebFailedCode
+    "Não foi possível ligar (código %u). Verifique a rede e tente novamente.\0"  // WebFailedCode
+    "À espera de %u agente\0"  // WaitAgent1
+    "À espera de %u agentes\0"  // WaitAgentsN
+    "À espera de %u tarefa\0"  // WaitTask1
+    "À espera de %u tarefas\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7d\0"  // Short7d
+    "Automático\0";  // WebAuto
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -436,7 +457,14 @@ static const char kEs[] MIBLO_ROM =
     "No se pudo conectar\0"  // JoinFailed
     "Código de error %u\0"  // ErrorCode
     "El router rechazó la conexión. Revisa la contraseña. Si el router usa WPA3 o el modo \"WPA2/WPA3\", cámbialo a WPA2 (Miblo no admite WPA3).\0"  // WebRefused
-    "No se pudo conectar (código %u). Revisa la red e inténtalo de nuevo.\0";  // WebFailedCode
+    "No se pudo conectar (código %u). Revisa la red e inténtalo de nuevo.\0"  // WebFailedCode
+    "Esperando %u agente\0"  // WaitAgent1
+    "Esperando %u agentes\0"  // WaitAgentsN
+    "Esperando %u tarea\0"  // WaitTask1
+    "Esperando %u tareas\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7d\0"  // Short7d
+    "Automático\0";  // WebAuto
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -544,7 +572,14 @@ static const char kFr[] MIBLO_ROM =
     "Connexion impossible\0"  // JoinFailed
     "Code d'erreur %u\0"  // ErrorCode
     "Le routeur a refusé la connexion. Vérifiez le mot de passe. Si le routeur utilise WPA3 ou le mode \"WPA2/WPA3\", passez-le en WPA2 (Miblo ne prend pas en charge WPA3).\0"  // WebRefused
-    "Connexion impossible (code %u). Vérifiez le réseau et réessayez.\0";  // WebFailedCode
+    "Connexion impossible (code %u). Vérifiez le réseau et réessayez.\0"  // WebFailedCode
+    "Attend %u agent\0"  // WaitAgent1
+    "Attend %u agents\0"  // WaitAgentsN
+    "Attend %u tâche\0"  // WaitTask1
+    "Attend %u tâches\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7j\0"  // Short7d
+    "Automatique\0";  // WebAuto
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -652,7 +687,14 @@ static const char kIt[] MIBLO_ROM =
     "Impossibile connettersi\0"  // JoinFailed
     "Codice di errore %u\0"  // ErrorCode
     "Il router ha rifiutato la connessione. Controlla la password. Se il router usa WPA3 o la modalità \"WPA2/WPA3\", passa a WPA2 (Miblo non supporta WPA3).\0"  // WebRefused
-    "Impossibile connettersi (codice %u). Controlla la rete e riprova.\0";  // WebFailedCode
+    "Impossibile connettersi (codice %u). Controlla la rete e riprova.\0"  // WebFailedCode
+    "In attesa di %u agente\0"  // WaitAgent1
+    "In attesa di %u agenti\0"  // WaitAgentsN
+    "In attesa di %u attività\0"  // WaitTask1
+    "In attesa di %u attività\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7g\0"  // Short7d
+    "Automatica\0";  // WebAuto
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -760,7 +802,14 @@ static const char kDe[] MIBLO_ROM =
     "Verbindung fehlgeschlagen\0"  // JoinFailed
     "Fehlercode %u\0"  // ErrorCode
     "Der Router hat die Verbindung abgelehnt. Prüfe das Passwort. Nutzt der Router WPA3 oder den Modus \"WPA2/WPA3\", stelle ihn auf WPA2 um (Miblo unterstützt kein WPA3).\0"  // WebRefused
-    "Verbindung fehlgeschlagen (Code %u). Prüfe das Netzwerk und versuche es erneut.\0";  // WebFailedCode
+    "Verbindung fehlgeschlagen (Code %u). Prüfe das Netzwerk und versuche es erneut.\0"  // WebFailedCode
+    "Wartet auf %u Agent\0"  // WaitAgent1
+    "Wartet auf %u Agenten\0"  // WaitAgentsN
+    "Wartet auf %u Aufgabe\0"  // WaitTask1
+    "Wartet auf %u Aufgaben\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7T\0"  // Short7d
+    "Automatisch\0";  // WebAuto
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -868,7 +917,14 @@ static const char kRu[] MIBLO_ROM =
     "Не удалось подключиться\0"  // JoinFailed
     "Код ошибки %u\0"  // ErrorCode
     "Роутер отклонил подключение. Проверьте пароль. Если роутер использует WPA3 или режим \"WPA2/WPA3\", переключите его на WPA2 (Miblo не поддерживает WPA3).\0"  // WebRefused
-    "Не удалось подключиться (код %u). Проверьте сеть и попробуйте снова.\0";  // WebFailedCode
+    "Не удалось подключиться (код %u). Проверьте сеть и попробуйте снова.\0"  // WebFailedCode
+    "Ждёт агентов: %u\0"  // WaitAgent1
+    "Ждёт агентов: %u\0"  // WaitAgentsN
+    "Ждёт задач: %u\0"  // WaitTask1
+    "Ждёт задач: %u\0"  // WaitTasksN
+    "5ч\0"  // Short5h
+    "7д\0"  // Short7d
+    "Авто\0";  // WebAuto
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -976,7 +1032,14 @@ static const char kZh[] MIBLO_ROM =
     "无法连接\0"  // JoinFailed
     "错误代码 %u\0"  // ErrorCode
     "路由器拒绝了连接。请检查密码。如果路由器使用 WPA3 或 \"WPA2/WPA3\" 模式，请改为 WPA2（Miblo 不支持 WPA3）。\0"  // WebRefused
-    "无法连接（代码 %u）。请检查网络后重试。\0";  // WebFailedCode
+    "无法连接（代码 %u）。请检查网络后重试。\0"  // WebFailedCode
+    "等待 %u 个子代理\0"  // WaitAgent1
+    "等待 %u 个子代理\0"  // WaitAgentsN
+    "等待 %u 个任务\0"  // WaitTask1
+    "等待 %u 个任务\0"  // WaitTasksN
+    "5h\0"  // Short5h
+    "7天\0"  // Short7d
+    "自动\0";  // WebAuto
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

@@ -29,6 +29,11 @@ struct Config {
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField);
 void configToJson(const Config& cfg, JsonObject out);
+// What goes to flash: configToJson plus, in automatic language mode, the negotiated language
+// ("langAuto"), so the screen keeps speaking it after a reboot (configToJson's "lang" is "" then).
+void configToStored(const Config& cfg, JsonObject out);
+// After applyConfigPatch on a stored config: restores the automatic-mode language from "langAuto".
+void restoreStoredLang(Config& cfg, JsonObjectConst stored);
 AlertTiming alertTiming(const Config& cfg);
 
 // ---- AirTag-style hard reset by quick power cycles (spec §6) ----

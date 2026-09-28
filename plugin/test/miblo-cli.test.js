@@ -109,13 +109,25 @@ test('pair skips the language sync for an unsupported locale, without failing th
 test('pair does not overwrite a language the device already reports', async () => {
   const setConfigCalls = [];
   const client = {
-    info: async () => ({ id: 'g', name: 'G', lang: 'fr' }),
+    info: async () => ({ id: 'g', name: 'G', lang: 'fr', langSet: true }),
     pair: async () => 'tok',
     setConfig: async (...args) => setConfigCalls.push(args),
   };
   const r = await run(['pair', '10.0.0.9', '4827'], deps({ client, locale: 'en-US' }));
   assert.equal(r.code, 0);
   assert.equal(setConfigCalls.length, 0);
+});
+
+test('pair seeds the language when the device is in automatic mode (langSet false)', async () => {
+  const setConfigCalls = [];
+  const client = {
+    info: async () => ({ id: 'g', name: 'G', lang: 'en', langSet: false }),
+    pair: async () => 'tok',
+    setConfig: async (...args) => setConfigCalls.push(args),
+  };
+  const r = await run(['pair', '10.0.0.9', '4827'], deps({ client, locale: 'pt-BR' }));
+  assert.equal(r.code, 0);
+  assert.deepEqual(setConfigCalls.map((c) => c[2]), [{ lang: 'pt-BR' }]);
 });
 
 test('pair still succeeds if the best-effort language setConfig fails', async () => {

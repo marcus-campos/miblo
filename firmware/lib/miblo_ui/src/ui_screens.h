@@ -44,4 +44,23 @@ void updating(Lang lang, uint8_t pct);
 void disconnected(Lang lang, bool timeValid, int hour, int minute, int wday, int mday, const char* ip,
                   const char* mdnsHost, const char* pairCode);
 
+// ---- telas principais (§4.1–4.4) ----
+struct Clock {
+  bool valid;      // hora local conhecida
+  char hhmm[6];    // "14:32" ou "--:--"
+  uint32_t epoch;  // agora, em segundos Unix (0 = desconhecido)
+};
+
+// "16:42" (mesmo dia) ou "qui 09:00" (outro dia), no fuso local (TZ do sistema).
+void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap);
+
+void flash(Lang lang, miblo::AlertKind kind, const char* name, uint32_t elapsedMs);
+void hero(Lang lang, const miblo::Snapshot& s, int idx, miblo::AlertKind kind, bool discreet, const Clock& clk,
+          const miblo::RunTracker& runs);
+void overview(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
+              bool discreet);
+void limits(Lang lang, const miblo::Snapshot& s, const Clock& clk);
+void sessions(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
+              bool discreet);
+
 }  // namespace screens

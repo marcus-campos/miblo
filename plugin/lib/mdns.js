@@ -1,4 +1,5 @@
 import dgram from 'node:dgram';
+import os from 'node:os';
 import { MDNS_SERVICE } from './constants.js';
 
 const T_A = 1;
@@ -14,10 +15,27 @@ function encodeName(name) {
   return Buffer.concat([...labels, Buffer.from([0])]);
 }
 
-export function buildQuery(service) {
+const MDNS_GROUP = '224.0.0.251';
+const MDNS_PORT = 5353;
+
+// PTR question for `service`. `unicast` sets the QU bit ("answer me directly").
+export function buildQuery(service, { unicast = true } = {}) {
   const header = Buffer.alloc(12);
   header.writeUInt16BE(1, 4);
-  return Buffer.concat([header, encodeName(service), Buffer.from([0x00, T_PTR, 0x80, 0x01])]);
+  return Buffer.concat([header, encodeName(service), Buffer.from([0x00, T_PTR, unicast ? 0x80 : 0x00, 0x01])]);
+}
+
+// Non-internal IPv4 addresses of this host: the multicast query goes out on each of them, since
+// the OS default route for 224.0.0.251 is often a VPN/bridge/Thunderbolt interface, not the LAN.
+export function ipv4Interfaces(ifaces = os.networkInterfaces()) {
+  const out = [];
+  for (const list of Object.values(ifaces ?? {})) {
+    for (const i of list ?? []) {
+      const v4 = i.family === 'IPv4' || i.family === 4;
+      if (v4 && !i.internal && i.address && !i.address.startsWith('169.254.') && !out.includes(i.address)) out.push(i.address);
+    }
+  }
+  return out;
 }
 
 function readName(buf, offset) {
@@ -92,26 +110,64 @@ export function resolveDevices(records, service) {
   return out;
 }
 
-export function discover({ service = MDNS_SERVICE, timeoutMs = 2000, socketFactory } = {}) {
+// Two sockets, so a responder is heard whichever way it answers:
+//  - an ephemeral-port socket sends a QU query per interface and gets unicast answers;
+//  - a socket bound to 5353 (shared with the OS responder via reuseAddr) joins the group on every
+//    interface, sends a standard (QM) query and hears multicast answers/announcements.
+// Either socket may fail (e.g. 5353 not shareable); discovery then continues with the other.
+export function discover({ service = MDNS_SERVICE, timeoutMs = 2500, socketFactory, interfaces } = {}) {
   return new Promise((resolve) => {
-    const sock = (socketFactory ?? (() => dgram.createSocket({ type: 'udp4', reuseAddr: true })))();
+    const make = socketFactory ?? (() => dgram.createSocket({ type: 'udp4', reuseAddr: true }));
+    const addrs = interfaces ?? ipv4Interfaces();
     const records = [];
+    const socks = [];
     let finished = false;
+    let timer = null;
     const finish = () => {
       if (finished) return;
       finished = true;
-      try { sock.close(); } catch { /* already closed */ }
+      clearTimeout(timer);
+      for (const s of socks) {
+        try { s.close(); } catch { /* already closed */ }
+      }
       const byId = new Map();
       for (const d of resolveDevices(records, service)) byId.set(d.id, d);
       resolve([...byId.values()]);
     };
-    sock.on('message', (msg) => {
+    const onMessage = (msg) => {
       try { records.push(...parseMessage(msg)); } catch { /* invalid packet */ }
+    };
+    const sendAll = (sock, query) => {
+      const targets = addrs.length ? addrs : [null];
+      for (const a of targets) {
+        try {
+          if (a) sock.setMulticastInterface(a);
+          sock.send(query, MDNS_PORT, MDNS_GROUP);
+        } catch { /* interface gone or not multicast-capable */ }
+      }
+    };
+    const open = (kind, port, onReady) => {
+      let sock;
+      try { sock = make(kind); } catch { return; }
+      socks.push(sock);
+      sock.on('message', onMessage);
+      sock.on('error', () => {
+        try { sock.close(); } catch { /* already closed */ }
+      });
+      try {
+        sock.bind(port, () => {
+          if (!finished) onReady(sock);
+        });
+      } catch { /* bind failed: the other socket still works */ }
+    };
+
+    open('unicast', 0, (sock) => sendAll(sock, buildQuery(service, { unicast: true })));
+    open('multicast', MDNS_PORT, (sock) => {
+      for (const a of addrs.length ? addrs : [undefined]) {
+        try { sock.addMembership(MDNS_GROUP, a); } catch { /* already joined / no multicast */ }
+      }
+      sendAll(sock, buildQuery(service, { unicast: false }));
     });
-    sock.on('error', finish);
-    sock.bind(0, () => {
-      try { sock.send(buildQuery(service), 5353, '224.0.0.251'); } catch { finish(); }
-    });
-    setTimeout(finish, timeoutMs);
+    timer = setTimeout(finish, timeoutMs);
   });
 }

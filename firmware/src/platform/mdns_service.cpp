@@ -1,6 +1,10 @@
 #include "mdns_service.h"
 
 #include <WiFiUdp.h>
+#if defined(ESP8266)
+#include <lwip/igmp.h>
+#include <lwip/netif.h>
+#endif
 
 #include "../context.h"
 #include "miblo_mdns.h"
@@ -48,6 +52,29 @@ static void sendMulticast(const uint8_t* data, size_t len) {
   udp.endPacket();
 }
 
+#if defined(ESP8266)
+// The ESP8266 core's station netif comes up WITHOUT NETIF_FLAG_IGMP. lwIP's igmp_joingroup()
+// (what WiFiUDP::beginMulticast calls) then finds no eligible netif and fails, and ip4_input()
+// drops every packet sent to 224.0.0.251: the responder never bound, never announced and never
+// heard a query. The core's own ESP8266mDNS works around it the same way: set the flag, start
+// IGMP on the netif and join the group directly on it.
+static bool joinGroup() {
+  ip4_addr_t group;
+  IP4_ADDR(&group, 224, 0, 0, 251);
+  const uint32_t self = (uint32_t)WiFi.localIP();
+  bool joined = false;
+  for (struct netif* n = netif_list; n; n = n->next) {
+    if (!netif_is_up(n) || ip4_addr_get_u32(netif_ip4_addr(n)) != self) continue;
+    if (!(n->flags & NETIF_FLAG_IGMP)) {
+      n->flags |= NETIF_FLAG_IGMP;
+      igmp_start(n);
+    }
+    if (igmp_lookfor_group(n, &group) || igmp_joingroup_netif(n, &group) == ERR_OK) joined = true;
+  }
+  return joined;
+}
+#endif
+
 void announce() {
   announcesLeft = 2;  // RFC 6762: at least two announcements, 1 s apart
   nextAnnounceMs = millis();
@@ -64,7 +91,7 @@ void loop(uint32_t nowMs) {
   if (!bound || boundConn != net::connectionId()) {
     udp.stop();
 #if defined(ESP8266)
-    bound = udp.beginMulticast(WiFi.localIP(), IPAddress(224, 0, 0, 251), miblo::kMdnsPort);
+    bound = joinGroup() && udp.begin(miblo::kMdnsPort);
 #else
     bound = udp.beginMulticast(IPAddress(224, 0, 0, 251), miblo::kMdnsPort);
 #endif
@@ -81,24 +108,25 @@ void loop(uint32_t nowMs) {
     nextAnnounceMs = nowMs + 1000;
   }
 
-  int len = udp.parsePacket();
-  if (len <= 0) return;
-  if (len > (int)sizeof(in)) {
-    udp.flush();
-    return;
-  }
-  udp.read(in, len);
-  IPAddress from = udp.remoteIP();
-  uint16_t port = udp.remotePort();
-  miblo::MdnsInfo i = info();
-  miblo::MdnsReply r = miblo::mdnsRespond(in, (size_t)len, port, i, out, sizeof(out));
-  if (!r.len) return;
-  if (r.unicast) {
-    udp.beginPacket(from, port);
-    udp.write(out, r.len);
-    udp.endPacket();
-  } else {
-    sendMulticast(out, r.len);
+  // Drain several packets per pass: a busy LAN (Macs, TVs, printers) sends plenty of mDNS and the
+  // core keeps only a short receive queue, dropping newer packets (like our query) once it's full.
+  for (int k = 0; k < 8; k++) {
+    int len = udp.parsePacket();
+    if (len <= 0) return;
+    if (len > (int)sizeof(in)) continue;  // too big for us; the next parsePacket() skips it
+    udp.read(in, len);
+    IPAddress from = udp.remoteIP();
+    uint16_t port = udp.remotePort();
+    miblo::MdnsInfo i = info();
+    miblo::MdnsReply r = miblo::mdnsRespond(in, (size_t)len, port, i, out, sizeof(out));
+    if (!r.len) continue;
+    if (r.unicast) {
+      udp.beginPacket(from, port);
+      udp.write(out, r.len);
+      udp.endPacket();
+    } else {
+      sendMulticast(out, r.len);
+    }
   }
 }
 

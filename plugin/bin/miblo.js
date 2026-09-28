@@ -1,0 +1,138 @@
+#!/usr/bin/env node
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { PORT, HOST, claudeSettingsPath } from '../lib/constants.js';
+import { DeviceClient } from '../lib/device-client.js';
+import { DeviceStore } from '../lib/device-store.js';
+import { discover } from '../lib/mdns.js';
+import { link, unlink, isLinked } from '../lib/statusline-link.js';
+
+const MODES = ['overview', 'limits', 'sessions'];
+const USAGE = [
+  'Usage: miblo.js --data <dir> <command>',
+  '  discover',
+  '  pair <ip[:port]> <code>',
+  '  status',
+  '  mode <overview|limits|sessions> [id]',
+  '  reset <id>',
+  '  link-statusline | unlink-statusline',
+].join('\n');
+
+const withPort = (addr) => (String(addr).includes(':') ? String(addr) : `${addr}:80`);
+
+async function defaultFetchStatus() {
+  try {
+    const res = await fetch(`http://${HOST}:${PORT}/status`, { signal: AbortSignal.timeout(800) });
+    return res.ok ? await res.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function run(argv, deps) {
+  const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus } = deps;
+  const store = new DeviceStore(dataDir);
+  const [cmd, ...args] = argv;
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+
+  switch (cmd) {
+    case 'discover': {
+      const found = await discoverFn();
+      if (!found.length) return ok('No Miblo gadgets found on this network.');
+      return ok(found.map((d) => `${d.id}\t${d.name}\t${d.addr}`).join('\n'));
+    }
+    case 'pair': {
+      const [rawAddr, code] = args;
+      if (!rawAddr || !code) return fail(2, USAGE);
+      const addr = withPort(rawAddr);
+      try {
+        const info = await client.info(addr);
+        const token = await client.pair(addr, code, hostname);
+        store.upsert({ id: info.id, name: info.name, addr, token });
+        return ok(`Paired with ${info.name} (${info.id}) at ${addr}.`);
+      } catch (e) {
+        if (e.status === 403) return fail(2, 'Wrong pairing code.');
+        return fail(1, `Could not reach a Miblo gadget at ${addr}.`);
+      }
+    }
+    case 'status': {
+      const live = await fetchStatus();
+      const devices = live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }));
+      return ok(JSON.stringify({
+        bridge: live ? 'running' : 'stopped',
+        statusline: isLinked({ settingsPath, dataDir }) ? 'linked' : 'not linked',
+        statuslineSeen: live?.statuslineSeen ?? false,
+        devices,
+        sessions: live?.sessions ?? [],
+        usage: live?.usage ?? null,
+      }, null, 2));
+    }
+    case 'mode': {
+      const [mode, id] = args;
+      if (!MODES.includes(mode)) return fail(2, `Mode must be one of: ${MODES.join(', ')}.`);
+      const targets = store.list().filter((d) => !id || d.id === id);
+      let done = 0;
+      for (const d of targets) {
+        try {
+          await client.setConfig(d.addr, d.token, { mode });
+          done++;
+        } catch {
+          // gadget offline: reportado pela contagem
+        }
+      }
+      return ok(`Mode set to ${mode} on ${done} gadget(s).`);
+    }
+    case 'reset': {
+      const d = store.list().find((x) => x.id === args[0]);
+      if (!d) return fail(2, `No paired gadget with id ${args[0]}.`);
+      try {
+        await client.reset(d.addr, d.token);
+      } catch {
+        return fail(1, `Could not reach ${d.name}.`);
+      }
+      store.remove(d.id);
+      return ok(`Factory reset sent to ${d.name}.`);
+    }
+    case 'link-statusline': {
+      const r = link({ settingsPath, dataDir, pluginRoot });
+      return ok(r.changed ? 'Statusline linked.' : 'Statusline already linked.');
+    }
+    case 'unlink-statusline': {
+      const r = unlink({ settingsPath, dataDir });
+      return ok(r.changed ? 'Statusline unlinked.' : 'Statusline was not linked.');
+    }
+    default:
+      return fail(2, USAGE);
+  }
+}
+
+async function main() {
+  const argv = process.argv.slice(2);
+  let dataDir = process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.miblo');
+  const i = argv.indexOf('--data');
+  if (i >= 0) {
+    dataDir = argv[i + 1];
+    argv.splice(i, 2);
+  }
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const r = await run(argv, {
+    dataDir,
+    pluginRoot: path.resolve(here, '..'),
+    settingsPath: claudeSettingsPath(),
+    client: new DeviceClient(),
+    discoverFn: () => discover(),
+    hostname: os.hostname(),
+    fetchStatus: defaultFetchStatus,
+  });
+  process.stdout.write(r.out);
+  process.exitCode = r.code;
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    process.stdout.write(`Error: ${e.message}\n`);
+    process.exitCode = 1;
+  });
+}

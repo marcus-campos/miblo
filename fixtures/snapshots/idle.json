@@ -1,16 +1,16 @@
 {
   "v": 1,
   "seq": 42,
-  "now": 1790616720,
+  "now": 1790605920,
   "host": "MacBook-Marcus",
   "usage": {
     "h5": {
       "pct": 62,
-      "reset": 1790624520
+      "reset": 1790613720
     },
     "d7": {
       "pct": 38,
-      "reset": 1790856720
+      "reset": 1790845920
     }
   },
   "today": {
@@ -24,7 +24,7 @@
       "st": "done",
       "tool": "",
       "det": "",
-      "since": 1790616710,
+      "since": 1790605910,
       "model": "Opus",
       "ctx": 54,
       "tok": 182000

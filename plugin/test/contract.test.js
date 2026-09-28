@@ -8,7 +8,7 @@ import { MetricsStore } from '../lib/metrics-store.js';
 import { buildSnapshot } from '../lib/snapshot-builder.js';
 
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/snapshots');
-const NOW = new Date(2026, 8, 28, 14, 32, 0).getTime();
+const NOW = Date.UTC(2026, 8, 28, 14, 32, 0);
 const S = Math.floor(NOW / 1000);
 
 function world() {

@@ -1,0 +1,173 @@
+#include <ArduinoJson.h>
+#include <string.h>
+#include <unity.h>
+
+#include "miblo_config.h"
+#include "miblo_policy.h"
+
+using namespace miblo;
+
+void setUp() {}
+void tearDown() {}
+
+static bool patch(Config& cfg, const char* json, const char** bad = nullptr) {
+  StaticJsonDocument<1024> doc;
+  TEST_ASSERT_FALSE(deserializeJson(doc, json));
+  return applyConfigPatch(cfg, doc.as<JsonObjectConst>(), bad);
+}
+
+static void test_defaults_match_spec() {
+  Config c;
+  TEST_ASSERT_EQUAL(Mode::Overview, c.mode);
+  TEST_ASSERT_TRUE(c.alerts);
+  AlertTiming t = alertTiming(c);
+  TEST_ASSERT_TRUE(t.enabled);
+  TEST_ASSERT_EQUAL_UINT32(1500, t.flashMs);
+  TEST_ASSERT_EQUAL_UINT32(10000, t.heroPermMs);
+  TEST_ASSERT_EQUAL_UINT32(5000, t.heroDoneMs);
+  TEST_ASSERT_EQUAL_UINT32(120000, t.reminderMs);
+}
+
+static void test_patch_applies_valid_fields_and_ignores_unknown() {
+  Config c;
+  TEST_ASSERT_TRUE(patch(c, "{\"mode\":\"limits\",\"brightness\":40,\"alerts\":false,\"heroPermSec\":20,"
+                            "\"heroDoneSec\":3,\"reminderMin\":0,\"discreet\":true,\"tz\":\"<-03>3\","
+                            "\"name\":\"Mesa\",\"lang\":\"pt-BR\",\"future\":123}"));
+  TEST_ASSERT_EQUAL(Mode::Limits, c.mode);
+  TEST_ASSERT_EQUAL_UINT8(40, c.brightness);
+  TEST_ASSERT_FALSE(c.alerts);
+  TEST_ASSERT_EQUAL_UINT8(20, c.heroPermSec);
+  TEST_ASSERT_EQUAL_UINT8(0, c.reminderMin);
+  TEST_ASSERT_TRUE(c.discreet);
+  TEST_ASSERT_EQUAL_STRING("<-03>3", c.tz);
+  TEST_ASSERT_EQUAL_STRING("Mesa", c.name);
+  TEST_ASSERT_TRUE(c.langSet);
+  TEST_ASSERT_EQUAL(Lang::PtBR, c.lang);
+  TEST_ASSERT_EQUAL_UINT32(0, alertTiming(c).reminderMs);
+  TEST_ASSERT_TRUE(patch(c, "{\"lang\":\"\"}"));
+  TEST_ASSERT_FALSE(c.langSet);
+}
+
+static void test_invalid_patch_changes_nothing() {
+  Config c;
+  const char* bad = nullptr;
+  TEST_ASSERT_FALSE(patch(c, "{\"mode\":\"sessions\",\"brightness\":101}", &bad));
+  TEST_ASSERT_EQUAL_STRING("brightness", bad);
+  TEST_ASSERT_EQUAL(Mode::Overview, c.mode);  // nem o campo válido foi aplicado
+  TEST_ASSERT_FALSE(patch(c, "{\"mode\":\"grid\"}", &bad));
+  TEST_ASSERT_EQUAL_STRING("mode", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"alerts\":1}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"tz\":\"America/Sao Paulo\"}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"lang\":\"ja\"}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"name\":\"123456789012345678901\"}", &bad));
+  TEST_ASSERT_TRUE(patch(c, "{\"name\":\"项目项目项目项目项目项目项目项目项目项目\"}"));  // 20 caracteres
+}
+
+static void test_config_json_roundtrip() {
+  Config a;
+  TEST_ASSERT_TRUE(patch(a, "{\"mode\":\"sessions\",\"lang\":\"zh\",\"name\":\"X\"}"));
+  StaticJsonDocument<1024> doc;
+  configToJson(a, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING("sessions", doc["mode"]);
+  TEST_ASSERT_EQUAL_STRING("zh", doc["lang"]);
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL(Mode::Sessions, b.mode);
+  TEST_ASSERT_EQUAL(Lang::Zh, b.lang);
+  TEST_ASSERT_EQUAL_STRING("X", b.name);
+}
+
+static void test_power_cycle_reset_counter() {
+  BootDecision d = decideBoot(0);
+  TEST_ASSERT_EQUAL_UINT8(1, d.storeCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+  d = decideBoot(d.storeCount);
+  TEST_ASSERT_EQUAL_UINT8(2, d.storeCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+  d = decideBoot(d.storeCount);
+  TEST_ASSERT_TRUE(d.factoryReset);
+  TEST_ASSERT_EQUAL_UINT8(0, d.storeCount);
+  d = decideBoot(0xFF);  // lixo na flash conta como primeiro boot
+  TEST_ASSERT_EQUAL_UINT8(1, d.storeCount);
+  TEST_ASSERT_FALSE(d.factoryReset);
+}
+
+static void test_net_policy_saved_credentials_then_router_down() {
+  NetPolicy p;
+  p.begin(true, 0);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.state());
+  TEST_ASSERT_FALSE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 3000));
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 10000));  // roteador caiu
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 129999));
+  TEST_ASSERT_FALSE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, 130000));  // 2 min → rede de setup
+  TEST_ASSERT_TRUE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 200000));  // voltou sozinho
+  TEST_ASSERT_FALSE(p.apWanted());
+}
+
+static void test_net_policy_first_boot_and_wrong_password() {
+  NetPolicy p;
+  p.begin(false, 0);
+  TEST_ASSERT_EQUAL(NetState::Portal, p.state());
+  TEST_ASSERT_TRUE(p.apWanted());
+  p.credentialsSubmitted(5000);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.state());
+  TEST_ASSERT_TRUE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::WrongPassword, p.update(LinkStatus::WrongPassword, 9000));
+  TEST_ASSERT_TRUE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::WrongPassword, p.update(LinkStatus::Down, 20000));
+  p.credentialsSubmitted(30000);
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 34000));
+  TEST_ASSERT_FALSE(p.apWanted());
+}
+
+static void test_screen_selection_order() {
+  ScreenInputs in;
+  in.nowMs = 100000;
+  TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));
+  in.bootAnimDone = true;
+  TEST_ASSERT_EQUAL(ScreenId::Boot, selectScreen(in));  // conectando
+  in.net = NetState::Portal;
+  TEST_ASSERT_EQUAL(ScreenId::Setup, selectScreen(in));
+  in.net = NetState::WrongPassword;
+  TEST_ASSERT_EQUAL(ScreenId::WrongPassword, selectScreen(in));
+  in.net = NetState::Connected;
+  TEST_ASSERT_EQUAL(ScreenId::Welcome, selectScreen(in));
+  in.paired = true;
+  in.justPaired = true;
+  in.pairedAtMs = 97000;
+  TEST_ASSERT_EQUAL(ScreenId::Paired, selectScreen(in));
+  in.pairedAtMs = 95000;
+  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // pareado, sem snapshot ainda
+  in.hasSnapshot = true;
+  in.lastSnapshotMs = 71000;
+  TEST_ASSERT_EQUAL(ScreenId::Main, selectScreen(in));
+  in.lastSnapshotMs = 70000;
+  TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // 30 s sem snapshot
+  in.lastSnapshotMs = 99000;
+  in.alert = AlertPhase::Flash;
+  TEST_ASSERT_EQUAL(ScreenId::AlertFlash, selectScreen(in));
+  in.alert = AlertPhase::Hero;
+  TEST_ASSERT_EQUAL(ScreenId::AlertHero, selectScreen(in));
+  in.pairCodeRequested = true;
+  TEST_ASSERT_EQUAL(ScreenId::PairCode, selectScreen(in));
+  in.presenceActive = true;
+  TEST_ASSERT_EQUAL(ScreenId::PresenceCode, selectScreen(in));
+  in.updating = true;
+  TEST_ASSERT_EQUAL(ScreenId::Updating, selectScreen(in));
+}
+
+int main() {
+  UNITY_BEGIN();
+  RUN_TEST(test_defaults_match_spec);
+  RUN_TEST(test_patch_applies_valid_fields_and_ignores_unknown);
+  RUN_TEST(test_invalid_patch_changes_nothing);
+  RUN_TEST(test_config_json_roundtrip);
+  RUN_TEST(test_power_cycle_reset_counter);
+  RUN_TEST(test_net_policy_saved_credentials_then_router_down);
+  RUN_TEST(test_net_policy_first_boot_and_wrong_password);
+  RUN_TEST(test_screen_selection_order);
+  return UNITY_END();
+}

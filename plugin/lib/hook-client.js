@@ -1,6 +1,6 @@
 // Pure delivery logic of bin/hook.js, with all I/O injected so it can be tested.
 
-const TOP_FIELDS = ['session_id', 'hook_event_name', 'cwd', 'tool_name', 'notification_type', 'agent_id', 'agent_type'];
+const TOP_FIELDS = ['session_id', 'hook_event_name', 'cwd', 'tool_name', 'notification_type', 'agent_id', 'agent_type', 'source', 'trigger'];
 // Only what describeTool reads; everything else (file contents, diffs...) stays local.
 const TOOL_FIELDS = ['command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'description'];
 const TOOL_FIELD_MAX = 200;

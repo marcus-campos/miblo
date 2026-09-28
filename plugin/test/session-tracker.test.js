@@ -349,3 +349,44 @@ test('a main-session permission is not cleared by subagent activity', () => {
   assert.equal(tracker.sessions()[0].st, 'perm');
   assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
 });
+
+test('manual /compact shows compacting, then idle without a finished alert', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SessionStart');
+  ev('s1', 'Stop');
+  assert.equal(ev('s1', 'PreCompact', { trigger: 'manual' }), true);
+  let [s] = tracker.sessions();
+  assert.equal(s.st, 'running');
+  assert.equal(s.tool, '_compact');
+  assert.equal(s.det, '');
+  assert.deepEqual(tracker.alerts(), []);
+  ev('s1', 'SessionStart', { source: 'compact' });
+  [s] = tracker.sessions();
+  assert.equal(s.st, 'idle');
+  assert.equal(s.tool, '');
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('automatic compaction mid-turn keeps the session running', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'PreCompact', { trigger: 'auto' });
+  assert.equal(tracker.sessions()[0].tool, '_compact');
+  ev('s1', 'PostCompact', { trigger: 'auto' });
+  const [s] = tracker.sessions();
+  assert.equal(s.st, 'running');
+  assert.equal(s.tool, '');
+  // The SessionStart(compact) that follows PostCompact changes nothing.
+  assert.equal(ev('s1', 'SessionStart', { source: 'compact' }), false);
+});
+
+test('a tool call after an automatic compaction replaces the compacting activity', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'PreCompact', { trigger: 'auto' });
+  ev('s1', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/a/b.js' } });
+  ev('s1', 'SessionStart', { source: 'compact' });
+  const [s] = tracker.sessions();
+  assert.equal(s.st, 'running');
+  assert.equal(s.tool, 'Read');
+});

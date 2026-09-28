@@ -124,6 +124,7 @@ enum class S : uint8_t {
   Short5h,              // compact limits strip label for the 5-hour window ("5h")
   Short7d,              // compact limits strip label for the weekly window ("7d")
   WebAuto,              // settings page: automatic language option ("Auto")
+  Compacting,           // activity while Claude Code compacts the conversation
   Count
 };
 

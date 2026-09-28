@@ -130,6 +130,12 @@ static void test_activity_text() {
   TEST_ASSERT_EQUAL_STRING("工作中", act(Lang::Zh, nullptr, nullptr).c_str());
 }
 
+static void test_compaction_is_localized() {
+  TEST_ASSERT_EQUAL_STRING("Compactando contexto", act(Lang::PtBR, "_compact", "").c_str());
+  TEST_ASSERT_EQUAL_STRING("Compacting context", act(Lang::En, "_compact", nullptr, true).c_str());
+  TEST_ASSERT_EQUAL_STRING("正在压缩上下文", act(Lang::Zh, "_compact", "").c_str());
+}
+
 static void test_background_wait_is_localized() {
   // Structured form (plugin >= 0.2.3): tool "_wait_agents" / "_wait_tasks", det = count.
   TEST_ASSERT_EQUAL_STRING("Aguardando 5 tarefas", act(Lang::PtBR, "_wait_tasks", "5").c_str());
@@ -183,6 +189,7 @@ int main() {
   RUN_TEST(test_negotiate_accept_language);
   RUN_TEST(test_activity_text);
   RUN_TEST(test_background_wait_is_localized);
+  RUN_TEST(test_compaction_is_localized);
   RUN_TEST(test_session_line);
   return UNITY_END();
 }

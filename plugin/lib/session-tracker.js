@@ -9,6 +9,8 @@ const FINISHED = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled
 // Reserved activity tools for a Stop that waits on background work (det = the count).
 export const WAIT_AGENTS = '_wait_agents';
 export const WAIT_TASKS = '_wait_tasks';
+// Reserved activity tool while Claude Code compacts the conversation (det empty).
+export const COMPACT = '_compact';
 
 export function pidAlive(pid) {
   if (!pid) return true;
@@ -32,6 +34,8 @@ export class SessionTracker {
   #workers = new Map();
   // session id -> the { tool, det } activity shown while its Stop waits (see #pending).
   #waitDet = new Map();
+  // session id -> compaction trigger ('manual' | 'auto') while one is in progress.
+  #compacting = new Map();
 
   constructor({ now = () => Date.now(), isAlive = pidAlive } = {}) {
     this.now = now;
@@ -62,8 +66,20 @@ export class SessionTracker {
     switch (name) {
       case 'SessionStart':
         this.#started.add(id);
+        // A compacted session restarts with source "compact": the compaction is over.
+        if (evt.source === 'compact') this.#compactDone(s);
+        break;
+      case 'PreCompact':
+        this.#compacting.set(s.id, evt.trigger === 'manual' ? 'manual' : 'auto');
+        this.#enter(s, 'running', { alert: false });
+        s.tool = COMPACT;
+        s.det = '';
+        break;
+      case 'PostCompact':
+        this.#compactDone(s);
         break;
       case 'UserPromptSubmit':
+        this.#compacting.delete(s.id);  // a compaction that never reported its end
         this.#enter(s, 'running');
         s.tool = '';
         s.det = '';
@@ -205,6 +221,19 @@ export class SessionTracker {
     return n ? { tool: WAIT_AGENTS, det: String(n) } : null;
   }
 
+  // Ends a compaction: a manual /compact leaves the session waiting for the user (idle, no
+  // "finished" alert); an automatic one happens mid-turn, so the agent keeps working.
+  #compactDone(s) {
+    const trigger = this.#compacting.get(s.id);
+    if (!trigger) return;
+    this.#compacting.delete(s.id);
+    if (s.tool === COMPACT) {
+      s.tool = '';
+      s.det = '';
+    }
+    if (trigger === 'manual' && s.st === 'running') this.#enter(s, 'idle');
+  }
+
   // Drops workers silent for WORKER_TTL_MS and returns how many are left.
   #liveWorkers(sid) {
     const w = this.#workers.get(sid);
@@ -228,6 +257,7 @@ export class SessionTracker {
     this.#started.delete(id);
     this.#workers.delete(id);
     this.#waitDet.delete(id);
+    this.#compacting.delete(id);
     this.#lastSeen.delete(id);
     this.#alerts = this.#alerts.filter((a) => a.sid !== id);
     return this.#sessions.delete(id);

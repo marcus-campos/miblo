@@ -122,7 +122,8 @@ static const char kEn[] MIBLO_ROM =
     "Waiting on %u tasks\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7d\0"  // Short7d
-    "Auto\0";  // WebAuto
+    "Auto\0"  // WebAuto
+    "Compacting context\0";  // Compacting
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -240,7 +241,8 @@ static const char kPtBR[] MIBLO_ROM =
     "Aguardando %u tarefas\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7d\0"  // Short7d
-    "Automático\0";  // WebAuto
+    "Automático\0"  // WebAuto
+    "Compactando contexto\0";  // Compacting
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -358,7 +360,8 @@ static const char kPtPT[] MIBLO_ROM =
     "À espera de %u tarefas\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7d\0"  // Short7d
-    "Automático\0";  // WebAuto
+    "Automático\0"  // WebAuto
+    "A compactar contexto\0";  // Compacting
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -476,7 +479,8 @@ static const char kEs[] MIBLO_ROM =
     "Esperando %u tareas\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7d\0"  // Short7d
-    "Automático\0";  // WebAuto
+    "Automático\0"  // WebAuto
+    "Compactando contexto\0";  // Compacting
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -594,7 +598,8 @@ static const char kFr[] MIBLO_ROM =
     "Attend %u tâches\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7j\0"  // Short7d
-    "Automatique\0";  // WebAuto
+    "Automatique\0"  // WebAuto
+    "Compacte le contexte\0";  // Compacting
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -712,7 +717,8 @@ static const char kIt[] MIBLO_ROM =
     "In attesa di %u attività\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7g\0"  // Short7d
-    "Automatica\0";  // WebAuto
+    "Automatica\0"  // WebAuto
+    "Compatta il contesto\0";  // Compacting
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -830,7 +836,8 @@ static const char kDe[] MIBLO_ROM =
     "Wartet auf %u Aufgaben\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7T\0"  // Short7d
-    "Automatisch\0";  // WebAuto
+    "Automatisch\0"  // WebAuto
+    "Kontext wird komprimiert\0";  // Compacting
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -948,7 +955,8 @@ static const char kRu[] MIBLO_ROM =
     "Ждёт задач: %u\0"  // WaitTasksN
     "5ч\0"  // Short5h
     "7д\0"  // Short7d
-    "Авто\0";  // WebAuto
+    "Авто\0"  // WebAuto
+    "Сжимает контекст\0";  // Compacting
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1066,7 +1074,8 @@ static const char kZh[] MIBLO_ROM =
     "等待 %u 个任务\0"  // WaitTasksN
     "5h\0"  // Short5h
     "7天\0"  // Short7d
-    "自动\0";  // WebAuto
+    "自动\0"  // WebAuto
+    "正在压缩上下文\0";  // Compacting
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

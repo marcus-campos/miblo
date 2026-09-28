@@ -119,3 +119,11 @@ test('matching version: plain delivery', async () => {
   assert.equal(await deliver('B', io, { checkVersion: true, version: '2' }), 'sent');
   assert.deepEqual(names(io), ['health', 'post']);
 });
+
+test('pickEvent forwards the compaction trigger and the SessionStart source', () => {
+  assert.deepEqual(
+    pickEvent({ session_id: 's', hook_event_name: 'PreCompact', trigger: 'manual', custom_instructions: 'secret' }),
+    { session_id: 's', hook_event_name: 'PreCompact', trigger: 'manual' });
+  assert.deepEqual(pickEvent({ session_id: 's', hook_event_name: 'SessionStart', source: 'compact' }),
+    { session_id: 's', hook_event_name: 'SessionStart', source: 'compact' });
+});

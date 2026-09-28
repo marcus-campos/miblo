@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => JSON.parse(fs.readFileSync(path.join(root, p), 'utf8'));
-const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'SessionEnd'];
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'PreCompact', 'PostCompact', 'SessionEnd'];
 
 test('manifest and marketplace agree on the plugin name', () => {
   assert.equal(read('.claude-plugin/plugin.json').name, 'miblo');

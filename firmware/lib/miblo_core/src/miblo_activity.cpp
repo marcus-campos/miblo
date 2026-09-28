@@ -67,6 +67,10 @@ void activityText(Lang lang, const char* tool, const char* det, bool discreet, c
     tr(lang, S::VerbWorking, out, cap);
     return;
   }
+  if (strcmp(tool, kCompact) == 0) {
+    tr(lang, S::Compacting, out, cap);
+    return;
+  }
   bool agents = true;
   unsigned count = 0;
   if (backgroundWait(tool, det, agents, count)) {

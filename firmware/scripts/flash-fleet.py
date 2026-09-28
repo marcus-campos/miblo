@@ -790,7 +790,16 @@ def run_via_ap(args, images: Images, timing: Timing, out, ask, sleep, interactiv
         """SSIDs, or None when scanning is unavailable. Hidden names without --ssid/--try-ssid
         raise WifiPermissionError (the run stops with the instructions)."""
         try:
+            # A single CoreWLAN scan often misses the ESP8266 soft APs (short beacon window),
+            # so rescan a couple of times before concluding that no unit is around.
             ssids = wifi.scan()
+            for _ in range(2):
+                if fleet.pending(ssids):
+                    break
+                sleep(2.0)
+                for s in wifi.scan():
+                    if s not in ssids:
+                        ssids.append(s)
             fleet.scan_blocked = False
             return ssids
         except WifiPermissionError:

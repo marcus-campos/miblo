@@ -39,6 +39,7 @@ Nome e marca definitivos, gravação de firmware em lote, manual e embalagem, ve
 | Alertas | Flash + herói temporário, em todos os modos (desligável por aparelho) |
 | Fonte de limites/métricas | JSON oficial da status line do Claude Code, encadeado com consentimento (§3.2) — sem endpoints não documentados |
 | Mercado | Internacional: gadget e página de configuração em 9 idiomas — `en` (padrão), `pt-BR`, `pt-PT`, `es`, `fr`, `it`, `de`, `ru`, `zh` (chinês simplificado) |
+| Hardware | Fase A implementa só o GeekMagic Ultra, mas o firmware é organizado para outros hardwares: núcleo independente de placa (`miblo_core`), layouts calculados a partir de `ScreenSpec {w,h}` (`miblo_ui`), pasta por placa (`boards/<placa>/`) e serviços de plataforma com aliases ESP8266/ESP32. `/api/info` informa `board`, `screen` e `caps`; o bridge e o protocolo já são independentes de hardware |
 | Identidade | Nome **Miblo**; mascote na tela de boot/loading (arte final do mascote na Fase B; Fase A usa um placeholder de poucos quadros) |
 
 ## 3. Arquitetura

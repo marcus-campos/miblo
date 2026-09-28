@@ -110,11 +110,18 @@ export function resolveDevices(records, service) {
   return out;
 }
 
-// Two sockets, so a responder is heard whichever way it answers:
-//  - an ephemeral-port socket sends a QU query per interface and gets unicast answers;
-//  - a socket bound to 5353 (shared with the OS responder via reuseAddr) joins the group on every
-//    interface, sends a standard (QM) query and hears multicast answers/announcements.
-// Either socket may fail (e.g. 5353 not shareable); discovery then continues with the other.
+// One ephemeral-port socket *per interface* for the outgoing query, plus a shared 5353 listener:
+//  - `sock.setMulticastInterface(addr)` takes effect immediately, but `sock.send()` to an IP only
+//    actually hits the wire a tick later. A single socket looping "set interface, send" across
+//    every interface therefore queues every send before any of them go out, so they all leave on
+//    whichever interface was set *last*. Giving each interface its own socket — bind, set its
+//    interface once, send once — means there is no shared state left for a later iteration to
+//    clobber.
+//  - a socket bound to 5353 (shared with the OS responder via reuseAddr) joins the multicast group
+//    on every interface and just listens; it hears both unicast (QU) replies that happen to loop
+//    back through it and any multicast answers/announcements, however they arrive.
+// Any per-interface socket (including the 5353 listener) may fail to open or bind; discovery
+// continues on the rest and merges whatever answers do come back.
 export function discover({ service = MDNS_SERVICE, timeoutMs = 2500, socketFactory, interfaces } = {}) {
   return new Promise((resolve) => {
     const make = socketFactory ?? (() => dgram.createSocket({ type: 'udp4', reuseAddr: true }));
@@ -137,37 +144,44 @@ export function discover({ service = MDNS_SERVICE, timeoutMs = 2500, socketFacto
     const onMessage = (msg) => {
       try { records.push(...parseMessage(msg)); } catch { /* invalid packet */ }
     };
-    const sendAll = (sock, query) => {
-      const targets = addrs.length ? addrs : [null];
-      for (const a of targets) {
-        try {
-          if (a) sock.setMulticastInterface(a);
-          sock.send(query, MDNS_PORT, MDNS_GROUP);
-        } catch { /* interface gone or not multicast-capable */ }
-      }
-    };
-    const open = (kind, port, onReady) => {
-      let sock;
-      try { sock = make(kind); } catch { return; }
+    const track = (sock) => {
       socks.push(sock);
       sock.on('message', onMessage);
       sock.on('error', () => {
         try { sock.close(); } catch { /* already closed */ }
       });
-      try {
-        sock.bind(port, () => {
-          if (!finished) onReady(sock);
-        });
-      } catch { /* bind failed: the other socket still works */ }
     };
 
-    open('unicast', 0, (sock) => sendAll(sock, buildQuery(service, { unicast: true })));
-    open('multicast', MDNS_PORT, (sock) => {
-      for (const a of addrs.length ? addrs : [undefined]) {
-        try { sock.addMembership(MDNS_GROUP, a); } catch { /* already joined / no multicast */ }
-      }
-      sendAll(sock, buildQuery(service, { unicast: false }));
-    });
+    const query = buildQuery(service, { unicast: true });
+    for (const a of addrs.length ? addrs : [null]) {
+      let sock;
+      try { sock = make('unicast'); } catch { continue; } // this interface is skipped, others still run
+      track(sock);
+      try {
+        sock.bind(0, () => {
+          if (finished) return;
+          try {
+            if (a) sock.setMulticastInterface(a);
+            sock.send(query, MDNS_PORT, MDNS_GROUP);
+          } catch { /* interface gone or not multicast-capable */ }
+        });
+      } catch { /* bind failed: other interfaces still get their own socket */ }
+    }
+
+    let msock;
+    try { msock = make('multicast'); } catch { msock = null; }
+    if (msock) {
+      track(msock);
+      try {
+        msock.bind(MDNS_PORT, () => {
+          if (finished) return;
+          for (const a of addrs.length ? addrs : [undefined]) {
+            try { msock.addMembership(MDNS_GROUP, a); } catch { /* already joined / no multicast */ }
+          }
+        });
+      } catch { /* bind failed: per-interface queries and their unicast answers still work */ }
+    }
+
     timer = setTimeout(finish, timeoutMs);
   });
 }

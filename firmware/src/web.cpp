@@ -328,7 +328,7 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName(), 7000);
+  pageStart(out, lang, deviceName(), 7400);
   out += F("<h1>");
   appendEscaped(out, deviceName());
   out += F("</h1><p class=\"m\">");
@@ -367,7 +367,13 @@ static void settingsPage() {
   out += F("</label><input id=\"reminderMin\" type=\"number\" min=\"0\" max=\"30\"><label><input id=\"discreet\" "
            "type=\"checkbox\">");
   appendEscaped(out, tr(lang, S::WebDiscreet).c_str());
+  out += F("</label><label><input id=\"rotate\" type=\"checkbox\">");
+  appendEscaped(out, tr(lang, S::WebRotate).c_str());
   out += F("</label><label>");
+  appendEscaped(out, tr(lang, S::WebRotateEvery).c_str());
+  out += F("</label><input id=\"rotateEverySec\" type=\"number\" min=\"10\" max=\"3600\"><label>");
+  appendEscaped(out, tr(lang, S::WebRotateShow).c_str());
+  out += F("</label><input id=\"rotateShowSec\" type=\"number\" min=\"3\" max=\"300\"><label>");
   appendEscaped(out, tr(lang, S::WebDeviceName).c_str());
   out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
   appendEscaped(out, ctx.ident.defaultName);
@@ -411,7 +417,7 @@ static void settingsPage() {
       "function val(k){const e=$(k);return e.type==='checkbox'?e.checked:"
       "(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
-      "'reminderMin','discreet','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
+      "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"

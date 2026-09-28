@@ -6,6 +6,7 @@
 #include "board.h"
 #include "context.h"
 #include "miblo_format.h"
+#include "miblo_overview.h"
 #include "miblo_policy.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
@@ -32,6 +33,7 @@ static Lang drawnLang = Lang::En;
 static uint32_t lastFrameMs = 0;
 static miblo::Pager listPager(3, 5000);  // Overview: 3 session cards per page
 static miblo::Pager sessionPager(3, 5000);  // Sessions mode: 3 big cards per page
+static miblo::RotationClock rotation;  // optional Overview/Limits alternation
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -185,6 +187,11 @@ void loop() {
   in.lastSnapshotMs = ctx.lastSnapshotMs;
   in.alert = alert.phase;
   const ScreenId screen = miblo::selectScreen(in);
+  // Rotation never takes the screen away from an alert or a session waiting on the user.
+  const bool rotBlocked = screen != ScreenId::Main || miblo::countStates(ctx.snap).pending > 0;
+  const bool wasLimits = rotation.showingLimits();
+  const bool rotLimits = rotation.update(miblo::rotationTiming(ctx.cfg), rotBlocked, now);
+  if (rotLimits != wasLimits) firstFrame = true;  // Overview <-> Limits: redraw everything
   enter(screen);
 
   const Lang lang = uiLang();
@@ -243,6 +250,10 @@ void loop() {
     case ScreenId::Main:
       switch (ctx.cfg.mode) {
         case miblo::Mode::Overview:
+          if (rotLimits) {
+            screens::limits(lang, ctx.snap, clk);
+            break;
+          }
           screens::overview(lang, ctx.snap, listPager, now, clk, ctx.cfg.discreet);
           break;
         case miblo::Mode::Limits:

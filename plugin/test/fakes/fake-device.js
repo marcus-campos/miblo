@@ -19,6 +19,22 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
         try { resolve(text ? JSON.parse(text) : {}); } catch { resolve(null); }
       });
     });
+  // Overview/Limits rotation, as the firmware reports it in /api/info (defaults until configured)
+  // and validates it in /api/config (lib/miblo_core/src/miblo_config.cpp).
+  const rotation = () => ({
+    rotate: state.config.rotate ?? false,
+    rotateEverySec: state.config.rotateEverySec ?? 60,
+    rotateShowSec: state.config.rotateShowSec ?? 10,
+  });
+  const badRotationField = (patch) => {
+    const intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+    if ('rotate' in patch && typeof patch.rotate !== 'boolean') return 'rotate';
+    if ('rotateEverySec' in patch && !intIn(patch.rotateEverySec, 10, 3600)) return 'rotateEverySec';
+    if ('rotateShowSec' in patch && !intIn(patch.rotateShowSec, 3, 300)) return 'rotateShowSec';
+    const merged = { ...rotation(), ...patch };
+    if (merged.rotateShowSec >= merged.rotateEverySec) return 'rotateShowSec' in patch ? 'rotateShowSec' : 'rotateEverySec';
+    return null;
+  };
   const authed = (req) => state.tokens.some((t) => req.headers.authorization === `Bearer ${t}`);
 
   const server = http.createServer(async (req, res) => {
@@ -27,7 +43,7 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
     if (req.method === 'GET' && req.url === '/api/info') {
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
-      return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet });
+      return send(200, { id, name, fw: '0.0.0-fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation() });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -51,7 +67,12 @@ export function startFakeDevice({ id = 'miblo-4f2a', name = 'Miblo-4F2A', code =
     }
     if (!authed(req)) return send(401, { error: 'unauthorized' });
     if (req.method === 'POST' && req.url === '/api/state') { state.snapshots.push(body); return send(200, { ok: true }); }
-    if (req.method === 'POST' && req.url === '/api/config') { Object.assign(state.config, body); return send(200, { ok: true }); }
+    if (req.method === 'POST' && req.url === '/api/config') {
+      const bad = badRotationField(body ?? {});
+      if (bad) return send(400, { error: 'invalid', field: bad });  // all-or-nothing, like the firmware
+      Object.assign(state.config, body);
+      return send(200, { ok: true });
+    }
     if (req.method === 'POST' && req.url === '/api/reset') { state.resets++; state.tokens = []; state.token = null; return send(200, { ok: true }); }
     send(404, { error: 'not found' });
   });

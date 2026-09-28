@@ -12,6 +12,9 @@ void makeToken(const uint8_t rnd[16], char out[33]);
 bool bearerToken(const char* header, char* out, size_t cap);
 // Comparação em tempo constante (não vaza o tamanho do prefixo correto).
 bool constantTimeEquals(const char* a, const char* b);
+// Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
+// first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
+bool findContentLength(const char* headers, size_t len, uint32_t& out);
 
 // Código de pareamento: 5 erros seguidos bloqueiam novas tentativas por 60 s (spec §5.4).
 class PairingGuard {
@@ -38,8 +41,8 @@ struct TokenEntry {
   uint32_t order;  // maior = mais recente
 };
 
-// Até 4 computadores pareados. Parear de novo o mesmo host substitui o token antigo;
-// com a lista cheia, o pareamento mais antigo sai.
+// Up to 4 paired computers. Every pairing appends a new token (host names are truncated and
+// may collide, so they never replace one another); when full, the oldest pairing is evicted.
 class TokenStore {
  public:
   static constexpr uint8_t kMax = 4;
@@ -57,13 +60,21 @@ class TokenStore {
 
 // Código de presença física: ao abrir /update (ou pedir o reset de fábrica) pelo navegador, a
 // tela mostra um código de 4 dígitos, válido por 5 min; o POST precisa dele. 5 erros fecham o portão.
+// Brute-force lockout (survives re-opens): once the gate closes on 5 failures it refuses to open
+// again for 60 s, doubling on each further lockout (capped at 1 h). Only a correct code resets
+// the escalation.
 class PresenceGate {
  public:
   enum class Purpose : uint8_t { Update, Reset };
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint8_t kMaxFailures = 5;
+  static constexpr uint32_t kLockBaseMs = 60000;
+  static constexpr uint32_t kLockMaxMs = 3600000;
 
-  void open(Purpose p, const char* code4, uint32_t nowMs);
+  // false (and nothing changes) while locked out.
+  bool open(Purpose p, const char* code4, uint32_t nowMs);
+  bool locked(uint32_t nowMs) const { return lockRemainingMs(nowMs) > 0; }
+  uint32_t lockRemainingMs(uint32_t nowMs) const;
   bool active(uint32_t nowMs) const;
   Purpose purpose() const { return purpose_; }
   const char* code() const { return code_; }
@@ -77,6 +88,8 @@ class PresenceGate {
   char code_[5] = "";
   uint32_t openedAtMs_ = 0;
   uint8_t failures_ = 0;
+  uint32_t lockMs_ = 0;  // duration of the current/last lockout; 0 = no escalation
+  uint32_t lockedAtMs_ = 0;
 };
 
 }  // namespace miblo

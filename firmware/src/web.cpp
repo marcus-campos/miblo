@@ -12,6 +12,7 @@ using miblo::Lang;
 using miblo::S;
 
 static WebServerT* srv = nullptr;
+static constexpr uint32_t kMaxPostBody = 4096;  // any POST except /update (the snapshot is ≤ 3072 B)
 
 static const char kCss[] PROGMEM =
     "body{font-family:system-ui,sans-serif;background:#0b0b0d;color:#eee;margin:0;padding:16px;max-width:480px}"
@@ -61,7 +62,15 @@ void sendJson(WebServerT& server, int code, const char* json) {
   server.send(code, F("application/json"), json);
 }
 
-// Content-Length is collected in web::begin(); reject oversized bodies before parsing them.
+void sendLocked(WebServerT& server, uint32_t remainingMs) {
+  char out[48];
+  snprintf(out, sizeof(out), "{\"error\":\"locked\",\"retryAfter\":%u}", (unsigned)((remainingMs + 999) / 1000));
+  sendJson(server, 429, out);
+}
+
+// Second layer for the human pages: the server hook installed in begin() already refused any
+// POST body over kMaxPostBody before ESP8266WebServer buffered it; by the time a handler runs
+// the body is in RAM, so this only enforces the pages' tighter 1 KiB limit.
 static bool bodyTooLarge() {
   String cl = srv->header(F("Content-Length"));
   return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
@@ -340,13 +349,21 @@ static void handlePairCode() {
 }
 
 static void handleResetCode() {
+  const uint32_t now = millis();
   char code[5];
   miblo::formatCode(hwRandom(), code);
-  ctx.presence.open(miblo::PresenceGate::Purpose::Reset, code, millis());
+  if (!ctx.presence.open(miblo::PresenceGate::Purpose::Reset, code, now)) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    return;
+  }
   sendJson(*srv, 200, "{\"ok\":true}");
 }
 
 static void handleFactoryReset() {
+  if (ctx.presence.locked(millis())) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(millis()));
+    return;
+  }
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Reset, srv->arg(F("code")).c_str(), millis())) {
     sendJson(*srv, 403, "{\"error\":\"bad code\"}");
     return;
@@ -364,8 +381,32 @@ static bool captiveRedirect() {
   return true;
 }
 
+#if defined(ESP8266)
+// Runs right after the request line, before ESP8266WebServer reads (and buffers in RAM) a
+// non-multipart POST body. Peeks at the header bytes already received — without consuming them —
+// and refuses bodies over kMaxPostBody. /update is multipart and streamed, so it is exempt.
+// Headers that did not arrive in the first TCP segment are not seen here; the handler checks
+// remain as a second layer.
+static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* client,
+                                                     ESP8266WebServer::ContentTypeFunction) {
+  if (method != F("POST") || url == F("/update")) return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  uint32_t len = 0;
+  if (!miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len) || len <= kMaxPostBody) {
+    return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  }
+  static const char kReply[] PROGMEM =
+      "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nConnection: close\r\n"
+      "Content-Length: 21\r\n\r\n{\"error\":\"too large\"}";
+  client->print(FPSTR(kReply));
+  return ESP8266WebServer::CLIENT_MUST_STOP;
+}
+#endif
+
 void begin(WebServerT& server) {
   srv = &server;
+#if defined(ESP8266)
+  server.addHook(limitPostBody);
+#endif
   // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API (api.cpp).
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length");
   server.on(F("/"), HTTP_GET, handleRoot);

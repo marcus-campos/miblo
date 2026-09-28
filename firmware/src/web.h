@@ -17,5 +17,7 @@ void pageEnd(String& out);
 void appendEscaped(String& out, const char* s);
 String tr(miblo::Lang lang, miblo::S id);
 void sendJson(WebServerT& server, int code, const char* json);
+// 429 {"error":"locked","retryAfter":<s>} for a locked presence gate or pairing guard.
+void sendLocked(WebServerT& server, uint32_t remainingMs);
 
 }  // namespace web

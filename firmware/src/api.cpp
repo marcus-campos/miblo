@@ -57,13 +57,9 @@ static void handlePair() {
   else code[0] = 0;
   uint32_t now = millis();
   switch (ctx.pairing.check(code, now)) {
-    case miblo::PairingGuard::Result::Locked: {
-      char out[64];
-      snprintf(out, sizeof(out), "{\"error\":\"locked\",\"retryAfter\":%u}",
-               (unsigned)((ctx.pairing.lockRemainingMs(now) + 999) / 1000));
-      json(429, out);
+    case miblo::PairingGuard::Result::Locked:
+      web::sendLocked(*srv, ctx.pairing.lockRemainingMs(now));  // 429 {retryAfter}
       return;
-    }
     case miblo::PairingGuard::Result::BadCode:
       json(403, "{\"error\":\"bad code\"}");
       return;

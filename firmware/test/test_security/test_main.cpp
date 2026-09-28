@@ -74,7 +74,8 @@ static void test_token_store_up_to_four_replacing_oldest() {
   TEST_ASSERT_EQUAL_UINT8(4, s.count());
   TEST_ASSERT_FALSE(s.matches("t1"));
   TEST_ASSERT_TRUE(s.matches("t5"));
-  s.add("t6", "pc");  // mesmo host: substitui, não ocupa vaga
+  s.add("t6", "pc");  // same host as t2: still appended; full, so the oldest (t2) is evicted
+  TEST_ASSERT_EQUAL_UINT8(4, s.count());
   TEST_ASSERT_FALSE(s.matches("t2"));
   TEST_ASSERT_TRUE(s.matches("t6"));
   TEST_ASSERT_TRUE(s.matches("t3"));
@@ -87,6 +88,72 @@ static void test_token_store_up_to_four_replacing_oldest() {
   TEST_ASSERT_TRUE(r.matches("t6"));
   r.clear();
   TEST_ASSERT_FALSE(r.matches("t6"));
+}
+
+// Host names are truncated and may collide: pairing the same host again never drops a token.
+static void test_token_store_same_host_appends() {
+  TokenStore s;
+  s.add("a1", "mac");
+  s.add("a2", "mac");
+  TEST_ASSERT_EQUAL_UINT8(2, s.count());
+  TEST_ASSERT_TRUE(s.matches("a1"));
+  TEST_ASSERT_TRUE(s.matches("a2"));
+}
+
+static void test_find_content_length() {
+  uint32_t n = 0;
+  const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
+  TEST_ASSERT_TRUE(findContentLength(h1, sizeof(h1) - 1, n));
+  TEST_ASSERT_EQUAL_UINT32(5000, n);
+  const char h2[] = "Content-Length: 99999999999\r\n";
+  TEST_ASSERT_TRUE(findContentLength(h2, sizeof(h2) - 1, n));
+  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, n);  // saturates
+  const char h3[] = "Host: x\r\n\r\nContent-Length: 9";  // after the blank line: body, not a header
+  TEST_ASSERT_FALSE(findContentLength(h3, sizeof(h3) - 1, n));
+  const char h4[] = "Content-Length: 12";  // truncated buffer: parse only what is there
+  TEST_ASSERT_TRUE(findContentLength(h4, 17, n));
+  TEST_ASSERT_EQUAL_UINT32(1, n);
+  TEST_ASSERT_FALSE(findContentLength("Content-Length: x\r\n", 19, n));
+  TEST_ASSERT_FALSE(findContentLength("X-Content-Length: 5\r\n", 21, n));
+}
+
+// Brute force: the lockout survives re-opening the gate and escalates until a correct code.
+static void test_presence_lockout_escalates() {
+  PresenceGate g;
+  uint32_t t = 0;
+  const uint32_t expected[] = {60000, 120000, 240000};
+  for (uint32_t lock : expected) {
+    TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
+    for (int i = 0; i < 5; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", t));
+    TEST_ASSERT_FALSE(g.active(t));
+    TEST_ASSERT_TRUE(g.locked(t));
+    TEST_ASSERT_EQUAL_UINT32(lock, g.lockRemainingMs(t));
+    TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "5555", t + 1));  // re-open refused
+    TEST_ASSERT_FALSE(g.active(t + 1));
+    t += lock - 1;
+    TEST_ASSERT_TRUE(g.locked(t));
+    t += 1;
+    TEST_ASSERT_FALSE(g.locked(t));
+  }
+  // A correct code resets the escalation back to 60 s.
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
+  TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "1234", t));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
+  for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(t));
+}
+
+static void test_presence_lockout_caps_at_one_hour() {
+  PresenceGate g;
+  uint32_t t = 0;
+  for (int round = 0; round < 10; round++) {
+    TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
+    for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
+    t += g.lockRemainingMs(t);
+  }
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
+  for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kLockMaxMs, g.lockRemainingMs(t));
 }
 
 static void test_presence_gate() {
@@ -113,5 +180,9 @@ int main() {
   RUN_TEST(test_success_resets_failure_count);
   RUN_TEST(test_token_store_up_to_four_replacing_oldest);
   RUN_TEST(test_presence_gate);
+  RUN_TEST(test_token_store_same_host_appends);
+  RUN_TEST(test_find_content_length);
+  RUN_TEST(test_presence_lockout_escalates);
+  RUN_TEST(test_presence_lockout_caps_at_one_hour);
   return UNITY_END();
 }

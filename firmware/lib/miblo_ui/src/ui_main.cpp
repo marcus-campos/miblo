@@ -686,17 +686,28 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   return hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
 }
 
-// The mascot in its box (half = Sz(64)), composed on a layer when memory allows; only redrawn
-// when the expression changes.
+// The mascot in its box (half = Sz(64)), only redrawn when the expression changes. It is
+// composed in horizontal strips (kCatStrips small layers of one reused buffer, each clipping the
+// whole drawing) and pushed strip by strip, so it never needs one big block of heap: a
+// whole-box layer (8 KB) often could not be allocated once the heap was fragmented, and the
+// direct fallback flashed the background before each frame.
+constexpr int kCatStrips = 8;
+
 static void deskCat(uint8_t id, int cx, int cy, const MascotLook& k) {
   if (!dirty(id, lookHash(kHashSeed + 17, k))) return;
   const int half = Sz(64);
-  const bool layered = C().beginLayer(cx - half, cy - half, 2 * half, 2 * half);
-  deskMascot(cx, cy, k);
-  if (layered) {
+  const int top = cy - half;
+  const int stripH = (2 * half + kCatStrips - 1) / kCatStrips;
+  for (int y = top; y < cy + half; y += stripH) {
+    const int h = y + stripH <= cy + half ? stripH : cy + half - y;
+    if (!C().beginLayer(cx - half, y, 2 * half, h)) {  // no memory even for a strip: draw directly
+      deskMascot(cx, cy, k);
+      break;
+    }
+    deskMascot(cx, cy, k);
     C().endLayer();
-    C().releaseLayer();
   }
+  C().releaseLayer();
 }
 
 // Ring gauge (270 degrees, gap at the bottom) with the percentage inside and the label in the gap.

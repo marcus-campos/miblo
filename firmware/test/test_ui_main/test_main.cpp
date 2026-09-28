@@ -826,11 +826,39 @@ static void test_disconnected_has_mascot_and_info() {
   TEST_ASSERT_TRUE(fc.drew("4827"));
   TEST_ASSERT_FALSE(fc.drew("%"));
   TEST_ASSERT_EQUAL_INT(0, (int)fc.arcs.size());
-  TEST_ASSERT_EQUAL_INT(1, fc.layerBegins);  // the mascot, composed off-screen
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
   fc.clearLog();
   screens::disconnected(Lang::En, testClock(), "192.168.0.42", "miblo-4f2a", "4827", 1200, 1200);
   TEST_ASSERT_TRUE(fc.drew("Waiting for the computer.."));  // the dots move
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
+// The big mascot is composed in 8 small strips (one 128x16 buffer on a 240 screen) and never
+// clears anything on the panel itself: no flash when its expression changes, even with a
+// fragmented heap (a whole-box 8 KB layer used to fail and fall back to direct drawing).
+static void test_desk_mascot_redraws_in_strips_without_flashing() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  screens::desk(Lang::En, snap, testClock(), 0);
+  // Find the next expression change in the watchful loop and redraw only that.
+  const screens::MascotLook first = screens::deskLook(screens::DeskMood::Watchful, true, 0);
+  uint32_t ms = 0;
+  while (screens::deskLook(screens::DeskMood::Watchful, true, ms) == first) ms += 50;
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), ms);  // 62%: watchful
+  TEST_ASSERT_EQUAL_INT(8, fc.layerBegins);
+  TEST_ASSERT_EQUAL_INT(8, fc.layerEnds);
+  TEST_ASSERT_EQUAL_INT(1, fc.layerReleases);
+  TEST_ASSERT_EQUAL_INT(128, fc.lastLayer[2]);
+  TEST_ASSERT_EQUAL_INT(16, fc.lastLayer[3]);
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);  // nothing painted straight on the panel
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  // Same expression: nothing at all.
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), ms);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
 }
 
 int main() {
@@ -853,5 +881,6 @@ int main() {
   RUN_TEST(test_pt_br_screens_have_no_english);
   RUN_TEST(test_desk_mood_and_gauges);
   RUN_TEST(test_disconnected_has_mascot_and_info);
+  RUN_TEST(test_desk_mascot_redraws_in_strips_without_flashing);
   return UNITY_END();
 }

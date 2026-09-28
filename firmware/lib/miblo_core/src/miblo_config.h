@@ -19,7 +19,7 @@ struct Config {
   uint8_t heroDoneSec = 5;   // 2..60
   uint8_t reminderMin = 2;   // 0..30 (0 = no reminder)
   bool discreet = false;
-  char tz[48] = "UTC0";      // POSIX TZ, e.g. "<-03>3"
+  char tz[48] = "UTC0";      // IANA name ("America/Sao_Paulo"); legacy: POSIX rule ("<-03>3"). See miblo_tz.h
   char name[64] = "";        // <= 20 characters; empty = default name "Miblo-XXXX"
   Lang lang = Lang::En;
   bool langSet = false;      // false = automatic language (Accept-Language)

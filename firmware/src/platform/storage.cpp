@@ -1,6 +1,7 @@
 #include "storage.h"
 
 #include <ArduinoJson.h>
+#include <string.h>
 
 #include "platform.h"
 
@@ -37,7 +38,15 @@ bool loadConfig(miblo::Config& cfg) {
   f.close();
   if (err) return false;
   miblo::Config loaded;
-  if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), nullptr)) return false;
+  const char* bad = nullptr;
+  if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), &bad)) {
+    // A time zone saved by an older firmware that today's rules reject must not cost the user
+    // every other setting: drop just that field (back to UTC; the settings page re-detects it).
+    if (!bad || strcmp(bad, "tz") != 0) return false;
+    doc.remove("tz");
+    loaded = miblo::Config();
+    if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), nullptr)) return false;
+  }
   cfg = loaded;
   return true;
 }

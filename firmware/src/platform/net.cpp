@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "../context.h"
+#include "miblo_tz.h"
 #include "platform.h"
 
 namespace net {
@@ -56,7 +57,11 @@ static void stopAp() {
   apOn = false;
 }
 
-void applyTimezone() { configTime(ctx.cfg.tz, "pool.ntp.org", "time.google.com"); }
+void applyTimezone() {
+  char rule[48];
+  miblo::tzResolve(ctx.cfg.tz, rule, sizeof(rule));
+  configTime(rule, "pool.ntp.org", "time.google.com");
+}
 
 void begin(uint32_t nowMs) {
   uint32_t chip = chipId() & 0xFFFF;

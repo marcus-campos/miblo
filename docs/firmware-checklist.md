@@ -37,7 +37,8 @@ notes.
    4-digit pairing code, and the IP — the SDK's saved Wi-Fi credentials were reused; no
    `Miblo-Setup-…` network appears.
 3. **Page:** `http://miblo-xxxx.local` (or by IP) opens the config page in the browser's language;
-   the timezone is captured automatically; switching the language to `pt-BR` changes the screen.
+   the time zone select lists IANA names (`GET /api/zones`) and preselects the browser's zone
+   (saved automatically the first time); switching the language to `pt-BR` changes the screen.
 4. **Pairing:** `/miblo pair` finds `Miblo-XXXX`, asks for the code shown on screen, then shows
    "Paired with <host>" for 5 s, then "Disconnected"/clock until the first snapshot. `GET
    http://<ip>/api/info` shows `paired: true`, `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`,

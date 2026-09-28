@@ -80,4 +80,4 @@ Releases: bump `firmware/include/miblo_version.h` and `plugin/.claude-plugin/plu
 
 ## License
 
-See [LICENSE](LICENSE). Embedded third‑party fonts and libraries keep their own licenses — see [`firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md`](firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md) (includes WenQuanYi Bitmap Song, GPLv2 with font‑embedding exception).
+See [LICENSE](LICENSE). Embedded third‑party fonts and libraries keep their own licenses — see [`firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md`](firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md) (includes WenQuanYi Bitmap Song, GPLv2 with font‑embedding exception) and [`firmware/THIRD_PARTY_NOTICES.md`](firmware/THIRD_PARTY_NOTICES.md) (time zone table from posix_tz_db, MIT).

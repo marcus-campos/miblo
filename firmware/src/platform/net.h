@@ -18,7 +18,7 @@ uint32_t connectionId();
 String ip();
 // Called by the portal: connects to the new network right after the HTTP response goes out.
 void submitCredentials(const char* ssid, const char* pass, uint32_t nowMs);
-// Reapplies the timezone (POSIX TZ from ctx.cfg.tz) and NTP.
+// Reapplies the timezone (ctx.cfg.tz, IANA name resolved to POSIX via miblo_tz) and NTP.
 void applyTimezone();
 
 }  // namespace net

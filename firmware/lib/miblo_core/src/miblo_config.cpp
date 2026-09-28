@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "miblo_tz.h"
 #include "miblo_utf8.h"
 
 namespace miblo {
@@ -32,13 +33,6 @@ static bool intIn(JsonVariantConst v, int lo, int hi, uint8_t& out) {
   return true;
 }
 
-static bool printableAscii(const char* s) {
-  for (; *s; s++) {
-    if (*s < 0x21 || *s > 0x7E) return false;
-  }
-  return true;
-}
-
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField) {
   Config next = cfg;
   const char* bad = nullptr;
@@ -64,7 +58,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       if (ok) next.discreet = v.as<bool>();
     } else if (strcmp(k, "tz") == 0) {
       const char* s = v.as<const char*>();
-      ok = s && s[0] && strlen(s) < sizeof(next.tz) && printableAscii(s);
+      // An IANA name from the table, or (configs from before the table) a POSIX rule.
+      ok = s && strlen(s) < sizeof(next.tz) && (tzIsKnown(s) || tzLooksPosix(s));
       if (ok) strcpy(next.tz, s);
     } else if (strcmp(k, "name") == 0) {
       const char* s = v.as<const char*>();

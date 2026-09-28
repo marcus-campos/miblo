@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 
 #include "context.h"
+#include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
 
@@ -24,20 +25,27 @@ static const char kCss[] PROGMEM =
     "button.s{background:#333;color:#eee}button.d{background:#ef4444;color:#fff}.m{color:#888}.w{color:#f5a524}"
     "a{color:#60a5fa}";
 
-// Builds a POSIX TZ string from the browser's offset (January/July offset + a per-region DST
-// rule). No DST → fixed offset, e.g. "<-03>3".
+// Fills the time zone <select> with the device's IANA list (GET /api/zones, one name per line).
+// `cur` is the stored value: an IANA name → selected; "UTC0" (never set) or a legacy POSIX rule →
+// the browser's zone is preselected, and `done(true)` is called only for "UTC0" so the page can
+// save it. Browsers still report a few legacy aliases; A maps them to the names in the table.
 static const char kTzJs[] PROGMEM =
-    "function posixTz(){const y=new Date().getFullYear();"
-    "const jan=-new Date(y,0,1).getTimezoneOffset(),jul=-new Date(y,6,1).getTimezoneOffset();"
-    "const std=Math.min(jan,jul),dst=Math.max(jan,jul);"
-    "const p=n=>String(n).padStart(2,'0');"
-    "const nm=m=>'<'+(m<0?'-':'+')+p(Math.floor(Math.abs(m)/60))+(Math.abs(m)%60?p(Math.abs(m)%60):'')+'>';"
-    "const off=m=>{const a=Math.abs(m);return (m>0?'-':'')+Math.floor(a/60)+(a%60?':'+p(a%60):'')};"
-    "let tz=nm(std)+off(std);if(jan===jul)return tz;"
-    "const zone=(Intl.DateTimeFormat().resolvedOptions().timeZone||'');let rule;"
-    "if(zone.startsWith('Europe/')){const h=1+std/60;rule=',M3.5.0/'+h+',M10.5.0/'+(h+1);}"
-    "else if(jul>jan){rule=',M3.2.0,M11.1.0';}else{rule=',M10.1.0,M4.1.0/3';}"
-    "return tz+nm(dst)+(dst-std!==60?off(dst):'')+rule;}";
+    "function tzFill(sel,cur,done){"
+    "const A={'UTC':'Etc/UTC','Etc/Universal':'Etc/UTC','Asia/Calcutta':'Asia/Kolkata',"
+    "'Europe/Kyiv':'Europe/Kiev','Asia/Saigon':'Asia/Ho_Chi_Minh','Asia/Katmandu':'Asia/Kathmandu',"
+    "'Asia/Rangoon':'Asia/Yangon','America/Buenos_Aires':'America/Argentina/Buenos_Aires'};"
+    "let b='';try{b=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(e){}"
+    "const add=z=>{const o=document.createElement('option');o.value=z;o.textContent=z.replace(/_/g,' ');"
+    "sel.appendChild(o);};"
+    "const fill=(L,S)=>{sel.textContent='';const bz=S.has(b)?b:(S.has(A[b])?A[b]:'');"
+    "const set=S.has(cur),unset=!cur||cur==='UTC0';"
+    "if(!set&&!bz&&!unset)add(cur);"  // legacy rule and no usable browser zone: keep it as-is
+    "for(const z of L)add(z);"
+    "sel.value=set?cur:(bz||(unset?'Etc/UTC':cur));"
+    "if(done)done(!set&&unset&&!!bz);};"
+    "fetch('/api/zones').then(r=>r.ok?r.text():Promise.reject())"
+    ".then(t=>{const L=t.split('\\n').filter(Boolean);fill(L,new Set(L));})"
+    ".catch(()=>{const L=[...new Set([cur,b].filter(z=>z&&z!=='UTC0'))];fill(L,new Set(L));});}";
 
 String tr(Lang lang, S id) {
   char b[160];
@@ -176,9 +184,9 @@ static void portalPage() {
   appendEscaped(out, tr(lang, S::WebPassword).c_str());
   out += F("</label><input name=\"pass\" type=\"password\" maxlength=\"64\"><label>");
   appendEscaped(out, tr(lang, S::WebTimezone).c_str());
-  out += F("</label><input name=\"tz\" id=\"tz\" maxlength=\"47\" value=\"");
+  out += F("</label><select name=\"tz\" id=\"tz\" data-cur=\"");
   appendEscaped(out, ctx.cfg.tz);
-  out += F("\"><label>");
+  out += F("\"></select><label>");
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
   out += F("</label><select name=\"lang\">");
   langOptions(out, lang, false);
@@ -186,7 +194,7 @@ static void portalPage() {
   appendEscaped(out, tr(lang, S::WebConnect).c_str());
   out += F("</button></form><script>");
   out += FPSTR(kTzJs);
-  out += F("document.getElementById('tz').value=posixTz();"
+  out += F("{const t=document.getElementById('tz');tzFill(t,t.dataset.cur,null);}"
            "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();"
            "</script>");
   pageEnd(out);
@@ -285,7 +293,7 @@ static void settingsPage() {
   appendEscaped(out, ctx.ident.defaultName);
   out += F("\"><label>");
   appendEscaped(out, tr(lang, S::WebTimezone).c_str());
-  out += F("</label><input id=\"tz\" maxlength=\"47\"><label>");
+  out += F("</label><select id=\"tz\"></select><label>");
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
   out += F("</label><select id=\"lang\">");
   langOptions(out, lang, true);
@@ -323,13 +331,13 @@ static void settingsPage() {
       "function val(k){const e=$(k);return e.type==='checkbox'?e.checked:"
       "(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
-      "'reminderMin','discreet','name','tz','lang'])b[k]=val(k);"
+      "'reminderMin','discreet','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
       "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
       "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
-      "if(C.tz==='UTC0'){const z=posixTz();if(z!=='UTC0'){$('tz').value=z;save();}}"
+      "tzFill($('tz'),C.tz,ch=>{if(ch)save();});"
       "</script>");
   pageEnd(out);
   srv->send(200, F("text/html; charset=utf-8"), out);
@@ -354,6 +362,13 @@ static void handleSettings() {
   }
   ctx.configChanged = true;
   sendJson(*srv, 200, "{\"ok\":true}");
+}
+
+// The IANA zone names the device can resolve, one per line. Streamed straight from flash
+// (send_P writes the PROGMEM blob in small chunks): no ~7 KB String on a ~30 KB heap.
+static void handleZones() {
+  srv->sendHeader(F("Cache-Control"), F("max-age=86400"));
+  srv->send_P(200, PSTR("text/plain; charset=utf-8"), miblo::kTzNames, miblo::kTzNamesLen);
 }
 
 static void handleRoot() {
@@ -439,6 +454,7 @@ void begin(WebServerT& server) {
   server.on(F("/"), HTTP_GET, handleRoot);
   server.on(F("/wifi"), HTTP_POST, handleWifi);
   server.on(F("/settings"), HTTP_POST, handleSettings);
+  server.on(F("/api/zones"), HTTP_GET, handleZones);
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);
   server.on(F("/reset-code"), HTTP_POST, handleResetCode);
   server.on(F("/factory-reset"), HTTP_POST, handleFactoryReset);

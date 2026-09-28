@@ -221,7 +221,7 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 - **Vários gadgets** → a lista mostra todos; o código identifica qual.
 - **IP mudou** → o bridge redescobre pelo ID via mDNS; na falha, faz varredura do IP antigo e avisa em `/miblo status`.
 - **Roteador fora do ar** → o gadget mantém as credenciais; após 2 min sem conexão, abre a rede de setup **e continua tentando** a rede salva.
-- **Reset de fábrica (sem botão)** → 3 ciclos de liga/desliga em menos de 10s (contador persistido na flash, zerado após 10s de uptime), pela página web ou com `/miblo reset`.
+- **Reset de fábrica** → só por comando explícito: pela página do gadget (confirmado com o código de 4 dígitos mostrado na tela) ou por `/miblo reset` (token do pareamento). Quedas de energia nunca apagam nada — Wi-Fi, pareamento e configurações ficam na flash. Trocar de roteador não exige reset: após 2 min sem conexão o gadget abre a rede de setup.
 
 ## 7. Tratamento de erros
 
@@ -241,9 +241,9 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 - **Hook e tap** — `hook.js` termina com código 0 e sem stdout com o bridge fora do ar; `statusline-tap.js` devolve byte a byte a saída do comando original (e nada quando não há original), com o bridge fora do ar.
 - **Settings** — encadear/desencadear a status line preserva o resto do `settings.json` e é idempotente.
 - **Contrato** — os mesmos arquivos em `fixtures/snapshots/*.json` são gerados/validados pelos testes do bridge e consumidos pelos testes do firmware.
-- **Firmware — lógica** (`pio test -e native`): parse do snapshot, escolha do herói, AlertQueue (dedupe, ordem, lembrete), rotação de páginas, contador de reset por liga/desliga.
+- **Firmware — lógica** (`pio test -e native`): parse do snapshot, escolha do herói, AlertQueue (dedupe, ordem, lembrete), rotação de páginas.
 - **Preview de telas** — script que gera PNGs de cada tela a partir das fixtures de snapshot, para revisão visual e fotos do anúncio.
-- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, reset por liga/desliga, dois gadgets, computador desligado, OTA via `/miblo update`.
+- **Checklist manual por release** — setup do zero, senha errada, queda do roteador, dois gadgets, computador desligado, OTA via `/miblo update`.
 
 ## 9. Ordem de construção
 
@@ -252,7 +252,7 @@ Mockup: `mockups/setup-flow.html`. Meta: < 3 minutos, sem manual.
 2. Bridge — plugin (`hook.js`, `statusline-tap.js`, subida automática, `/miblo status`).
 3. Firmware — base (captive portal + QR, mDNS, pareamento, API, página de configuração, OTA).
 4. Firmware — telas (Visão geral adaptativa, alertas, Limites, Sessões, sistema).
-5. Integração (`/miblo pair/mode/update/reset`, reset por liga/desliga, vários gadgets, checklist manual).
+5. Integração (`/miblo pair/mode/update/reset`, vários gadgets, checklist manual).
 
 ## 10. Riscos de produto
 

@@ -163,3 +163,26 @@ test('sawStart is true only for sessions whose SessionStart was handled', () => 
   ev('s1', 'SessionEnd');
   assert.equal(tracker.sawStart('s1'), false);
 });
+
+test('pid attached to UserPromptSubmit is stored and used by sweep', () => {
+  const { tracker, alive, ev } = setup();
+  ev('s1', 'UserPromptSubmit', { pid: 222 });
+  assert.equal(tracker.sessions()[0].pid, 222);
+  alive.add(222);
+  assert.equal(tracker.sweep(), false);
+  alive.delete(222);
+  assert.equal(tracker.sweep(), true);
+  assert.equal(tracker.sessions().length, 0);
+});
+
+test('sweep drops sessions with no event for 12 h, even without a pid', () => {
+  const { tracker, clock, ev } = setup();
+  ev('old', 'SessionStart');
+  clock.advance(6 * 3600_000);
+  ev('recent', 'SessionStart');
+  clock.advance(6 * 3600_000);
+  assert.equal(tracker.sweep(), false); // exactly 12 h: kept
+  clock.advance(1);
+  assert.equal(tracker.sweep(), true);
+  assert.deepEqual(tracker.sessions().map((s) => s.id), ['recent']);
+});

@@ -1,5 +1,5 @@
 import { describeTool } from './describe-tool.js';
-import { ALERT_TTL_MS } from './constants.js';
+import { ALERT_TTL_MS, SESSION_TTL_MS } from './constants.js';
 
 const PRIORITY = { perm: 0, question: 1, done: 2, running: 3, idle: 4 };
 const ALERTING = new Set(['perm', 'question', 'done']);
@@ -21,6 +21,7 @@ export class SessionTracker {
   #alerts = [];
   #nextAlertId = 1;
   #started = new Set();
+  #lastSeen = new Map();
 
   constructor({ now = () => Date.now(), isAlive = pidAlive } = {}) {
     this.now = now;
@@ -35,6 +36,7 @@ export class SessionTracker {
 
     const created = !this.#sessions.has(id);
     const s = this.#ensure(id, evt.cwd);
+    this.#lastSeen.set(id, this.now());
     const before = JSON.stringify(s);
     if (evt.pid !== undefined && evt.pid !== null) s.pid = evt.pid;
 
@@ -78,7 +80,8 @@ export class SessionTracker {
   sweep() {
     let changed = false;
     for (const s of [...this.#sessions.values()]) {
-      if (s.pid && !this.isAlive(s.pid)) changed = this.#remove(s.id) || changed;
+      const stale = this.now() - (this.#lastSeen.get(s.id) ?? 0) > SESSION_TTL_MS;
+      if (stale || (s.pid && !this.isAlive(s.pid))) changed = this.#remove(s.id) || changed;
     }
     return changed;
   }
@@ -129,6 +132,7 @@ export class SessionTracker {
 
   #remove(id) {
     this.#started.delete(id);
+    this.#lastSeen.delete(id);
     this.#alerts = this.#alerts.filter((a) => a.sid !== id);
     return this.#sessions.delete(id);
   }

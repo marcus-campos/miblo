@@ -194,8 +194,20 @@ bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
   return false;
 }
 
-bool otaCodeRequired(bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp) {
-  return hasWifiCreds || tokenCount != 0 || !viaSoftAp;
+bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp) {
+  return everConfigured || hasWifiCreds || tokenCount != 0 || !viaSoftAp;
+}
+
+bool viaSoftApSubnet(bool apActive, const uint8_t remote[4], const uint8_t local[4], const uint8_t softAp[4]) {
+  if (!apActive) return false;
+  static const uint8_t kNet[3] = {192, 168, 4};
+  for (int i = 0; i < 3; i++) {
+    if (softAp[i] != kNet[i] || remote[i] != kNet[i]) return false;
+  }
+  for (int i = 0; i < 4; i++) {
+    if (local[i] != softAp[i]) return false;
+  }
+  return true;
 }
 
 }  // namespace miblo

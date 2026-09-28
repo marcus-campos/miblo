@@ -85,6 +85,7 @@ static void handlePair() {
   miblo::utf8Copy(host, sizeof(host), doc["host"] | "computer", 20);
   ctx.tokens.add(token, host);
   storage::saveTokens(ctx.tokens);
+  storage::markConfigured();  // first pairing: never codeless OTA again (survives factory reset)
   strlcpy(ctx.pairedHost, host, sizeof(ctx.pairedHost));
   ctx.justPaired = true;
   ctx.pairedAtMs = now;

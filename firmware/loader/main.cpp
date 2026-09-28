@@ -7,16 +7,20 @@
 //
 // Behaviour:
 //   - screen: "Miblo installer", version, and where to upload (IP or AP name);
-//   - Wi-Fi: SDK-saved credentials (never erased); after 20 s without a connection an open AP
+//   - Wi-Fi: SDK-saved credentials; after 20 s without a connection an open AP
 //     "Miblo-Installer-XXXX" is started. From then on the station stops its automatic retries
 //     (their channel scans disrupt clients of the AP): the saved network is retried every 3 min,
 //     and only while nobody is connected to the AP;
-//   - HTTP: ESP8266HTTPUpdateServer at /update (no auth: the loader only lives for the install
-//     window), GET /info (JSON identity for install tooling) and GET / -> /update;
+//   - HTTP: a minimal update server at /update (no auth: the loader only lives for the install
+//     window; same replies as ESP8266HTTPUpdateServer: "Update error: ..." on failure), GET /info
+//     (JSON identity for install tooling) and GET / -> /update;
+//   - after a SUCCESSFUL install (Update.end(true)) and before the restart, the station
+//     credentials saved in the SDK (the bench/shop Wi-Fi the loader was installed over) are
+//     erased, so the unit boots Miblo straight into its Miblo-Setup-XXXX portal. POST
+//     /update?keepwifi=1 keeps them. A failed or aborted upload never erases anything;
 //   - mDNS: miblo-installer-xxxx.local.
 // It links nothing from src/ or lib/ (only TFT_eSPI with its built-in GLCD font).
 #include <Arduino.h>
-#include <ESP8266HTTPUpdateServer.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
@@ -26,7 +30,11 @@
 
 static TFT_eSPI tft;
 static ESP8266WebServer server(80);
-static ESP8266HTTPUpdateServer updater;
+
+// Per-request upload state (reset at UPLOAD_FILE_START).
+static bool upStarted = false;  // Update.begin() succeeded for this request
+static bool upOk = false;       // Update.end(true) succeeded: image written and verified
+static String upError;          // "ERROR[n]: message" (same text as Update.printError)
 
 static char id[16];        // "miblo-4f2a" (same derivation as the full firmware)
 static char host[32];      // "miblo-installer-4f2a"
@@ -92,6 +100,83 @@ static void handleInfo() {
   server.send(200, F("application/json"), out);
 }
 
+static void setUpdateError() {
+  char buf[16];
+  snprintf(buf, sizeof(buf), "ERROR[%u]: ", (unsigned)Update.getError());
+  upError = buf;
+  upError += Update.getErrorString();
+  if (!upError.length()) upError = F("update failed");
+}
+
+static void handleUpdatePage() {
+  server.send_P(200, PSTR("text/html"),
+                PSTR("<!DOCTYPE html><html lang='en'><head><meta charset='utf-8'>"
+                     "<meta name='viewport' content='width=device-width,initial-scale=1'></head><body>"
+                     "<h3>Miblo installer v" MIBLO_FW_VERSION "</h3>"
+                     "<form method='POST' action='/update' enctype='multipart/form-data'>"
+                     "Firmware:<br><input type='file' accept='.bin' name='firmware'> "
+                     "<input type='submit' value='Update Firmware'></form></body></html>"));
+}
+
+// Multipart upload body: streams the image into the OTA area through Update.
+static void handleUpdateUpload() {
+  HTTPUpload& up = server.upload();
+  if (up.status == UPLOAD_FILE_START) {
+    upStarted = false;
+    upOk = false;
+    upError = String();
+    drawStatus("Installing Miblo...", "do not unplug");
+    uint32_t maxSketchSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+    upStarted = Update.begin(maxSketchSpace, U_FLASH);
+    if (!upStarted) setUpdateError();
+  } else if (up.status == UPLOAD_FILE_WRITE) {
+    if (!upStarted || upError.length()) return;
+    if (Update.write(up.buf, up.currentSize) != up.currentSize) setUpdateError();
+  } else if (up.status == UPLOAD_FILE_END) {
+    if (!upStarted || upError.length()) return;
+    upOk = Update.end(true);  // true: the image size is what was received
+    if (!upOk) setUpdateError();
+  } else if (up.status == UPLOAD_FILE_ABORTED) {
+    if (upStarted && !upOk) Update.end(false);
+    upStarted = false;
+    upError = F("upload aborted");
+  }
+  yield();
+}
+
+// Erases the SDK station credentials (SSID + password) from flash. In core 3.1.2,
+// WiFi.disconnect(true) == disconnect(wifioff=true, eraseCredentials=true): it zeroes the SSID and
+// password in the station config and, with persistent(true), stores that through
+// wifi_station_set_config (the flash copy the next firmware reads); then it turns the station off.
+// That is exactly what Miblo checks (WiFi.SSID() empty -> setup portal), so ESP.eraseConfig()
+// (which also wipes RF calibration and the whole SDK area) is not needed.
+static void eraseStationCredentials() {
+  WiFi.persistent(true);
+  WiFi.disconnect(true);
+  WiFi.persistent(false);
+}
+
+// End of the POST /update request (after the whole body went through handleUpdateUpload).
+static void handleUpdateDone() {
+  if (!upOk) {
+    if (Update.isRunning()) Update.end(false);  // drop a half-written image; the loader stays
+    const String err = upError.length() ? upError : String(F("no firmware file"));
+    server.send(200, F("text/html"), String(F("Update error: ")) + err);
+    upStarted = false;
+    showAddress();
+    return;
+  }
+  const bool keepWifi = server.arg(F("keepwifi")) == F("1");
+  server.client().setNoDelay(true);
+  server.send(200, F("text/plain"), F("OK"));
+  delay(100);
+  server.client().stop();
+  drawStatus("Installed. Restarting...", keepWifi ? "(Wi-Fi kept)" : "(Wi-Fi erased: setup mode)");
+  if (!keepWifi) eraseStationCredentials();  // only after a verified image, never on failure
+  delay(200);
+  ESP.restart();
+}
+
 static void handleRoot() {
   server.sendHeader(F("Location"), F("/update"));
   server.send(302, F("text/plain"), F("/update"));
@@ -116,7 +201,8 @@ void setup() {
   WiFi.setAutoReconnect(true);
   WiFi.begin();  // credentials saved in the SDK by the previous firmware
 
-  updater.setup(&server, "/update");
+  server.on(F("/update"), HTTP_GET, handleUpdatePage);
+  server.on(F("/update"), HTTP_POST, handleUpdateDone, handleUpdateUpload);
   server.on("/info", HTTP_GET, handleInfo);
   server.on("/", HTTP_GET, handleRoot);
   server.begin();

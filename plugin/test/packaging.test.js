@@ -31,16 +31,33 @@ test('every tracked event runs hook.js asynchronously', () => {
   assert.notEqual(onboard.async, true);
 });
 
-test('the /miblo command references the CLI with the data dir', () => {
-  const md = fs.readFileSync(path.join(root, 'commands/miblo.md'), 'utf8');
-  assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
-  assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
-  assert.match(md, /\$ARGUMENTS/);
+const COMMANDS = ['pair', 'status', 'mode', 'link-statusline', 'unlink-statusline', 'reset'];
+
+test('miblo.md was split into one command per action (plugins namespace commands as /miblo:<file>)', () => {
+  assert.ok(!fs.existsSync(path.join(root, 'commands/miblo.md')));
+  for (const name of COMMANDS) {
+    assert.ok(fs.existsSync(path.join(root, `commands/${name}.md`)), name);
+  }
 });
 
-test('the /miblo command pre-approves only the miblo CLI', () => {
-  const md = fs.readFileSync(path.join(root, 'commands/miblo.md'), 'utf8');
-  const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-  assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
-  assert.ok(!line.includes('Bash(node:*)'));
-});
+for (const name of COMMANDS) {
+  test(`the /miblo:${name} command references the CLI with the data dir`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
+    assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
+    assert.match(md, /\$ARGUMENTS/);
+  });
+
+  test(`the /miblo:${name} command pre-approves only the miblo CLI`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+    assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
+    assert.ok(!line.includes('Bash(node:*)'));
+  });
+
+  test(`the /miblo:${name} command has its own description`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    const line = md.split(/\r?\n/).find((l) => l.startsWith('description:'));
+    assert.ok(line && line.length > 'description:'.length, name);
+  });
+}

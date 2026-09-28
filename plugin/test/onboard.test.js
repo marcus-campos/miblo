@@ -13,7 +13,7 @@ function setup(devices = []) {
 test('nags once per 24h while nothing is paired', () => {
   const s = setup();
   const first = onboardMessage({ ...s, now: () => 0 });
-  assert.match(JSON.parse(first).systemMessage, /\/miblo pair/);
+  assert.match(JSON.parse(first).systemMessage, /\/miblo:pair/);
   assert.equal(onboardMessage({ ...s, now: () => 3600_000 }), null);
   assert.ok(onboardMessage({ ...s, now: () => 24 * 3600_000 + 1 }));
 });

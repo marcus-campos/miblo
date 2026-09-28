@@ -1,0 +1,46 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790616720,
+  "host": "MacBook-Marcus",
+  "usage": {
+    "h5": {
+      "pct": 62,
+      "reset": 1790624520
+    },
+    "d7": {
+      "pct": 38,
+      "reset": 1790856720
+    }
+  },
+  "today": {
+    "tok": 98000,
+    "usd": 0.4
+  },
+  "sessions": [
+    {
+      "id": "33333333",
+      "name": "front-app",
+      "st": "running",
+      "tool": "Edit",
+      "det": "Header.tsx",
+      "since": 1790616710,
+      "model": "Sonnet",
+      "ctx": 34,
+      "tok": 98000
+    },
+    {
+      "id": "55555555",
+      "name": "worker",
+      "st": "running",
+      "tool": "Bash",
+      "det": "npm test",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 0,
+  "alerts": []
+}

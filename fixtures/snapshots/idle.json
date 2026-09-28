@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790616720,
+  "host": "MacBook-Marcus",
+  "usage": {
+    "h5": {
+      "pct": 62,
+      "reset": 1790624520
+    },
+    "d7": {
+      "pct": 38,
+      "reset": 1790856720
+    }
+  },
+  "today": {
+    "tok": 182000,
+    "usd": 1.2
+  },
+  "sessions": [
+    {
+      "id": "66666666",
+      "name": "docs",
+      "st": "done",
+      "tool": "",
+      "det": "",
+      "since": 1790616710,
+      "model": "Opus",
+      "ctx": 54,
+      "tok": 182000
+    }
+  ],
+  "more": 0,
+  "alerts": [
+    {
+      "id": 1,
+      "kind": "done",
+      "sid": "66666666"
+    }
+  ]
+}

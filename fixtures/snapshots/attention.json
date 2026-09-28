@@ -1,0 +1,79 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790616720,
+  "host": "MacBook-Marcus",
+  "usage": {
+    "h5": {
+      "pct": 62,
+      "reset": 1790624520
+    },
+    "d7": {
+      "pct": 38,
+      "reset": 1790856720
+    }
+  },
+  "today": {
+    "tok": 510000,
+    "usd": 3.5
+  },
+  "sessions": [
+    {
+      "id": "11111111",
+      "name": "api-server",
+      "st": "perm",
+      "tool": "Bash",
+      "det": "npm run migrate",
+      "since": 1790616710,
+      "model": "Opus",
+      "ctx": 71,
+      "tok": 412000
+    },
+    {
+      "id": "22222222",
+      "name": "infra",
+      "st": "question",
+      "tool": "",
+      "det": "",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "33333333",
+      "name": "front-app",
+      "st": "running",
+      "tool": "Edit",
+      "det": "Header.tsx",
+      "since": 1790616710,
+      "model": "Sonnet",
+      "ctx": 34,
+      "tok": 98000
+    },
+    {
+      "id": "44444444",
+      "name": "docs",
+      "st": "idle",
+      "tool": "",
+      "det": "",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 0,
+  "alerts": [
+    {
+      "id": 1,
+      "kind": "perm",
+      "sid": "11111111"
+    },
+    {
+      "id": 2,
+      "kind": "question",
+      "sid": "22222222"
+    }
+  ]
+}

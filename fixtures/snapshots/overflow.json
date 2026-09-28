@@ -1,0 +1,103 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790616720,
+  "host": "MacBook-Marcus",
+  "usage": null,
+  "today": {
+    "tok": 0,
+    "usd": 0
+  },
+  "sessions": [
+    {
+      "id": "77777770",
+      "name": "project-0",
+      "st": "running",
+      "tool": "Read",
+      "det": "f0.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777771",
+      "name": "project-1",
+      "st": "running",
+      "tool": "Read",
+      "det": "f1.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777772",
+      "name": "project-2",
+      "st": "running",
+      "tool": "Read",
+      "det": "f2.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777773",
+      "name": "project-3",
+      "st": "running",
+      "tool": "Read",
+      "det": "f3.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777774",
+      "name": "project-4",
+      "st": "running",
+      "tool": "Read",
+      "det": "f4.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777775",
+      "name": "project-5",
+      "st": "running",
+      "tool": "Read",
+      "det": "f5.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777776",
+      "name": "project-6",
+      "st": "running",
+      "tool": "Read",
+      "det": "f6.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "77777777",
+      "name": "project-7",
+      "st": "running",
+      "tool": "Read",
+      "det": "f7.js",
+      "since": 1790616710,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 2,
+  "alerts": []
+}

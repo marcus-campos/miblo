@@ -196,7 +196,7 @@ When a Claude Code session starts, the plugin checks GitHub for a newer release 
 - **From Claude Code:** `/miblo:update` checks the latest GitHub release and offers to update the **plugin** first, then the **firmware** of each paired gadget that's out of date. Type the 4-digit code shown on the gadget. It takes about a minute, so don't unplug the gadget while it runs. Pairing and settings are kept. If Claude Code asks you to, run `/reload-plugins` afterwards.
 - **From the browser:** open `http://miblo-xxxx.local/update` (or `http://<ip>/update`). The gadget shows a 4-digit code. Type it, choose the `.bin` and upload. The screen shows a progress bar and the gadget reboots when it's done.
 
-The boot screen shows the firmware version and build (for example `v0.2.3 (4534fb8)`), and `GET /api/info` reports the same.
+The boot screen shows the firmware version and build (for example `v1.0.0 (4534fb8)`), and `GET /api/info` reports the same.
 
 ## Reset and recovery
 

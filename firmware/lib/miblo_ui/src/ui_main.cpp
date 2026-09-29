@@ -508,7 +508,8 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
     char left[16];
     miblo::formatCountdown(s.h5.reset > clk.epoch ? s.h5.reset - clk.epoch : 0, left, sizeof(left));
     snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
-    field(R_RESET5, h, cx, Y(152), buf, Font::Small, color::DIM, color::BG, Align::Center, 2 * ir);
+    // Narrower than the ring: the box is painted and must stay clear of the arc's round ends.
+    field(R_RESET5, h, cx, Y(152), buf, Font::Small, color::DIM, color::BG, Align::Center, Sz(84));
   }
   h = hashInt(hashInt(kHashSeed, s.d7.present ? s.d7.pct : 255), (uint32_t)lang);
   const bool week = s.hasUsage && s.d7.present;

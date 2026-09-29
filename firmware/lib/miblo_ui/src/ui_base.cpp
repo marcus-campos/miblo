@@ -154,22 +154,29 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
   d.rrect(-4 + x, 17 + b, 8, 5, 2, color::NOSE);
   if (!desk) return;
   if (k.extras & kMouthO) d.circle(x, 26 + b, 3, color::PUPIL);
+  // A paw: a skin pad with a darker outline and toe lines, so it reads as a paw even over the
+  // (skin) head.
+  auto paw = [&](int px, int py, int pw, int ph, int r) {
+    d.rrect(px + x - 1, py + b - 1, pw + 2, ph + 2, r + 1, color::WRINKLE);
+    d.rrect(px + x, py + b, pw, ph, r, color::SKIN);
+    for (int t = 1; t <= 2; t++) d.rect(px + x + pw * t / 3, py + b + 1, 1, ph / 2, color::WRINKLE);
+  };
   switch (k.paws) {
     case Paws::Down:
-      d.rrect(-26 + x, 28 + b, 16, 11, 5, color::SKIN);
-      d.rrect(10 + x, 28 + b, 16, 11, 5, color::SKIN);
+      paw(-26, 28, 16, 11, 5);
+      paw(10, 28, 16, 11, 5);
       break;
     case Paws::ReachLeft:  // batting at the left gauge
-      d.rrect(-46 + x, 24 + b, 16, 11, 5, color::SKIN);
-      d.rrect(10 + x, 28 + b, 16, 11, 5, color::SKIN);
+      paw(-46, 24, 16, 11, 5);
+      paw(10, 28, 16, 11, 5);
       break;
     case Paws::ReachRight:
-      d.rrect(-26 + x, 28 + b, 16, 11, 5, color::SKIN);
-      d.rrect(30 + x, 24 + b, 16, 11, 5, color::SKIN);
+      paw(-26, 28, 16, 11, 5);
+      paw(30, 24, 16, 11, 5);
       break;
-    case Paws::Cover:  // can't look
-      d.rrect(-26 + x, -3 + b, 20, 16, 7, color::SKIN);
-      d.rrect(6 + x, -3 + b, 20, 16, 7, color::SKIN);
+    case Paws::Cover:  // can't look: both paws over the eyes, all of them
+      paw(-28, -5, 24, 21, 6);
+      paw(4, -5, 24, 21, 6);
       break;
   }
   if (k.extras & kSweat) {

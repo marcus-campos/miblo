@@ -913,7 +913,9 @@ static void test_limit_reset_and_summary_content() {
   TEST_ASSERT_TRUE(fc.drew("LIMIT FREED"));
   TEST_ASSERT_TRUE(fc.drew("2%"));
   TEST_ASSERT_TRUE(fc.drew("5h session"));
-  TEST_ASSERT_TRUE(fc.drew("resets 19:32"));
+  char when[32];  // local time: depends on the machine's time zone
+  screens::formatWhen(Lang::En, NOW + 5 * 3600, NOW, when, sizeof(when));
+  TEST_ASSERT_TRUE(fc.drew(std::string("resets ") + when));
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 
   idle();

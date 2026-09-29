@@ -4,6 +4,7 @@
 #include "miblo_alerts.h"
 #include "miblo_config.h"
 #include "miblo_i18n.h"
+#include "miblo_limits.h"
 #include "miblo_overview.h"
 #include "miblo_security.h"
 #include "miblo_snapshot.h"
@@ -25,6 +26,7 @@ struct Context {
   miblo::Snapshot snap{};
   miblo::AlertSequencer alerts;
   miblo::RunTracker runs;
+  miblo::LimitWatch limits;  // "limit freed" and the burn-rate projection
 
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;

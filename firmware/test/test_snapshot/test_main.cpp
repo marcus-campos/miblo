@@ -120,8 +120,13 @@ static void test_unknown_fields_are_ignored_and_extra_sessions_go_to_more() {
   TEST_ASSERT_EQUAL_UINT16(3, snap.more);
   TEST_ASSERT_FALSE(snap.hasUsage);
   TEST_ASSERT_EQUAL_FLOAT(1.25f, snap.todayUsd);  // old today.tok field is ignored
+  TEST_ASSERT_EQUAL_UINT16(0, snap.todayTurns);     // older plugins: no turns/work
+  TEST_ASSERT_EQUAL_UINT32(0, snap.todayWorkSec);
   TEST_ASSERT_EQUAL_UINT8(1, snap.alertCount);
-  TEST_ASSERT_EQUAL_UINT32(6, snap.alerts[0].id);
+  TEST_ASSERT_EQUAL_UINT32(6, snap.alerts[0].id);  TEST_ASSERT_EQUAL(ParseResult::Ok,
+                    parseText("{\"v\":1,\"today\":{\"usd\":3.5,\"turns\":14,\"work\":11520}}", snap));
+  TEST_ASSERT_EQUAL_UINT16(14, snap.todayTurns);
+  TEST_ASSERT_EQUAL_UINT32(11520, snap.todayWorkSec);
 }
 
 static void test_truncates_long_strings_by_characters() {

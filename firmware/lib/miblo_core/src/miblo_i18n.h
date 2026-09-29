@@ -130,6 +130,17 @@ enum class S : uint8_t {
   WebNightFrom,         // settings: night mode start time
   WebNightTo,           // settings: night mode end time
   WebNightBrightness,   // settings: brightness during the night window
+  LimitFreed,           // "limit freed" screen band: the 5h window reset after real use
+  RunsOutIn,            // burn-rate projection: "runs out in %s"
+  TodayTitle,           // daily summary header
+  SumResponses,         // daily summary: label under the number of responses
+  SumWorked,            // daily summary: label under the time worked
+  SumSpent,             // daily summary: label under the cost
+  WebMascot,            // settings: mascot colours
+  WebMascotSphynx,      // settings: mascot style 0
+  WebMascotOrange,      // settings: mascot style 1
+  WebMascotBlack,       // settings: mascot style 2
+  WebMascotGrey,        // settings: mascot style 3
   Count
 };
 

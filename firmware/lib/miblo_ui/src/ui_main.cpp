@@ -28,7 +28,7 @@ namespace color = ui::color;
 // (see field()), so a tick never clears the block they sit in.
 enum : uint8_t {
   R_HEADER = 0, R_LIMITS = 1, R_WEEK = 2, R_DIVIDER = 3, R_ROW0 = 4, R_BODY = 9, R_FOOT = 10, R_TIME0 = 11,
-  R_CLOCK = 14, R_RESET5 = 15, R_RESET7 = 16, R_PAGE = 17
+  R_CLOCK = 14, R_RESET5 = 15, R_RESET7 = 16, R_PAGE = 17, R_BURN = 18
 };
 // Session cards per page, in the Overview (Working / Needs you) and in the Sessions mode.
 constexpr uint8_t kRows = 3;
@@ -472,7 +472,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
 
 // ---------------- Limits mode ----------------
 
-void limits(Lang lang, const Snapshot& s, const Clock& clk) {
+void limits(Lang lang, const Snapshot& s, const Clock& clk, uint32_t exhaustAt) {
   char buf[96];
   const uint32_t hh = hashInt(kHashSeed, (uint32_t)lang);
   if (region(R_HEADER, hh, 0, 0, X(240), Y(24))) {
@@ -511,6 +511,14 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk) {
     // Narrower than the ring: the box is painted and must stay clear of the arc's round ends.
     field(R_RESET5, h, cx, Y(152), buf, Font::Small, color::DIM, color::BG, Align::Center, Sz(84));
   }
+  // At the recent pace it runs out before it resets: "runs out in 1h20", in amber, in the arc's gap.
+  buf[0] = 0;
+  if (s.hasUsage && s.h5.present && exhaustAt > clk.epoch && clk.epoch) {
+    char left[16];
+    miblo::formatCountdown(exhaustAt - clk.epoch, left, sizeof(left));
+    snprintf(buf, sizeof(buf), t(lang, S::RunsOutIn), left);
+  }
+  field(R_BURN, h, cx, Y(174), buf, Font::Small, color::AMBER, color::BG, Align::Center, Sz(110));
   h = hashInt(hashInt(kHashSeed, s.d7.present ? s.d7.pct : 255), (uint32_t)lang);
   const bool week = s.hasUsage && s.d7.present;
   Compose wk;
@@ -579,7 +587,7 @@ struct Step {
   uint8_t extras;
 };
 constexpr Gaze F = Gaze::Front, FO = Gaze::Focus, OT = Gaze::Other, UP = Gaze::Up;
-constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy;
+constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy, HA = Eyes::Happy;
 
 // Under half of the limits used: idles, checks both gauges, hops, dozes off for a bit.
 const Step kCalm[] MIBLO_ROM = {
@@ -634,6 +642,13 @@ const Step kAsleep[] MIBLO_ROM = {
 };
 
 // The tables live in flash (MIBLO_ROM): each step is copied out before use.
+// The 5h window just reset: happy hops, a look up, a cheer.
+const Step kCelebrate[] MIBLO_ROM = {
+    {250, 0, -5, F, HA, P_DOWN, 0},  {250, 0, 0, F, HA, P_DOWN, 0},  {250, 0, -5, F, HA, P_DOWN, 0},
+    {250, 0, 0, F, HA, P_DOWN, 0},   {600, 0, 0, UP, O, P_DOWN, 0},  {250, 0, -5, F, HA, P_DOWN, kMouthO},
+    {250, 0, 0, F, HA, P_DOWN, kMouthO}, {250, 0, -5, F, HA, P_DOWN, kMouthO}, {700, 0, 0, F, HA, P_DOWN, 0},
+};
+
 template <size_t N>
 Step stepAt(const Step (&seq)[N], uint32_t ms) {
   Step st;
@@ -674,6 +689,7 @@ MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
     case DeskMood::Worried: step = stepAt(kWorried, ms); break;
     case DeskMood::Scared: step = stepAt(kScared, ms); break;
     case DeskMood::Searching: step = stepAt(kSearching, ms); break;
+    case DeskMood::Celebrate: step = stepAt(kCelebrate, ms); break;
     case DeskMood::Asleep:
     default: step = stepAt(kAsleep, ms); break;
   }
@@ -737,7 +753,7 @@ static void ring(int cx, int cy, const char* label, bool present, uint8_t pct, u
   C().text(cx, cy + Y(24), label, Font::Small, color::MUTED, Align::Center, 2 * ir);
 }
 
-void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
+void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt) {
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
   const uint8_t p5 = deskPct(s.h5, now);
   const uint8_t p7 = deskPct(s.d7, now);
@@ -759,17 +775,70 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
   }
   // Under each ring, when its reset is known and still ahead: "in 2h10" (5h), "Fri 19:32" (week).
   // Fields: the countdown ticks once a minute without touching the rings.
+  // The 5h line becomes "runs out in 1h20" (amber) when the recent pace ends it before the reset.
   char buf[48];
   buf[0] = 0;
-  if (usage && s.h5.present && s.h5.reset > now) {
+  const bool burning = usage && s.h5.present && exhaustAt > now;
+  if (burning) {
+    char left[16];
+    miblo::formatCountdown(exhaustAt - now, left, sizeof(left));
+    snprintf(buf, sizeof(buf), t(lang, S::RunsOutIn), left);
+  } else if (usage && s.h5.present && s.h5.reset > now) {
     char left[16];
     miblo::formatCountdown(s.h5.reset - now, left, sizeof(left));
     snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
   }
-  field(R_RESET5, h, X(62), Y(236), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
+  field(R_RESET5, h, X(62), Y(236), buf, burning ? Font::Small : Font::Body, burning ? color::AMBER : color::MUTED,
+        color::BG, Align::Center, X(118));
   buf[0] = 0;
   if (usage && s.d7.present && s.d7.reset > now) formatWhen(lang, s.d7.reset, now, buf, sizeof(buf));
   field(R_RESET7, h, X(178), Y(236), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
+}
+
+void limitReset(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms) {
+  const uint32_t hh = hashInt(kHashSeed + 31, (uint32_t)lang);
+  if (region(R_HEADER, hh, 0, 0, X(240), Y(30), color::GREEN)) {
+    C().text(X(120), Y(21), t(lang, S::LimitFreed), Font::BodyBold, color::BLACK, Align::Center, X(228));
+  }
+  deskCat(R_BODY, X(120), Y(90), 48, deskLook(DeskMood::Celebrate, true, ms));
+  const uint32_t now = clk.epoch ? clk.epoch : s.now;
+  uint32_t h = hashInt(hashInt(hh, s.h5.present ? s.h5.pct : 255), s.h5.reset);
+  if (region(R_LIMITS, h, 0, Y(142), X(240), Y(98))) {
+    char buf[48];
+    snprintf(buf, sizeof(buf), "%u%%", s.h5.present ? (unsigned)s.h5.pct : 0u);
+    C().text(X(120), Y(180), buf, Font::NumL, color::GREEN, Align::Center, X(200));
+    C().text(X(120), Y(202), t(lang, S::Session5h), Font::Body, color::MUTED, Align::Center, X(228));
+    if (s.h5.present && s.h5.reset) {
+      char when[32];
+      formatWhen(lang, s.h5.reset, now, when, sizeof(when));
+      snprintf(buf, sizeof(buf), t(lang, S::ResetsAt), when);
+      C().text(X(120), Y(228), buf, Font::Small, color::DIM, Align::Center, X(228));
+    }
+  }
+}
+
+void summary(Lang lang, const Snapshot& s, const Clock& clk) {
+  const uint32_t hh = hashInt(kHashSeed + 37, (uint32_t)lang);
+  if (region(R_HEADER, hh, 0, 0, X(240), Y(26))) {
+    C().text(X(12), Y(18), t(lang, S::TodayTitle), Font::SmallBold, color::DIM, Align::Left, X(150));
+  }
+  clockRight(hh, clk, Y(18), color::DIM, color::BG);
+  uint32_t h = hashInt(hashInt(hashInt(hh, s.todayTurns), s.todayWorkSec / 60), (uint32_t)(s.todayUsd * 100));
+  if (region(R_BODY, h, 0, Y(26), X(240), Y(172))) {
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%u", (unsigned)s.todayTurns);
+    C().text(X(120), Y(84), buf, Font::NumL, color::TEXT, Align::Center, X(220));
+    C().text(X(120), Y(108), t(lang, S::SumResponses), Font::Body, color::MUTED, Align::Center, X(228));
+    C().fillRect(X(24), Y(126), X(192), 1, color::DIVIDER);
+    if (s.todayWorkSec < 60) snprintf(buf, sizeof(buf), "0min");
+    else miblo::formatCountdown(s.todayWorkSec, buf, sizeof(buf));
+    C().text(X(64), Y(164), buf, Font::Title, color::GREEN, Align::Center, X(112));
+    C().text(X(64), Y(186), t(lang, S::SumWorked), Font::Small, color::MUTED, Align::Center, X(112));
+    miblo::formatUsd(s.todayUsd, buf, sizeof(buf));
+    C().text(X(176), Y(164), buf, Font::Title, color::TEXT, Align::Center, X(112));
+    C().text(X(176), Y(186), t(lang, S::SumSpent), Font::Small, color::MUTED, Align::Center, X(112));
+  }
+  compactLimits(R_LIMITS, lang, s, Y(206), Y(30), Y(226), color::BG);
 }
 
 void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,

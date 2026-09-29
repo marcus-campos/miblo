@@ -232,7 +232,7 @@ static void test_desk_mascot_stays_in_its_box() {
     bc.bx = cx - half;
     bc.by = cy - half;
     bc.bw = bc.bh = 2 * half;
-    for (int mood = 0; mood <= (int)screens::DeskMood::Asleep; mood++) {
+    for (int mood = 0; mood <= (int)screens::DeskMood::Celebrate; mood++) {
       for (int left = 0; left < 2; left++) {
         for (uint32_t ms = 0; ms < 60000; ms += 50) {
           screens::deskMascot(cx, cy, screens::deskLook((screens::DeskMood)mood, left != 0, ms));
@@ -270,6 +270,34 @@ static std::string traceOf(uint8_t frame) {
   screens::bind(tc);
   screens::mascot(120, 100, frame);
   return tc.trace;
+}
+
+// Every mascot colour style draws the same shapes (only the colours change), and an unknown
+// style falls back to the first one.
+static std::string shapesOf(const std::string& trace) {  // the trace without each colour field
+  std::string out;
+  size_t start = 0;
+  while (start < trace.size()) {
+    const size_t semi = trace.find(';', start);
+    const std::string prim = trace.substr(start, semi - start);
+    out += prim.substr(0, prim.rfind(',')) + ";";
+    start = semi + 1;
+  }
+  return out;
+}
+
+static void test_mascot_styles_change_only_colours() {
+  screens::setMascotStyle(0);
+  const std::string first = traceOf(0);
+  for (int style = 1; style < 4; style++) {
+    screens::setMascotStyle((uint8_t)style);
+    const std::string t = traceOf(0);
+    TEST_ASSERT_TRUE(t != first);
+    TEST_ASSERT_TRUE(shapesOf(t) == shapesOf(first));
+  }
+  screens::setMascotStyle(200);
+  TEST_ASSERT_TRUE(traceOf(0) == first);
+  screens::setMascotStyle(0);
 }
 
 // It animates (idle, blink, hop, glance), each pose drawing differently; frames with the same
@@ -342,6 +370,7 @@ int main() {
   RUN_TEST(test_mascot_stays_in_its_box);
   RUN_TEST(test_mascot_poses_differ);
   RUN_TEST(test_desk_mascot_stays_in_its_box);
+  RUN_TEST(test_mascot_styles_change_only_colours);
   RUN_TEST(test_boot_draws_mascot_on_a_layer_only_on_pose_change);
   RUN_TEST(test_hard_reset_countdown_content);
   return UNITY_END();

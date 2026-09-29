@@ -404,6 +404,18 @@ static void settingsPage() {
   out += F("</label><input id=\"nightTo\" type=\"time\" required><label>");
   appendEscaped(out, tr(lang, S::WebNightBrightness).c_str());
   out += F("</label><input id=\"nightBrightness\" type=\"range\" min=\"1\" max=\"100\"><label>");
+  appendEscaped(out, tr(lang, S::WebMascot).c_str());
+  out += F("</label><select id=\"mascot\">");
+  static const S kStyles[] = {S::WebMascotSphynx, S::WebMascotOrange, S::WebMascotBlack, S::WebMascotGrey};
+  static_assert(sizeof(kStyles) / sizeof(kStyles[0]) == miblo::kMascotStyles, "one name per mascot style");
+  for (uint8_t i = 0; i < miblo::kMascotStyles; i++) {
+    out += F("<option value=\"");
+    out += i;
+    out += F("\">");
+    appendEscaped(out, tr(lang, kStyles[i]).c_str());
+    out += F("</option>");
+  }
+  out += F("</select><label>");
   appendEscaped(out, tr(lang, S::WebDeviceName).c_str());
   out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
   appendEscaped(out, ctx.ident.defaultName);
@@ -453,7 +465,8 @@ static void settingsPage() {
       "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
       "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-      "'nightBrightness','name','tz','lang']){const v=val(k);if(k==='tz'&&!v)continue;b[k]=v;}"
+      "'nightBrightness','mascot','name','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+      "if(k==='mascot')v=Number(v);b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"

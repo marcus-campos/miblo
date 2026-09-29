@@ -90,6 +90,8 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   out.hasUsage = out.hasUsage && (out.h5.present || out.d7.present);
 
   out.todayUsd = doc["today"]["usd"].as<float>();
+  out.todayTurns = doc["today"]["turns"].as<uint16_t>();
+  out.todayWorkSec = doc["today"]["work"].as<uint32_t>();
 
   out.count = 0;
   uint16_t skipped = 0;

@@ -24,7 +24,7 @@ static bool authorized() {
 }
 
 static void handleInfo() {
-  // 26 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the
+  // 27 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the
   // ESP8266; 1024 leaves room for future caps.
   StaticJsonDocument<1024> doc;
   doc["id"] = ctx.ident.id;
@@ -62,6 +62,7 @@ static void handleInfo() {
   doc["nightFrom"] = ctx.cfg.nightFrom;
   doc["nightTo"] = ctx.cfg.nightTo;
   doc["nightBrightness"] = ctx.cfg.nightBrightness;
+  doc["mascot"] = ctx.cfg.mascot;
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());
@@ -132,6 +133,7 @@ static void handleState() {
     return;  // the last valid screen stays up
   }
   uint32_t now = millis();
+  ctx.limits.observe(ctx.snap, now);
   ctx.hasSnapshot = true;
   ctx.lastSnapshotMs = now;
   if (ctx.snap.hasUsage) ctx.usageEverSeen = true;

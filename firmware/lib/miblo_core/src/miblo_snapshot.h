@@ -44,6 +44,8 @@ struct Snapshot {
   UsageWindow h5;
   UsageWindow d7;
   float todayUsd;  // today's cost (today.usd); the protocol no longer has today.tok
+  uint16_t todayTurns;    // responses finished today (today.turns; 0 from older plugins)
+  uint32_t todayWorkSec;  // time with a session working today (today.work, seconds)
   uint8_t count;
   SessionRow sessions[kMaxSessions];
   uint16_t more;

@@ -380,6 +380,8 @@ static void test_screen_selection_order() {
   in.lastSnapshotMs = 70000;
   TEST_ASSERT_EQUAL(ScreenId::Disconnected, selectScreen(in));  // 30 s with no snapshot
   in.lastSnapshotMs = 99000;
+  in.limitReset = true;  // "limit freed": over the main screen, under alerts
+  TEST_ASSERT_EQUAL(ScreenId::LimitReset, selectScreen(in));
   in.alert = AlertPhase::Flash;
   TEST_ASSERT_EQUAL(ScreenId::AlertFlash, selectScreen(in));
   in.alert = AlertPhase::Hero;
@@ -573,25 +575,46 @@ static void test_rotation_survives_millis_wrap() {
   TEST_ASSERT_FALSE(r.update(t, false, start + 20000));
 }
 
-// Quiet spells: All done, then (after kAllDoneMs) the Desk cycle: kDeskCatMs of mascot, kDeskArcMs
-// of Limits arc, again and again; any activity starts over, and the cycle survives a millis() wrap.
+// Quiet spells: All done, then (after kAllDoneMs) the Desk cycle: mascot, Limits arc, mascot,
+// today's summary, and around; any activity starts over, and the cycle survives a millis() wrap.
 static void test_quiet_clock_phases() {
   QuietClock q;
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 0));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000 + kAllDoneMs - 1));
   const uint32_t d = 1000 + kAllDoneMs;
+  const uint32_t cycle = 2 * kDeskCatMs + kDeskArcMs + kDeskSummaryMs;
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d + kDeskCatMs - 1));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, d + kDeskCatMs));
-  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, d + kDeskCatMs + kDeskArcMs - 1));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d + kDeskCatMs + kDeskArcMs));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Summary, (int)q.update(true, d + 2 * kDeskCatMs + kDeskArcMs));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Summary, (int)q.update(true, d + cycle - 1));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d + cycle));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 2000));
   // Across the wrap: All done ends past zero, and the cycle keeps its rhythm.
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 0xFFFFF000u));
   const uint32_t w = 0xFFFFF000u + kAllDoneMs;  // wraps
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, w));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, w + kDeskCatMs));
+}
+
+// Mascot colours: 0..kMascotStyles-1, default 0, round trip.
+static void test_mascot_style_config() {
+  Config c;
+  TEST_ASSERT_EQUAL_UINT8(0, c.mascot);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"mascot\":3}"));
+  TEST_ASSERT_EQUAL_UINT8(3, c.mascot);
+  TEST_ASSERT_FALSE(patch(c, "{\"mascot\":4}", &bad));
+  TEST_ASSERT_EQUAL_STRING("mascot", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"mascot\":\"orange\"}", &bad));
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL(3, doc["mascot"].as<int>());
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL_UINT8(3, b.mascot);
 }
 
 int main() {
@@ -626,5 +649,6 @@ int main() {
   RUN_TEST(test_rotation_survives_millis_wrap);
   RUN_TEST(test_quiet_clock_phases);
   RUN_TEST(test_night_mode_config_and_brightness);
+  RUN_TEST(test_mascot_style_config);
   return UNITY_END();
 }

@@ -89,7 +89,9 @@ enum class ScreenId : uint8_t {
   AlertHero,
   Main,           // device mode (Overview, Limits, or Sessions)
   HardResetCountdown,  // quick-restarts-left countdown during the first 10 s of a quick boot
-  Desk            // long quiet spell: full-screen mascot playing with the last known limits
+  Desk,           // quiet spell: the mascot playing with the limits
+  LimitReset,     // the 5h window just reset after real use: "limit freed"
+  Summary         // quiet spell: today's responses, time worked and cost
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;
@@ -110,6 +112,7 @@ struct ScreenInputs {
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;
   AlertPhase alert = AlertPhase::None;
+  bool limitReset = false;  // LimitWatch::celebrating()
 };
 
 ScreenId selectScreen(const ScreenInputs& in);
@@ -143,19 +146,21 @@ class RotationClock {
 
 // ---- Quiet spells: what the main screen becomes when nothing is going on ----
 // Quiet = the main screen with no session running or waiting (Overview shows "All done").
-// After kAllDoneMs of quiet any mode gives way to the Desk screen (the mascot with the limits),
-// which then alternates with the Limits arc: kDeskCatMs of mascot, kDeskArcMs of arc, and again.
-// (Disconnected has its own mascot.)
+// After kAllDoneMs of quiet any mode gives way to the Desk cycle: the mascot with the limits
+// (kDeskCatMs), the Limits arc (kDeskArcMs), the mascot again, today's summary (kDeskSummaryMs),
+// and around. (Disconnected has its own mascot.)
 enum class QuietPhase : uint8_t {
   Busy,     // not quiet: normal screens
   AllDone,  // just went quiet
-  Desk,     // quiet for kAllDoneMs: the Desk screen
-  Arc       // quiet, the Limits arc's turn in the Desk cycle
+  Desk,     // the mascot's turn in the Desk cycle
+  Arc,      // the Limits arc's turn
+  Summary   // today's summary's turn
 };
 
 constexpr uint32_t kAllDoneMs = 20000;
 constexpr uint32_t kDeskCatMs = 60000;
 constexpr uint32_t kDeskArcMs = 15000;
+constexpr uint32_t kDeskSummaryMs = 15000;
 // Disconnected: the mascot looks around for the computer, then falls asleep after this long.
 constexpr uint32_t kAwayNapMs = 600000;
 

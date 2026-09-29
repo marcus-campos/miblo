@@ -31,7 +31,10 @@ struct Config {
   uint16_t nightFrom = 22 * 60;  // local minute of the day, 0..1439
   uint16_t nightTo = 7 * 60;     // 0..1439, != nightFrom; may be earlier than nightFrom (overnight)
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
+  uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
 };
+
+constexpr uint8_t kMascotStyles = 4;
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.

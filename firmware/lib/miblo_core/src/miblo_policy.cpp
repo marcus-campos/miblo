@@ -161,6 +161,7 @@ ScreenId selectScreen(const ScreenInputs& in) {
   if (!in.hasSnapshot || in.nowMs - in.lastSnapshotMs >= kSnapshotTimeoutMs) return ScreenId::Disconnected;
   if (in.alert == AlertPhase::Flash) return ScreenId::AlertFlash;
   if (in.alert == AlertPhase::Hero) return ScreenId::AlertHero;
+  if (in.limitReset) return ScreenId::LimitReset;
   return ScreenId::Main;
 }
 
@@ -200,8 +201,11 @@ QuietPhase QuietClock::update(bool quiet, uint32_t nowMs) {
     if (nowMs - sinceMs_ < kAllDoneMs) return phase_;
     deskMs_ = nowMs;  // from here on only the cycle position matters: safe across millis() wrap
   }
-  const uint32_t t = (nowMs - deskMs_) % (kDeskCatMs + kDeskArcMs);
-  phase_ = t < kDeskCatMs ? QuietPhase::Desk : QuietPhase::Arc;
+  const uint32_t t = (nowMs - deskMs_) % (2 * kDeskCatMs + kDeskArcMs + kDeskSummaryMs);
+  if (t < kDeskCatMs) phase_ = QuietPhase::Desk;
+  else if (t < kDeskCatMs + kDeskArcMs) phase_ = QuietPhase::Arc;
+  else if (t < 2 * kDeskCatMs + kDeskArcMs) phase_ = QuietPhase::Desk;
+  else phase_ = QuietPhase::Summary;
   return phase_;
 }
 

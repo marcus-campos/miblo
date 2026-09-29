@@ -37,6 +37,7 @@ static miblo::RotationClock rotation;  // optional Overview/Limits alternation
 static miblo::QuietClock quiet;        // All done -> Desk while nothing happens
 static bool mainLimits = false;        // Main shows the Limits arc instead of the mode's screen
 static uint32_t awaySinceMs = 0;       // when the Disconnected screen came up
+static uint32_t limitResetMs = 0;      // when the "limit freed" screen came up
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -109,6 +110,7 @@ static void updateBacklight() {
 
 static void applyConfig() {
   updateBacklight();
+  screens::setMascotStyle(ctx.cfg.mascot);
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 
@@ -209,6 +211,7 @@ void loop() {
   in.hasSnapshot = ctx.hasSnapshot;
   in.lastSnapshotMs = ctx.lastSnapshotMs;
   in.alert = alert.phase;
+  in.limitReset = ctx.limits.celebrating(now);
   ScreenId screen = miblo::selectScreen(in);
   const miblo::StateCounts counts = miblo::countStates(ctx.snap);
   // Nothing running or waiting: "All done" gives way to the Desk mascot with the limits, which
@@ -216,6 +219,8 @@ void loop() {
   const miblo::QuietPhase qp =
       quiet.update(screen == ScreenId::Main && counts.pending == 0 && counts.running == 0, now);
   if (qp == miblo::QuietPhase::Desk) screen = ScreenId::Desk;
+  if (qp == miblo::QuietPhase::Summary) screen = ScreenId::Summary;
+  if (screen == ScreenId::LimitReset && current != ScreenId::LimitReset) limitResetMs = now;
   // Rotation never takes the screen away from an alert or a session waiting on the user.
   const bool rotBlocked = screen != ScreenId::Main || counts.pending > 0;
   const bool rotLimits = rotation.update(miblo::rotationTiming(ctx.cfg), rotBlocked, now);
@@ -266,7 +271,13 @@ void loop() {
       screens::disconnected(lang, clk, net::ip().c_str(), ctx.ident.id, ctx.pairing.code(), now, now - awaySinceMs);
       break;
     case ScreenId::Desk:
-      screens::desk(lang, ctx.snap, clk, now);
+      screens::desk(lang, ctx.snap, clk, now, ctx.limits.exhaustAt());
+      break;
+    case ScreenId::LimitReset:
+      screens::limitReset(lang, ctx.snap, clk, now - limitResetMs);
+      break;
+    case ScreenId::Summary:
+      screens::summary(lang, ctx.snap, clk);
       break;
     case ScreenId::AlertFlash: {
       int idx = miblo::findSession(ctx.snap, alert.sid);
@@ -279,7 +290,7 @@ void loop() {
       break;
     case ScreenId::Main:
       if (mainLimits) {  // a rotation slot, or the arc's turn in the Desk cycle
-        screens::limits(lang, ctx.snap, clk);
+        screens::limits(lang, ctx.snap, clk, ctx.limits.exhaustAt());
         break;
       }
       switch (ctx.cfg.mode) {
@@ -287,7 +298,7 @@ void loop() {
           screens::overview(lang, ctx.snap, listPager, now, clk, ctx.cfg.discreet);
           break;
         case miblo::Mode::Limits:
-          screens::limits(lang, ctx.snap, clk);
+          screens::limits(lang, ctx.snap, clk, ctx.limits.exhaustAt());
           break;
         case miblo::Mode::Sessions:
           screens::sessions(lang, ctx.snap, sessionPager, now, clk, ctx.cfg.discreet);

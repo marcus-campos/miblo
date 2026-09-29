@@ -128,7 +128,18 @@ static const char kEn[] MIBLO_ROM =
     "Night mode: dim the screen\0"  // WebNight
     "Night starts at\0"  // WebNightFrom
     "Night ends at\0"  // WebNightTo
-    "Night brightness\0";  // WebNightBrightness
+    "Night brightness\0"  // WebNightBrightness
+    "LIMIT FREED\0"  // LimitFreed
+    "runs out in %s\0"  // RunsOutIn
+    "TODAY\0"  // TodayTitle
+    "responses\0"  // SumResponses
+    "worked\0"  // SumWorked
+    "spent\0"  // SumSpent
+    "Mascot\0"  // WebMascot
+    "Sphynx (peach)\0"  // WebMascotSphynx
+    "Orange\0"  // WebMascotOrange
+    "Black\0"  // WebMascotBlack
+    "Grey\0";  // WebMascotGrey
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -252,7 +263,18 @@ static const char kPtBR[] MIBLO_ROM =
     "Modo noturno: reduzir o brilho\0"  // WebNight
     "Início da noite\0"  // WebNightFrom
     "Fim da noite\0"  // WebNightTo
-    "Brilho à noite\0";  // WebNightBrightness
+    "Brilho à noite\0"  // WebNightBrightness
+    "LIMITE LIBERADO\0"  // LimitFreed
+    "acaba em %s\0"  // RunsOutIn
+    "HOJE\0"  // TodayTitle
+    "respostas\0"  // SumResponses
+    "trabalhando\0"  // SumWorked
+    "gasto\0"  // SumSpent
+    "Mascote\0"  // WebMascot
+    "Sphynx (pêssego)\0"  // WebMascotSphynx
+    "Laranja\0"  // WebMascotOrange
+    "Preto\0"  // WebMascotBlack
+    "Cinza\0";  // WebMascotGrey
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -376,7 +398,18 @@ static const char kPtPT[] MIBLO_ROM =
     "Modo noturno: reduzir o brilho\0"  // WebNight
     "Início da noite\0"  // WebNightFrom
     "Fim da noite\0"  // WebNightTo
-    "Brilho à noite\0";  // WebNightBrightness
+    "Brilho à noite\0"  // WebNightBrightness
+    "LIMITE LIBERTADO\0"  // LimitFreed
+    "acaba em %s\0"  // RunsOutIn
+    "HOJE\0"  // TodayTitle
+    "respostas\0"  // SumResponses
+    "a trabalhar\0"  // SumWorked
+    "gasto\0"  // SumSpent
+    "Mascote\0"  // WebMascot
+    "Sphynx (pêssego)\0"  // WebMascotSphynx
+    "Laranja\0"  // WebMascotOrange
+    "Preto\0"  // WebMascotBlack
+    "Cinzento\0";  // WebMascotGrey
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -500,7 +533,18 @@ static const char kEs[] MIBLO_ROM =
     "Modo nocturno: bajar el brillo\0"  // WebNight
     "Empieza a las\0"  // WebNightFrom
     "Termina a las\0"  // WebNightTo
-    "Brillo nocturno\0";  // WebNightBrightness
+    "Brillo nocturno\0"  // WebNightBrightness
+    "LÍMITE LIBERADO\0"  // LimitFreed
+    "se agota en %s\0"  // RunsOutIn
+    "HOY\0"  // TodayTitle
+    "respuestas\0"  // SumResponses
+    "trabajando\0"  // SumWorked
+    "gastado\0"  // SumSpent
+    "Mascota\0"  // WebMascot
+    "Sphynx (melocotón)\0"  // WebMascotSphynx
+    "Naranja\0"  // WebMascotOrange
+    "Negro\0"  // WebMascotBlack
+    "Gris\0";  // WebMascotGrey
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -624,7 +668,18 @@ static const char kFr[] MIBLO_ROM =
     "Mode nuit : baisser la luminosité\0"  // WebNight
     "Début de la nuit\0"  // WebNightFrom
     "Fin de la nuit\0"  // WebNightTo
-    "Luminosité la nuit\0";  // WebNightBrightness
+    "Luminosité la nuit\0"  // WebNightBrightness
+    "LIMITE LIBÉRÉE\0"  // LimitFreed
+    "épuisée dans %s\0"  // RunsOutIn
+    "AUJOURD'HUI\0"  // TodayTitle
+    "réponses\0"  // SumResponses
+    "de travail\0"  // SumWorked
+    "dépensé\0"  // SumSpent
+    "Mascotte\0"  // WebMascot
+    "Sphynx (pêche)\0"  // WebMascotSphynx
+    "Orange\0"  // WebMascotOrange
+    "Noir\0"  // WebMascotBlack
+    "Gris\0";  // WebMascotGrey
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -748,7 +803,18 @@ static const char kIt[] MIBLO_ROM =
     "Modalità notte: abbassa la luminosità\0"  // WebNight
     "Inizio della notte\0"  // WebNightFrom
     "Fine della notte\0"  // WebNightTo
-    "Luminosità notturna\0";  // WebNightBrightness
+    "Luminosità notturna\0"  // WebNightBrightness
+    "LIMITE LIBERATO\0"  // LimitFreed
+    "finisce tra %s\0"  // RunsOutIn
+    "OGGI\0"  // TodayTitle
+    "risposte\0"  // SumResponses
+    "di lavoro\0"  // SumWorked
+    "spesi\0"  // SumSpent
+    "Mascotte\0"  // WebMascot
+    "Sphynx (pesca)\0"  // WebMascotSphynx
+    "Arancione\0"  // WebMascotOrange
+    "Nero\0"  // WebMascotBlack
+    "Grigio\0";  // WebMascotGrey
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -872,7 +938,18 @@ static const char kDe[] MIBLO_ROM =
     "Nachtmodus: Bildschirm dimmen\0"  // WebNight
     "Nacht beginnt um\0"  // WebNightFrom
     "Nacht endet um\0"  // WebNightTo
-    "Helligkeit nachts\0";  // WebNightBrightness
+    "Helligkeit nachts\0"  // WebNightBrightness
+    "LIMIT FREI\0"  // LimitFreed
+    "reicht noch %s\0"  // RunsOutIn
+    "HEUTE\0"  // TodayTitle
+    "Antworten\0"  // SumResponses
+    "gearbeitet\0"  // SumWorked
+    "ausgegeben\0"  // SumSpent
+    "Maskottchen\0"  // WebMascot
+    "Sphynx (Pfirsich)\0"  // WebMascotSphynx
+    "Orange\0"  // WebMascotOrange
+    "Schwarz\0"  // WebMascotBlack
+    "Grau\0";  // WebMascotGrey
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -996,7 +1073,18 @@ static const char kRu[] MIBLO_ROM =
     "Ночной режим: приглушить экран\0"  // WebNight
     "Начало ночи\0"  // WebNightFrom
     "Конец ночи\0"  // WebNightTo
-    "Яркость ночью\0";  // WebNightBrightness
+    "Яркость ночью\0"  // WebNightBrightness
+    "ЛИМИТ ОБНОВЛЁН\0"  // LimitFreed
+    "закончится через %s\0"  // RunsOutIn
+    "СЕГОДНЯ\0"  // TodayTitle
+    "ответов\0"  // SumResponses
+    "в работе\0"  // SumWorked
+    "потрачено\0"  // SumSpent
+    "Талисман\0"  // WebMascot
+    "Сфинкс (персик)\0"  // WebMascotSphynx
+    "Рыжий\0"  // WebMascotOrange
+    "Чёрный\0"  // WebMascotBlack
+    "Серый\0";  // WebMascotGrey
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1120,7 +1208,18 @@ static const char kZh[] MIBLO_ROM =
     "夜间模式：降低屏幕亮度\0"  // WebNight
     "夜间开始\0"  // WebNightFrom
     "夜间结束\0"  // WebNightTo
-    "夜间亮度\0";  // WebNightBrightness
+    "夜间亮度\0"  // WebNightBrightness
+    "额度已恢复\0"  // LimitFreed
+    "%s 后用完\0"  // RunsOutIn
+    "今天\0"  // TodayTitle
+    "次回复\0"  // SumResponses
+    "工作时长\0"  // SumWorked
+    "花费\0"  // SumSpent
+    "吉祥物\0"  // WebMascot
+    "斯芬克斯（桃色）\0"  // WebMascotSphynx
+    "橙色\0"  // WebMascotOrange
+    "黑色\0"  // WebMascotBlack
+    "灰色\0";  // WebMascotGrey
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

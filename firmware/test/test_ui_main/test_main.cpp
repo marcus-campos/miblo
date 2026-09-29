@@ -113,6 +113,10 @@ static void renderMain(FakeCanvas& fc) {
   screens::desk(Lang::En, snap, clk, 0);
   screens::reset();
   screens::disconnected(Lang::En, clk, "192.168.0.42", "miblo-4f2a", "4827", 0, 0);
+  screens::reset();
+  screens::limitReset(Lang::En, snap, clk, 0);
+  screens::reset();
+  screens::summary(Lang::En, snap, clk);
 }
 
 static void test_main_screens_fit_any_resolution() {
@@ -750,8 +754,17 @@ static void test_pt_br_screens_have_no_english() {
   screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", 0, 0);
   check("disconnected");
   screens::reset();
-  screens::desk(L, snap, clk, 0);
+  screens::desk(L, snap, clk, 0, NOW + 3600);
   check("desk");
+  screens::reset();
+  screens::limits(L, snap, clk, NOW + 3600);
+  check("limits burning");
+  screens::reset();
+  screens::limitReset(L, snap, clk, 0);
+  check("limit reset");
+  screens::reset();
+  screens::summary(L, snap, clk);
+  check("summary");
 }
 
 // Desk: the mood follows the fuller window, a window past its reset counts as 0%, and the
@@ -861,6 +874,68 @@ static void test_desk_mascot_redraws_in_strips_without_flashing() {
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
 }
 
+// Burn rate: when the recent pace runs the 5h window out before it resets, the arc and the desk
+// say when, in amber; otherwise the plain reset countdown.
+static void test_burn_rate_lines() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();  // 62%, resets in 2h10
+  screens::reset();
+  fc.clearLog();
+  screens::limits(Lang::En, snap, testClock(), NOW + 80 * 60);
+  TEST_ASSERT_TRUE(fc.drew("runs out in 1h20"));
+  screens::reset();
+  fc.clearLog();
+  screens::limits(Lang::En, snap, testClock(), 0);
+  TEST_ASSERT_FALSE(fc.drew("runs out"));
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), 0, NOW + 80 * 60);
+  TEST_ASSERT_TRUE(fc.drew("runs out in 1h20"));
+  TEST_ASSERT_FALSE(fc.drew("in 2h10"));
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, testClock(), 0, 0);
+  TEST_ASSERT_TRUE(fc.drew("in 2h10"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
+// "Limit freed": green band, the new usage, the next reset; today's summary: responses, time
+// worked, cost and the limits strip.
+static void test_limit_reset_and_summary_content() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  snap.h5 = {true, 2, NOW + 5 * 3600};
+  screens::reset();
+  fc.clearLog();
+  screens::limitReset(Lang::En, snap, testClock(), 0);
+  TEST_ASSERT_TRUE(fc.drew("LIMIT FREED"));
+  TEST_ASSERT_TRUE(fc.drew("2%"));
+  TEST_ASSERT_TRUE(fc.drew("5h session"));
+  TEST_ASSERT_TRUE(fc.drew("resets 19:32"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+
+  idle();
+  snap.todayTurns = 14;
+  snap.todayWorkSec = 3 * 3600 + 12 * 60;
+  screens::reset();
+  fc.clearLog();
+  screens::summary(Lang::En, snap, testClock());
+  TEST_ASSERT_TRUE(fc.drew("TODAY"));
+  TEST_ASSERT_TRUE(fc.drew("14"));
+  TEST_ASSERT_TRUE(fc.drew("responses"));
+  TEST_ASSERT_TRUE(fc.drew("3h12"));
+  TEST_ASSERT_TRUE(fc.drew("$3.50"));
+  TEST_ASSERT_TRUE(fc.drew("62%"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  snap.todayWorkSec = 0;
+  screens::reset();
+  fc.clearLog();
+  screens::summary(Lang::En, snap, testClock());
+  TEST_ASSERT_TRUE(fc.drew("0min"));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_main_screens_fit_any_resolution);
@@ -882,5 +957,7 @@ int main() {
   RUN_TEST(test_desk_mood_and_gauges);
   RUN_TEST(test_disconnected_has_mascot_and_info);
   RUN_TEST(test_desk_mascot_redraws_in_strips_without_flashing);
+  RUN_TEST(test_burn_rate_lines);
+  RUN_TEST(test_limit_reset_and_summary_content);
   return UNITY_END();
 }

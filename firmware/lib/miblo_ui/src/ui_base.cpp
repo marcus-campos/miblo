@@ -112,24 +112,48 @@ struct MascotPen {
 };
 }  // namespace
 
+// Mascot colours per style (see setMascotStyle): skin, inner ears, outlines/wrinkles, nose, and
+// the dark lines drawn on the skin (closed eyes, mouth), which must contrast with it.
+struct MascotColors {
+  uint16_t skin, earIn, line, nose, lid;
+};
+constexpr MascotColors kMascotColors[] = {
+    {color::SKIN, color::EAR_IN, color::WRINKLE, color::NOSE, color::PUPIL},  // sphynx #f2b8a8
+    {0xF509, 0xF654, 0xB325, 0xE38D, color::PUPIL},                         // orange #f0a04b
+    {0x4A4A, 0x7ACC, 0x2946, 0xD3D1, 0xCE5A},                               // black (#4a4a55: shows on the dark bg)
+    {0x9D16, 0xCD15, 0x5B2E, 0xB3D1, color::PUPIL},                         // grey #9aa3b0
+};
+static uint8_t g_style = 0;
+
+void setMascotStyle(uint8_t style) {
+  g_style = style < sizeof(kMascotColors) / sizeof(kMascotColors[0]) ? style : 0;
+}
+
 // The cat itself. `desk` adds what only the big Desk mascot has: a table edge, front paws and
 // the extras (sweat, alarm, zzz, open mouth).
 static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk) {
+  const MascotColors& mc = kMascotColors[g_style];
   const int x = k.dx;
   const int b = k.dy;
   d.rect(-48, -48, 96, 96, color::BG);
   if (desk) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
-  d.tri(-36 + x, -42 + b, -32 + x, -4 + b, -8 + x, -18 + b, color::SKIN);  // ears
-  d.tri(36 + x, -42 + b, 32 + x, -4 + b, 8 + x, -18 + b, color::SKIN);
+  d.tri(-36 + x, -42 + b, -32 + x, -4 + b, -8 + x, -18 + b, mc.skin);  // ears
+  d.tri(36 + x, -42 + b, 32 + x, -4 + b, 8 + x, -18 + b, mc.skin);
   if (innerEars) {
-    d.tri(-31 + x, -33 + b, -28 + x, -10 + b, -14 + x, -17 + b, color::EAR_IN);
-    d.tri(31 + x, -33 + b, 28 + x, -10 + b, 14 + x, -17 + b, color::EAR_IN);
+    d.tri(-31 + x, -33 + b, -28 + x, -10 + b, -14 + x, -17 + b, mc.earIn);
+    d.tri(31 + x, -33 + b, 28 + x, -10 + b, 14 + x, -17 + b, mc.earIn);
   }
-  d.rrect(-32 + x, -20 + b, 64, 52, 24, color::SKIN);  // head
+  d.rrect(-32 + x, -20 + b, 64, 52, 24, mc.skin);  // head
   switch (k.eyes) {
     case Eyes::Closed:
-      d.rect(-22 + x, 5 + b, 16, 3, color::PUPIL);
-      d.rect(6 + x, 5 + b, 16, 3, color::PUPIL);
+      d.rect(-22 + x, 5 + b, 16, 3, mc.lid);
+      d.rect(6 + x, 5 + b, 16, 3, mc.lid);
+      break;
+    case Eyes::Happy:  // "^ ^": a chevron cut out of a lid-coloured triangle
+      for (int e = -14; e <= 14; e += 28) {
+        d.tri(e - 9 + x, 10 + b, e + x, 1 + b, e + 9 + x, 10 + b, mc.lid);
+        d.tri(e - 5 + x, 10 + b, e + x, 5 + b, e + 5 + x, 10 + b, mc.skin);
+      }
       break;
     case Eyes::Wide:  // big irises, tiny pupils
       d.circle(-14 + x, 6 + b, 10, color::EYE_GREEN);
@@ -144,22 +168,22 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       d.circle(-14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
       d.circle(14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
       if (k.eyes == Eyes::Sleepy) {  // heavy lids over the top half
-        d.rect(-23 + x, -3 + b, 18, 8, color::SKIN);
-        d.rect(5 + x, -3 + b, 18, 8, color::SKIN);
-        d.rect(-22 + x, 4 + b, 16, 2, color::PUPIL);
-        d.rect(6 + x, 4 + b, 16, 2, color::PUPIL);
+        d.rect(-23 + x, -3 + b, 18, 8, mc.skin);
+        d.rect(5 + x, -3 + b, 18, 8, mc.skin);
+        d.rect(-22 + x, 4 + b, 16, 2, mc.lid);
+        d.rect(6 + x, 4 + b, 16, 2, mc.lid);
       }
       break;
   }
-  d.rrect(-4 + x, 17 + b, 8, 5, 2, color::NOSE);
+  d.rrect(-4 + x, 17 + b, 8, 5, 2, mc.nose);
   if (!desk) return;
-  if (k.extras & kMouthO) d.circle(x, 26 + b, 3, color::PUPIL);
+  if (k.extras & kMouthO) d.circle(x, 26 + b, 3, mc.lid);
   // A paw: a skin pad with a darker outline and toe lines, so it reads as a paw even over the
   // (skin) head.
   auto paw = [&](int px, int py, int pw, int ph, int r) {
-    d.rrect(px + x - 1, py + b - 1, pw + 2, ph + 2, r + 1, color::WRINKLE);
-    d.rrect(px + x, py + b, pw, ph, r, color::SKIN);
-    for (int t = 1; t <= 2; t++) d.rect(px + x + pw * t / 3, py + b + 1, 1, ph / 2, color::WRINKLE);
+    d.rrect(px + x - 1, py + b - 1, pw + 2, ph + 2, r + 1, mc.line);
+    d.rrect(px + x, py + b, pw, ph, r, mc.skin);
+    for (int t = 1; t <= 2; t++) d.rect(px + x + pw * t / 3, py + b + 1, 1, ph / 2, mc.line);
   };
   switch (k.paws) {
     case Paws::Down:

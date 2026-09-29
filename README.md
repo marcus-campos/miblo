@@ -92,10 +92,11 @@ The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you
 | Command | Arguments | What it does |
 |---|---|---|
 | `/miblo:pair` | `[ip]` | Finds gadgets over mDNS (or uses the IP you give), asks for the 4-digit code on the screen and pairs. It then offers to link the status line. |
-| `/miblo:status` | | Shows whether the bridge is running and the status line is linked, and lists each paired gadget (online/offline), the active sessions and the limits. |
+| `/miblo:status` | | Shows whether the bridge is running and the status line is linked, and lists each paired gadget (online/offline), the active sessions, the limits and today's summary (responses finished, time worked, cost). |
 | `/miblo:mode` | `<overview\|limits\|sessions> [id]` | Sets a gadget's display mode. |
 | `/miblo:rotate` | `<on\|off> [every-seconds] [show-seconds] [id]` | In Overview, shows the Limits screen for `show-seconds` once every `every-seconds`. `every` must be 10–3600 s, `show` must be 3–300 s and shorter than `every`. With no arguments, it shows the current setting and offers presets (every 1 min for 10 s, every 5 min for 15 s, every 15 min for 20 s, or off). |
 | `/miblo:night` | `<on\|off> [HH:MM HH:MM] [brightness%] [id]` | Dims the screen between the two local times (the window may cross midnight) to the night brightness (1–100%, never brighter than the normal brightness). With no arguments, it shows the current setting and offers presets (22:00–07:00 at 10%, 23:00–07:00 at 5%, 20:00–08:00 at 20%, or off). |
+| `/miblo:settings` | `[id]` | Opens the gadget's web settings page in your browser and prints its URL (also reachable at `http://<id>.local`). |
 | `/miblo:update` | `[id] [--file path]` | Updates the plugin and then the gadget firmware from the latest GitHub release. You confirm each step and type the on-screen code. `--file` sends a local `miblo-<board>-<version>.bin` instead. |
 | `/miblo:link-statusline` | | Links Claude Code's status line to Miblo. Your original status line keeps its exact output. |
 | `/miblo:unlink-statusline` | | Restores your original status line. **Run this before uninstalling the plugin.** |

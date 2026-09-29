@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import os from 'node:os';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion } from '../lib/constants.js';
@@ -18,6 +19,7 @@ const USAGE = [
   '  mode <overview|limits|sessions> [id]',
   '  rotate <on|off> [every-seconds] [show-seconds] [id] | rotate --status [id]',
   '  night <on|off> [HH:MM HH:MM] [brightness%] [id] | night --status [id]',
+  '  settings [id]',
   '  reset <id>',
   '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
@@ -41,6 +43,60 @@ function mapLocaleToLang(locale) {
     return region === '' || region === 'BR' ? 'pt-BR' : 'pt-PT';
   }
   return SIMPLE_LANGS.has(primary) ? primary : null;
+}
+
+// Opens a URL in the default browser. Resolves once the opener exits cleanly (or is still
+// running after a few seconds), rejects if it could not be run or failed.
+export function openInBrowser(url, platform = process.platform) {
+  const [cmd, args, opts] = platform === 'darwin' ? ['open', [url], {}]
+    // `start` takes the first quoted argument as a window title, hence the empty "".
+    : platform === 'win32' ? ['cmd', ['/c', 'start', '""', url], { windowsVerbatimArguments: true }]
+    : ['xdg-open', [url], {}];
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true, ...opts });
+    const timer = setTimeout(() => { child.unref(); resolve(); }, 3000);
+    timer.unref();
+    child.on('error', (e) => { clearTimeout(timer); reject(e); });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`${cmd} exited with ${code}`));
+    });
+  });
+}
+
+// ---- settings: the gadget's own web settings page ----
+// The stored addr is "ip:port"; the default HTTP port is dropped for a clean URL.
+export const settingsUrl = (addr) => `http://${cleanAddr(addr).replace(/^(\[[^\]]*\]|[^:]*):80$/, '$1')}/`;
+
+async function settings(args, store, openUrl) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  const devices = store.list();
+  if (!devices.length) return fail(2, 'No paired Miblo gadgets. Run /miblo:pair first.');
+  const [id] = args;
+  let d;
+  if (id) {
+    d = devices.find((x) => x.id === id);
+    if (!d) return fail(2, `No paired gadget with id ${cleanId(id)}.`);
+  } else if (devices.length > 1) {
+    const list = devices.map((x) => `${cleanId(x.id)}\t${cleanName(x.name)}\t${cleanAddr(x.addr)}`);
+    return fail(2, ['Several gadgets are paired; pass the id of one:', ...list].join('\n'));
+  } else {
+    [d] = devices;
+  }
+  const url = settingsUrl(d.addr);
+  const lines = [
+    `${cleanName(d.name)} settings: ${url}`,
+    `(also at http://${cleanId(d.id)}.local if the IP changed and your network resolves .local names)`,
+  ];
+  try {
+    await openUrl(url);
+    lines.push('Opened in your browser.');
+  } catch {
+    lines.push('Could not open a browser: open the URL by hand.');
+  }
+  return ok(lines.join('\n'));
 }
 
 async function defaultFetchStatus() {
@@ -328,6 +384,8 @@ export async function run(argv, deps) {
       return rotate(args, store, client);
     case 'night':
       return night(args, store, client);
+    case 'settings':
+      return settings(args, store, deps.openUrl ?? openInBrowser);
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);
@@ -374,6 +432,7 @@ async function main() {
     hostname: os.hostname(),
     fetchStatus: defaultFetchStatus,
     locale: Intl.DateTimeFormat().resolvedOptions().locale,
+    openUrl: (url) => openInBrowser(url),
   });
   process.stdout.write(r.out);
   process.exitCode = r.code;

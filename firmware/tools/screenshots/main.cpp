@@ -1,9 +1,14 @@
 // Renders every Miblo screen to PNG on the computer, with the gadget's own drawing code: the real
 // TftCanvas and u8g2 fonts over a framebuffer (shim/TFT_eSPI.h), fed with sample sessions.
 // Each image is saved at 240x240 (the panel's pixels) and 4x (960x960, nearest neighbour).
+// --animate renders short looping clips instead: 240x240 frames at 20 fps, drawn like the
+// firmware loop does (one screen, only changed regions redrawn), which ffmpeg turns into mp4/gif.
 //
 //   make screenshots            ->  firmware/dist/screenshots/<lang>/*.png
+//   make animations             ->  firmware/dist/animations/<lang>/*.mp4, *.gif
 //   .pio/build/screenshots/program <out-dir> [lang ...]     (langs: en pt-BR es ...; default en pt-BR)
+//   .pio/build/screenshots/program --animate <out-dir> [lang ...]
+//                               ->  <out-dir>/<lang>/frames/<clip>/0000.png ...
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -204,6 +209,26 @@ void mascotFrames(const std::string& prefix, screens::DeskMood mood, Draw draw) 
   }
 }
 
+struct Mood {
+  const char* name;
+  uint8_t h5, d7;
+  screens::DeskMood mood;
+};
+const Mood kMoods[] = {{"calm", 28, 12, screens::DeskMood::Calm},
+                       {"watchful", 62, 38, screens::DeskMood::Watchful},
+                       {"worried", 86, 44, screens::DeskMood::Worried},
+                       {"scared", 97, 71, screens::DeskMood::Scared}};
+
+// working(), then landing-page runs for 7:07 and finishes: the "took" line on the blue alert.
+void landingFinished(miblo::RunTracker& runs) {
+  working();
+  snap.sessions[0].since = gNow - 7 * 60 - 12;
+  runs.observe(snap);
+  snap.sessions[0].st = SessionState::Done;
+  snap.sessions[0].since = gNow - 5;
+  runs.observe(snap);
+}
+
 void renderAll(Lang L) {
   const screens::Clock clk = clock();
   miblo::Pager pager(3, 5000);
@@ -225,12 +250,7 @@ void renderAll(Lang L) {
 
   working();
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "14-overview-working"); }
-  // landing-page runs for 7:07, then finishes: the "took" line on the blue alert.
-  snap.sessions[0].since = gNow - 7 * 60 - 12;
-  runs.observe(snap);
-  snap.sessions[0].st = SessionState::Done;
-  snap.sessions[0].since = gNow - 5;
-  runs.observe(snap);
+  landingFinished(runs);
   { Shot s; screens::flash(L, AlertKind::Done, "landing-page", 0); save(s, "15-alert-flash-done"); }
   { Shot s; screens::hero(L, snap, 0, AlertKind::Done, false, clk, runs); save(s, "16-alert-finished"); }
 
@@ -241,16 +261,7 @@ void renderAll(Lang L) {
   { Shot s; screens::sessions(L, snap, pager, 0, clk, false); save(s, "19-sessions"); }
   { Shot s; screens::overview(L, snap, pager, 0, clk, true); save(s, "20-overview-discreet"); }
 
-  struct Mood {
-    const char* name;
-    uint8_t h5, d7;
-    screens::DeskMood mood;
-  };
-  const Mood moods[] = {{"calm", 28, 12, screens::DeskMood::Calm},
-                        {"watchful", 62, 38, screens::DeskMood::Watchful},
-                        {"worried", 86, 44, screens::DeskMood::Worried},
-                        {"scared", 97, 71, screens::DeskMood::Scared}};
-  for (const Mood& m : moods) {
+  for (const Mood& m : kMoods) {
     idle();
     usage(m.h5, m.d7);
     mascotFrames(std::string("30-desk-") + m.name, m.mood,
@@ -264,12 +275,97 @@ void renderAll(Lang L) {
   });
 }
 
+// ---------------- animations ----------------
+
+constexpr uint32_t kFrameMs = 50;  // 20 fps: the firmware redraws at ~10 fps, expressions last >= 100 ms
+int gClips = 0;
+
+// A clip's frames, drawn on one screen the way the firmware loop does it: the screen function is
+// called every frame and only redraws the regions that changed.
+struct Clip {
+  Shot shot;
+  std::string dir;
+  int frames = 0;
+  explicit Clip(const std::string& name) : dir(gDir + "/frames/" + name) {
+    mkdir((gDir + "/frames").c_str(), 0755);
+    mkdir(dir.c_str(), 0755);
+    gClips++;
+  }
+  void frame() {
+    char path[64];
+    snprintf(path, sizeof(path), "/%04d.png", frames++);
+    if (!writePng(dir + path, shot.tft.pixels(), 240, 240, 1)) {
+      fprintf(stderr, "cannot write %s%s\n", dir.c_str(), path);
+      exit(1);
+    }
+  }
+};
+
+// Length of one loop of the mood's expressions (a multiple of kFrameMs, so the clip loops seamlessly).
+uint32_t moodLoopMs(screens::DeskMood mood) {
+  for (uint32_t p = kFrameMs; p <= 60000; p += kFrameMs) {
+    bool same = true;
+    for (uint32_t ms = 0; same && ms < 60000; ms += 10)
+      same = screens::deskLook(mood, true, ms) == screens::deskLook(mood, true, ms + p);
+    if (same) return p;
+  }
+  return 12000;
+}
+
+// Alert: the flash for the default 1.5 s, then ~4 s of the hero screen.
+void alertClip(Lang L, const char* name, AlertKind kind, const char* who, const miblo::RunTracker& runs) {
+  const screens::Clock clk = clock();
+  Clip c(name);
+  for (uint32_t ms = 0; ms < 4 * screens::kFlashPhaseMs; ms += kFrameMs) {
+    screens::flash(L, kind, who, ms);
+    c.frame();
+  }
+  screens::reset();  // a new screen, as the firmware does on every screen change
+  for (uint32_t ms = 0; ms < 4000; ms += kFrameMs) {
+    screens::hero(L, snap, 0, kind, false, clk, runs);
+    c.frame();
+  }
+}
+
+void animateAll(Lang L) {
+  const screens::Clock clk = clock();
+  for (const Mood& m : kMoods) {
+    idle();
+    usage(m.h5, m.d7);
+    Clip c(std::string("desk-") + m.name);
+    const uint32_t loop = moodLoopMs(m.mood);
+    for (uint32_t ms = 0; ms < loop; ms += kFrameMs) {
+      screens::desk(L, snap, clk, ms);
+      c.frame();
+    }
+  }
+  {
+    // The "Waiting..." dots (2.4 s cycle) restart with the mascot's loop.
+    Clip c("disconnected");
+    const uint32_t loop = moodLoopMs(screens::DeskMood::Searching);
+    for (uint32_t ms = 0; ms < loop; ms += kFrameMs) {
+      screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", ms, 0);
+      c.frame();
+    }
+  }
+  miblo::RunTracker none;
+  attention();
+  alertClip(L, "alert-permission", AlertKind::Perm, "api-pagamentos", none);
+  miblo::RunTracker runs;
+  landingFinished(runs);
+  alertClip(L, "alert-done", AlertKind::Done, "landing-page", runs);
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
-  const std::string out = argc > 1 ? argv[1] : "screenshots";
+  int arg = 1;
+  const bool animate = argc > 1 && strcmp(argv[1], "--animate") == 0;
+  if (animate) arg++;
+  ESP.heap = 1u << 20;  // layers, as on a healthy gadget (shim/TFT_eSPI.h)
+  const std::string out = argc > arg ? argv[arg] : (animate ? "animations" : "screenshots");
   std::vector<std::string> langs;
-  for (int i = 2; i < argc; i++) langs.push_back(argv[i]);
+  for (int i = arg + 1; i < argc; i++) langs.push_back(argv[i]);
   if (langs.empty()) langs = {"en", "pt-BR"};
 
   setenv("TZ", "America/Sao_Paulo", 1);
@@ -292,8 +388,10 @@ int main(int argc, char** argv) {
     }
     gDir = out + "/" + code;
     mkdir(gDir.c_str(), 0755);
-    renderAll(L);
+    if (animate) animateAll(L);
+    else renderAll(L);
   }
-  printf("%d screenshots (each at 240x240 and 960x960) in %s\n", gCount, out.c_str());
+  if (animate) printf("%d clips (240x240 frames, %u fps) in %s\n", gClips, 1000 / kFrameMs, out.c_str());
+  else printf("%d screenshots (each at 240x240 and 960x960) in %s\n", gCount, out.c_str());
   return 0;
 }

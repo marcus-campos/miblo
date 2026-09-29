@@ -20,11 +20,13 @@ class Print {
   }
 };
 
-// No heap to spare: TftCanvas never opens a layer, so everything is drawn straight to the panel
-// (what the gadget does when memory is short; the pixels are the same).
+// Free heap TftCanvas sees (main.cpp sets plenty): with it, layers (4-bit sprites) as on a healthy
+// gadget; with 0, everything drawn straight to the panel, as when memory is short (then a text
+// field that changes keeps bits of the old text: opaque glyphs only repaint their own box).
 struct HostEsp {
-  uint32_t getFreeHeap() const { return 0; }
-  uint32_t getMaxFreeBlockSize() const { return 0; }
+  uint32_t heap = 0;
+  uint32_t getFreeHeap() const { return heap; }
+  uint32_t getMaxFreeBlockSize() const { return heap; }
 };
 extern HostEsp ESP;
 
@@ -49,20 +51,37 @@ class TFT_eSPI {
   void drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, uint32_t startAngle, uint32_t endAngle,
                      uint32_t fg, uint32_t bg, bool roundEnds = false);
 
- private:
+ protected:
   void blend(int32_t x, int32_t y, uint16_t c, float alpha);
   int16_t w_, h_;
   std::vector<uint16_t> px_;
 };
 
-// Layers are never created on the host (see ESP above): only the calls TftCanvas makes.
+// 4-bit sprite, only the calls TftCanvas makes: pixels hold palette indices (TftCanvas draws
+// into it with indices), pushSprite() writes their colours to the panel.
 class TFT_eSprite : public TFT_eSPI {
  public:
-  explicit TFT_eSprite(TFT_eSPI*) : TFT_eSPI(0, 0) {}
-  void* getPointer() { return nullptr; }
-  void* createSprite(int16_t, int16_t) { return nullptr; }
-  void deleteSprite() {}
+  explicit TFT_eSprite(TFT_eSPI* parent) : TFT_eSPI(0, 0), parent_(parent) {}
+  void* getPointer() { return px_.empty() ? nullptr : px_.data(); }
+  void* createSprite(int16_t w, int16_t h) {
+    w_ = w;
+    h_ = h;
+    px_.assign((size_t)w * h, 0);
+    return px_.data();
+  }
+  void deleteSprite() {
+    w_ = h_ = 0;
+    px_.clear();
+  }
   void setColorDepth(int8_t) {}
-  void setPaletteColor(uint8_t, uint16_t) {}
-  void pushSprite(int32_t, int32_t) {}
+  void setPaletteColor(uint8_t i, uint16_t c) { pal_[i & 15] = c; }
+  void pushSprite(int32_t x, int32_t y) {
+    for (int32_t j = 0; j < h_; j++) {
+      for (int32_t i = 0; i < w_; i++) parent_->drawPixel(x + i, y + j, pal_[px_[(size_t)j * w_ + i] & 15]);
+    }
+  }
+
+ private:
+  TFT_eSPI* parent_;
+  uint16_t pal_[16] = {};
 };

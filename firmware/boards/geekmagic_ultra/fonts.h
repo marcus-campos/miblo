@@ -8,6 +8,8 @@
 
 // Subset of u8g2_font_fub20_tf (digits and "%+,-./: "), made by scripts/vendor_u8g2.py.
 extern const uint8_t u8g2_font_fub20_miblo[] U8G2_FONT_SECTION("u8g2_font_fub20_miblo");
+// Subset of u8g2_font_fub20_tf with the letters of "miblo" only (the wordmark).
+extern const uint8_t u8g2_font_fub20_brand[] U8G2_FONT_SECTION("u8g2_font_fub20_brand");
 
 namespace board {
 namespace fonts {
@@ -22,7 +24,8 @@ inline const uint8_t* const kTitle[] = {u8g2_font_helvB18_te, u8g2_font_10x20_t_
 inline const uint8_t* const kHero[] = {u8g2_font_helvB24_te, u8g2_font_inr24_t_cyrillic, u8g2_font_wqy14_t_gb2312a, nullptr};
 inline const uint8_t* const kNumL[] = {u8g2_font_fub30_tn, u8g2_font_fub20_miblo, u8g2_font_helvB18_te, nullptr};
 inline const uint8_t* const kNumM[] = {u8g2_font_fub20_miblo, u8g2_font_helvB12_te, nullptr};
-inline const TftCanvas::FontStack kStacks[] = {kSmall, kSmallBold, kBody, kBodyBold, kTitle, kHero, kNumL, kNumM};
+inline const uint8_t* const kBrand[] = {u8g2_font_fub20_brand, u8g2_font_helvB18_te, nullptr};
+inline const TftCanvas::FontStack kStacks[] = {kSmall, kSmallBold, kBody, kBodyBold, kTitle, kHero, kNumL, kNumM, kBrand};
 static_assert(sizeof(kStacks) / sizeof(kStacks[0]) == (size_t)ui::Font::Count, "one stack per ui::Font");
 
 }  // namespace fonts

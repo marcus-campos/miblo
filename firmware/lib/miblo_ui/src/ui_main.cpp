@@ -436,8 +436,8 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     // Brand row (logo, "miblo", clock), then the limits strip, then the cards.
     const uint32_t hb = hashInt(kHashSeed + 41, 1);
     if (region(R_HEADER, hb, 0, 0, X(240), Y(24))) {
-      logo(X(17), Y(12), Sz(18));
-      C().text(X(32), Y(18), "miblo", Font::BodyBold, color::TEXT, Align::Left, X(120));
+      logo(X(19), Y(12), Sz(22));
+      C().text(X(35), Y(21), "miblo", Font::Brand, color::TEXT, Align::Left, X(120));
     }
     clockRight(hb, clk, Y(18), color::DIM, color::BG);
     compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);

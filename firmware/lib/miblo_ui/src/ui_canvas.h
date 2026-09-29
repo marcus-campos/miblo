@@ -11,7 +11,8 @@ struct ScreenSpec {
 };
 
 // Text styles; the board maps each one to real fonts (with Latin/Cyrillic/CJK fallback).
-enum class Font : uint8_t { Small, SmallBold, Body, BodyBold, Title, Hero, NumL, NumM, Count };
+// Brand: the "miblo" wordmark (only its letters exist in that font).
+enum class Font : uint8_t { Small, SmallBold, Body, BodyBold, Title, Hero, NumL, NumM, Brand, Count };
 enum class Align : uint8_t { Left, Center, Right };
 
 // Mockup palette (RGB565).

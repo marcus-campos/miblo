@@ -41,7 +41,8 @@ FONTS = [
 # other glyphs dropped) under a new name. fub20 draws percentages and "--" (NumM) and the "%"
 # fallback of the big numbers (NumL), so the full 5.4 KB font is not needed.
 SUBSETS = {
-    "u8g2_font_fub20_tf": ("u8g2_font_fub20_miblo", " %+,-./0123456789:"),
+    "u8g2_font_fub20_tf": [("u8g2_font_fub20_miblo", " %+,-./0123456789:"),
+                           ("u8g2_font_fub20_brand", "bilmo")],  # the "miblo" wordmark
 }
 
 PATCH = """
@@ -133,15 +134,14 @@ def main():
         while not source[end].rstrip().endswith('";'):
             end += 1
         lines = source[start:end + 1]
-        if font in SUBSETS:
-            name, chars = SUBSETS[font]
-            lines = font_c(name, subset_font(font_bytes(lines), chars))
-            font = name
-        out.extend(lines)
-        out.append("")
-        size = int(re.search(r"\[(\d+)\]", lines[0]).group(1))
-        total += size
-        print(f"  {font}: {size} bytes")
+        subsets = SUBSETS.get(font, [(font, None)])
+        for name, chars in subsets:
+            part = font_c(name, subset_font(font_bytes(lines), chars)) if chars else lines
+            out.extend(part)
+            out.append("")
+            size = int(re.search(r"\[(\d+)\]", part[0]).group(1))
+            total += size
+            print(f"  {name}: {size} bytes")
     with open(os.path.join(DEST, "miblo_fonts.c"), "w", encoding="latin-1") as f:
         f.write("\n".join(out) + "\n")
     print(f"total font size: {total} bytes")

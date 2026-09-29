@@ -1,5 +1,6 @@
 #include <qrcode.h>
 
+#include "miblo_rom.h"
 #include "ui_screens.h"
 
 namespace screens {
@@ -119,7 +120,7 @@ struct MascotColors {
 };
 constexpr MascotColors kMascotColors[] = {
     {color::SKIN, color::EAR_IN, color::WRINKLE, color::NOSE, color::PUPIL},  // sphynx #f2b8a8
-    {0xF509, 0xF654, 0xB325, 0xE38D, color::PUPIL},                         // orange #f0a04b
+    {0xF282, 0xFD2F, 0xB1C1, 0xFD2F, color::PUPIL},                         // orange #f55110 (the logo's)
     {0x4A4A, 0x7ACC, 0x2946, 0xD3D1, 0xCE5A},                               // black (#4a4a55: shows on the dark bg)
     {0x9D16, 0xCD15, 0x5B2E, 0xB3D1, color::PUPIL},                         // grey #9aa3b0
 };
@@ -226,17 +227,30 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
   }
 }
 
+// Miblo's logo: the mascot's head as a 22x20 silhouette (bit 21 = leftmost pixel); the eyes are
+// holes, so they show the background. Drawn in the mascot's colour, one run of pixels at a time.
+static const uint32_t kLogo[20] MIBLO_ROM = {0x0C000C, 0x0E001C, 0x1F003E, 0x1F807E, 0x1FDEFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1F3F3E, 0x1E3F1E, 0x3E3F1F, 0x3F3F3F, 0x3FFFFF, 0x3FFFFF, 0x3FFFFF, 0x03FFF0, 0x001E00};
+constexpr int kLogoW = 22;
+constexpr int kLogoH = 20;
+
 void logo(int cx, int cy, int size) {
-  const MascotColors& mc = kMascotColors[g_style];
-  const int r = size * 3 / 8;          // head radius
-  const int e = size / 2;              // ear tips at the edges
-  const int hy = cy + size / 8;        // head a bit low: room for the ears
-  g_canvas->fillTriangle(cx - e, cy - size / 2, cx - r, hy, cx - r / 4, hy - r, mc.skin);
-  g_canvas->fillTriangle(cx + e, cy - size / 2, cx + r, hy, cx + r / 4, hy - r, mc.skin);
-  g_canvas->fillCircle(cx, hy, r, mc.skin);
-  const int ew = size / 7 < 2 ? 2 : size / 7;  // green eyes, like the big mascot's (they show on every colour)
-  g_canvas->fillRect(cx - r / 2 - ew / 2, hy - ew / 2, ew, ew, color::EYE_GREEN);
-  g_canvas->fillRect(cx + r / 2 - ew / 2, hy - ew / 2, ew, ew, color::EYE_GREEN);
+  const uint16_t c = kMascotColors[g_style].skin;
+  const int px = size / kLogoW < 1 ? 1 : size / kLogoW;  // whole pixels: crisp at any scale
+  const int left = cx - kLogoW * px / 2;
+  const int top = cy - kLogoH * px / 2;
+  for (int y = 0; y < kLogoH; y++) {
+    uint32_t row;
+    mibloRomCopy(&row, &kLogo[y], sizeof(row));
+    for (int x = 0; x < kLogoW;) {
+      if (!(row & (1u << (kLogoW - 1 - x)))) {
+        x++;
+        continue;
+      }
+      const int x0 = x;
+      while (x < kLogoW && (row & (1u << (kLogoW - 1 - x)))) x++;
+      g_canvas->fillRect(left + x0 * px, top + y * px, (x - x0) * px, px, c);
+    }
+  }
 }
 
 void mascot(int cx, int cy, uint8_t frame, bool small) {

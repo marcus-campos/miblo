@@ -11,7 +11,8 @@ const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fi
 const NOW = Date.UTC(2026, 8, 28, 14, 32, 0);
 const S = Math.floor(NOW / 1000);
 
-function world() {
+// `day` stands in for DayStats: today's finished responses and seconds worked.
+function world(day = { turns: 12, work: 4380 }) {
   let t = NOW - 10_000; // < ALERT_TTL_MS, so alerts are still in the snapshot
   const clock = { now: () => t, set: (ms) => { t = ms; } };
   const tracker = new SessionTracker({ now: clock.now, isAlive: () => true });
@@ -21,7 +22,7 @@ function world() {
     metrics.ingest({ session_id: sid, model: { display_name: model }, cost: { total_cost_usd: usd },
       context_window: { used_percentage: ctx, total_input_tokens: inTok, total_output_tokens: outTok }, ...(rl ? { rate_limits: rl } : {}) }, { fresh: true });
   const rl = { five_hour: { used_percentage: 62, resets_at: S + 7800 }, seven_day: { used_percentage: 38, resets_at: S + 240000 } };
-  const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics }); };
+  const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics, day: { today: () => day } }); };
   return { ev, sl, rl, finish };
 }
 
@@ -37,20 +38,20 @@ const scenarios = {
     return w.finish();
   },
   working() {
-    const w = world();
+    const w = world({ turns: 31, work: 12420 });
     w.ev('33333333-c', 'PreToolUse', '/w/front-app', { tool_name: 'Edit', tool_input: { file_path: '/w/front-app/src/Header.tsx' } });
     w.ev('55555555-e', 'PreToolUse', '/w/worker', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
     w.sl('33333333-c', 'Sonnet', 34, 90000, 8000, 0.4, w.rl);
     return w.finish();
   },
   idle() {
-    const w = world();
+    const w = world({ turns: 0, work: 0 });
     w.ev('66666666-f', 'Stop', '/w/docs');
     w.sl('66666666-f', 'Opus', 54, 170000, 12000, 1.2, w.rl);
     return w.finish();
   },
   overflow() {
-    const w = world();
+    const w = world({ turns: 999, work: 86399 });
     for (let i = 0; i < 10; i++) {
       w.ev(`7777777${i}-x`, 'PreToolUse', `/w/project-${i}`, { tool_name: 'Read', tool_input: { file_path: `/w/f${i}.js` } });
     }

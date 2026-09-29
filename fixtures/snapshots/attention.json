@@ -14,7 +14,9 @@
     }
   },
   "today": {
-    "usd": 3.5
+    "usd": 3.5,
+    "turns": 12,
+    "work": 4380
   },
   "sessions": [
     {

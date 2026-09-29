@@ -15,4 +15,4 @@ Rules: reply in the user's language; keep replies short; never show pairing toke
 
 ## `status`
 
-Run `MIBLO status` and summarize: bridge running or stopped, status line linked or not (if linked but `statuslineSeen` is false, say limits appear after the next response), each gadget online/offline, active sessions and limits.
+Run `MIBLO status` and summarize: bridge running or stopped, status line linked or not (if linked but `statuslineSeen` is false, say limits appear after the next response), each gadget online/offline, active sessions, limits, and today's summary (`today`: `turns` responses finished, `work` seconds worked as hours/minutes, `usd` cost).

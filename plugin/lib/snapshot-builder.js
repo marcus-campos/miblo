@@ -7,7 +7,8 @@ const cut = (s, n) => {
 const shortId = (id) => String(id).replace(/-/g, '').slice(0, 8);
 const toSec = (ms) => Math.floor(ms / 1000);
 
-export function buildSnapshot({ seq, nowMs, host, tracker, metrics }) {
+// `day` (a DayStats) is optional: without it `today` only carries the cost.
+export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day }) {
   const all = tracker.sessions();
   const rows = all.map((s) => {
     const m = metrics.forSession(s.id);
@@ -30,7 +31,7 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics }) {
     now: toSec(nowMs),
     host: cut(host, NAME_LEN),
     usage: metrics.usage(),
-    today: metrics.today(),
+    today: { ...metrics.today(), ...(day ? day.today() : {}) },
     sessions: rows.slice(0, MAX_SESSIONS),
     more: Math.max(0, rows.length - MAX_SESSIONS),
     alerts: tracker.alerts().map((a) => ({ id: a.id, kind: a.kind, sid: shortId(a.sid) })),

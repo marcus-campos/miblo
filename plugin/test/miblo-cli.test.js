@@ -21,6 +21,7 @@ function deps(extra = {}) {
     discoverFn: async () => [],
     hostname: 'test-host',
     fetchStatus: async () => null,
+    openUrl: async () => {},  // never open a real browser from tests
     ...extra,
   };
 }
@@ -350,4 +351,64 @@ test('status survives a corrupt settings.json', async () => {
   const r = await run(['status'], d);
   assert.equal(r.code, 0);
   assert.equal(JSON.parse(r.out).statusline, 'settings.json unreadable');
+});
+
+test('status includes today\'s summary from the bridge', async () => {
+  const today = { usd: 1.5, turns: 4, work: 900 };
+  const r = await run(['status'], deps({ fetchStatus: async () => ({ devices: [], sessions: [], usage: null, today }) }));
+  assert.deepEqual(JSON.parse(r.out).today, today);
+});
+
+test('settings prints the gadget URL and opens it in the browser', async () => {
+  const opened = [];
+  const d = deps({ openUrl: async (url) => { opened.push(url); } });
+  new DeviceStore(d.dataDir).upsert({ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.176:80', token: 'secret' });
+  const r = await run(['settings'], d);
+  assert.equal(r.code, 0);
+  assert.deepEqual(opened, ['http://192.168.0.176/']);
+  assert.match(r.out, /Miblo-4F2A settings: http:\/\/192\.168\.0\.176\//);
+  assert.match(r.out, /http:\/\/miblo-4f2a\.local/);
+  assert.match(r.out, /Opened in your browser/);
+  assert.ok(!r.out.includes('secret'));
+});
+
+test('settings keeps a non-default port and picks a gadget by id', async () => {
+  const opened = [];
+  const d = deps({ openUrl: async (url) => { opened.push(url); } });
+  const store = new DeviceStore(d.dataDir);
+  store.upsert({ id: 'a', name: 'A', addr: '10.0.0.5:80', token: 't' });
+  store.upsert({ id: 'b', name: 'B', addr: '10.0.0.6:8080', token: 't' });
+  const r = await run(['settings', 'b'], d);
+  assert.equal(r.code, 0);
+  assert.deepEqual(opened, ['http://10.0.0.6:8080/']);
+  assert.equal((await run(['settings', 'zzz'], d)).code, 2);
+});
+
+test('settings with several gadgets and no id lists them and asks for one', async () => {
+  const opened = [];
+  const d = deps({ openUrl: async (url) => { opened.push(url); } });
+  const store = new DeviceStore(d.dataDir);
+  store.upsert({ id: 'a', name: 'A', addr: '10.0.0.5:80', token: 't' });
+  store.upsert({ id: 'b', name: 'B', addr: '10.0.0.6:80', token: 't' });
+  const r = await run(['settings'], d);
+  assert.equal(r.code, 2);
+  assert.match(r.out, /pass the id/);
+  assert.match(r.out, /^a\tA\t10\.0\.0\.5:80$/m);
+  assert.match(r.out, /^b\tB\t10\.0\.0\.6:80$/m);
+  assert.deepEqual(opened, []);
+});
+
+test('settings with no paired gadget exits 2', async () => {
+  const r = await run(['settings'], deps());
+  assert.equal(r.code, 2);
+  assert.match(r.out, /No paired Miblo gadgets/);
+});
+
+test('settings still prints the URL when the browser cannot be opened', async () => {
+  const d = deps({ openUrl: async () => { throw new Error('no xdg-open'); } });
+  new DeviceStore(d.dataDir).upsert({ id: 'g', name: 'G', addr: '10.0.0.5:80', token: 't' });
+  const r = await run(['settings'], d);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /http:\/\/10\.0\.0\.5\//);
+  assert.match(r.out, /open the URL by hand/);
 });

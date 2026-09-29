@@ -209,13 +209,9 @@ int TftCanvas::textBox(int x, int y, const char* s, ui::Font f, uint16_t fg, uin
     }
     return w;
   }
-  // No memory for a layer: opaque glyphs over the old ones, then the box sides left uncovered.
-  const char* end;
-  const int w = layout(s, f, boxW, &end);
-  const int left = a == ui::Align::Left ? x : (a == ui::Align::Center ? x - w / 2 : x - w);
-  if (left > bx) tft_.fillRect(bx, top, left - bx, h, bg);
-  int drawn = drawRun(left, y, s, end, f, fg, bg);
-  if (end) drawn += drawRun(left + drawn, y, "...", nullptr, f, fg, bg);
-  if (left + drawn < bx + boxW) tft_.fillRect(left + drawn, top, bx + boxW - left - drawn, h, bg);
-  return drawn;
+  // No memory for a layer: clear the box, then draw the text. (Opaque glyphs over the old ones
+  // only repaint each new glyph's own box, so pieces of the old text stayed on screen; a brief
+  // clear of this one box is the lesser evil.)
+  tft_.fillRect(bx, top, boxW, h, bg);
+  return text(x, y, s, f, fg, a, boxW);
 }

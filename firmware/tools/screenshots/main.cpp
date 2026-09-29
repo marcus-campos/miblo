@@ -260,6 +260,29 @@ void renderAll(Lang L) {
   { Shot s; screens::limits(L, snap, clk); save(s, "18-limits"); }
   { Shot s; screens::sessions(L, snap, pager, 0, clk, false); save(s, "19-sessions"); }
   { Shot s; screens::overview(L, snap, pager, 0, clk, true); save(s, "20-overview-discreet"); }
+  // At the recent pace the 5h window runs out in 1h20, before its reset in 2h10.
+  usage(78, 41);
+  { Shot s; screens::limits(L, snap, clk, gNow + 80 * 60); save(s, "21-limits-runs-out"); }
+  { Shot s; screens::desk(L, snap, clk, 0, gNow + 80 * 60); save(s, "22-desk-runs-out"); }
+  // The 5h window just reset after heavy use.
+  usage(2, 41);
+  snap.h5.reset = gNow + 5 * 3600;
+  { Shot s; screens::limitReset(L, snap, clk, 0); save(s, "23-limit-freed"); }
+  { Shot s; screens::limitReset(L, snap, clk, 1000); save(s, "23-limit-freed-cheer"); }
+  // Today's summary.
+  idle();
+  snap.todayTurns = 14;
+  snap.todayWorkSec = 3 * 3600 + 12 * 60;
+  { Shot s; screens::summary(L, snap, clk); save(s, "24-today-summary"); }
+  // The mascot's colours (settings page), on the desk screen.
+  const char* styles[] = {"sphynx", "orange", "black", "grey"};
+  for (uint8_t i = 0; i < 4; i++) {
+    screens::setMascotStyle(i);
+    Shot s;
+    screens::desk(L, snap, clk, 0);
+    save(s, std::string("25-mascot-") + styles[i]);
+  }
+  screens::setMascotStyle(0);
 
   for (const Mood& m : kMoods) {
     idle();
@@ -348,6 +371,17 @@ void animateAll(Lang L) {
       c.frame();
     }
   }
+  {
+    // "Limit freed": the mascot cheering over one loop.
+    usage(2, 41);
+    snap.h5.reset = gNow + 5 * 3600;
+    Clip c("limit-freed");
+    const uint32_t loop = moodLoopMs(screens::DeskMood::Celebrate);
+    for (uint32_t ms = 0; ms < loop; ms += kFrameMs) {
+      screens::limitReset(L, snap, clk, ms);
+      c.frame();
+    }
+  }
   miblo::RunTracker none;
   attention();
   alertClip(L, "alert-permission", AlertKind::Perm, "api-pagamentos", none);
@@ -362,7 +396,10 @@ int main(int argc, char** argv) {
   int arg = 1;
   const bool animate = argc > 1 && strcmp(argv[1], "--animate") == 0;
   if (animate) arg++;
-  ESP.heap = 1u << 20;  // layers, as on a healthy gadget (shim/TFT_eSPI.h)
+  // Layers, as on a healthy gadget (shim/TFT_eSPI.h); MIBLO_LOW_MEMORY=1 draws like a gadget with no
+  // heap to spare (no layers), to check that path.
+  const char* low = getenv("MIBLO_LOW_MEMORY");
+  ESP.heap = low && low[0] == '1' ? 0 : 1u << 20;
   const std::string out = argc > arg ? argv[arg] : (animate ? "animations" : "screenshots");
   std::vector<std::string> langs;
   for (int i = arg + 1; i < argc; i++) langs.push_back(argv[i]);

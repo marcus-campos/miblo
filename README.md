@@ -251,6 +251,7 @@ firmware/              ESP8266 firmware (PlatformIO / Arduino)
   loader/              the stage-1 installer
   scripts/             build.sh, flash-fleet.py (+ tests), bump-version.py, macOS helper
   test/                native unit tests
+  tools/screenshots/   renders every screen to PNG on the computer (make screenshots)
 fixtures/snapshots/    protocol fixtures shared by plugin and firmware tests
 docs/                  on-device release checklist
 CLAUDE.md, AGENTS.md   rules for AI coding assistants (no AI attribution in commits)
@@ -266,6 +267,16 @@ cd firmware && make test                               # firmware native tests +
 ```
 
 The bridge-to-gadget protocol is pinned by `fixtures/snapshots/*.json`: the plugin tests generate them and the firmware tests consume them. Before a release, a person runs the on-device [firmware checklist](docs/firmware-checklist.md).
+
+
+### Screenshots
+
+```sh
+cd firmware && make screenshots                 # dist/screenshots/<lang>/*.png
+make screenshots LANGS="en pt-BR es"            # any of the 9 languages
+```
+
+Renders every screen (setup, alerts, Overview, Limits, Sessions, each expression of the desk mascot, Disconnected…) on the computer, with the gadget's own drawing code and fonts over a framebuffer (`tools/screenshots`). Each PNG comes at 240×240 (the panel's pixels) and 960×960 (`@4x`, nearest neighbour), ready for product photos and docs.
 
 ### Releasing
 

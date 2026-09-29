@@ -1,0 +1,68 @@
+#pragma once
+// Host stand-in for TFT_eSPI (and the bits of Arduino it drags in), so the real TftCanvas and the
+// vendored u8g2 font renderer run on a computer and draw into an RGB565 framebuffer. Used only by
+// tools/screenshots. Shapes follow TFT_eSPI's conventions (fillCircle is 2r+1 wide, arcs start at
+// 6 o'clock and go clockwise, anti-aliased arcs and wide lines blend into what is underneath).
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <vector>
+
+class Print {
+ public:
+  virtual ~Print() = default;
+  virtual size_t write(uint8_t) = 0;
+  virtual size_t write(const uint8_t* buffer, size_t size) {
+    size_t n = 0;
+    while (size--) n += write(*buffer++);
+    return n;
+  }
+};
+
+// No heap to spare: TftCanvas never opens a layer, so everything is drawn straight to the panel
+// (what the gadget does when memory is short; the pixels are the same).
+struct HostEsp {
+  uint32_t getFreeHeap() const { return 0; }
+  uint32_t getMaxFreeBlockSize() const { return 0; }
+};
+extern HostEsp ESP;
+
+class TFT_eSPI {
+ public:
+  TFT_eSPI(int16_t w = 240, int16_t h = 240) : w_(w), h_(h), px_((size_t)w * h, 0) {}
+  virtual ~TFT_eSPI() = default;
+
+  int16_t width() const { return w_; }
+  int16_t height() const { return h_; }
+  const std::vector<uint16_t>& pixels() const { return px_; }
+
+  void drawPixel(int32_t x, int32_t y, uint32_t c);
+  void drawFastHLine(int32_t x, int32_t y, int32_t w, uint32_t c) { fillRect(x, y, w, 1, c); }
+  void drawFastVLine(int32_t x, int32_t y, int32_t h, uint32_t c) { fillRect(x, y, 1, h, c); }
+  void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c);
+  void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c);
+  void fillRoundRect(int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, uint32_t c);
+  void fillCircle(int32_t x, int32_t y, int32_t r, uint32_t c);
+  void fillTriangle(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, uint32_t c);
+  void drawWideLine(float ax, float ay, float bx, float by, float wd, uint32_t fg, uint32_t bg = 0x00FFFFFF);
+  void drawSmoothArc(int32_t x, int32_t y, int32_t r, int32_t ir, uint32_t startAngle, uint32_t endAngle,
+                     uint32_t fg, uint32_t bg, bool roundEnds = false);
+
+ private:
+  void blend(int32_t x, int32_t y, uint16_t c, float alpha);
+  int16_t w_, h_;
+  std::vector<uint16_t> px_;
+};
+
+// Layers are never created on the host (see ESP above): only the calls TftCanvas makes.
+class TFT_eSprite : public TFT_eSPI {
+ public:
+  explicit TFT_eSprite(TFT_eSPI*) : TFT_eSPI(0, 0) {}
+  void* getPointer() { return nullptr; }
+  void* createSprite(int16_t, int16_t) { return nullptr; }
+  void deleteSprite() {}
+  void setColorDepth(int8_t) {}
+  void setPaletteColor(uint8_t, uint16_t) {}
+  void pushSprite(int32_t, int32_t) {}
+};

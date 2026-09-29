@@ -12,6 +12,9 @@
 #   make fleet-ap-loop              keep scanning: plug units in one after another (Ctrl-C to stop)
 #   make fleet-ap SSIDS="Miblo-Setup-4F2A GIFTV"   only these unit networks, joined by name (no scan)
 #   make fleet-ap-scan              print the Wi-Fi scan (builds the MibloWiFiScan helper on first use)
+#   make screenshots                every screen as PNG (240x240 + 960x960) in dist/screenshots/<lang>/,
+#                                   drawn on the computer with the gadget's own code and fonts
+#   make screenshots LANGS="en es"  other languages (default: en pt-BR)
 #
 # The builds are refreshed automatically: fleet targets run `make build` unless dist/ holds both
 # images for the sources' MIBLO_FW_VERSION and they are newer than every firmware source file.
@@ -68,7 +71,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: help build test release images fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: help build test release images screenshots fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -149,3 +152,9 @@ fleet-ap: images
 
 fleet-ap-loop: images
 	$(AP) --loop $(ARGS)
+
+LANGS ?= en pt-BR
+screenshots:
+	@if [ -x .venv/bin/pio ]; then .venv/bin/pio run -e screenshots; else pio run -e screenshots; fi
+	rm -rf dist/screenshots
+	.pio/build/screenshots/program dist/screenshots $(LANGS)

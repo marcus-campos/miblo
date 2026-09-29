@@ -750,14 +750,27 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
   uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
   h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
   h = hashInt(h, (uint32_t)(s.todayUsd * 100));
-  if (region(R_LIMITS, h, 0, Y(166), X(240), Y(74))) {
+  if (region(R_LIMITS, h, 0, Y(158), X(240), Y(66))) {
     if (!usage) {
-      noLimits(lang, s, Y(200));
+      noLimits(lang, s, Y(196));
     } else {
-      ring(X(60), Y(198), t(lang, S::Short5h), s.h5.present, p5, color::CORAL);
-      ring(X(180), Y(198), t(lang, S::Short7d), s.d7.present, p7, color::VIOLET);
+      ring(X(60), Y(190), t(lang, S::Short5h), s.h5.present, p5, color::CORAL);
+      ring(X(180), Y(190), t(lang, S::Short7d), s.d7.present, p7, color::VIOLET);
     }
   }
+  // Under each ring, when its reset is known and still ahead: "in 2h10" (5h), "Fri 19:32" (week).
+  // Fields: the countdown ticks once a minute without touching the rings.
+  char buf[48];
+  buf[0] = 0;
+  if (usage && s.h5.present && s.h5.reset > now) {
+    char left[16];
+    miblo::formatCountdown(s.h5.reset - now, left, sizeof(left));
+    snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
+  }
+  field(R_RESET5, h, X(60), Y(237), buf, Font::Small, color::DIM, color::BG, Align::Center, X(112));
+  buf[0] = 0;
+  if (usage && s.d7.present && s.d7.reset > now) formatWhen(lang, s.d7.reset, now, buf, sizeof(buf));
+  field(R_RESET7, h, X(180), Y(237), buf, Font::Small, color::DIM, color::BG, Align::Center, X(112));
 }
 
 void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,

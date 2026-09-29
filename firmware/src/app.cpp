@@ -34,8 +34,8 @@ static uint32_t lastFrameMs = 0;
 static miblo::Pager listPager(3, 5000);  // Overview: 3 session cards per page
 static miblo::Pager sessionPager(3, 5000);  // Sessions mode: 3 big cards per page
 static miblo::RotationClock rotation;  // optional Overview/Limits alternation
-static miblo::QuietClock quiet;        // All done -> Limits -> Desk while nothing happens
-static bool mainLimits = false;        // Main is showing the Limits screen in Overview mode
+static miblo::QuietClock quiet;        // All done -> Desk while nothing happens
+static bool mainLimits = false;        // Main shows the Limits arc instead of the mode's screen
 static uint32_t awaySinceMs = 0;       // when the Disconnected screen came up
 
 static void enter(ScreenId s) {
@@ -211,15 +211,16 @@ void loop() {
   in.alert = alert.phase;
   ScreenId screen = miblo::selectScreen(in);
   const miblo::StateCounts counts = miblo::countStates(ctx.snap);
-  // Nothing running or waiting: "All done" gives way to Limits, and later to the Desk mascot.
+  // Nothing running or waiting: "All done" gives way to the Desk mascot with the limits, which
+  // takes turns with the Limits arc.
   const miblo::QuietPhase qp =
       quiet.update(screen == ScreenId::Main && counts.pending == 0 && counts.running == 0, now);
   if (qp == miblo::QuietPhase::Desk) screen = ScreenId::Desk;
   // Rotation never takes the screen away from an alert or a session waiting on the user.
-  const bool rotBlocked = screen != ScreenId::Main || counts.pending > 0 || qp == miblo::QuietPhase::Settled;
+  const bool rotBlocked = screen != ScreenId::Main || counts.pending > 0;
   const bool rotLimits = rotation.update(miblo::rotationTiming(ctx.cfg), rotBlocked, now);
-  const bool wantLimits = screen == ScreenId::Main && ctx.cfg.mode == miblo::Mode::Overview &&
-                          (rotLimits || qp == miblo::QuietPhase::Settled);
+  const bool wantLimits = screen == ScreenId::Main && ((ctx.cfg.mode == miblo::Mode::Overview && rotLimits) ||
+                                                       qp == miblo::QuietPhase::Arc);
   if (wantLimits != mainLimits) firstFrame = true;  // Overview <-> Limits: redraw everything
   mainLimits = wantLimits;
   if (screen == ScreenId::Disconnected && current != ScreenId::Disconnected) awaySinceMs = now;
@@ -277,12 +278,12 @@ void loop() {
                     ctx.runs);
       break;
     case ScreenId::Main:
+      if (mainLimits) {  // a rotation slot, or the arc's turn in the Desk cycle
+        screens::limits(lang, ctx.snap, clk);
+        break;
+      }
       switch (ctx.cfg.mode) {
         case miblo::Mode::Overview:
-          if (mainLimits) {
-            screens::limits(lang, ctx.snap, clk);
-            break;
-          }
           screens::overview(lang, ctx.snap, listPager, now, clk, ctx.cfg.discreet);
           break;
         case miblo::Mode::Limits:

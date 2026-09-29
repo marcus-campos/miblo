@@ -23,13 +23,13 @@
 
 - **Overview** (the default mode) adapts to what you're doing:
   - **While something is running,** your sessions come first. You get up to 3 session cards per page, each with the name, how long it has been in that state and what it's doing now ("Editing Header.tsx", "Bash · npm test"). Above them is a compact `5h / 7d` limits strip. Cards are ordered by what needs you first, then what is still working, then what has finished.
-  - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s it switches to the Limits screen.
+  - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s the desk mascot takes over (see below).
 - **Alerts:**
   - **Amber** when a session needs you (a permission request or a question). You get a flash, then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
   - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert.
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
 - **Sessions mode:** a detailed list of big cards that you can read at arm's length. It pages every 5 s when there are more than 3 sessions, in the same order as the Overview.
-- **Desk mode:** after 10 minutes with nothing running (in any mode), the mascot takes the whole screen next to two ring gauges with your 5-hour and weekly limits and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. Any activity brings the normal screens back.
+- **Desk mascot:** 20 s after everything finishes (in any mode), the mascot takes the screen next to two ring gauges with your 5-hour and weekly limits, their reset times and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. It takes turns with the Limits arc: 1 minute of mascot, 15 seconds of arc. Any activity brings the normal screens back.
 - **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
 - **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.

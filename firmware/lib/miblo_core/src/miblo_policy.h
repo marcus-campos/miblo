@@ -143,17 +143,19 @@ class RotationClock {
 
 // ---- Quiet spells: what the main screen becomes when nothing is going on ----
 // Quiet = the main screen with no session running or waiting (Overview shows "All done").
-// After kAllDoneMs of quiet the Overview swaps "All done" for the Limits screen; after
-// kDeskIdleMs any mode gives way to the Desk screen. (Disconnected has its own mascot.)
+// After kAllDoneMs of quiet any mode gives way to the Desk screen (the mascot with the limits),
+// which then alternates with the Limits arc: kDeskCatMs of mascot, kDeskArcMs of arc, and again.
+// (Disconnected has its own mascot.)
 enum class QuietPhase : uint8_t {
   Busy,     // not quiet: normal screens
   AllDone,  // just went quiet
-  Settled,  // quiet for kAllDoneMs: Overview shows Limits
-  Desk      // quiet for kDeskIdleMs: the Desk screen
+  Desk,     // quiet for kAllDoneMs: the Desk screen
+  Arc       // quiet, the Limits arc's turn in the Desk cycle
 };
 
 constexpr uint32_t kAllDoneMs = 20000;
-constexpr uint32_t kDeskIdleMs = 600000;
+constexpr uint32_t kDeskCatMs = 60000;
+constexpr uint32_t kDeskArcMs = 15000;
 // Disconnected: the mascot looks around for the computer, then falls asleep after this long.
 constexpr uint32_t kAwayNapMs = 600000;
 
@@ -167,6 +169,7 @@ class QuietClock {
  private:
   QuietPhase phase_ = QuietPhase::Busy;
   uint32_t sinceMs_ = 0;
+  uint32_t deskMs_ = 0;  // when the Desk cycle started
 };
 
 }  // namespace miblo

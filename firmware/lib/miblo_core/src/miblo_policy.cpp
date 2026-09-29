@@ -196,10 +196,12 @@ QuietPhase QuietClock::update(bool quiet, uint32_t nowMs) {
     phase_ = QuietPhase::AllDone;
     sinceMs_ = nowMs;
   }
-  if (phase_ == QuietPhase::Desk) return phase_;  // sticky: no fall-back once millis() wraps
-  const uint32_t elapsed = nowMs - sinceMs_;
-  if (elapsed >= kDeskIdleMs) phase_ = QuietPhase::Desk;
-  else if (elapsed >= kAllDoneMs) phase_ = QuietPhase::Settled;
+  if (phase_ == QuietPhase::AllDone) {
+    if (nowMs - sinceMs_ < kAllDoneMs) return phase_;
+    deskMs_ = nowMs;  // from here on only the cycle position matters: safe across millis() wrap
+  }
+  const uint32_t t = (nowMs - deskMs_) % (kDeskCatMs + kDeskArcMs);
+  phase_ = t < kDeskCatMs ? QuietPhase::Desk : QuietPhase::Arc;
   return phase_;
 }
 

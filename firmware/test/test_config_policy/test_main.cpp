@@ -573,19 +573,25 @@ static void test_rotation_survives_millis_wrap() {
   TEST_ASSERT_FALSE(r.update(t, false, start + 20000));
 }
 
-// Quiet spells: All done, then (after kAllDoneMs) Limits, then (after kDeskIdleMs) Desk; any
-// activity starts over, and Desk survives a millis() wrap.
+// Quiet spells: All done, then (after kAllDoneMs) the Desk cycle: kDeskCatMs of mascot, kDeskArcMs
+// of Limits arc, again and again; any activity starts over, and the cycle survives a millis() wrap.
 static void test_quiet_clock_phases() {
   QuietClock q;
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 0));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 1000 + kAllDoneMs - 1));
-  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Settled, (int)q.update(true, 1000 + kAllDoneMs));
-  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 1000 + kDeskIdleMs));
-  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 999));  // wrapped: still Desk
+  const uint32_t d = 1000 + kAllDoneMs;
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d + kDeskCatMs - 1));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, d + kDeskCatMs));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, d + kDeskCatMs + kDeskArcMs - 1));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, d + kDeskCatMs + kDeskArcMs));
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Busy, (int)q.update(false, 2000));
+  // Across the wrap: All done ends past zero, and the cycle keeps its rhythm.
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)q.update(true, 0xFFFFF000u));
-  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Settled, (int)q.update(true, 0xFFFFF000u + kAllDoneMs));  // wraps
+  const uint32_t w = 0xFFFFF000u + kAllDoneMs;  // wraps
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, w));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, w + kDeskCatMs));
 }
 
 int main() {

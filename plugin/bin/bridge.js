@@ -5,6 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion, parseDataArg } from '../lib/constants.js';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
+import { DayStats } from '../lib/day-stats.js';
 import { buildSnapshot } from '../lib/snapshot-builder.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
@@ -17,6 +18,7 @@ import { createLogger, errText } from '../lib/logger.js';
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {} }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now });
+  const day = new DayStats({ dataDir, now });
   const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now });
   let seq = 0;
   let timer = null;
@@ -25,7 +27,8 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   const push = async () => {
     timer = null;
     if (tracker.hasActive()) lastActive = now();
-    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics });
+    day.observe(tracker.sessions());
+    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day });
     await devices.pushAll(snapshot);
   };
   const schedule = () => {
@@ -45,13 +48,13 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     getStatus: () => ({
       sessions: tracker.sessions(),
       usage: metrics.usage(),
-      today: metrics.today(),
+      today: { ...metrics.today(), ...day.today() },
       devices: devices.status(),
       statuslineSeen: metrics.hasReadings(),
     }),
   });
 
-  return { tracker, metrics, devices, server, push, schedule, idleFor: () => now() - lastActive };
+  return { tracker, metrics, day, devices, server, push, schedule, idleFor: () => now() - lastActive };
 }
 
 function main() {

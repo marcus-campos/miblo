@@ -95,6 +95,31 @@ test('cost counts from zero only for sessions whose SessionStart the bridge saw'
   }
 });
 
+test('a finished response and the time worked reach the snapshot, /status and the data dir', async () => {
+  const dev = await startFakeDevice();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const client = new DeviceClient();
+  const token = await client.pair(dev.addr, '4827', 'test');
+  new DeviceStore(dataDir).upsert({ id: 'x', name: 'X', addr: dev.addr, token });
+  let t = new Date(2026, 8, 29, 10).getTime();
+  const bridge = createBridge({ dataDir, client, discoverFn: async () => [], now: () => t });
+  const http = await started(bridge);
+  try {
+    await http.post('/event', { session_id: 's1', hook_event_name: 'UserPromptSubmit', cwd: '/w/a' });
+    await bridge.push();
+    t += 20_000;
+    await http.post('/event', { session_id: 's1', hook_event_name: 'Stop' });
+    await bridge.push();
+    assert.deepEqual(dev.state.snapshots.at(-1).today, { usd: 0, turns: 1, work: 20 });
+    const status = await (await fetch(http.base + '/status')).json();
+    assert.deepEqual(status.today, { usd: 0, turns: 1, work: 20 });
+    assert.ok(fs.existsSync(path.join(dataDir, 'day-stats.json')));
+  } finally {
+    await http.stop();
+    await dev.close();
+  }
+});
+
 function rawRequest(port, { method = 'GET', path: p = '/health', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
     const req = httpMod.request({ host: '127.0.0.1', port, method, path: p, headers, setHost: false }, (res) => {

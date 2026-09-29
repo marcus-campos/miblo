@@ -22,6 +22,13 @@ test('empty world', () => {
   });
 });
 
+test('today merges the day stats (responses and seconds worked) with the cost', () => {
+  const { tracker, metrics } = world();
+  const day = { today: () => ({ turns: 7, work: 3600 }) };
+  const s = buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, day });
+  assert.deepEqual(s.today, { usd: 0, turns: 7, work: 3600 });
+});
+
 test('session fields, short ids and metrics', () => {
   const { tracker, metrics, snap } = world();
   const sid = 'abcd1234-5678-90ab-cdef-000000000000';

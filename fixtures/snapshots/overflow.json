@@ -5,7 +5,9 @@
   "host": "MacBook-Marcus",
   "usage": null,
   "today": {
-    "usd": 0
+    "usd": 0,
+    "turns": 999,
+    "work": 86399
   },
   "sessions": [
     {

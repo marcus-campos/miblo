@@ -9,6 +9,10 @@ const dayKey = (ms) => {
   const d = new Date(ms);
   return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
 };
+const startOfDay = (ms) => {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
 // Longest gap counted as work between two observations: the bridge pushes a heartbeat every 10 s,
 // so a longer gap means it was stopped (asleep laptop...), not that work went on.
 const MAX_STEP_MS = 60_000;
@@ -68,6 +72,8 @@ export class DayStats {
     this.#day = key;
     this.#turns = 0;
     this.#workMs = 0;
+    // Work that straddles midnight only counts from 00:00 on the new day.
+    if (this.#lastMs !== null) this.#lastMs = Math.max(this.#lastMs, startOfDay(t));
     this.#dirty = true;
   }
 

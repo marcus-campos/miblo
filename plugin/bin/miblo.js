@@ -306,6 +306,7 @@ export async function run(argv, deps) {
         devices,
         sessions: live?.sessions ?? [],
         usage: live?.usage ?? null,
+        today: live?.today ?? null,
       }, null, 2));
     }
     case 'mode': {

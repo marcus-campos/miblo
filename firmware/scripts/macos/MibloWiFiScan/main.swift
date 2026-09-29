@@ -12,6 +12,10 @@
 //    "networks": [{"ssid": "GIFTV", "bssid": "5e:cf:7f:12:4f:2a", "rssi": -48, "channel": 6}, ...],
 //    "error": null}
 // and exits. When location access is not granted, "authorized" is false (names are null).
+//
+// Join mode: `--args <out.json> --join <bssid> [--password <pw>]` associates with that exact
+// access point (many stock units share one network name, so joining by name picks any of them)
+// and writes {"authorized": ..., "joined": true|false, "error": ...}.
 
 import AppKit
 import CoreLocation
@@ -20,9 +24,18 @@ import Foundation
 
 let environment = ProcessInfo.processInfo.environment
 
+let arguments = Array(CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-psn_") })
+
+func option(_ name: String) -> String? {
+    guard let i = arguments.firstIndex(of: name), i + 1 < arguments.count else { return nil }
+    return arguments[i + 1]
+}
+
+let joinBssid = option("--join")?.lowercased()
+let joinPassword = option("--password")
+
 let outputPath: String = {
-    let args = CommandLine.arguments.dropFirst().filter { !$0.hasPrefix("-psn_") }
-    if let first = args.first, !first.isEmpty { return first }
+    if let first = arguments.first, !first.isEmpty, !first.hasPrefix("--") { return first }
     if let env = environment["MIBLO_WIFISCAN_OUT"], !env.isEmpty { return env }
     return (NSTemporaryDirectory() as NSString).appendingPathComponent("miblo-wifiscan.json")
 }()
@@ -80,7 +93,24 @@ final class Scanner: NSObject, NSApplicationDelegate, CLLocationManagerDelegate 
             "networks": [Any](),
             "error": NSNull(),
         ]
-        if let iface = CWWiFiClient.shared().interface() {
+        if let bssid = joinBssid {
+            doc["joined"] = false
+            if let iface = CWWiFiClient.shared().interface() {
+                do {
+                    let found = try iface.scanForNetworks(withName: nil)
+                    if let net = found.first(where: { $0.bssid?.lowercased() == bssid }) {
+                        try iface.associate(to: net, password: joinPassword)
+                        doc["joined"] = true
+                    } else {
+                        doc["error"] = "access point \(bssid) not found"
+                    }
+                } catch {
+                    doc["error"] = "join failed: \(error.localizedDescription)"
+                }
+            } else {
+                doc["error"] = "no Wi-Fi interface"
+            }
+        } else if let iface = CWWiFiClient.shared().interface() {
             doc["interface"] = jsonValue(iface.interfaceName)
             doc["current_ssid"] = jsonValue(iface.ssid())
             doc["current_bssid"] = jsonValue(iface.bssid())

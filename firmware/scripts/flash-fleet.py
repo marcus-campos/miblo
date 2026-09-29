@@ -137,10 +137,13 @@ class Unit:
     seconds: float = 0.0
     ssid: Optional[str] = None      # --via-ap: the network the unit was found on
     chip: Optional[str] = None      # --via-ap: "4f2a" (from the SSID or the device id)
+    bssid: Optional[str] = None     # --via-ap: the access point joined, when the name is shared
     verify: bool = False            # LAN: installed, the unit restarted on its Miblo-Setup network
 
     @property
     def label(self) -> str:
+        if self.ssid and self.bssid:  # ten units may all be "GIFTV": tell them apart
+            return "%s %s" % (self.ssid, mac_chip(self.bssid))
         return self.ssid or self.host
 
     @property
@@ -856,6 +859,8 @@ class ApFleet:
         self.ap_host = ap_host
         self.stock_re = re.compile(args.stock_ssid, re.I)
         self.handled = set()          # ssid_key()s processed, or produced by a processed unit
+        self.done_chips = set()       # chip ids (MAC low bytes) of units finished in this run
+        self.visited_chips = set()    # chip ids of units processed in this run (done or failed)
         self.units: List[Unit] = []
         self.current: Optional[Unit] = None
         self.scan_blocked = False     # names are hidden: skip scans inside a unit's steps
@@ -864,7 +869,44 @@ class ApFleet:
         self.runner.log(unit, msg)
 
     def pending(self, ssids: List[str]) -> List[str]:
-        return [s for s in ssids if ssid_kind(s, self.stock_re) and ssid_key(s) not in self.handled]
+        out = []
+        for s in ssids:
+            if not ssid_kind(s, self.stock_re) or s in out:
+                continue
+            if self.by_bssid(s):
+                if self.next_bssid(s):
+                    out.append(s)
+            elif ssid_key(s) not in self.handled and not self.only_done(s):
+                out.append(s)
+        return out
+
+    def by_bssid(self, ssid: str) -> bool:
+        """A stock name (every unit uses the same one, e.g. GIFTV) whose units the scan listed by
+        BSSID: each unit is then joined by its BSSID and visited once, whatever the name."""
+        return (ssid_kind(ssid, self.stock_re) == STOCK and not ssid_chip(ssid)
+                and bool(self.wifi.bssids.get(ssid)))
+
+    def next_bssid(self, ssid: str) -> Optional[str]:
+        """The strongest access point on `ssid` whose unit this run hasn't visited yet."""
+        for b in self.wifi.bssids.get(ssid, []):
+            chip = mac_chip(b)
+            if chip and chip not in self.visited_chips and chip not in self.done_chips:
+                return b
+        return None
+
+    def only_done(self, ssid: str) -> bool:
+        """Every unit the last scan saw on `ssid` (by BSSID) was already finished in this run.
+        Stock units all share a name (GIFTV...): without this the Mac could keep picking one
+        that is done."""
+        chips = {mac_chip(b) for b in self.wifi.bssids.get(ssid, [])}
+        return bool(chips) and None not in chips and chips <= self.done_chips
+
+    def finished(self, unit: Unit) -> None:
+        """Remembers a unit that needs nothing more, so this run never visits it again."""
+        chip = unit.chip or self.chip_hint(unit)
+        if chip:
+            self.done_chips.add(chip)
+            self.visited_chips.add(chip)
 
     def scan(self) -> Optional[List[str]]:
         """Visible SSIDs, or None when scanning is unavailable (hidden names, no helper...)."""
@@ -878,13 +920,15 @@ class ApFleet:
         except WifiError:
             return None
 
-    def connect(self, unit: Unit, ssid: str, password: Optional[str] = None, attempts: int = 3) -> None:
-        """Joins `ssid` and waits for a 192.168.4.x address and the device answering on HTTP."""
-        self.log(unit, "joining Wi-Fi %s..." % ssid)
+    def connect(self, unit: Unit, ssid: str, password: Optional[str] = None, attempts: int = 3,
+                bssid: Optional[str] = None) -> None:
+        """Joins `ssid` (the access point `bssid` when given) and waits for a 192.168.4.x address
+        and the device answering on HTTP."""
+        self.log(unit, "joining Wi-Fi %s%s..." % (ssid, " (%s)" % bssid if bssid else ""))
         last = None
         for _ in range(attempts):
             try:
-                self.wifi.join(ssid, password)
+                self.wifi.join(ssid, password, bssid=bssid)
                 break
             except WifiError as e:
                 last = e
@@ -1013,8 +1057,16 @@ class ApFleet:
     def process(self, ssid: str, probe: bool = False) -> Optional[Unit]:
         """Joins `ssid` and installs/updates the unit there. `probe`: the network was not seen
         in a scan (joined by name only); when it can't be joined, it is not a unit: None."""
-        unit = Unit(host=self.ap_host(ssid), ssid=ssid, chip=ssid_chip(ssid))
-        self.handled.add(ssid_key(ssid))
+        bssid = None
+        if not probe and self.by_bssid(ssid):
+            bssid = self.next_bssid(ssid)
+            if bssid is None:
+                return None  # every unit on this name was visited in this run
+        unit = Unit(host=self.ap_host(ssid), ssid=ssid, chip=ssid_chip(ssid), bssid=bssid)
+        if bssid:
+            self.visited_chips.add(mac_chip(bssid))  # once per unit, whatever the outcome
+        else:
+            self.handled.add(ssid_key(ssid))
         self.units.append(unit)
         self.current = unit
         start = time.monotonic()
@@ -1031,7 +1083,20 @@ class ApFleet:
                 return None
         try:
             if not probe:
-                self.connect(unit, ssid, password)
+                self.connect(unit, ssid, password, bssid=bssid)
+            chip = self.chip_hint(unit)
+            if chip:
+                self.visited_chips.add(chip)  # the unit that actually answered
+            if chip and chip in self.done_chips:
+                # The Mac joined a unit already finished in this run (a shared stock name, a
+                # stale scan): leave it alone. A shared name stays open for the next unit that
+                # uses it; pending() skips it while the scan shows only finished units on it.
+                self.units.remove(unit)
+                self.current = None
+                if not ssid_chip(ssid):
+                    self.handled.discard(ssid_key(ssid))
+                self.log(unit, "already done in this run (chip %s): skipping" % chip)
+                return None
             self.classify(unit, found_as)
             # Units on their setup network are unconfigured shelf stock: update them by default.
             plan(unit, self.runner.images, self.args.board, allow_update=True)
@@ -1050,7 +1115,8 @@ class ApFleet:
                     self.handled.discard(ssid_key(ssid))  # the next stock unit has the same name
             else:
                 unit.result = unit.action
-        except SkipUnit as e:
+            self.finished(unit)
+        except SkipUnit as e:  # still needs work (e.g. a code with no terminal): not finished
             unit.result = str(e)
             self.log(unit, unit.result)
         except (FlashError, WifiError) as e:
@@ -1201,6 +1267,8 @@ def run_via_ap(args, images: Images, timing: Timing, out, ask, sleep, interactiv
                     waiting = False
                     out.write("\n== %s%s ==\n" % (ssid, " (by name)" if probe else ""))
                     unit = fleet.process(ssid, probe)
+                    if unit is not None and fleet.by_bssid(ssid) and fleet.next_bssid(ssid):
+                        continue  # the next unit on the same stock name, by BSSID
                     # A stock name joined blindly: the next unit may use the same name.
                     if not probe or unit is None or unit.result != "ok":
                         break

@@ -263,6 +263,27 @@ class ScanHelper:
         self.stamp.write_text(self.source_hash() + "\n")
         return self.app
 
+    def join(self, bssid: str, password: Optional[str] = None) -> None:
+        """Associates with the access point `bssid` (CoreWLAN; networksetup only joins by name).
+        Raises HelperUnavailable when the helper can't run, WifiError when the join fails."""
+        app = self.build()
+        tmp = Path(tempfile.mkdtemp(prefix="miblo-wifijoin-"))
+        try:
+            outfile = tmp / "join.json"
+            argv = ["open", "-W", "-n", str(app), "--args", str(outfile), "--join", bssid]
+            if password:
+                argv += ["--password", password]
+            rc, out = self.run(argv, self.timeout)
+            try:
+                doc = json.loads(outfile.read_text())
+            except (OSError, ValueError):
+                raise HelperUnavailable("%s wrote no result (open: %s)" % (HELPER_NAME, out.strip()[:200] or "exit %d" % rc))
+            if not isinstance(doc, dict) or doc.get("joined") is not True:
+                err = doc.get("error") if isinstance(doc, dict) else None
+                raise WifiError("could not join %s: %s" % (bssid, str(err or "unknown error")[:200]))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
     def scan(self) -> ScanResult:
         app = self.build()
         tmp = Path(tempfile.mkdtemp(prefix="miblo-wifiscan-"))
@@ -376,7 +397,16 @@ class MacWifi:
         m = re.search(r"Current (?:Wi-Fi|AirPort) Network:\s*(.+?)\s*$", out, re.M) if rc == 0 else None
         return m.group(1) if m and m.group(1) != REDACTED else None
 
-    def join(self, ssid: str, password: Optional[str] = None) -> None:
+    def join(self, ssid: str, password: Optional[str] = None, bssid: Optional[str] = None) -> None:
+        """Joins `ssid`; with `bssid`, that exact access point (through the helper app; without it,
+        by name, and the caller checks which unit answered)."""
+        if bssid and self.helper is not None:
+            try:
+                self.joined_other = True
+                self.helper.join(bssid, password)
+                return
+            except (HelperUnavailable, WifiError) as e:  # by name: the caller checks the unit's MAC
+                self.log("Wi-Fi helper can't join %s (%s); joining %s by name." % (bssid, e, ssid))
         argv = ["networksetup", "-setairportnetwork", self.iface, ssid]
         if password:
             argv.append(password)

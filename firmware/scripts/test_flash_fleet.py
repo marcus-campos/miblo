@@ -393,6 +393,8 @@ class FakeAir:
         self.on_scan = None
         self.hidden = False       # the scan works but shows no unit network
         self.arp = True           # `arp -n` knows the joined unit's MAC
+        self.joined_dev = None    # the unit joined (several may share a stock name)
+        self.bssid_joins = []     # BSSIDs joined through the helper app
 
     @staticmethod
     def bssid_of(dev):
@@ -400,22 +402,45 @@ class FakeAir:
 
     def scanned(self):
         """What a scan shows (the fake devices keep broadcasting; `hidden` just hides them)."""
-        return [self.home] + self.others + ([] if self.hidden else list(self.broadcasting()))
+        return [self.home] + self.others + ([] if self.hidden else [s for s, _ in self.pairs()])
 
     @staticmethod
     def ssid_of(dev):
         return {"stock": dev.stock_ssid, "loader": "Miblo-Installer-" + dev.chip,
                 "miblo": "Miblo-Setup-" + dev.chip}.get(dev.state)
 
+    def pairs(self):
+        """(ssid, unit) per broadcasting unit, strongest first: stock units may share a name."""
+        return [(self.ssid_of(d), d) for d in self.devices if self.ssid_of(d)]
+
     def broadcasting(self):
-        return {self.ssid_of(d): d for d in self.devices if self.ssid_of(d)}
+        """ssid -> the strongest unit on it (the one joining by name reaches)."""
+        out = {}
+        for ssid, d in self.pairs():
+            out.setdefault(ssid, d)
+        return out
 
     def visible(self):
-        return [self.home] + self.others + list(self.broadcasting())
+        return [self.home] + self.others + [s for s, _ in self.pairs()]
+
+    def dev_joined(self):
+        d = self.joined_dev
+        if d is not None and self.ssid_of(d) == self.joined:
+            return d
+        return self.broadcasting().get(self.joined)
 
     def host(self, ssid):
-        d = self.broadcasting().get(ssid)
+        d = self.dev_joined() if ssid == self.joined else None
+        d = d or self.broadcasting().get(ssid)
         return d.host if d else "127.0.0.1:1"
+
+    def join_bssid(self, bssid):
+        for ssid, d in self.pairs():
+            if self.bssid_of(d) == bssid.lower():
+                self.bssid_joins.append(bssid.lower())
+                self.joined, self.joined_dev = ssid, d
+                return True
+        return False
 
     def run(self, argv, timeout):
         if self.raise_on and self.raise_on in argv:
@@ -444,10 +469,10 @@ class FakeAir:
                 return 0, "Failed to join network %s.\nError: -3900  The operation couldn't be completed." % ssid
             if ssid not in self.visible():
                 return 0, "Could not find network %s." % ssid
-            self.joined = ssid
+            self.joined, self.joined_dev = ssid, None
             return 0, ""
         if argv[:2] == ["arp", "-n"]:
-            dev = self.broadcasting().get(self.joined)
+            dev = self.dev_joined()
             if self.arp and dev:
                 return 0, "? (%s) at %s on en0 ifscope [ethernet]\n" % (argv[2], self.bssid_of(dev))
             return 1, "%s (%s) -- no entry\n" % (argv[2], argv[2])
@@ -635,12 +660,50 @@ class AccessPointTest(unittest.TestCase):
         self.assertEqual(self.air.joins[-1], ["HomeNet"])
 
 
+    def test_loop_never_revisits_a_unit_finished_in_this_run(self):
+        # A finished unit that the Mac reaches again by the shared stock name (here: it shows up
+        # as GIFTV once more) is recognized by its MAC and left alone; the next unit is flashed.
+        first = self.device("stock", stock_ssid="GIFTV", chip="1A2B")
+        later = []
+
+        def on_scan(_):
+            # after it is finished (the Mac reached its Miblo-Setup network)
+            if self.air.joined == "Miblo-Setup-1A2B" and first.fw == NEW and not later:
+                first.state = "stock"  # back on the shared name, as far as the Mac can tell
+                later.append(self.device("stock", stock_ssid="SmallTV", chip="3C4D"))
+
+        self.air.on_scan = on_scan
+        rc, out, _ = self.run_ap("--loop", "--max", "2")
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(len(first.uploads), 2)  # installer + firmware, once
+        self.assertIn("already done in this run (chip 1a2b): skipping", out)
+        self.assertEqual((later[0].state, later[0].fw), ("miblo", NEW))
+        self.assertIn("2 flashed, 0 failed, 0 skipped", out)
+
+    def test_pending_skips_names_whose_scanned_units_are_all_done(self):
+        class Wifi:
+            bssids = {"GIFTV": ["5e:cf:7f:12:1a:2b", "5e:cf:7f:12:3c:4d"], "SmallTV": ["5e:cf:7f:12:1a:2b"],
+                      "GeekMagic": []}
+
+        runner = type("R", (), {"timing": ff.Timing()})()
+        args = type("A", (), {"stock_ssid": ff.DEFAULT_STOCK_SSID})()
+        fleet = ff.ApFleet(runner, Wifi(), args, ff.ap_device_host)
+        names = ["GIFTV", "SmallTV", "GeekMagic", "HomeNet"]
+        self.assertEqual(fleet.pending(names), ["GIFTV", "SmallTV", "GeekMagic"])
+        fleet.done_chips.add("1a2b")
+        # SmallTV only has the finished unit; GIFTV still has another one; no BSSIDs: unknown.
+        self.assertEqual(fleet.pending(names), ["GIFTV", "GeekMagic"])
+        fleet.done_chips.add("3c4d")
+        self.assertEqual(fleet.pending(names), ["GeekMagic"])
+
+
 class FakeHelperRun:
     """Answers the commands ScanHelper runs: xcode-select, xcrun, swiftc (creates the binary),
     codesign and `open -W -n MibloWiFiScan.app --args <out>` (writes the scan JSON)."""
 
     def __init__(self, air, authorized=True, swift=True):
         self.air, self.authorized, self.swift = air, authorized, swift
+        self.join_fails = False
         self.calls = []
 
     def run(self, argv, timeout):
@@ -655,11 +718,18 @@ class FakeHelperRun:
             return 0, ""
         if argv[0] == "codesign":
             return 0, ""
+        if argv[:3] == ["open", "-W", "-n"] and "--join" in argv:
+            ok = self.authorized and not self.join_fails and self.air.join_bssid(argv[argv.index("--join") + 1])
+            doc = {"authorized": self.authorized, "joined": ok, "error": None if ok else "access point not found"}
+            Path(argv[argv.index("--args") + 1]).write_text(json.dumps(doc))
+            return 0, ""
         if argv[:3] == ["open", "-W", "-n"]:
-            devs = self.air.broadcasting()
-            nets = [{"ssid": s if self.authorized else None,
-                     "bssid": FakeAir.bssid_of(devs[s]).upper() if s in devs and self.authorized else None,
-                     "rssi": -50, "channel": 6} for s in self.air.scanned()]
+            units = [] if self.air.hidden else self.air.pairs()
+            nets = [{"ssid": s if self.authorized else None, "bssid": None, "rssi": -40, "channel": 6}
+                    for s in [self.air.home] + self.air.others]
+            nets += [{"ssid": s if self.authorized else None,
+                      "bssid": FakeAir.bssid_of(d).upper() if self.authorized else None,
+                      "rssi": -50, "channel": 6} for s, d in units]
             doc = {"authorized": self.authorized, "status": "authorized" if self.authorized else "denied",
                    "interface": "en0", "current_ssid": self.air.joined if self.authorized else None,
                    "networks": nets, "error": None}
@@ -762,9 +832,35 @@ class ScanHelperTest(unittest.TestCase):
         rc, out, _ = self.run_ap()
         self.assertEqual(rc, 0, out)
         self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
-        self.assertEqual(self.air.joins, [["GIFTV"], ["Miblo-Installer-4F2A"], ["Miblo-Setup-4F2A"], ["HomeNet"]])
+        # The stock name is joined by BSSID (through the helper); the others by name.
+        self.assertEqual(self.air.bssid_joins, ["5e:cf:7f:12:4f:2a"])
+        self.assertEqual(self.air.joins, [["Miblo-Installer-4F2A"], ["Miblo-Setup-4F2A"], ["HomeNet"]])
         self.assertIn("current network: HomeNet", out)
         self.assertEqual(self.air.scans, 0)
+
+    def test_units_sharing_the_stock_name_are_each_flashed_once_by_bssid(self):
+        # Ten factory units all call themselves GIFTV: joining by name would let macOS pick any of
+        # them again and again. Each is joined by its BSSID and visited exactly once.
+        units = [self.device("stock", stock_ssid="GIFTV", chip=c) for c in ("1A2B", "3C4D", "5E6F")]
+        rc, out, _ = self.run_ap("--loop", "--max", "3")
+        self.assertEqual(rc, 0, out)
+        for u in units:
+            self.assertEqual((u.state, u.fw, len(u.uploads)), ("miblo", NEW, 2), u.chip)
+        self.assertEqual(self.air.bssid_joins, ["5e:cf:7f:12:1a:2b", "5e:cf:7f:12:3c:4d", "5e:cf:7f:12:5e:6f"])
+        self.assertEqual([j[0] for j in self.air.joins if j[0].startswith("GIFTV")], [])  # never by name
+        summary = out.split("Summary:")[1]
+        for label in ("GIFTV 1a2b", "GIFTV 3c4d", "GIFTV 5e6f"):
+            self.assertEqual(summary.count(label), 1, label)
+        self.assertIn("3 flashed, 0 failed, 0 skipped", out)
+
+    def test_bssid_join_failure_falls_back_to_the_name(self):
+        dev = self.device("stock", stock_ssid="GIFTV")
+        self.hrun.join_fails = True
+        rc, out, _ = self.run_ap()
+        self.assertEqual(rc, 0, out)  # the helper answers "not joined": joined by name instead
+        self.assertTrue(any("can't join 5e:cf:7f:12:4f:2a" in m for m in self.logs), self.logs)
+        self.assertEqual(self.air.joins[0], ["GIFTV"])
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
 
     def test_no_swift_falls_back_to_system_profiler(self):
         self.device("loader", chip="1A2B")

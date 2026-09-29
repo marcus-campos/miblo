@@ -81,8 +81,8 @@ struct MascotLook {
   bool operator!=(const MascotLook& o) const { return !(*this == o); }
 };
 // Desk mascot with front paws: flat primitives only, inside the square
-// (cx - Sz(64), cy - Sz(64), 2 * Sz(64)), background included.
-void deskMascot(int cx, int cy, const MascotLook& look);
+// (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
+void deskMascot(int cx, int cy, const MascotLook& look, int half = 64);
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens ----

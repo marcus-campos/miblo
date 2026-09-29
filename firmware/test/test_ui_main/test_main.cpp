@@ -833,7 +833,7 @@ static void test_disconnected_has_mascot_and_info() {
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 }
 
-// The big mascot is composed in 8 small strips (one 128x16 buffer on a 240 screen) and never
+// The mascot is composed in 8 small strips (one 96x12 buffer on a 240 screen) and never
 // clears anything on the panel itself: no flash when its expression changes, even with a
 // fragmented heap (a whole-box 8 KB layer used to fail and fall back to direct drawing).
 static void test_desk_mascot_redraws_in_strips_without_flashing() {
@@ -851,8 +851,8 @@ static void test_desk_mascot_redraws_in_strips_without_flashing() {
   TEST_ASSERT_EQUAL_INT(8, fc.layerBegins);
   TEST_ASSERT_EQUAL_INT(8, fc.layerEnds);
   TEST_ASSERT_EQUAL_INT(1, fc.layerReleases);
-  TEST_ASSERT_EQUAL_INT(128, fc.lastLayer[2]);
-  TEST_ASSERT_EQUAL_INT(16, fc.lastLayer[3]);
+  TEST_ASSERT_EQUAL_INT(96, fc.lastLayer[2]);  // the desk mascot's 96 px box
+  TEST_ASSERT_EQUAL_INT(12, fc.lastLayer[3]);
   TEST_ASSERT_EQUAL_INT(0, fc.panelFills);  // nothing painted straight on the panel
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
   // Same expression: nothing at all.

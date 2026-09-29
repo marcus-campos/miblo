@@ -697,34 +697,33 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   return hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
 }
 
-// The mascot in its box (half = Sz(64)), only redrawn when the expression changes. It is
-// composed in horizontal strips (kCatStrips small layers of one reused buffer, each clipping the
-// whole drawing) and pushed strip by strip, so it never needs one big block of heap: a
+// The mascot in its box (`half` on the 240 grid), only redrawn when the expression changes. It
+// is composed in horizontal strips (kCatStrips small layers of one reused buffer, each clipping
+// the whole drawing) and pushed strip by strip, so it never needs one big block of heap: a
 // whole-box layer (8 KB) often could not be allocated once the heap was fragmented, and the
 // direct fallback flashed the background before each frame.
 constexpr int kCatStrips = 8;
 
-static void deskCat(uint8_t id, int cx, int cy, const MascotLook& k) {
+static void deskCat(uint8_t id, int cx, int cy, int half240, const MascotLook& k) {
   if (!dirty(id, lookHash(kHashSeed + 17, k))) return;
-  const int half = Sz(64);
-  const int top = cy - half;
+  const int half = Sz(half240);
   const int stripH = (2 * half + kCatStrips - 1) / kCatStrips;
-  for (int y = top; y < cy + half; y += stripH) {
+  for (int y = cy - half; y < cy + half; y += stripH) {
     const int h = y + stripH <= cy + half ? stripH : cy + half - y;
     if (!C().beginLayer(cx - half, y, 2 * half, h)) {  // no memory even for a strip: draw directly
-      deskMascot(cx, cy, k);
+      deskMascot(cx, cy, k, half240);
       break;
     }
-    deskMascot(cx, cy, k);
+    deskMascot(cx, cy, k, half240);
     C().endLayer();
   }
   C().releaseLayer();
 }
 
-// Ring gauge (270 degrees, gap at the bottom) with the percentage inside and the label in the gap.
+// Ring gauge (270 degrees, gap at the bottom): the percentage big inside, the label under it.
 static void ring(int cx, int cy, const char* label, bool present, uint8_t pct, uint16_t base) {
-  const int r = Sz(28);
-  const int ir = Sz(22);
+  const int r = Sz(44);
+  const int ir = Sz(35);
   C().arc(cx, cy, r, ir, 45, 315, color::TRACK, color::BG);
   if (present && pct > 0) {
     int end = 45 + 270 * pct / 100;
@@ -734,8 +733,8 @@ static void ring(int cx, int cy, const char* label, bool present, uint8_t pct, u
   char buf[8];
   if (present) snprintf(buf, sizeof(buf), "%u%%", pct);
   else snprintf(buf, sizeof(buf), "--");
-  C().text(cx, cy + Y(5), buf, Font::SmallBold, present ? color::TEXT : color::DIM, Align::Center, 2 * ir - 2);
-  C().text(cx, cy + Y(26), label, Font::Small, color::MUTED, Align::Center, 2 * ir);
+  C().text(cx, cy + Y(6), buf, Font::NumM, present ? color::TEXT : color::DIM, Align::Center, 2 * ir + Sz(10));
+  C().text(cx, cy + Y(24), label, Font::Small, color::MUTED, Align::Center, 2 * ir);
 }
 
 void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
@@ -745,17 +744,17 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
   const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
   const uint8_t worst = !usage ? 0 : (s.h5.present && (!s.d7.present || p5 >= p7) ? p5 : p7);
   const bool focusLeft = !usage || !s.d7.present || (s.h5.present && p5 >= p7);
-  field(R_CLOCK, kHashSeed + 19, X(120), Y(22), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
-  deskCat(R_BODY, X(120), Y(98), deskLook(deskMood(worst), focusLeft, nowMs));
+  field(R_CLOCK, kHashSeed + 19, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
+  deskCat(R_BODY, X(120), Y(72), 48, deskLook(deskMood(worst), focusLeft, nowMs));
   uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
   h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
   h = hashInt(h, (uint32_t)(s.todayUsd * 100));
-  if (region(R_LIMITS, h, 0, Y(158), X(240), Y(66))) {
+  if (region(R_LIMITS, h, 0, Y(121), X(240), Y(100))) {
     if (!usage) {
-      noLimits(lang, s, Y(196));
+      noLimits(lang, s, Y(176));
     } else {
-      ring(X(60), Y(190), t(lang, S::Short5h), s.h5.present, p5, color::CORAL);
-      ring(X(180), Y(190), t(lang, S::Short7d), s.d7.present, p7, color::VIOLET);
+      ring(X(62), Y(170), t(lang, S::Short5h), s.h5.present, p5, color::CORAL);
+      ring(X(178), Y(170), t(lang, S::Short7d), s.d7.present, p7, color::VIOLET);
     }
   }
   // Under each ring, when its reset is known and still ahead: "in 2h10" (5h), "Fri 19:32" (week).
@@ -767,10 +766,10 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs) {
     miblo::formatCountdown(s.h5.reset - now, left, sizeof(left));
     snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
   }
-  field(R_RESET5, h, X(60), Y(237), buf, Font::Small, color::DIM, color::BG, Align::Center, X(112));
+  field(R_RESET5, h, X(62), Y(236), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
   buf[0] = 0;
   if (usage && s.d7.present && s.d7.reset > now) formatWhen(lang, s.d7.reset, now, buf, sizeof(buf));
-  field(R_RESET7, h, X(180), Y(237), buf, Font::Small, color::DIM, color::BG, Align::Center, X(112));
+  field(R_RESET7, h, X(178), Y(236), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
 }
 
 void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,
@@ -782,7 +781,7 @@ void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsH
   }
   clockRight(hh, clk, Y(18), color::DIM, color::BG);
   const DeskMood mood = awayMs >= miblo::kAwayNapMs ? DeskMood::Asleep : DeskMood::Searching;
-  deskCat(R_BODY, X(120), Y(96), deskLook(mood, true, nowMs));
+  deskCat(R_BODY, X(120), Y(96), 64, deskLook(mood, true, nowMs));
   // "Waiting for the computer" with dots that come and go.
   char buf[128];
   const unsigned dots = (unsigned)(nowMs / 600 % 4);

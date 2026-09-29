@@ -218,8 +218,8 @@ void mascot(int cx, int cy, uint8_t frame, bool small) {
   drawCat(d, k, !small, false);
 }
 
-void deskMascot(int cx, int cy, const MascotLook& look) {
-  MascotPen d{*g_canvas, cx, cy, Sz(64), 48};  // the 96-unit box drawn exactly 2 * Sz(64) wide
+void deskMascot(int cx, int cy, const MascotLook& look, int half) {
+  MascotPen d{*g_canvas, cx, cy, Sz(half), 48};  // the 96-unit box drawn exactly 2 * Sz(half) wide
   drawCat(d, look, true, true);
 }
 

@@ -137,7 +137,7 @@ void usage(uint8_t h5, uint8_t d7) {
 
 void attention() {
   usage(62, 38);
-  session("11111111", "api-pagamentos", SessionState::Perm, "Bash", "npm run migrate", 42);
+  session("11111111", "checkout", SessionState::Perm, "Bash", "npm run migrate", 42);
   session("22222222", "app-mobile", SessionState::Question, "", "", 15);
   session("33333333", "landing-page", SessionState::Running, "Edit", "Hero.tsx", 192);
   session("44444444", "docs", SessionState::Done, "", "", 600);
@@ -148,12 +148,12 @@ void working() {
   session("33333333", "landing-page", SessionState::Running, "Edit", "Hero.tsx", 192);
   session("55555555", "worker", SessionState::Running, "Bash", "npm test", 18);
   session("66666666", "search-api", SessionState::Running, "Grep", "TODO", 65);
-  session("11111111", "api-pagamentos", SessionState::Done, "", "", 300);
+  session("11111111", "checkout", SessionState::Done, "", "", 300);
 }
 
 void idle() {
   usage(62, 38);
-  session("11111111", "api-pagamentos", SessionState::Done, "", "", 300);
+  session("11111111", "checkout", SessionState::Done, "", "", 300);
   session("22222222", "app-mobile", SessionState::Done, "", "", 120);
   session("44444444", "docs", SessionState::Idle, "", "", 900);
 }
@@ -243,7 +243,7 @@ void renderAll(Lang L) {
   { Shot s; screens::hardResetCountdown(L, 3); save(s, "07-hard-reset-countdown"); }
 
   attention();
-  { Shot s; screens::flash(L, AlertKind::Perm, "api-pagamentos", 0); save(s, "10-alert-flash-permission"); }
+  { Shot s; screens::flash(L, AlertKind::Perm, "checkout", 0); save(s, "10-alert-flash-permission"); }
   { Shot s; screens::hero(L, snap, 0, AlertKind::Perm, false, clk, runs); save(s, "11-alert-permission"); }
   { Shot s; screens::hero(L, snap, 1, AlertKind::Question, false, clk, runs); save(s, "12-alert-question"); }
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "13-overview-needs-you"); }
@@ -384,7 +384,7 @@ void animateAll(Lang L) {
   }
   miblo::RunTracker none;
   attention();
-  alertClip(L, "alert-permission", AlertKind::Perm, "api-pagamentos", none);
+  alertClip(L, "alert-permission", AlertKind::Perm, "checkout", none);
   miblo::RunTracker runs;
   landingFinished(runs);
   alertClip(L, "alert-done", AlertKind::Done, "landing-page", runs);

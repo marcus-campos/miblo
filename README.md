@@ -28,8 +28,12 @@
   - **Amber** when a session needs you (a permission request or a question). You get a flash, then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
   - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert.
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
+- **Limit forecast:** when your recent pace would use up the 5-hour window before it resets, the Limits arc and the desk screen say when, in amber ("runs out in 1h20").
+- **"Limit freed":** when the 5-hour window resets after real use (50% or more), the screen turns green and the mascot celebrates, with the new usage and the next reset.
 - **Sessions mode:** a detailed list of big cards that you can read at arm's length. It pages every 5 s when there are more than 3 sessions, in the same order as the Overview.
-- **Desk mascot:** 20 s after everything finishes (in any mode), the mascot takes the screen next to two ring gauges with your 5-hour and weekly limits, their reset times and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. It takes turns with the Limits arc: 1 minute of mascot, 15 seconds of arc. Any activity brings the normal screens back.
+- **Desk mascot:** 20 s after everything finishes (in any mode), the mascot takes the screen next to two ring gauges with your 5-hour and weekly limits, their reset times and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. It takes turns with the Limits arc and today's summary: 1 minute of mascot, 15 seconds of arc, 1 minute of mascot, 15 seconds of summary. Any activity brings the normal screens back.
+- **Today's summary:** responses finished today, time with Claude working, today's cost and the limits. The count survives the bridge restarting and resets at midnight.
+- **Mascot colours:** sphynx (peach), orange, black or grey, chosen on the settings page.
 - **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
 - **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
@@ -39,7 +43,7 @@
 
 - **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, night mode, time zone, language and device name.
+- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, night mode, mascot colour, time zone, language and device name. `/miblo:settings` opens it for you.
 - **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 

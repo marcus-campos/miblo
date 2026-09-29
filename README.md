@@ -278,6 +278,12 @@ make screenshots LANGS="en pt-BR es"            # any of the 9 languages
 
 Renders every screen (setup, alerts, Overview, Limits, Sessions, each expression of the desk mascot, Disconnected…) on the computer, with the gadget's own drawing code and fonts over a framebuffer (`tools/screenshots`). Each PNG comes at 240×240 (the panel's pixels) and 960×960 (`@4x`, nearest neighbour), ready for product photos and docs.
 
+```sh
+cd firmware && make animations                  # dist/animations/<lang>/*.mp4 + *.gif (needs ffmpeg)
+```
+
+Renders short looping clips the same way, frame by frame at 20 fps as the gadget redraws them: the desk mascot in each mood, Disconnected, and the permission and finished alerts (flash, then the alert screen). Each clip comes as an H.264 mp4 at 960×960 and a gif at 480×480 (nearest neighbour); `LANGS=` works as for screenshots.
+
 ### Releasing
 
 From a clean working tree, run:

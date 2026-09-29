@@ -15,6 +15,9 @@
 #   make screenshots                every screen as PNG (240x240 + 960x960) in dist/screenshots/<lang>/,
 #                                   drawn on the computer with the gadget's own code and fonts
 #   make screenshots LANGS="en es"  other languages (default: en pt-BR)
+#   make animations                 looping clips of the desk mascot, disconnected and alerts, as
+#                                   mp4 (960x960) + gif (480x480) in dist/animations/<lang>/ (needs ffmpeg)
+#   make animations LANGS="en es"   other languages (default: en pt-BR)
 #
 # The builds are refreshed automatically: fleet targets run `make build` unless dist/ holds both
 # images for the sources' MIBLO_FW_VERSION and they are newer than every firmware source file.
@@ -71,7 +74,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: help build test release images screenshots fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: help build test release images screenshots animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -157,4 +160,28 @@ LANGS ?= en pt-BR
 screenshots:
 	@if [ -x .venv/bin/pio ]; then .venv/bin/pio run -e screenshots; else pio run -e screenshots; fi
 	rm -rf dist/screenshots
+	mkdir -p dist
 	.pio/build/screenshots/program dist/screenshots $(LANGS)
+
+# Animations: the same tool renders 20 fps frames (dist/animations/<lang>/frames/<clip>/), ffmpeg
+# scales them with nearest neighbour into an H.264 mp4 (960x960) and a looping gif (480x480,
+# two-pass palette), then the frames are deleted.
+FFMPEG ?= ffmpeg
+animations:
+	@command -v $(FFMPEG) >/dev/null || { echo "ffmpeg not found: install it (brew install ffmpeg) or set FFMPEG=/path/to/ffmpeg." >&2; exit 1; }
+	@if [ -x .venv/bin/pio ]; then .venv/bin/pio run -e screenshots; else pio run -e screenshots; fi
+	rm -rf dist/animations
+	mkdir -p dist
+	.pio/build/screenshots/program --animate dist/animations $(LANGS)
+	@set -e; for lang in $(LANGS); do \
+	  for dir in dist/animations/$$lang/frames/*/; do \
+	    clip=$$(basename "$$dir"); out=dist/animations/$$lang/$$clip; \
+	    $(FFMPEG) -v error -y -framerate 20 -i "$$dir%04d.png" -vf scale=960:960:flags=neighbor \
+	      -c:v libx264 -preset slow -crf 18 -tune animation -pix_fmt yuv420p -movflags +faststart "$$out.mp4"; \
+	    $(FFMPEG) -v error -y -framerate 20 -i "$$dir%04d.png" -filter_complex \
+	      "scale=480:480:flags=neighbor,split[a][b];[a]palettegen=stats_mode=full[p];[b][p]paletteuse=dither=none" \
+	      -loop 0 "$$out.gif"; \
+	    echo "$$out.mp4 $$out.gif"; \
+	  done; \
+	  rm -rf dist/animations/$$lang/frames; \
+	done

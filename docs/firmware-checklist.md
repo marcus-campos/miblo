@@ -98,3 +98,14 @@ notes.
     contiguous free block (`maxBlock`) are stable — not trending toward zero or badly fragmented —
     compared to a reading taken right after boot. A steadily shrinking heap or a `maxBlock` far
     smaller than free heap indicates a leak or fragmentation that should block the release.
+14. **Quiet cycle:** with every session finished, "All done" stays 20 s, then the desk mascot with
+    both limit rings (and their reset times), 15 s of Limits arc, the mascot again, 15 s of
+    today's summary (responses, time worked, cost matching `/miblo:status`), and around. Any new
+    prompt brings the Overview back at once; an alert interrupts any of them.
+15. **Limit forecast and "limit freed":** while working steadily at 50%+ of the 5-hour window,
+    the Limits arc and the desk ring show "runs out in …" in amber once the pace would exhaust it
+    before the reset. When the window resets after 50%+ use, the green "LIMIT FREED" screen with
+    the celebrating mascot shows for ~8 s, then the normal screens return.
+16. **Mascot colours and settings command:** `/miblo:settings` opens the settings page; each
+    mascot colour saves and applies at once (boot, desk and disconnected mascots), and survives a
+    reboot. Night mode dims and restores the backlight at the configured times.

@@ -53,6 +53,9 @@ static void test_attention_fixture() {
   TEST_ASSERT_EQUAL_UINT8(4, snap.count);
   TEST_ASSERT_EQUAL_UINT16(0, snap.more);
   TEST_ASSERT_TRUE(snap.todayUsd > 0.0f);
+  // today.turns / today.work, from the plugin's contract fixtures
+  TEST_ASSERT_TRUE(snap.todayTurns > 0);
+  TEST_ASSERT_TRUE(snap.todayWorkSec > 0);
 
   const SessionRow& a = snap.sessions[0];
   TEST_ASSERT_EQUAL_STRING("11111111", a.id);

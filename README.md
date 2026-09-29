@@ -2,6 +2,34 @@
 
 **A tiny desk display for Claude Code.** Miblo sits next to your keyboard and shows what your Claude Code sessions are doing, flashes when one of them needs you (a permission prompt or a question), tells you when a response is really finished, and keeps your 5-hour and weekly usage limits in sight. It is an open-source (MIT) Claude Code plugin plus ESP8266 firmware for an inexpensive off-the-shelf desk clock, so you can buy a ready-made Miblo or build your own in a few minutes.
 
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/overview-working.png" width="240" alt="Overview while sessions are running"><br><sub>Sessions at a glance</sub></td>
+    <td align="center"><img src="docs/media/alert-permission.gif" width="240" alt="Amber alert: a session asked for permission"><br><sub>A session needs you</sub></td>
+    <td align="center"><img src="docs/media/alert-done.gif" width="240" alt="Blue alert: a response finished"><br><sub>A response is really finished</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/desk-watchful.gif" width="240" alt="The desk mascot watching the limit rings"><br><sub>Idle: the mascot watches your limits</sub></td>
+    <td align="center"><img src="docs/media/desk-scared.gif" width="240" alt="The desk mascot panicking at 97%"><br><sub>...and panics near the limit</sub></td>
+    <td align="center"><img src="docs/media/limit-freed.gif" width="240" alt="Limit freed: the mascot celebrates"><br><sub>The 5-hour window reset</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/limits-runs-out.png" width="240" alt="Limits arc with the runs-out forecast"><br><sub>Limits and a runs-out forecast</sub></td>
+    <td align="center"><img src="docs/media/today-summary.png" width="240" alt="Today's summary"><br><sub>Today's summary</sub></td>
+    <td align="center"><img src="docs/media/disconnected.gif" width="240" alt="Disconnected: the mascot looks for the computer"><br><sub>Waiting for the computer</sub></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img src="docs/media/mascot-sphynx.png" width="120" alt="Sphynx mascot">
+  <img src="docs/media/mascot-orange.png" width="120" alt="Orange mascot">
+  <img src="docs/media/mascot-black.png" width="120" alt="Black mascot">
+  <img src="docs/media/mascot-grey.png" width="120" alt="Grey mascot">
+  <br><sub>Four mascot colours, set on the settings page</sub>
+</p>
+
+<sub>Rendered from the firmware's own drawing code and fonts (<code>make screenshots</code> / <code>make animations</code>), pixel for pixel what the 240&times;240 screen shows.</sub>
+
 > **Disclaimer:** Miblo is an independent project. It is not affiliated with, sponsored by or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 
 ## Contents
@@ -258,7 +286,7 @@ firmware/              ESP8266 firmware (PlatformIO / Arduino)
   test/                native unit tests
   tools/screenshots/   renders every screen to PNG on the computer (make screenshots)
 fixtures/snapshots/    protocol fixtures shared by plugin and firmware tests
-docs/                  on-device release checklist
+docs/                  on-device release checklist; media/ holds the README's screens
 CLAUDE.md, AGENTS.md   rules for AI coding assistants (no AI attribution in commits)
 ```
 

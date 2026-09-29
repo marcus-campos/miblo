@@ -433,8 +433,15 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);
     g = {Y(46), Y(52), Y(20), Y(40)};
   } else {
-    compactLimits(R_HEADER, lang, s, 0, Y(26), Y(17), color::BG);
-    g = {Y(26), Y(58), Y(24), Y(46)};
+    // Brand row (logo, "miblo", clock), then the limits strip, then the cards.
+    const uint32_t hb = hashInt(kHashSeed + 41, 1);
+    if (region(R_HEADER, hb, 0, 0, X(240), Y(24))) {
+      logo(X(17), Y(12), Sz(18));
+      C().text(X(32), Y(18), "miblo", Font::BodyBold, color::TEXT, Align::Left, X(120));
+    }
+    clockRight(hb, clk, Y(18), color::DIM, color::BG);
+    compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);
+    g = {Y(46), Y(52), Y(20), Y(40)};
   }
 
   const uint8_t per = pager.perPage() < kRows ? pager.perPage() : kRows;
@@ -442,7 +449,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   const uint8_t pages = pager.pageCount(s.count);
   sessionRows(lang, s, page, per, clk, discreet, g);
 
-  // footer: "2 RUNNING · 1/2 · +3" + clock (the clock is in the amber band when something waits)
+  // footer: "2 RUNNING · 1/2 · +3"
   const bool working = kind == OverviewKind::Working;
   const int footTop = g.top + kRows * g.pitch;
   const int fy = footTop + (Y(240) - footTop) / 2 + Y(5);
@@ -467,7 +474,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     C().text(x, fy, buf, Font::SmallBold, working ? color::GREEN : color::DIM, Align::Left, X(150));
   }
   foot.end();
-  if (working) clockRight(hf, clk, fy, color::DIM, color::BG);
+  // (the clock is in the brand row while working, in the amber band while something waits)
 }
 
 // ---------------- Limits mode ----------------

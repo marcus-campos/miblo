@@ -80,6 +80,9 @@ struct MascotLook {
   }
   bool operator!=(const MascotLook& o) const { return !(*this == o); }
 };
+// Miblo's logo: the mascot's head, `size` px wide (ears included), centred on (cx, cy), in the
+// current mascot colours. Five flat shapes: no bitmap.
+void logo(int cx, int cy, int size);
 // Mascot colours (config "mascot"): 0 sphynx (peach), 1 orange, 2 black, 3 grey. Applies to
 // every mascot drawn from then on.
 void setMascotStyle(uint8_t style);

@@ -276,9 +276,10 @@ static void test_overview_working_is_sessions_first() {
     TEST_ASSERT_TRUE(fc.drew("13%"));
     TEST_ASSERT_FALSE(fc.drew("5h session"));
     TEST_ASSERT_FALSE(fc.drew("resets"));
-    // footer: count + page + clock
-    TEST_ASSERT_TRUE(fc.drew("3 RUNNING · 1/2"));
+    // brand row (logo + name + clock) and footer (count + page)
+    TEST_ASSERT_TRUE(fc.drew("miblo"));
     TEST_ASSERT_TRUE(fc.drew("14:32"));
+    TEST_ASSERT_TRUE(fc.drew("3 RUNNING · 1/2"));
   }
   // same data again: nothing is redrawn
   FakeCanvas fc({240, 240});

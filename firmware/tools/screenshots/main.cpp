@@ -282,6 +282,15 @@ void renderAll(Lang L) {
     screens::desk(L, snap, clk, 0);
     save(s, std::string("25-mascot-") + styles[i]);
   }
+  // The brand row's logo follows the mascot's colour.
+  working();
+  for (uint8_t i = 0; i < 4; i++) {
+    screens::setMascotStyle(i);
+    miblo::Pager p(3, 5000);
+    Shot s;
+    screens::overview(L, snap, p, 0, clk, false);
+    save(s, std::string("26-logo-") + styles[i]);
+  }
   screens::setMascotStyle(0);
 
   for (const Mood& m : kMoods) {

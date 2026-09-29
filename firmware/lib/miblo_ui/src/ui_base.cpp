@@ -226,6 +226,19 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
   }
 }
 
+void logo(int cx, int cy, int size) {
+  const MascotColors& mc = kMascotColors[g_style];
+  const int r = size * 3 / 8;          // head radius
+  const int e = size / 2;              // ear tips at the edges
+  const int hy = cy + size / 8;        // head a bit low: room for the ears
+  g_canvas->fillTriangle(cx - e, cy - size / 2, cx - r, hy, cx - r / 4, hy - r, mc.skin);
+  g_canvas->fillTriangle(cx + e, cy - size / 2, cx + r, hy, cx + r / 4, hy - r, mc.skin);
+  g_canvas->fillCircle(cx, hy, r, mc.skin);
+  const int ew = size / 7 < 2 ? 2 : size / 7;  // green eyes, like the big mascot's (they show on every colour)
+  g_canvas->fillRect(cx - r / 2 - ew / 2, hy - ew / 2, ew, ew, color::EYE_GREEN);
+  g_canvas->fillRect(cx + r / 2 - ew / 2, hy - ew / 2, ew, ew, color::EYE_GREEN);
+}
+
 void mascot(int cx, int cy, uint8_t frame, bool small) {
   // Simplified Sphynx: flat shapes only, so a frame is
   // cheap and renders the same on an off-screen 16-colour layer. Big triangular ears with pink

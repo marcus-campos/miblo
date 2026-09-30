@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <time.h>
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -181,7 +182,34 @@ struct Shot {
 std::string gDir;
 int gCount = 0;
 
+// Screen care shifts the whole picture by up to 2 px (ui::ShiftCanvas): nothing may sit closer to
+// an edge than kMinMargin, or it would be clipped. Full-width/height fills (bands, cards) don't
+// count. --check makes any violation fail the run (CI).
+constexpr int kMinMargin = 3;
+std::vector<std::string> gMarginErrors;
+
+void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::string& name) {
+  const uint16_t bg = ui::color::BG;
+  std::vector<int> rowFill(h, 0), colFill(w, 0);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++)
+      if (px[(size_t)y * w + x] != bg) rowFill[y]++, colFill[x]++;
+  int left = w, top = h, right = -1, bottom = -1;
+  for (int y = 0; y < h; y++) {
+    if (rowFill[y] * 10 > w * 6) continue;  // a band across the screen
+    for (int x = 0; x < w; x++) {
+      if (colFill[x] * 10 > h * 6 || px[(size_t)y * w + x] == bg) continue;
+      left = std::min(left, x), right = std::max(right, x);
+      top = std::min(top, y), bottom = std::max(bottom, y);
+    }
+  }
+  if (right < 0) return;
+  const int m = std::min(std::min(left, top), std::min(w - 1 - right, h - 1 - bottom));
+  if (m < kMinMargin) gMarginErrors.push_back(name + ": content " + std::to_string(m) + " px from an edge");
+}
+
 void save(Shot& s, const std::string& name) {
+  checkMargins(s.tft.pixels(), 240, 240, gDir + "/" + name);
   const std::string base = gDir + "/" + name;
   if (!writePng(base + ".png", s.tft.pixels(), 240, 240, 1) ||
       !writePng(base + "@4x.png", s.tft.pixels(), 240, 240, 4)) {
@@ -419,7 +447,9 @@ void animateAll(Lang L) {
 
 int main(int argc, char** argv) {
   int arg = 1;
-  const bool animate = argc > 1 && strcmp(argv[1], "--animate") == 0;
+  const bool check = argc > arg && strcmp(argv[arg], "--check") == 0;
+  if (check) arg++;
+  const bool animate = argc > arg && strcmp(argv[arg], "--animate") == 0;
   if (animate) arg++;
   // Layers, as on a healthy gadget (shim/TFT_eSPI.h); MIBLO_LOW_MEMORY=1 draws like a gadget with no
   // heap to spare (no layers), to check that path.
@@ -455,5 +485,11 @@ int main(int argc, char** argv) {
   }
   if (animate) printf("%d clips (240x240 frames, %u fps) in %s\n", gClips, 1000 / kFrameMs, out.c_str());
   else printf("%d screenshots (each at 240x240 and 960x960) in %s\n", gCount, out.c_str());
+  for (const std::string& e : gMarginErrors) fprintf(stderr, "margin: %s\n", e.c_str());
+  if (check && !gMarginErrors.empty()) {
+    fprintf(stderr, "%zu screen(s) closer than %d px to an edge: the pixel shift would clip them\n",
+            gMarginErrors.size(), kMinMargin);
+    return 1;
+  }
   return 0;
 }

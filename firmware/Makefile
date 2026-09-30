@@ -15,6 +15,7 @@
 #   make screenshots                every screen as PNG (240x240 + 960x960) in dist/screenshots/<lang>/,
 #                                   drawn on the computer with the gadget's own code and fonts
 #   make screenshots LANGS="en es"  other languages (default: en pt-BR)
+#   make check-margins              every screen in every language keeps 3 px from the edges (CI)
 #   make animations                 looping clips of the desk mascot, disconnected and alerts, as
 #                                   mp4 (960x960) + gif (480x480) in dist/animations/<lang>/ (needs ffmpeg)
 #   make animations LANGS="en es"   other languages (default: en pt-BR)
@@ -74,7 +75,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: help build test release images screenshots animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -185,3 +186,9 @@ animations:
 	  done; \
 	  rm -rf dist/animations/$$lang/frames; \
 	done
+
+# The pixel shift (screen care) moves everything by up to 2 px: nothing may be closer than 3 px.
+check-margins:
+	@if [ -x .venv/bin/pio ]; then .venv/bin/pio run -e screenshots; else pio run -e screenshots; fi
+	rm -rf .pio/margins
+	.pio/build/screenshots/program --check .pio/margins en pt-BR pt-PT es fr it de ru zh

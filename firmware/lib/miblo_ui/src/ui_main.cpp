@@ -563,11 +563,11 @@ void sessions(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   Compose head;
   if (head.begin(R_HEADER, hh, 0, 0, X(240), Y(24))) {
     snprintf(buf, sizeof(buf), t(lang, S::SessionsTitle), total);
-    C().text(X(10), Y(16), buf, Font::SmallBold, color::DIM, Align::Left, X(170));
+    C().text(X(10), Y(18), buf, Font::SmallBold, color::DIM, Align::Left, X(170));
   }
   head.end();
   snprintf(tmp, sizeof(tmp), "%u/%u", (unsigned)page + 1, (unsigned)pages);
-  field(R_PAGE, hh, X(230), Y(16), tmp, Font::Small, color::DIM, color::BG, Align::Right, X(50));
+  field(R_PAGE, hh, X(230), Y(18), tmp, Font::Small, color::DIM, color::BG, Align::Right, X(50));
   if (s.count == 0) {
     if (region(R_ROW0, hashInt(kHashSeed + 9, (uint32_t)lang), 0, Y(24), X(240), Y(216))) {
       C().text(X(120), Y(130), t(lang, S::NoSessions), Font::Body, color::MUTED, Align::Center, X(232));
@@ -899,11 +899,11 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32
     miblo::formatCountdown(s.h5.reset - now, left, sizeof(left));
     snprintf(buf, sizeof(buf), t(lang, S::InTime), left);
   }
-  field(R_RESET5, h, X(62), Y(236), buf, burning ? Font::Small : Font::Body, burning ? color::AMBER : color::MUTED,
+  field(R_RESET5, h, X(62), Y(233), buf, burning ? Font::Small : Font::Body, burning ? color::AMBER : color::MUTED,
         color::BG, Align::Center, X(118));
   buf[0] = 0;
   if (usage && s.d7.present && s.d7.reset > now) formatWhen(lang, s.d7.reset, now, buf, sizeof(buf));
-  field(R_RESET7, h, X(178), Y(236), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
+  field(R_RESET7, h, X(178), Y(233), buf, Font::Body, color::MUTED, color::BG, Align::Center, X(114));
 }
 
 void limitReset(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms) {
@@ -993,9 +993,9 @@ void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsH
   if (region(R_FOOT, hf, 0, Y(206), X(240), Y(34))) {
     char line[64];
     snprintf(line, sizeof(line), "%s \xC2\xB7 %s.local", ip, mdnsHost);
-    C().text(X(120), Y(218), line, Font::Small, color::FAINT, Align::Center, X(232));
+    C().text(X(120), Y(215), line, Font::Small, color::FAINT, Align::Center, X(232));
     snprintf(line, sizeof(line), "%s %s", t(lang, S::PairingCode), pairCode);
-    C().text(X(120), Y(236), line, Font::Small, color::FAINT, Align::Center, X(232));
+    C().text(X(120), Y(232), line, Font::Small, color::FAINT, Align::Center, X(232));
   }
 }
 

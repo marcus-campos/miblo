@@ -49,3 +49,4 @@ jobs:
       - run: pio run -e ${{ matrix.board }}
       - run: pio run -e ${{ matrix.board }}_loader
       - run: pio run -e screenshots   # host screenshot tool (make screenshots) keeps building
+      - run: .pio/build/screenshots/program --check /tmp/margins en pt-BR pt-PT es fr it de ru zh   # no screen too close to an edge

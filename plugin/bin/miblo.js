@@ -22,6 +22,7 @@ const USAGE = [
   '  settings [id]',
   '  rename <id> <name...> | rename <id> --default',
   '  owner <id> [--name <name...>|--name clear] [--birthday <DD/MM|MM-DD|clear>]',
+  '  demo [minutes|stop]',
   '  reset <id>',
   '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
@@ -465,6 +466,45 @@ async function owner(args, store, client) {
   return ok(`${label} ${parts.join(' and ')}.`);
 }
 
+// ---- demo: pet mode right away, to show it off or test visits between Miblos ----
+export const DEMO_MINUTES = { min: 1, max: 30, default: 10 };
+
+async function demo(args, store, client) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  let minutes = DEMO_MINUTES.default;
+  for (const a of args) {
+    if (a === 'stop' || a === 'off') minutes = 0;
+    else if (/^\d+$/.test(a)) minutes = Number(a);
+    else return fail(2, 'Usage: demo [minutes|stop]');
+  }
+  if (minutes !== 0 && (minutes < DEMO_MINUTES.min || minutes > DEMO_MINUTES.max)) {
+    return fail(2, `Minutes must be from ${DEMO_MINUTES.min} to ${DEMO_MINUTES.max} (got ${minutes}).`);
+  }
+  // The demo is about Miblos visiting each other: it needs at least two, and runs on all of them.
+  const targets = store.list();
+  if (minutes && targets.length < 2) {
+    return fail(2, `The demo needs at least two paired Miblos (${targets.length} paired). Pair another one with /miblo:pair.`);
+  }
+  const done = [];
+  const problems = [];
+  for (const d of targets) {
+    const label = cleanName(d.name) || cleanId(d.id);
+    try {
+      await client.demo(d.addr, d.token, minutes);
+      done.push(label);
+    } catch (e) {
+      if (e.status === 404) problems.push(`${label} does not support the demo yet (update its firmware with /miblo:update).`);
+      else if (e.status === 401) problems.push(`${label} no longer knows this computer (run /miblo:pair again).`);
+      else problems.push(`${label} is offline.`);
+    }
+  }
+  const what = minutes ? `Demo on for ${minutes} min` : 'Demo off';
+  const lines = done.length ? [`${what} on ${done.join(', ')}.`] : [];
+  const out = [...lines, ...problems].join('\n');
+  return done.length ? ok(out) : fail(1, out);
+}
+
 export async function run(argv, deps) {
   const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus, locale } = deps;
   const store = new DeviceStore(dataDir);
@@ -551,6 +591,8 @@ export async function run(argv, deps) {
       return rename(args, store, client);
     case 'owner':
       return owner(args, store, client);
+    case 'demo':
+      return demo(args, store, client);
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);

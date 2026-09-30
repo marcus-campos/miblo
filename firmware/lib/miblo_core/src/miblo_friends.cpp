@@ -149,7 +149,23 @@ bool FriendPlay::nextPacket(FriendPacket& out) {
   return true;
 }
 
+void FriendPlay::demo(uint32_t nowMs, uint32_t untilMs) {
+  demo_ = (int32_t)(untilMs - nowMs) > 0;
+  demoUntilMs_ = untilMs;
+  if (!demo_) return;
+  for (Friend& f : friends_) f.greeted = false;
+  if (visit_.role == VisitRole::None) {
+    asking_ = false;  // a request still waiting would push the demo's first visit back
+    scheduleVisit(nowMs, kDemoFirstVisitMs, 4000);
+  }
+}
+
 void FriendPlay::scheduleVisit(uint32_t nowMs, uint32_t minMs, uint32_t spanMs) {
+  if (demo_ && (int32_t)(demoUntilMs_ - nowMs) <= 0) demo_ = false;
+  if (demo_ && minMs > kDemoNextVisitMs) {  // demo: visits come quickly
+    minMs = kDemoNextVisitMs;
+    spanMs = kDemoNextVisitMs;
+  }
   scheduled_ = true;
   nextVisitMs_ = nowMs + minMs + (spanMs ? rnd_ % spanMs : 0);
 }

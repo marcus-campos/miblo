@@ -20,6 +20,10 @@ String ip();
 void submitCredentials(const char* ssid, const char* pass, uint32_t nowMs);
 // A submitted network is queued or being tried (the portal shows "connecting").
 bool trialBusy();
+// Networks seen by the background scan that runs while the setup network is up, strongest first,
+// without duplicates or hidden ones: how many (0 until the first scan ends), and the i-th name.
+uint8_t scannedNetworks();
+const char* scannedNetwork(uint8_t i);
 // Why the last submitted network was given up on (with NetState::JoinFailed).
 miblo::JoinFailure joinFailure();
 uint8_t joinFailureCode();

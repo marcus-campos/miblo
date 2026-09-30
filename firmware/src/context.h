@@ -48,7 +48,11 @@ struct Context {
   char pairedHost[33] = "";
   bool showPairCode = false;
   uint32_t pairCodeAtMs = 0;
-  uint32_t lastInteractionMs = 0;  // someone opened one of the gadget's pages (keeps the screen on)
+  uint32_t lastInteractionMs = 0;
+  // /miblo:demo: pet mode right away (and quick visits) until demoUntilMs; demoKick = just asked.
+  bool demo = false;
+  bool demoKick = false;
+  uint32_t demoUntilMs = 0;  // someone opened one of the gadget's pages (keeps the screen on)
   bool updating = false;
   uint8_t updatePct = 0;
 };

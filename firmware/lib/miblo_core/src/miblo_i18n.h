@@ -168,6 +168,11 @@ enum class S : uint8_t {
   WebOwner,             // settings: the owner's name
   WebBirthday,          // settings: the owner's birthday (day and month selects)
   WebFriends,           // settings: pet mode visits between Miblos on the network
+  WebSecScreen,         // settings: section heading (mode, brightness, mascot, screen off)
+  WebSecYou,            // settings: section heading (owner name and birthday)
+  WebSecDevice,         // settings: section heading (device name, time zone, language, visits)
+  WebAdvanced,          // settings: collapsed section (firmware, pairing code, factory reset)
+  WebCheckField,        // settings: a save was refused; the offending field is highlighted
   Count
 };
 

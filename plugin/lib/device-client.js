@@ -44,6 +44,11 @@ export class DeviceClient {
     return this.#req(addr, '/api/config', { method: 'POST', token, body: cfg });
   }
 
+  // Pet mode right away for `minutes` (0 stops it): firmware 1.4.0+.
+  demo(addr, token, minutes) {
+    return this.#req(addr, '/api/demo', { method: 'POST', token, body: { minutes } });
+  }
+
   reset(addr, token) {
     return this.#req(addr, '/api/reset', { method: 'POST', token, body: {} });
   }

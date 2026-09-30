@@ -166,7 +166,12 @@ static const char kEn[] MIBLO_ROM =
     "Napping with %s\0"  // FriendNap
     "Your name (so Miblo can greet you)\0"  // WebOwner
     "Your birthday (day / month)\0"  // WebBirthday
-    "Play with other Miblos on the network\0";  // WebFriends
+    "Play with other Miblos on the network\0"  // WebFriends
+    "Screen\0"  // WebSecScreen
+    "About you\0"  // WebSecYou
+    "Device\0"  // WebSecDevice
+    "Advanced\0"  // WebAdvanced
+    "Check the highlighted field\0";  // WebCheckField
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -328,7 +333,12 @@ static const char kPtBR[] MIBLO_ROM =
     "Soneca com %s\0"  // FriendNap
     "Seu nome (para o Miblo te cumprimentar)\0"  // WebOwner
     "Seu aniversário (dia / mês)\0"  // WebBirthday
-    "Brincar com outros Miblos da rede\0";  // WebFriends
+    "Brincar com outros Miblos da rede\0"  // WebFriends
+    "Tela\0"  // WebSecScreen
+    "Sobre você\0"  // WebSecYou
+    "Aparelho\0"  // WebSecDevice
+    "Avançado\0"  // WebAdvanced
+    "Confira o campo destacado\0";  // WebCheckField
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -490,7 +500,12 @@ static const char kPtPT[] MIBLO_ROM =
     "Sesta com %s\0"  // FriendNap
     "O seu nome (para o Miblo o cumprimentar)\0"  // WebOwner
     "O seu aniversário (dia / mês)\0"  // WebBirthday
-    "Brincar com outros Miblos da rede\0";  // WebFriends
+    "Brincar com outros Miblos da rede\0"  // WebFriends
+    "Ecrã\0"  // WebSecScreen
+    "Sobre si\0"  // WebSecYou
+    "Aparelho\0"  // WebSecDevice
+    "Avançado\0"  // WebAdvanced
+    "Verifique o campo destacado\0";  // WebCheckField
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -652,7 +667,12 @@ static const char kEs[] MIBLO_ROM =
     "Siesta con %s\0"  // FriendNap
     "Tu nombre (para que Miblo te salude)\0"  // WebOwner
     "Tu cumpleaños (día / mes)\0"  // WebBirthday
-    "Jugar con otros Miblos de la red\0";  // WebFriends
+    "Jugar con otros Miblos de la red\0"  // WebFriends
+    "Pantalla\0"  // WebSecScreen
+    "Sobre ti\0"  // WebSecYou
+    "Dispositivo\0"  // WebSecDevice
+    "Avanzado\0"  // WebAdvanced
+    "Revisa el campo resaltado\0";  // WebCheckField
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -814,7 +834,12 @@ static const char kFr[] MIBLO_ROM =
     "Sieste avec %s\0"  // FriendNap
     "Votre prénom (pour que Miblo vous salue)\0"  // WebOwner
     "Votre anniversaire (jour / mois)\0"  // WebBirthday
-    "Jouer avec les autres Miblos du réseau\0";  // WebFriends
+    "Jouer avec les autres Miblos du réseau\0"  // WebFriends
+    "Écran\0"  // WebSecScreen
+    "À propos de vous\0"  // WebSecYou
+    "Appareil\0"  // WebSecDevice
+    "Avancé\0"  // WebAdvanced
+    "Vérifiez le champ en surbrillance\0";  // WebCheckField
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -976,7 +1001,12 @@ static const char kIt[] MIBLO_ROM =
     "Pisolino con %s\0"  // FriendNap
     "Il tuo nome (così Miblo ti saluta)\0"  // WebOwner
     "Il tuo compleanno (giorno / mese)\0"  // WebBirthday
-    "Giocare con gli altri Miblo della rete\0";  // WebFriends
+    "Giocare con gli altri Miblo della rete\0"  // WebFriends
+    "Schermo\0"  // WebSecScreen
+    "Su di te\0"  // WebSecYou
+    "Dispositivo\0"  // WebSecDevice
+    "Avanzate\0"  // WebAdvanced
+    "Controlla il campo evidenziato\0";  // WebCheckField
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1138,7 +1168,12 @@ static const char kDe[] MIBLO_ROM =
     "Schläfchen mit %s\0"  // FriendNap
     "Dein Name (damit Miblo dich begrüßt)\0"  // WebOwner
     "Dein Geburtstag (Tag / Monat)\0"  // WebBirthday
-    "Mit anderen Miblos im Netzwerk spielen\0";  // WebFriends
+    "Mit anderen Miblos im Netzwerk spielen\0"  // WebFriends
+    "Bildschirm\0"  // WebSecScreen
+    "Über dich\0"  // WebSecYou
+    "Gerät\0"  // WebSecDevice
+    "Erweitert\0"  // WebAdvanced
+    "Prüfe das markierte Feld\0";  // WebCheckField
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1300,7 +1335,12 @@ static const char kRu[] MIBLO_ROM =
     "Дремлю с %s\0"  // FriendNap
     "Ваше имя (Miblo будет вас приветствовать)\0"  // WebOwner
     "Ваш день рождения (день / месяц)\0"  // WebBirthday
-    "Играть с другими Miblo в сети\0";  // WebFriends
+    "Играть с другими Miblo в сети\0"  // WebFriends
+    "Экран\0"  // WebSecScreen
+    "О вас\0"  // WebSecYou
+    "Устройство\0"  // WebSecDevice
+    "Дополнительно\0"  // WebAdvanced
+    "Проверьте выделенное поле\0";  // WebCheckField
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1462,7 +1502,12 @@ static const char kZh[] MIBLO_ROM =
     "和 %s 一起睡觉\0"  // FriendNap
     "你的名字(Miblo 会向你问好)\0"  // WebOwner
     "你的生日(日 / 月)\0"  // WebBirthday
-    "和网络上的其他 Miblo 一起玩\0";  // WebFriends
+    "和网络上的其他 Miblo 一起玩\0"  // WebFriends
+    "屏幕\0"  // WebSecScreen
+    "关于你\0"  // WebSecYou
+    "设备\0"  // WebSecDevice
+    "高级\0"  // WebAdvanced
+    "请检查标出的字段\0";  // WebCheckField
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

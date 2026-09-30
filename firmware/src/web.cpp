@@ -16,37 +16,64 @@ using miblo::S;
 static WebServerT* srv = nullptr;
 static constexpr uint32_t kMaxPostBody = 4096;  // any POST except /update (the snapshot is ≤ 3072 B)
 
+// Shared by every page (portal, settings, firmware update): cards, toggles, a fixed save bar.
 static const char kCss[] PROGMEM =
-    "body{font-family:system-ui,sans-serif;background:#0b0b0d;color:#eee;margin:0;padding:16px;max-width:480px}"
-    "h1{font-size:20px;margin:4px 0 12px}h2{font-size:16px;margin:24px 0 8px;color:#f5a524}"
-    "label{display:block;margin:12px 0 4px;color:#aaa}input,select{width:100%;box-sizing:border-box;padding:10px;"
-    "background:#1a1a1e;color:#eee;border:1px solid #333;border-radius:6px;font-size:16px}"
-    "input[type=checkbox]{width:auto;margin-right:8px}button{margin-top:16px;padding:12px;width:100%;border:0;"
-    "border-radius:8px;background:#f5a524;color:#111;font-weight:700;font-size:16px}"
-    "button.s{background:#333;color:#eee}button.d{background:#ef4444;color:#fff}.m{color:#888}.w{color:#f5a524}"
-    "a{color:#60a5fa}.r{display:flex;gap:8px}";
+    "*{box-sizing:border-box}html{color-scheme:dark}"
+    "body{font-family:system-ui,sans-serif;background:#0b0b0d;color:#eee;margin:0 auto;padding:16px 16px 96px;"
+    "max-width:560px;line-height:1.35}"
+    "h1{font-size:22px;margin:4px 0 2px}h2{font-size:13px;margin:0 0 2px;color:#f5a524;text-transform:uppercase;"
+    "letter-spacing:.06em}label{display:block;margin:12px 0 4px;color:#aaa;font-size:14px}"
+    "input,select{width:100%;padding:10px;background:#1a1a1e;color:#eee;border:1px solid #333;border-radius:8px;"
+    "font-size:16px}input:focus,select:focus{outline:2px solid #f5a524;outline-offset:-1px}"
+    "input[type=checkbox]{flex:none;width:22px;height:22px;margin:0;accent-color:#f5a524}"
+    "input[type=range]{padding:0;border:0;background:none;accent-color:#f5a524;height:28px}"
+    "button{margin-top:16px;padding:12px;width:100%;border:0;border-radius:8px;background:#f5a524;color:#111;"
+    "font-weight:700;font-size:16px;cursor:pointer}"
+    "button.s{background:#2a2a30;color:#eee}button.d{background:#ef4444;color:#fff}.m{color:#888;font-size:14px}"
+    ".w{color:#f5a524}a{color:#60a5fa}.r{display:flex;gap:8px}[hidden]{display:none!important}"
+    ".c{background:#141417;border:1px solid #26262c;border-radius:12px;padding:14px;margin:14px 0}"
+    ".g{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:end}"
+    ".t{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#eee;font-size:16px;"
+    "margin:14px 0 2px;cursor:pointer}.c>.t:first-child{margin-top:0;font-weight:600}"
+    ".v{float:right;color:#eee}.bad{outline:2px solid #ef4444}#tzr{flex:0 0 40%}"
+    "summary{cursor:pointer;font-weight:600;color:#aaa}details[open] summary{margin-bottom:12px}"
+    "details h2{margin-top:16px}.bar{position:fixed;left:0;right:0;bottom:0;background:#0b0b0df0;"
+    "border-top:1px solid #26262c;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}"
+    ".bar>div{max-width:528px;margin:0 auto;display:flex;align-items:center;gap:12px}"
+    ".bar button{margin:0;flex:0 0 45%}#st{flex:1}#st.ok{color:#22c55e}#st.no{color:#ef4444}";
 
-// Fills the time zone <select> with the device's IANA list (GET /api/zones, one name per line).
-// `cur` is the stored value: an IANA name → selected; "UTC0" (never set) or a legacy POSIX rule →
-// the browser's zone is preselected, and `done(true)` is called only for "UTC0" so the page can
-// save it. Browsers still report a few legacy aliases; A maps them to the names in the table.
+// Time zone picker shared by the portal and the settings page: a region <select> (`reg`) and a
+// city <select> (`sel`, the value that is submitted), filled from GET /api/zones (the device's
+// IANA list, one name per line). `cur` is the stored value: an IANA name → selected; "UTC0"
+// (never set) or a legacy POSIX rule → the browser's zone is preselected, and `done(true)` is
+// called only for "UTC0" (and only with the device's list, so the name is known) so the page
+// can save it. A legacy rule with no usable browser zone stays selectable as-is. Browsers still
+// report a few legacy aliases; A maps them to the names in the table. The list is fetched
+// twice at most: the single-client web server may still be busy with the page. #tzn (if
+// present) shows the time in the selected zone, so a wrong pick is obvious.
 static const char kTzJs[] PROGMEM =
-    "function tzFill(sel,cur,done){"
+    "function tzFill(reg,sel,cur,done){"
     "const A={'UTC':'Etc/UTC','Etc/Universal':'Etc/UTC','Asia/Calcutta':'Asia/Kolkata',"
     "'Europe/Kyiv':'Europe/Kiev','Asia/Saigon':'Asia/Ho_Chi_Minh','Asia/Katmandu':'Asia/Kathmandu',"
     "'Asia/Rangoon':'Asia/Yangon','America/Buenos_Aires':'America/Argentina/Buenos_Aires'};"
-    "let b='';try{b=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(e){}"
-    "const add=z=>{const o=document.createElement('option');o.value=z;o.textContent=z.replace(/_/g,' ');"
-    "sel.appendChild(o);};"
-    "const fill=(L,S)=>{sel.textContent='';const bz=S.has(b)?b:(S.has(A[b])?A[b]:'');"
-    "const set=S.has(cur),unset=!cur||cur==='UTC0';"
-    "if(!set&&!bz&&!unset)add(cur);"  // legacy rule and no usable browser zone: keep it as-is
-    "for(const z of L)add(z);"
-    "sel.value=set?cur:(bz||(unset?'Etc/UTC':cur));"
-    "if(done)done(!set&&unset&&!!bz);};"
-    "fetch('/api/zones').then(r=>r.ok?r.text():Promise.reject())"
-    ".then(t=>{const L=t.split('\\n').filter(Boolean);fill(L,new Set(L));})"
-    ".catch(()=>{const L=[...new Set([cur,b].filter(z=>z&&z!=='UTC0'))];fill(L,new Set(L));});}";
+    "let b='',Z=[];try{b=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(e){}"
+    "const rg=z=>/^[A-Za-z]+\\//.test(z)?z.split('/')[0]:z;"
+    "const now=()=>{const n=document.getElementById('tzn');if(!n)return;try{n.textContent=sel.value?"
+    "new Date().toLocaleTimeString(document.documentElement.lang||[],{timeZone:sel.value,hour:'2-digit',minute:'2-digit'}):'';}"
+    "catch(e){n.textContent='';}};"
+    "const city=r=>{sel.textContent='';for(const z of Z)if(rg(z)===r)"
+    "sel.add(new Option(z===r?z:z.slice(r.length+1).replace(/_/g,' ').replace(/\\//g,' / '),z));};"
+    "reg.onchange=()=>{city(reg.value);now();};sel.addEventListener('change',now);"
+    "const fill=(L,ok)=>{const S=new Set(L),bz=S.has(b)?b:(S.has(A[b])?A[b]:''),"
+    "set=S.has(cur),unset=!cur||cur==='UTC0',v=set?cur:(bz||(unset?'Etc/UTC':cur));"
+    "Z=S.has(v)?L:[v].concat(L);reg.textContent='';"
+    "for(const r of new Set(Z.map(rg)))reg.add(new Option(r.replace(/_/g,' '),r));"
+    "reg.value=rg(v);city(reg.value);sel.value=v;now();"
+    "if(done)done(ok&&!set&&unset&&!!bz);};"
+    "const get=n=>fetch('/api/zones').then(r=>r.ok?r.text():Promise.reject())"
+    ".catch(e=>n?new Promise(w=>setTimeout(w,1500)).then(()=>get(n-1)):Promise.reject(e));"
+    "get(1).then(t=>[t.split('\\n').filter(Boolean),1],"
+    "()=>[[...new Set([cur,A[b]||b].filter(z=>z&&z!=='UTC0'))],0]).then(([L,ok])=>fill(L,ok));}";
 
 String tr(Lang lang, S id) {
   char b[256];  // longest entry: WebRefused in Russian (~250 B of UTF-8); test_i18n keeps them under this
@@ -253,47 +280,34 @@ static void portalPage() {
   out += F("<form method=\"post\" action=\"/wifi\"><label>");
   appendEscaped(out, tr(lang, S::WebChooseNetwork).c_str());
   out += F("</label><select name=\"ssid\" id=\"ssid\" onchange=\"o()\">");
-  int n = WiFi.scanNetworks();
-  if (n > 32) n = 32;
-  int order[32];
-  for (int i = 0; i < n; i++) order[i] = i;
-  for (int i = 1; i < n; i++) {  // sort by signal strength (insertion sort; n is small)
-    int cur = order[i];
-    int j = i - 1;
-    while (j >= 0 && WiFi.RSSI(order[j]) < WiFi.RSSI(cur)) {
-      order[j + 1] = order[j];
-      j--;
-    }
-    order[j + 1] = cur;
-  }
-  int shown = 0;
-  for (int i = 0; i < n && shown < 15; i++) {
-    String ssid = WiFi.SSID(order[i]);
-    bool dup = ssid.length() == 0;
-    for (int k = 0; k < i && !dup; k++) {
-      if (WiFi.SSID(order[k]) == ssid) dup = true;
-    }
-    if (dup) continue;
+  // The networks come from the background sweep (net::scannedNetworks): no scan in the request.
+  const uint8_t n = net::scannedNetworks();
+  for (uint8_t i = 0; i < n; i++) {
+    const char* ssid = net::scannedNetwork(i);
     out += F("<option value=\"");
-    appendEscaped(out, ssid.c_str());
+    appendEscaped(out, ssid);
     out += F("\">");
-    appendEscaped(out, ssid.c_str());
+    appendEscaped(out, ssid);
     out += F("</option>");
-    shown++;
     pageFlush(out);
   }
-  WiFi.scanDelete();
   out += F("<option value=\"\">");
   appendEscaped(out, tr(lang, S::WebOtherNetwork).c_str());
-  out += F("</option></select><div id=\"other\" hidden><label>");
+  out += F("</option></select>");
+  if (!n) {  // the first sweep is still running (a couple of seconds): look again soon
+    out += F("<script>setTimeout(()=>{if(!document.querySelector('[name=pass]').value)location.reload()},3000)"
+             "</script>");
+  }
+  out += F("<div id=\"other\" hidden><label>");
   appendEscaped(out, tr(lang, S::WebNetworkName).c_str());
   out += F("</label><input name=\"ssid_other\" maxlength=\"32\"></div><label>");
   appendEscaped(out, tr(lang, S::WebPassword).c_str());
-  out += F("</label><input name=\"pass\" type=\"password\" maxlength=\"64\"><label>");
+  out += F("</label><input name=\"pass\" type=\"password\" maxlength=\"64\"><label for=\"tz\">");
   appendEscaped(out, tr(lang, S::WebTimezone).c_str());
-  out += F("</label><select name=\"tz\" id=\"tz\" data-cur=\"");
+  out += F("<span class=\"v\" id=\"tzn\"></span></label><div class=\"r\"><select id=\"tzr\"></select>"
+           "<select name=\"tz\" id=\"tz\" data-cur=\"");
   appendEscaped(out, ctx.cfg.tz);
-  out += F("\"></select><label>");
+  out += F("\"></select></div><label>");
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
   out += F("</label><select name=\"lang\">");
   langOptions(out, lang, false);
@@ -301,7 +315,7 @@ static void portalPage() {
   appendEscaped(out, tr(lang, S::WebConnect).c_str());
   out += F("</button></form><script>");
   pageSendP(out, kTzJs);
-  out += F("{const t=document.getElementById('tz');tzFill(t,t.dataset.cur,null);}"
+  out += F("{const t=document.getElementById('tz');tzFill(document.getElementById('tzr'),t,t.dataset.cur,null);}"
            "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();"
            "</script>");
   pageEnd(out);
@@ -345,14 +359,131 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
   out += tmp;
 }
 
+// The settings page's script (after `const C=<config>;const T=<texts>;` and kTzJs). It fills the
+// fields from C, shows or hides the fields that depend on a toggle, and posts every setting at
+// once (POST /settings); a refused field is highlighted.
+static const char kSetJs[] PROGMEM =
+    "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
+    // Night times travel as minutes of the day; the page shows them as HH:MM.
+    "const p2=n=>String(n).padStart(2,'0');"
+    "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
+    "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
+    // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
+    "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
+    "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
+    "if(C.birthday){$('bm').value=C.birthday.slice(0,2);$('bd').value=C.birthday.slice(3);}"
+    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
+    "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
+    "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
+    // Sliders show their value (#<id>V).
+    "function rv(){for(const e of document.querySelectorAll('input[type=range]'))$(e.id+'V').textContent=e.value+'%';}"
+    "function st(t,c){const e=$('st');e.textContent=t;e.className=c||'';}"
+    "document.addEventListener('input',rv);document.addEventListener('change',()=>{dep();st('');});"
+    "document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT')save();});"
+    "dep();rv();"
+    "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
+    "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
+    "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
+    "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
+    "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
+    "'nightBrightness','mascot','sleepMin','name','owner','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
+    "b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';st('...');"
+    "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
+    ".then(r=>r.json().catch(()=>({})).then(j=>{"
+    "if(r.ok){const re=b.lang!==C.lang;Object.assign(C,b);$('h').textContent=b.name||$('name').placeholder;"
+    "st(T.saved,'ok');if(re)location.reload();return;}"
+    // Refused: show and highlight the field the device named (it may sit in a hidden block).
+    "const e=$(j.field==='birthday'?'bd':j.field||'');if(!e){st(T.failed,'no');return;}"
+    "for(let p=e.closest('[hidden]');p;p=p.parentElement.closest('[hidden]'))p.hidden=false;"
+    "e.classList.add('bad');e.scrollIntoView({block:'center'});st(T.failed+'. '+T.chk,'no');"
+    "})).catch(()=>st(T.failed,'no'));}"
+    "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
+    "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
+    "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
+    // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
+    // compares with this firmware; a newer one gets the how-to and a link to its .bin.
+    "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
+    "function vc(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);"
+    "for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d;}return 0;}"
+    "function chk(){const st=$('up');st.textContent='...';"
+    "fetch('https://api.github.com/repos/" MIBLO_REPO "/releases/latest',{cache:'no-store'})"
+    ".then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{"
+    "const v=String(j.tag_name||'').replace(/^v/,'');if(!/^\\d+\\.\\d+\\.\\d+$/.test(v))throw 0;"
+    "if(vc(v,FW)<=0){st.textContent=T.uptodate.replace('%s',FW);return;}"
+    "st.textContent='';const b=document.createElement('b');b.textContent=T.newver.replace('%s',v);"
+    "st.append(b,' '+T.how);"
+    "const a=(j.assets||[]).find(x=>x.name==='miblo-'+BD+'-'+v+'.bin');"
+    "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
+    "st.append(document.createElement('br'),l);}"
+    "}).catch(()=>{st.textContent=T.chkfail;});}"
+    "tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});";
+
+// Settings page builders; every text is escaped.
+static void text(String& out, Lang lang, S id) { appendEscaped(out, tr(lang, id).c_str()); }
+
+// <label for="id">text</label>
+static void label(String& out, Lang lang, S id, const __FlashStringHelper* forId) {
+  out += F("<label for=\"");
+  out += forId;
+  out += F("\">");
+  text(out, lang, id);
+  out += F("</label>");
+}
+
+// A switch row: the whole line toggles the checkbox.
+static void toggle(String& out, Lang lang, S id, const __FlashStringHelper* key) {
+  out += F("<label class=\"t\"><span>");
+  text(out, lang, id);
+  out += F("</span><input type=\"checkbox\" id=\"");
+  out += key;
+  out += F("\"></label>");
+}
+
+// A labelled number input (wrapped in a <div> so two of them sit side by side in a .g grid).
+static void number(String& out, Lang lang, S id, const __FlashStringHelper* key, int lo, int hi) {
+  out += F("<div>");
+  label(out, lang, id, key);
+  out += F("<input type=\"number\" inputmode=\"numeric\" id=\"");
+  out += key;
+  out += F("\" min=\"");
+  out += lo;
+  out += F("\" max=\"");
+  out += hi;
+  out += F("\"></div>");
+}
+
+// A labelled 1..100 % slider whose value shows at the label's right (#<key>V).
+static void slider(String& out, Lang lang, S id, const __FlashStringHelper* key, int lo) {
+  out += F("<label for=\"");
+  out += key;
+  out += F("\">");
+  text(out, lang, id);
+  out += F("<span class=\"v\" id=\"");
+  out += key;
+  out += F("V\"></span></label><input type=\"range\" id=\"");
+  out += key;
+  out += F("\" min=\"");
+  out += lo;
+  out += F("\" max=\"100\">");
+}
+
+static void option(String& out, Lang lang, const __FlashStringHelper* value, S id) {
+  out += F("<option value=\"");
+  out += value;
+  out += F("\">");
+  text(out, lang, id);
+  out += F("</option>");
+}
+
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
   pageStart(out, lang, deviceName());
-  out += F("<h1>");
+  out += F("<h1 id=\"h\">");
   appendEscaped(out, deviceName());
   out += F("</h1><p class=\"m\">");
-  appendEscaped(out, tr(lang, S::WebVersion).c_str());
+  text(out, lang, S::WebVersion);
   out += F(" " MIBLO_FW_VERSION " &middot; ");
   char line[96];
   snprintf(line, sizeof(line), tr(lang, S::WebPairedCount).c_str(), (unsigned)ctx.tokens.count());
@@ -360,108 +491,130 @@ static void settingsPage() {
   out += F("</p>");
   if (!ctx.usageEverSeen) {
     out += F("<p class=\"w\">");
-    appendEscaped(out, tr(lang, S::WebLimitsHint).c_str());
+    text(out, lang, S::WebLimitsHint);
     out += F("</p>");
   }
-  out += F("<h2>");
-  appendEscaped(out, tr(lang, S::WebSettings).c_str());
-  out += F("</h2><label>");
-  appendEscaped(out, tr(lang, S::WebMode).c_str());
-  out += F("</label><select id=\"mode\"><option value=\"overview\">");
-  appendEscaped(out, tr(lang, S::ModeOverview).c_str());
-  out += F("</option><option value=\"limits\">");
-  appendEscaped(out, tr(lang, S::ModeLimits).c_str());
-  out += F("</option><option value=\"sessions\">");
-  appendEscaped(out, tr(lang, S::ModeSessions).c_str());
+
+  // Screen: what it shows and how.
+  out += F("<div class=\"c\"><h2>");
+  text(out, lang, S::WebSecScreen);
+  out += F("</h2>");
+  label(out, lang, S::WebMode, F("mode"));
+  out += F("<select id=\"mode\">");
+  option(out, lang, F("overview"), S::ModeOverview);
+  option(out, lang, F("limits"), S::ModeLimits);
+  option(out, lang, F("sessions"), S::ModeSessions);
+  out += F("</select><div data-if=\"mode:overview\">");  // rotation only applies to Overview
+  toggle(out, lang, S::WebRotate, F("rotate"));
+  out += F("<div class=\"g\" data-if=\"rotate\">");
+  number(out, lang, S::WebRotateEvery, F("rotateEverySec"), 10, 3600);
+  number(out, lang, S::WebRotateShow, F("rotateShowSec"), 3, 300);
+  out += F("</div></div>");
   pageFlush(out);
-  out += F("</option></select><label>");
-  appendEscaped(out, tr(lang, S::WebBrightness).c_str());
-  out += F("</label><input id=\"brightness\" type=\"range\" min=\"5\" max=\"100\"><label><input id=\"alerts\" "
-           "type=\"checkbox\">");
-  appendEscaped(out, tr(lang, S::WebAlerts).c_str());
-  out += F("</label><label>");
-  appendEscaped(out, tr(lang, S::WebFlashBlinks).c_str());
-  out += F("</label><select id=\"flashBlinks\"><option>2</option><option>3</option><option>4</option>"
-           "<option>5</option></select><label>");
-  appendEscaped(out, tr(lang, S::WebHeroPerm).c_str());
-  out += F("</label><input id=\"heroPermSec\" type=\"number\" min=\"3\" max=\"60\"><label>");
-  appendEscaped(out, tr(lang, S::WebHeroDone).c_str());
-  out += F("</label><input id=\"heroDoneSec\" type=\"number\" min=\"2\" max=\"60\"><label>");
-  appendEscaped(out, tr(lang, S::WebReminder).c_str());
-  out += F("</label><input id=\"reminderMin\" type=\"number\" min=\"0\" max=\"30\"><label><input id=\"discreet\" "
-           "type=\"checkbox\">");
-  appendEscaped(out, tr(lang, S::WebDiscreet).c_str());
-  out += F("</label><label><input id=\"rotate\" type=\"checkbox\">");
-  appendEscaped(out, tr(lang, S::WebRotate).c_str());
-  out += F("</label><label>");
-  appendEscaped(out, tr(lang, S::WebRotateEvery).c_str());
-  out += F("</label><input id=\"rotateEverySec\" type=\"number\" min=\"10\" max=\"3600\"><label>");
-  appendEscaped(out, tr(lang, S::WebRotateShow).c_str());
-  pageFlush(out);
-  out += F("</label><input id=\"rotateShowSec\" type=\"number\" min=\"3\" max=\"300\"><label><input id=\"night\" "
-           "type=\"checkbox\">");
-  appendEscaped(out, tr(lang, S::WebNight).c_str());
-  out += F("</label><label>");
-  appendEscaped(out, tr(lang, S::WebNightFrom).c_str());
-  out += F("</label><input id=\"nightFrom\" type=\"time\" required><label>");
-  appendEscaped(out, tr(lang, S::WebNightTo).c_str());
-  out += F("</label><input id=\"nightTo\" type=\"time\" required><label>");
-  appendEscaped(out, tr(lang, S::WebNightBrightness).c_str());
-  out += F("</label><input id=\"nightBrightness\" type=\"range\" min=\"1\" max=\"100\"><label>");
-  appendEscaped(out, tr(lang, S::WebMascot).c_str());
-  out += F("</label><select id=\"mascot\">");
+  slider(out, lang, S::WebBrightness, F("brightness"), 5);
+  label(out, lang, S::WebMascot, F("mascot"));
+  out += F("<select id=\"mascot\">");
   static const S kStyles[] = {S::WebMascotSphynx, S::WebMascotOrange, S::WebMascotBlack, S::WebMascotGrey};
   static_assert(sizeof(kStyles) / sizeof(kStyles[0]) == miblo::kMascotStyles, "one name per mascot style");
   for (uint8_t i = 0; i < miblo::kMascotStyles; i++) {
     out += F("<option value=\"");
     out += i;
     out += F("\">");
-    appendEscaped(out, tr(lang, kStyles[i]).c_str());
+    text(out, lang, kStyles[i]);
     out += F("</option>");
   }
-  out += F("</select><label>");
-  appendEscaped(out, tr(lang, S::WebSleep).c_str());
-  out += F("</label><select id=\"sleepMin\"><option value=\"0\">");
-  appendEscaped(out, tr(lang, S::WebSleepNever).c_str());
-  out += F("</option><option value=\"15\">15 min</option><option value=\"30\">30 min</option>"
+  out += F("</select>");
+  label(out, lang, S::WebSleep, F("sleepMin"));
+  out += F("<select id=\"sleepMin\">");
+  option(out, lang, F("0"), S::WebSleepNever);
+  out += F("<option value=\"15\">15 min</option><option value=\"30\">30 min</option>"
            "<option value=\"60\">1 h</option><option value=\"120\">2 h</option><option value=\"240\">4 h</option>"
-           "</select><label>");
-  appendEscaped(out, tr(lang, S::WebDeviceName).c_str());
-  out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
-  appendEscaped(out, ctx.ident.defaultName);
-  out += F("\"><label>");
-  appendEscaped(out, tr(lang, S::WebOwner).c_str());
-  out += F("</label><input id=\"owner\" maxlength=\"20\"><label>");
-  appendEscaped(out, tr(lang, S::WebBirthday).c_str());
+           "</select>");
+  toggle(out, lang, S::WebDiscreet, F("discreet"));
+  out += F("</div>");
+  pageFlush(out);
+
+  // Alerts: the switch heads the card; its details only while it is on.
+  out += F("<div class=\"c\">");
+  toggle(out, lang, S::WebAlerts, F("alerts"));
+  out += F("<div data-if=\"alerts\">");
+  label(out, lang, S::WebFlashBlinks, F("flashBlinks"));
+  out += F("<select id=\"flashBlinks\"><option>2</option><option>3</option><option>4</option>"
+           "<option>5</option></select><div class=\"g\">");
+  number(out, lang, S::WebHeroPerm, F("heroPermSec"), 3, 60);
+  number(out, lang, S::WebHeroDone, F("heroDoneSec"), 2, 60);
+  out += F("</div>");
+  number(out, lang, S::WebReminder, F("reminderMin"), 0, 30);
+  out += F("</div></div>");
+  pageFlush(out);
+
+  // Night mode, same pattern.
+  out += F("<div class=\"c\">");
+  toggle(out, lang, S::WebNight, F("night"));
+  out += F("<div data-if=\"night\"><div class=\"g\"><div>");
+  label(out, lang, S::WebNightFrom, F("nightFrom"));
+  out += F("<input id=\"nightFrom\" type=\"time\" required></div><div>");
+  label(out, lang, S::WebNightTo, F("nightTo"));
+  out += F("<input id=\"nightTo\" type=\"time\" required></div></div>");
+  slider(out, lang, S::WebNightBrightness, F("nightBrightness"), 1);
+  out += F("</div></div>");
+  pageFlush(out);
+
+  // About you.
+  out += F("<div class=\"c\"><h2>");
+  text(out, lang, S::WebSecYou);
+  out += F("</h2>");
+  label(out, lang, S::WebOwner, F("owner"));
+  out += F("<input id=\"owner\" maxlength=\"20\" autocomplete=\"given-name\">");
   // Day and month, two selects (the year is never asked); filled and read by the script.
-  out += F("</label><div class=\"r\"><select id=\"bd\"></select><select id=\"bm\"></select></div>"
-           "<label><input id=\"friends\" type=\"checkbox\">");
-  appendEscaped(out, tr(lang, S::WebFriends).c_str());
-  out += F("</label><label>");
-  appendEscaped(out, tr(lang, S::WebTimezone).c_str());
-  out += F("</label><select id=\"tz\"></select><label>");
-  appendEscaped(out, tr(lang, S::WebLanguage).c_str());
-  out += F("</label><select id=\"lang\">");
+  label(out, lang, S::WebBirthday, F("bd"));
+  out += F("<div class=\"r\"><select id=\"bd\"></select><select id=\"bm\"></select></div></div>");
+  pageFlush(out);
+
+  // This device.
+  out += F("<div class=\"c\"><h2>");
+  text(out, lang, S::WebSecDevice);
+  out += F("</h2>");
+  label(out, lang, S::WebDeviceName, F("name"));
+  out += F("<input id=\"name\" maxlength=\"20\" autocomplete=\"off\" placeholder=\"");
+  appendEscaped(out, ctx.ident.defaultName);
+  out += F("\"><label for=\"tz\">");
+  text(out, lang, S::WebTimezone);
+  out += F("<span class=\"v\" id=\"tzn\"></span></label><div class=\"r\"><select id=\"tzr\"></select>"
+           "<select id=\"tz\"></select></div>");
+  label(out, lang, S::WebLanguage, F("lang"));
+  out += F("<select id=\"lang\">");
   langOptions(out, lang, true);
+  out += F("</select>");
+  toggle(out, lang, S::WebFriends, F("friends"));
+  out += F("</div>");
   pageFlush(out);
-  out += F("</select><button onclick=\"save()\">");
-  appendEscaped(out, tr(lang, S::WebSave).c_str());
-  out += F("</button><p id=\"st\" class=\"m\"></p><h2>");
-  appendEscaped(out, tr(lang, S::WebFirmware).c_str());
-  out += F("</h2><p class=\"m\">v" MIBLO_FW_VERSION "</p><button class=\"s\" onclick=\"chk()\">");
-  appendEscaped(out, tr(lang, S::WebCheckUpdates).c_str());
+
+  // Advanced (collapsed): firmware, pairing code, factory reset.
+  out += F("<details class=\"c\"><summary>");
+  text(out, lang, S::WebAdvanced);
+  out += F("</summary><h2>");
+  text(out, lang, S::WebFirmware);
+  out += F("</h2><button class=\"s\" onclick=\"chk()\">");
+  text(out, lang, S::WebCheckUpdates);
   out += F("</button><p id=\"up\"></p><p><a href=\"/update\">");
-  appendEscaped(out, tr(lang, S::WebFirmware).c_str());
+  text(out, lang, S::WebFirmware);
   out += F("</a></p><button class=\"s\" onclick=\"post('/pair-code')\">");
-  appendEscaped(out, tr(lang, S::WebShowPairCode).c_str());
+  text(out, lang, S::WebShowPairCode);
   out += F("</button><h2>");
-  appendEscaped(out, tr(lang, S::WebFactoryReset).c_str());
+  text(out, lang, S::WebFactoryReset);
   out += F("</h2><p class=\"m\">");
-  appendEscaped(out, tr(lang, S::WebResetConfirm).c_str());
+  text(out, lang, S::WebResetConfirm);
   out += F("</p><button class=\"d\" onclick=\"rst()\">");
-  appendEscaped(out, tr(lang, S::WebFactoryReset).c_str());
+  text(out, lang, S::WebFactoryReset);
+  out += F("</button></details>");
   pageFlush(out);
-  out += F("</button><script>const C=");
+
+  // Always-visible save bar.
+  out += F("<div class=\"bar\"><div><span id=\"st\"></span><button onclick=\"save()\">");
+  text(out, lang, S::WebSave);
+  out += F("</button></div></div><script>const C=");
+  pageFlush(out);
 
   DynamicJsonDocument cfg(1024);
   miblo::configToJson(ctx.cfg, cfg.to<JsonObject>());
@@ -477,49 +630,12 @@ static void settingsPage() {
   txt["failed"] = tr(lang, S::WebFailed);
   txt["hint"] = tr(lang, S::WebCodeHint);
   txt["bad"] = tr(lang, S::WebBadCode);
+  txt["chk"] = tr(lang, S::WebCheckField);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
-  out += F(
-      "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
-      // Night times travel as minutes of the day; the page shows them as HH:MM.
-      "const p2=n=>String(n).padStart(2,'0');"
-      "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
-      "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
-      // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
-      "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
-      "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
-      "if(C.birthday){$('bm').value=C.birthday.slice(0,2);$('bd').value=C.birthday.slice(3);}"
-      "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
-      "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
-      "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
-      "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-      "'nightBrightness','mascot','sleepMin','name','owner','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-      "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
-      "b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';"
-      "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
-      ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
-      "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
-      "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
-      "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
-      // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
-      // compares with this firmware; a newer one gets the how-to and a link to its .bin.
-      "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
-      "function vc(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);"
-      "for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d;}return 0;}"
-      "function chk(){const st=$('up');st.textContent='...';"
-      "fetch('https://api.github.com/repos/" MIBLO_REPO "/releases/latest',{cache:'no-store'})"
-      ".then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{"
-      "const v=String(j.tag_name||'').replace(/^v/,'');if(!/^\\d+\\.\\d+\\.\\d+$/.test(v))throw 0;"
-      "if(vc(v,FW)<=0){st.textContent=T.uptodate.replace('%s',FW);return;}"
-      "st.textContent='';const b=document.createElement('b');b.textContent=T.newver.replace('%s',v);"
-      "st.append(b,' '+T.how);"
-      "const a=(j.assets||[]).find(x=>x.name==='miblo-'+BD+'-'+v+'.bin');"
-      "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
-      "st.append(document.createElement('br'),l);}"
-      "}).catch(()=>{st.textContent=T.chkfail;});}"
-      "tzFill($('tz'),C.tz,ch=>{if(ch)save();});"
-      "</script>");
+  pageSendP(out, kSetJs);
+  out += F("</script>");
   pageEnd(out);
 }
 

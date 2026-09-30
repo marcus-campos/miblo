@@ -13,6 +13,62 @@ namespace net {
 static miblo::NetPolicy policy;
 static DNSServer dns;
 static bool apOn = false;
+static bool scanStarted = false;  // a background scan for the setup page was started
+static uint32_t scanAtMs = 0;
+constexpr uint32_t kScanEveryMs = 30000;
+constexpr uint8_t kMaxNets = 12;
+constexpr uint8_t kChannels = 13;
+// The setup page's list (strongest first), kept between sweeps so it is never empty mid-scan.
+// Networks are scanned one channel at a time: in a dense area (hundreds of networks) a scan of
+// every channel at once makes the SDK hold them all in RAM, more than the heap has.
+struct Net {
+  char ssid[33];
+  int8_t rssi;
+};
+static Net nets[kMaxNets];
+static uint8_t netCount = 0;
+static Net sweep[kMaxNets];  // the sweep in progress
+static uint8_t sweepCount = 0;
+static uint8_t sweepChannel = 0;  // 0 = no sweep running; else the channel being scanned
+
+// Adds a network to the sweep: strongest kMaxNets distinct names.
+static void keepNet(const String& ssid, int8_t rssi) {
+  if (!ssid.length() || ssid.length() >= sizeof(sweep[0].ssid)) return;
+  for (uint8_t k = 0; k < sweepCount; k++) {
+    if (strcmp(sweep[k].ssid, ssid.c_str()) != 0) continue;
+    if (rssi > sweep[k].rssi) sweep[k].rssi = rssi;  // same name on another channel/AP: keep the best
+    return;
+  }
+  uint8_t at = sweepCount;
+  if (sweepCount == kMaxNets) {  // full: replace the weakest if this one is stronger
+    at = 0;
+    for (uint8_t k = 1; k < sweepCount; k++) if (sweep[k].rssi < sweep[at].rssi) at = k;
+    if (rssi <= sweep[at].rssi) return;
+  } else {
+    sweepCount++;
+  }
+  strlcpy(sweep[at].ssid, ssid.c_str(), sizeof(sweep[at].ssid));
+  sweep[at].rssi = rssi;
+}
+
+// One channel's scan finished: merge it; after the last channel, publish the sorted list.
+static void keepScan(int n) {
+  for (int i = 0; i < n; i++) keepNet(WiFi.SSID(i), (int8_t)WiFi.RSSI(i));
+  WiFi.scanDelete();
+  if (sweepChannel < kChannels) return;
+  for (uint8_t i = 1; i < sweepCount; i++) {  // strongest first (insertion sort; a dozen entries)
+    const Net cur = sweep[i];
+    int j = i - 1;
+    while (j >= 0 && sweep[j].rssi < cur.rssi) {
+      sweep[j + 1] = sweep[j];
+      j--;
+    }
+    sweep[j + 1] = cur;
+  }
+  memcpy(nets, sweep, sizeof(nets));
+  netCount = sweepCount;
+  sweepChannel = 0;
+}
 static bool autoReconnectOn = true;
 static bool wasConnected = false;
 static uint32_t connId = 0;
@@ -124,6 +180,34 @@ static void beginTrial() {
   WiFi.persistent(true);
 }
 
+// Runs the background sweep while the setup network is up: channel after channel, a new sweep
+// every kScanEveryMs, paused while a submitted network is being tried.
+static void scanStep(uint32_t nowMs) {
+  if (!apOn) {
+    if (scanStarted || scanAtMs) {
+      WiFi.scanDelete();
+      scanStarted = false;
+      scanAtMs = 0;
+      sweepChannel = 0;
+    }
+    return;
+  }
+  const int done = WiFi.scanComplete();
+  if (scanStarted && done != WIFI_SCAN_RUNNING) {  // this channel is done (or failed): merge it
+    scanStarted = false;
+    keepScan(done > 0 ? done : 0);
+  }
+  if (scanStarted || done == WIFI_SCAN_RUNNING || trialBusy()) return;
+  if (!sweepChannel) {
+    if (scanAtMs && nowMs - scanAtMs < kScanEveryMs) return;
+    sweepCount = 0;  // a new sweep
+    scanAtMs = nowMs ? nowMs : 1;
+  }
+  sweepChannel++;
+  WiFi.scanNetworks(true, false, sweepChannel);
+  scanStarted = true;
+}
+
 void loop(uint32_t nowMs) {
   const bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
 
@@ -182,6 +266,10 @@ void loop(uint32_t nowMs) {
   if (policy.apWanted() && !apOn) startAp();
   if (!policy.apWanted() && apOn) stopAp();
   if (apOn) dns.processNextRequest();
+  // Networks for the setup page, scanned in the background while the setup network is up. The
+  // page only reads the last results: a scan inside the request (blocking for seconds, once per
+  // captive-portal probe a phone sends) stalled the loop until the watchdog restarted the unit.
+  scanStep(nowMs);
 
   bool isConnected = st == miblo::NetState::Connected;
   if (isConnected && !wasConnected) {
@@ -207,6 +295,8 @@ miblo::NetState state() { return policy.state(); }
 bool apActive() { return apOn; }
 bool connected() { return policy.state() == miblo::NetState::Connected; }
 bool trialBusy() { return pendingCreds || trialCreds; }
+uint8_t scannedNetworks() { return netCount; }
+const char* scannedNetwork(uint8_t i) { return i < netCount ? nets[i].ssid : ""; }
 miblo::JoinFailure joinFailure() { return policy.failure(); }
 uint8_t joinFailureCode() { return policy.failureCode(); }
 uint8_t lastDisconnectReason() { return lastReason; }

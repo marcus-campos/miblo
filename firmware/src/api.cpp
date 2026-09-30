@@ -7,6 +7,7 @@
 #include "context.h"
 #include "miblo_utf8.h"
 #include "miblo_version.h"
+#include "platform/crashlog.h"
 #include "platform/net.h"
 #include "platform/storage.h"
 #include "web.h"
@@ -26,7 +27,7 @@ static bool authorized() {
 static void handleInfo() {
   // 27 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the
   // ESP8266; 1024 leaves room for future caps.
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<1536> doc;  // + "crash" (~300 B) after a crash
   doc["id"] = ctx.ident.id;
   doc["name"] = deviceName();
   doc["fw"] = MIBLO_FW_VERSION;
@@ -66,6 +67,7 @@ static void handleInfo() {
   doc["sleepMin"] = ctx.cfg.sleepMin;
   doc["flashBlinks"] = ctx.cfg.flashBlinks;
   doc["friends"] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
+  crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());
@@ -171,6 +173,33 @@ static void handleConfig() {
   json(200, "{\"ok\":true}");
 }
 
+// POST /api/demo {"minutes": 1..30} (default 10; 0 stops): pet mode right away, for showing it
+// off or testing visits between Miblos. Alerts still come first.
+static void handleDemo() {
+  if (!authorized()) {
+    json(401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  StaticJsonDocument<64> doc;
+  const String& body = srv->arg(F("plain"));
+  if (body.length() && (deserializeJson(doc, body) || !doc.is<JsonObject>())) {
+    json(400, "{\"error\":\"bad json\"}");
+    return;
+  }
+  JsonVariantConst m = doc["minutes"];
+  const int minutes = m.isNull() ? 10 : m.is<int>() ? m.as<int>() : -1;
+  if (minutes < 0 || minutes > 30) {
+    json(400, "{\"error\":\"invalid\",\"field\":\"minutes\"}");
+    return;
+  }
+  const uint32_t now = millis();
+  ctx.demo = minutes > 0;
+  ctx.demoKick = true;
+  ctx.demoUntilMs = now + (uint32_t)minutes * 60000;
+  ctx.lastInteractionMs = now;  // wake the screen
+  json(200, "{\"ok\":true}");
+}
+
 static void handleReset() {
   if (!authorized()) {
     json(401, "{\"error\":\"unauthorized\"}");
@@ -187,6 +216,7 @@ void begin(WebServerT& server) {
   server.on(F("/api/state"), HTTP_POST, handleState);
   server.on(F("/api/config"), HTTP_POST, handleConfig);
   server.on(F("/api/reset"), HTTP_POST, handleReset);
+  server.on(F("/api/demo"), HTTP_POST, handleDemo);
 }
 
 }  // namespace api

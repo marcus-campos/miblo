@@ -289,6 +289,46 @@ static void test_nap_buddy() {
   TEST_ASSERT_NULL(a.napBuddy());
 }
 
+// Demo: the first visit comes within seconds, friends are greeted again, later visits are quick.
+static void test_demo_hurries_visits() {
+  FriendPlay a;
+  a.setSelf("miblo-aaaa", "Tofu", 0);
+  a.receive(packet(FriendPacket::Beacon, "miblo-bbbb", "Nina", kFriendRoaming), 0);  // off: ignored
+  a.update(0, true, 0, 0);
+  a.receive(packet(FriendPacket::Beacon, "miblo-bbbb", "Nina", kFriendRoaming), 0);
+  a.update(100, true, kFriendRoaming, 0);  // pet mode starts (the demo)
+  TEST_ASSERT_EQUAL_STRING("Nina", a.greeting(100));
+  a.demo(100, 100 + 600000);
+  drain(a);
+  FriendPacket p;
+  auto asked = [&](uint32_t t) {
+    a.update(t, true, kFriendRoaming, 0);
+    bool ask = false;
+    while (a.nextPacket(p)) ask |= p.type == FriendPacket::VisitAsk;
+    return ask;
+  };
+  TEST_ASSERT_FALSE(asked(100 + kDemoFirstVisitMs - 1));
+  TEST_ASSERT_TRUE(asked(100 + kDemoFirstVisitMs));
+  // Greeted again when the demo starts, even within kGreetEveryMs.
+  a.demo(20000, 20000 + 600000);
+  a.update(20000 + kGreetShowMs, true, kFriendRoaming, 0);
+  TEST_ASSERT_EQUAL_STRING("Nina", a.greeting(20000 + kGreetShowMs));
+  // No answer: asked again ~20 s later, not minutes.
+  drain(a);
+  const uint32_t t0 = 20000 + kDemoFirstVisitMs;
+  TEST_ASSERT_TRUE(asked(t0));
+  a.update(t0 + kVisitAskMs, true, kFriendRoaming, 0);  // the request expires
+  drain(a);
+  TEST_ASSERT_TRUE(asked(t0 + kVisitAskMs + kDemoNextVisitMs));
+  // After the demo: back to minutes.
+  a.demo(200000, 200000);
+  a.update(200000, true, kFriendRoaming, 0);
+  drain(a);
+  a.update(200000 + kVisitAskMs, true, kFriendRoaming, 0);
+  drain(a);
+  TEST_ASSERT_FALSE(asked(200000 + kVisitAskMs + 2 * kDemoNextVisitMs));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_packet_round_trip);
@@ -302,5 +342,6 @@ int main(int, char**) {
   RUN_TEST(test_leaving_pet_mode_sends_the_visitor_home);
   RUN_TEST(test_simultaneous_requests_lower_id_visits);
   RUN_TEST(test_nap_buddy);
+  RUN_TEST(test_demo_hurries_visits);
   return UNITY_END();
 }

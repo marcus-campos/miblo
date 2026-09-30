@@ -131,6 +131,13 @@ export function startFakeDevice({
       Object.assign(state.config, body);
       return send(200, { ok: true });
     }
+    // POST /api/demo {minutes: 0..30, default 10} (firmware src/api.cpp handleDemo).
+    if (req.method === 'POST' && req.url === '/api/demo') {
+      const m = body?.minutes ?? 10;
+      if (!Number.isInteger(m) || m < 0 || m > 30) return send(400, { error: 'invalid', field: 'minutes' });
+      state.demoMinutes = m;
+      return send(200, { ok: true });
+    }
     if (req.method === 'POST' && req.url === '/api/reset') { state.resets++; state.tokens = []; state.token = null; return send(200, { ok: true }); }
     send(404, { error: 'not found' });
   });

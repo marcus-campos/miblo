@@ -27,6 +27,8 @@ constexpr uint32_t kNextVisitSpanMs = 6UL * 60000;
 // A visit, the same timeline on both gadgets from the moment it starts: the visitor walks off
 // its own screen (to the right), walks into the host's (from the left), they play, it walks
 // back out (to the left) and home again (from the right).
+constexpr uint32_t kDemoFirstVisitMs = 8000;   // + up to 4 s
+constexpr uint32_t kDemoNextVisitMs = 20000;   // + up to 20 s
 constexpr uint32_t kVisitWalkMs = 3000;
 constexpr uint32_t kVisitStayMs = 18000;
 constexpr uint32_t kVisitArriveMs = 2 * kVisitWalkMs;              // guest fully in on the host
@@ -72,6 +74,10 @@ class FriendPlay {
   void receive(const FriendPacket& p, uint32_t nowMs);
   // The next packet to send, if any.
   bool nextPacket(FriendPacket& out);
+  // Demo (/miblo:demo) until `untilMs`: friends are greeted again, the first visit comes within
+  // kDemoFirstVisitMs and the next ones every kDemoNextVisitMs or so, instead of minutes apart.
+  // Call after update() has seen pet mode start. untilMs == nowMs ends it.
+  void demo(uint32_t nowMs, uint32_t untilMs);
 
   VisitView visit(uint32_t nowMs) const;
   // The friend being greeted right now ("Hi, Nina!"), or nullptr.
@@ -121,6 +127,8 @@ class FriendPlay {
   uint32_t askMs_ = 0;
   bool scheduled_ = false;
   uint32_t nextVisitMs_ = 0;
+  bool demo_ = false;
+  uint32_t demoUntilMs_ = 0;
   // greeting
   char greetName_[64] = "";
   uint32_t greetMs_ = 0;

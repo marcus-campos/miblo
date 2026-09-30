@@ -313,7 +313,14 @@ void loop() {
   const uint32_t idleMs = !idleScreen ? 0 : screen == ScreenId::Disconnected ? now - awaySinceMs : quiet.quietMs(now);
   const uint32_t sinceSeen = now - ctx.lastInteractionMs;
   const bool away = screen == ScreenId::Disconnected;
-  const bool pet = miblo::petMode(idleMs, sinceSeen);
+  // Demo (/miblo:demo): pet mode now, over any ordinary screen (alerts and setup still win).
+  if (ctx.demo && (int32_t)(now - ctx.demoUntilMs) >= 0) {
+    ctx.demo = false;
+    ctx.demoKick = true;
+  }
+  const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
+                                 screen == ScreenId::Summary || screen == ScreenId::Disconnected);
+  const bool pet = miblo::petMode(idleMs, sinceSeen) || demo;
   if (pet) screen = ScreenId::Roam;
   if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
 
@@ -329,6 +336,10 @@ void loop() {
                      (pet ? miblo::kFriendRoaming : 0) | (napping ? miblo::kFriendNapping : 0) |
                          (tired ? miblo::kFriendTired : 0),
                      hwRandom());
+  if (ctx.demoKick) {  // after update(): it has seen pet mode start
+    ctx.demoKick = false;
+    ctx.friends.demo(now, ctx.demo ? ctx.demoUntilMs : now);
+  }
   const miblo::VisitView visit = ctx.friends.visit(now);
   if (screen == ScreenId::Roam && visit.role != miblo::VisitRole::None) screen = ScreenId::Visit;
 
@@ -345,7 +356,7 @@ void loop() {
        screen == ScreenId::Paired)) {
     screen = ScreenId::Hello;
   }
-  const bool asleep = miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin);
+  const bool asleep = !ctx.demo && miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin);
   if (asleep != displayOff) {
     displayOff = asleep;
     board::setDisplay(!asleep);

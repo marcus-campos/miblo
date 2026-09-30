@@ -642,3 +642,57 @@ test('the fake device validates owner and birthday like the firmware', async () 
     await dev.close();
   }
 });
+
+test('demo puts every paired gadget in pet mode, and can stop it', async () => {
+  const a = await startFakeDevice({ id: 'miblo-aaaa', name: 'Amon', code: '1111' });
+  const b = await startFakeDevice({ id: 'miblo-bbbb', name: 'Shiru', code: '2222' });
+  const d = deps();
+  try {
+    await run(['pair', a.addr, '1111'], d);
+    await run(['pair', b.addr, '2222'], d);
+    const on = await run(['demo'], d);
+    assert.equal(on.code, 0);
+    assert.match(on.out, /Demo on for 10 min on Amon, Shiru\./);
+    assert.equal(a.state.demoMinutes, 10);
+    assert.equal(b.state.demoMinutes, 10);
+    assert.match((await run(['demo', '5'], d)).out, /Demo on for 5 min on Amon, Shiru\./);
+    assert.equal(b.state.demoMinutes, 5);
+    assert.match((await run(['demo', 'stop'], d)).out, /Demo off on Amon, Shiru\./);
+    assert.equal(a.state.demoMinutes, 0);
+    const bad = await run(['demo', '99'], d);
+    assert.equal(bad.code, 2);
+    assert.match(bad.out, /from 1 to 30/);
+    assert.equal((await run(['demo', 'miblo-aaaa'], d)).code, 2);  // no per-gadget demo
+  } finally {
+    await a.close();
+    await b.close();
+  }
+});
+
+test('demo needs at least two paired Miblos', async () => {
+  const a = await startFakeDevice({ id: 'miblo-aaaa', name: 'Amon', code: '1111' });
+  const d = deps();
+  try {
+    assert.equal((await run(['demo'], d)).code, 2);
+    await run(['pair', a.addr, '1111'], d);
+    const one = await run(['demo'], d);
+    assert.equal(one.code, 2);
+    assert.match(one.out, /at least two paired Miblos \(1 paired\)/);
+    assert.equal(a.state.demoMinutes, undefined);
+  } finally {
+    await a.close();
+  }
+});
+
+test('demo explains old firmware and offline gadgets', async () => {
+  const d = deps();
+  const store = new DeviceStore(d.dataDir);
+  store.upsert({ id: 'miblo-cccc', name: 'Old', addr: '127.0.0.1:9', token: 't' });
+  store.upsert({ id: 'miblo-dddd', name: 'Gone', addr: '127.0.0.1:9', token: 't' });
+  const off = await run(['demo'], d);
+  assert.equal(off.code, 1);
+  assert.match(off.out, /Old is offline/);
+  const client = { demo: async () => { const e = new Error('404'); e.status = 404; throw e; } };
+  const old = await run(['demo'], { ...d, client });
+  assert.match(old.out, /does not support the demo yet/);
+});

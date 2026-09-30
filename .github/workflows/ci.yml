@@ -45,6 +45,11 @@ jobs:
             ~/.cache/pip
           key: pio-${{ runner.os }}-${{ hashFiles('firmware/platformio.ini') }}
       - run: pip install platformio
+      # Request headers must be read through web::requestHeader (src/web.h): the web server leaves
+      # the previous request's bytes behind a header it "clears", so c_str()/toInt() on
+      # server.header(...) can see another client's Authorization token.
+      - name: No raw request-header reads
+        run: "! grep -rnE 'header\\(F\\(\"[^\"]+\"\\)\\)\\.(c_str|toInt)' src"
       - run: pio test -e native
       - run: pio run -e ${{ matrix.board }}
       - run: pio run -e ${{ matrix.board }}_loader

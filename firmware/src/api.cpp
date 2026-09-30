@@ -23,7 +23,8 @@ static void json(int code, const char* s) { web::sendJson(*srv, code, s); }
 
 static bool authorized() {
   char token[40];
-  if (!miblo::bearerToken(srv->header(F("Authorization")).c_str(), token, sizeof(token))) return false;
+  const String auth = web::requestHeader(*srv, F("Authorization"));  // never the previous request's
+  if (!miblo::bearerToken(auth.c_str(), token, sizeof(token))) return false;
   return ctx.tokens.matches(token);
 }
 

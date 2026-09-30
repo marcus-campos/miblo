@@ -121,7 +121,7 @@ static void upload() {
     started = false;
     endedOk = false;
     if (rejected) return;
-    expected = (size_t)srv->header(F("Content-Length")).toInt();  // includes the multipart envelope
+    expected = (size_t)web::requestHeader(*srv, F("Content-Length")).toInt();  // includes the multipart envelope
 #if defined(ESP8266)
     uint32_t maxSpace = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
     started = Update.begin(maxSpace, U_FLASH);

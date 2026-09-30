@@ -111,12 +111,12 @@ void sendLocked(WebServerT& server, uint32_t remainingMs) {
 // arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
 // this check enforces the pages' tighter 1 KiB limit and covers what the hook could not see.
 static bool bodyTooLarge() {
-  String cl = srv->header(F("Content-Length"));
+  String cl = requestHeader(*srv, F("Content-Length"));
   return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
 }
 
 bool requireJson(WebServerT& server) {
-  String ct = server.header(F("Content-Type"));
+  String ct = requestHeader(server, F("Content-Type"));
   ct.trim();
   ct.toLowerCase();
   if (ct.startsWith(F("application/json")) &&
@@ -129,7 +129,7 @@ bool requireJson(WebServerT& server) {
 
 Lang pageLang(WebServerT& server) {
   if (ctx.cfg.langSet) return ctx.cfg.lang;
-  Lang l = miblo::negotiateLang(server.header(F("Accept-Language")).c_str());
+  Lang l = miblo::negotiateLang(requestHeader(server, F("Accept-Language")).c_str());
   if (l != ctx.cfg.lang) {  // automatic mode: the screen follows the last browser's language
     ctx.cfg.lang = l;
     ctx.configChanged = true;
@@ -680,10 +680,10 @@ static void settingsPage() {
 // refused: an unpaired prankster cannot change anything.
 static bool webAuthorized() {
   char token[40];
-  if (miblo::bearerToken(srv->header(F("Authorization")).c_str(), token, sizeof(token)) && ctx.tokens.matches(token)) {
-    return true;
-  }
-  return ctx.webSession.valid(srv->header(F("X-Miblo-Web")).c_str(), millis());
+  const String auth = requestHeader(*srv, F("Authorization"));  // never the previous request's
+  if (miblo::bearerToken(auth.c_str(), token, sizeof(token)) && ctx.tokens.matches(token)) return true;
+  const String web = requestHeader(*srv, F("X-Miblo-Web"));
+  return ctx.webSession.valid(web.c_str(), millis());
 }
 
 // POST /settings-code: show a code on the gadget screen so the person at the keyboard can prove

@@ -25,6 +25,11 @@ void sendJson(WebServerT& server, int code, const char* json);
 // CSRF guard for the pages' state-changing POSTs: a cross-site <form> cannot send
 // application/json without a CORS preflight (which this server never answers). false → 415 sent.
 bool requireJson(WebServerT& server);
+// A request header, safe to use as a C string. ESP8266WebServer "clears" the headers a request did
+// not send with String::clear(), which only sets the length to 0: header(...).c_str() would still
+// read the PREVIOUS request's value (the plugin's bearer token, say). A copy holds only `length()`
+// bytes, NUL-terminated. Never call c_str()/toInt() on server.header() directly.
+inline String requestHeader(WebServerT& server, const __FlashStringHelper* name) { return String(server.header(name)); }
 // 429 {"error":"locked","retryAfter":<s>} for a locked presence gate or pairing guard.
 void sendLocked(WebServerT& server, uint32_t remainingMs);
 

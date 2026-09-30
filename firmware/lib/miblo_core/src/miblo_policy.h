@@ -202,8 +202,10 @@ class UpdateNotice {
 class QuietClock {
  public:
   // Call on every frame; anything not quiet (activity, an alert, any other screen) restarts the
-  // spell. Safe across millis() wrap.
-  QuietPhase update(bool quiet, uint32_t nowMs);
+  // spell. `justFinished`: a session finished moments ago; only then does a new spell open with
+  // "All done" (a new idle session, or the computer coming back, goes straight to the Desk
+  // cycle). Safe across millis() wrap.
+  QuietPhase update(bool quiet, uint32_t nowMs, bool justFinished = true);
   QuietPhase phase() const { return phase_; }
   // How long it has been quiet (0 while busy).
   uint32_t quietMs(uint32_t nowMs) const { return phase_ == QuietPhase::Busy ? 0 : nowMs - sinceMs_; }

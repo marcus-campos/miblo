@@ -191,14 +191,19 @@ bool RotationClock::update(const RotationTiming& t, bool blocked, uint32_t nowMs
   return limits_;
 }
 
-QuietPhase QuietClock::update(bool quiet, uint32_t nowMs) {
+QuietPhase QuietClock::update(bool quiet, uint32_t nowMs, bool justFinished) {
   if (!quiet) {
     phase_ = QuietPhase::Busy;
     return phase_;
   }
   if (phase_ == QuietPhase::Busy) {
-    phase_ = QuietPhase::AllDone;
     sinceMs_ = nowMs;
+    if (justFinished) {
+      phase_ = QuietPhase::AllDone;
+    } else {
+      phase_ = QuietPhase::Desk;  // nothing to report as done: straight to the Desk cycle
+      deskMs_ = nowMs;
+    }
   }
   if (phase_ == QuietPhase::AllDone) {
     if (nowMs - sinceMs_ < kAllDoneMs) return phase_;

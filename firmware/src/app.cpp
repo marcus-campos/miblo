@@ -114,6 +114,18 @@ static void updateBacklight() {
   board::setBacklight(want);
 }
 
+// A session finished moments ago (kFreshFinishSec): only then is "All done" worth showing. A new
+// idle session (or the computer coming back to idle sessions) has nothing done to report.
+static constexpr uint32_t kFreshFinishSec = 120;
+static bool justFinished() {
+  const int i = miblo::lastFinished(ctx.snap);
+  if (i < 0) return false;
+  const time_t t = time(nullptr);
+  const uint32_t now = t > 1600000000 ? (uint32_t)t : ctx.snap.now;
+  const uint32_t since = ctx.snap.sessions[i].since;
+  return since && now >= since && now - since < kFreshFinishSec;
+}
+
 static void applyConfig() {
   updateBacklight();
   screens::setMascotStyle(ctx.cfg.mascot);
@@ -227,7 +239,7 @@ void loop() {
   // Nothing running or waiting: "All done" gives way to the Desk mascot with the limits, which
   // takes turns with the Limits arc.
   const miblo::QuietPhase qp =
-      quiet.update(screen == ScreenId::Main && counts.pending == 0 && counts.running == 0, now);
+      quiet.update(screen == ScreenId::Main && counts.pending == 0 && counts.running == 0, now, justFinished());
   if (qp == miblo::QuietPhase::Desk) screen = ScreenId::Desk;
   if (qp == miblo::QuietPhase::Summary) screen = ScreenId::Summary;
   if (screen == ScreenId::LimitReset && current != ScreenId::LimitReset) limitResetMs = now;

@@ -702,6 +702,20 @@ static void test_update_notice() {
   TEST_ASSERT_EQUAL(ScreenId::AlertFlash, selectScreen(in));
 }
 
+// "All done" only after something actually finished: a new, idle session (e.g. after the
+// computer was away) goes straight to the Desk cycle.
+static void test_all_done_only_after_a_finish() {
+  QuietClock q;
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 1000, false));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)q.update(true, 1000 + kAllDoneMs, false));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Arc, (int)q.update(true, 1000 + kDeskCatMs, false));
+  QuietClock done;
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)done.update(true, 1000, true));
+  // the flag only matters when quiet starts
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::AllDone, (int)done.update(true, 2000, false));
+  TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)done.update(true, 1000 + kAllDoneMs, false));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -737,5 +751,6 @@ int main() {
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
   RUN_TEST(test_update_notice);
+  RUN_TEST(test_all_done_only_after_a_finish);
   return UNITY_END();
 }

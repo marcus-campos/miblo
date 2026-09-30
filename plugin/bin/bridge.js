@@ -19,7 +19,7 @@ import { createLogger, errText } from '../lib/logger.js';
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {},
   release = createReleaseCache({ dataDir, now }) }) {
   const tracker = new SessionTracker({ now });
-  const metrics = new MetricsStore({ now });
+  const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
   const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now });
   let seq = 0;

@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
 const dayKey = (ms) => {
   const d = new Date(ms);
@@ -14,8 +17,46 @@ export class MetricsStore {
   #day = null;
   #todayUsd = 0;
 
-  constructor({ now = () => Date.now() } = {}) {
+  #file = null;
+
+  // With `dataDir`, the limits and today's cost survive a bridge restart (a plugin update, the
+  // bridge exiting when idle): without it the gadget showed no limits and a cost back at $0 until
+  // the next response.
+  constructor({ now = () => Date.now(), dataDir = null } = {}) {
     this.now = now;
+    this.#file = dataDir ? path.join(dataDir, 'metrics.json') : null;
+    this.#load();
+  }
+
+  #load() {
+    if (!this.#file) return;
+    try {
+      const d = JSON.parse(fs.readFileSync(this.#file, 'utf8'));
+      for (const [, key] of WINDOWS) {
+        const w = d?.limits?.[key];
+        if (w && Number.isFinite(w.pct) && (w.reset === null || Number.isFinite(w.reset))) {
+          this.#limits[key] = { pct: Math.max(0, Math.min(100, Math.round(w.pct))), reset: w.reset };
+        }
+      }
+      if (typeof d?.day === 'string' && Number.isFinite(d.todayUsd) && d.todayUsd >= 0) {
+        this.#day = d.day;
+        this.#todayUsd = d.todayUsd;
+      }
+    } catch {
+      // no file yet, or unreadable: start empty
+    }
+  }
+
+  #save() {
+    if (!this.#file) return;
+    try {
+      fs.mkdirSync(path.dirname(this.#file), { recursive: true });
+      const tmp = `${this.#file}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ day: this.#day, todayUsd: this.#todayUsd, limits: this.#limits }));
+      fs.renameSync(tmp, this.#file);
+    } catch {
+      // best effort: the next reading tries again
+    }
   }
 
   // Per session, `tok` is the CURRENT context size (total_input_tokens +
@@ -38,9 +79,11 @@ export class MetricsStore {
     };
     const prev = this.#per.get(sid);
     const baseUsd = prev ? prev.usd : fresh ? 0 : cur.usd;
-    this.#todayUsd += Math.max(0, cur.usd - baseUsd);
+    const addedUsd = Math.max(0, cur.usd - baseUsd);
+    this.#todayUsd += addedUsd;
     this.#per.set(sid, cur);
 
+    const before = JSON.stringify([this.#todayUsd, this.#limits]);
     const rl = sl.rate_limits;
     if (rl) {
       for (const [src, dst] of WINDOWS) {
@@ -50,6 +93,7 @@ export class MetricsStore {
         }
       }
     }
+    if (JSON.stringify([this.#todayUsd, this.#limits]) !== before || addedUsd) this.#save();
     return true;
   }
 

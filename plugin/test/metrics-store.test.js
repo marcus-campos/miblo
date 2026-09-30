@@ -103,3 +103,25 @@ test('forget removes a session', () => {
   store.forget('a');
   assert.equal(store.forSession('a'), undefined);
 });
+
+test('limits and today\'s cost survive a bridge restart (same day), and expire as usual', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-metrics-'));
+  let t = new Date(2026, 8, 30, 10, 0).getTime();
+  const a = new MetricsStore({ now: () => t, dataDir });
+  a.ingest({ session_id: 's1', cost: { total_cost_usd: 1.5 }, rate_limits: { five_hour: { used_percentage: 42, resets_at: t / 1000 + 3600 } } }, { fresh: true });
+  const b = new MetricsStore({ now: () => t, dataDir });  // the bridge restarted
+  assert.deepEqual(b.usage(), { h5: { pct: 42, reset: t / 1000 + 3600 } });
+  assert.equal(b.today().usd, 1.5);
+  // The same session's next reading only adds what is new (its baseline was not persisted).
+  b.ingest({ session_id: 's1', cost: { total_cost_usd: 2 } });
+  assert.equal(b.today().usd, 1.5);
+  t += 2 * 3600 * 1000;  // past the reset
+  assert.equal(new MetricsStore({ now: () => t, dataDir }).usage(), null);
+  t = new Date(2026, 9, 1, 9, 0).getTime();  // the next day
+  assert.equal(new MetricsStore({ now: () => t, dataDir }).today().usd, 0);
+  fs.writeFileSync(path.join(dataDir, 'metrics.json'), '{bad');
+  assert.equal(new MetricsStore({ now: () => t, dataDir }).usage(), null);  // corrupt file: start empty
+});

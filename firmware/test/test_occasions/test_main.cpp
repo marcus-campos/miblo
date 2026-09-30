@@ -143,6 +143,19 @@ static void test_party_greetings() {
   TEST_ASSERT_EQUAL(Greeting::NewYear, n.showing(0));
   h.update(0, true, true, D(2026, 10, 31), 10 * 60, c);  // Halloween: the hat only
   TEST_ASSERT_EQUAL(Greeting::None, h.showing(0));
+  // A birthday set on the day itself, after today's greeting was already decided: re-armed, it
+  // is celebrated at the next activity.
+  Config late;
+  Greeter l;
+  l.update(0, true, true, D(2026, 9, 30), 9 * 60, late);
+  TEST_ASSERT_EQUAL(Greeting::None, l.showing(0));
+  strcpy(late.owner, "Marcus");
+  strcpy(late.birthday, "09-30");
+  l.update(100, true, true, D(2026, 9, 30), 9 * 60, late);
+  TEST_ASSERT_EQUAL(Greeting::None, l.showing(100));
+  l.rearm();
+  l.update(200, true, true, D(2026, 9, 30), 9 * 60, late);
+  TEST_ASSERT_EQUAL(Greeting::OwnerBirthday, l.showing(200));
   // Renaming greets at once, whatever the day.
   Greeter r;
   r.named(100);

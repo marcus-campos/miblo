@@ -98,6 +98,7 @@ static uint8_t shiftStep = 0;    // current pixel-shift position (ui::ShiftCanva
 static uint32_t shiftAtMs = 0;
 static uint32_t roamSinceMs = 0;  // when pet mode came up
 static char shownName[64] = "";   // the name the screen last knew (a change greets with it)
+static char knownOwner[64 + 6] = "";  // owner name + birthday last applied (a change re-arms today's greeting)
 static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
 static uint32_t occasionAtMs = 0;
 
@@ -210,6 +211,7 @@ void setup() {
   storage::loadTokens(ctx.tokens);
   applyConfig();
   strlcpy(shownName, deviceName(), sizeof(shownName));
+  snprintf(knownOwner, sizeof(knownOwner), "%s|%s", ctx.cfg.owner, ctx.cfg.birthday);
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
@@ -242,6 +244,12 @@ void loop() {
     if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
       strlcpy(shownName, deviceName(), sizeof(shownName));
       ctx.greeter.named(now);
+    }
+    char owner[sizeof(knownOwner)];
+    snprintf(owner, sizeof(owner), "%s|%s", ctx.cfg.owner, ctx.cfg.birthday);
+    if (strcmp(owner, knownOwner) != 0) {  // told who we are: greet (again) today
+      strlcpy(knownOwner, owner, sizeof(knownOwner));
+      ctx.greeter.rearm();
     }
     occasionAtMs = 0;  // a birthday may have been set
     firstFrame = true;  // language/mode may have changed: redraw everything

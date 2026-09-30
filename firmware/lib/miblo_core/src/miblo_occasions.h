@@ -46,6 +46,9 @@ class Greeter {
 
   // The gadget's name changed (not at boot): "Hi! I'm <name>" right away.
   void named(uint32_t nowMs);
+  // The owner's name or birthday changed: today's greeting may come again (at the next activity),
+  // so a birthday set on the day itself is still celebrated.
+  void rearm() { lastDay_ = 0; }
   // Every frame. `active`: a session is running and nothing more urgent is on screen.
   // `today`/`minuteOfDay`: local, only meaningful when `timeKnown`.
   void update(uint32_t nowMs, bool active, bool timeKnown, const Date& today, int minuteOfDay, const Config& cfg);

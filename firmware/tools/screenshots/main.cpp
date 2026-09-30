@@ -241,6 +241,7 @@ void renderAll(Lang L) {
   { Shot s; screens::code(L, S::CodeUpdate, "4827", 287); save(s, "05-update-code"); }
   { Shot s; screens::updating(L, 64); save(s, "06-updating"); }
   { Shot s; screens::hardResetCountdown(L, 3); save(s, "07-hard-reset-countdown"); }
+  { Shot s; screens::updateAvailable(L, "1.0.1", "1.1.0", 0); save(s, "08-update-available"); }
 
   attention();
   { Shot s; screens::flash(L, AlertKind::Perm, "checkout", 0); save(s, "10-alert-flash-permission"); }

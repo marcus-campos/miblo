@@ -8,7 +8,8 @@
 // board.cpp checks that both places match.
 namespace board {
 
-constexpr const char* kName = "geekmagic_ultra";
+#define MIBLO_BOARD_NAME "geekmagic_ultra"  // also a macro: pages paste it into their scripts
+constexpr const char* kName = MIBLO_BOARD_NAME;
 constexpr ui::ScreenSpec kScreen = {240, 240};
 
 constexpr uint8_t kPinMosi = 13;

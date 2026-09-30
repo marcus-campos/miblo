@@ -978,6 +978,18 @@ static void test_pet_mode_card_and_path() {
   TEST_ASSERT_TRUE(x0 != x1 || y0 != y1);
 }
 
+static void test_update_available_screen() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  fc.clearLog();
+  screens::updateAvailable(Lang::En, "1.0.1", "1.1.0", 0);
+  TEST_ASSERT_TRUE(fc.drew("Update available"));
+  TEST_ASSERT_TRUE(fc.drew("v1.1.0 (you have v1.0.1)"));
+  TEST_ASSERT_TRUE(fc.drew("/miblo:update"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_main_screens_fit_any_resolution);
@@ -1002,5 +1014,6 @@ int main() {
   RUN_TEST(test_burn_rate_lines);
   RUN_TEST(test_limit_reset_and_summary_content);
   RUN_TEST(test_pet_mode_card_and_path);
+  RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

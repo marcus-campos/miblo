@@ -151,6 +151,9 @@ void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs,
 // The 5h window just reset after real use: green "limit freed" band, the mascot celebrating, the
 // new usage and the next reset. `ms`: time since the screen came up (animation).
 void limitReset(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms);
+// Right after boot, when a newer firmware exists: the mascot, "Update available", "v1.0.2 (you have
+// v1.0.1)" and the command to run. `frame`: mascot animation frame (like boot()).
+void updateAvailable(Lang lang, const char* current, const char* latest, uint8_t frame);
 // Today's summary: responses finished, time worked, cost, and the compact limits.
 void summary(Lang lang, const miblo::Snapshot& s, const Clock& clk);
 // No snapshot for a while: "Disconnected" + clock, the mascot looking for the computer (asleep

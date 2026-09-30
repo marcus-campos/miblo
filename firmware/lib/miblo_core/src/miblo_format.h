@@ -27,4 +27,8 @@ void formatHHMM(int hour, int minute, char* out, size_t cap);
 // Dollars with 2 decimal places: 4.8 → "$4.80".
 void formatUsd(float usd, char* out, size_t cap);
 
+// Compares "X.Y.Z" versions numerically: <0, 0 or >0 like strcmp. Missing parts count as 0 and
+// anything after the digits of a part is ignored ("1.2.3-rc" == "1.2.3").
+int compareVersions(const char* a, const char* b);
+
 }  // namespace miblo

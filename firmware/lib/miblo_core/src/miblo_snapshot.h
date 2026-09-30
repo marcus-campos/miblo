@@ -46,6 +46,7 @@ struct Snapshot {
   float todayUsd;  // today's cost (today.usd); the protocol no longer has today.tok
   uint16_t todayTurns;    // responses finished today (today.turns; 0 from older plugins)
   uint32_t todayWorkSec;  // time with a session working today (today.work, seconds)
+  char latest[16];        // newest released firmware, "1.0.2" ("" = unknown / older plugin)
   uint8_t count;
   SessionRow sessions[kMaxSessions];
   uint16_t more;

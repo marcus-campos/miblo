@@ -53,6 +53,7 @@ static void test_attention_fixture() {
   TEST_ASSERT_EQUAL_UINT8(4, snap.count);
   TEST_ASSERT_EQUAL_UINT16(0, snap.more);
   TEST_ASSERT_TRUE(snap.todayUsd > 0.0f);
+  TEST_ASSERT_EQUAL_STRING("1.0.2", snap.latest);  // newest release, from the plugin
   // today.turns / today.work, from the plugin's contract fixtures
   TEST_ASSERT_TRUE(snap.todayTurns > 0);
   TEST_ASSERT_TRUE(snap.todayWorkSec > 0);

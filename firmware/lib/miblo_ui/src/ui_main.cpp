@@ -928,6 +928,28 @@ void limitReset(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms) {
   }
 }
 
+void updateAvailable(Lang lang, const char* current, const char* latest, uint8_t frame) {
+  if (dirty(R_BODY, hashInt(kHashSeed + 47, mascotPose(frame)))) {
+    const int half = Sz(48);
+    const bool layered = C().beginLayer(X(120) - half, Y(66) - half, 2 * half, 2 * half);
+    mascot(X(120), Y(66), frame);
+    if (layered) {
+      C().endLayer();
+      C().releaseLayer();
+    }
+  }
+  const uint32_t h = hashStr(hashStr(hashInt(kHashSeed + 53, (uint32_t)lang), current), latest);
+  if (region(R_LIMITS, h, 0, Y(118), X(240), Y(122))) {
+    char buf[64];
+    C().text(X(120), Y(142), t(lang, S::UpdateAvailable), Font::BodyBold, color::TEXT, Align::Center, X(232));
+    snprintf(buf, sizeof(buf), t(lang, S::UpdateVersions), latest, current);
+    C().text(X(120), Y(166), buf, Font::Body, color::AMBER, Align::Center, X(232));
+    C().text(X(120), Y(192), t(lang, S::RunInClaude), Font::Small, color::MUTED, Align::Center, X(232));
+    C().fillRoundRect(X(40), Y(200), X(160), Y(28), Sz(4), color::CMD_BG);
+    C().text(X(120), Y(220), "/miblo:update", Font::BodyBold, color::TEXT, Align::Center, X(152));
+  }
+}
+
 void summary(Lang lang, const Snapshot& s, const Clock& clk) {
   const uint32_t hh = hashInt(kHashSeed + 37, (uint32_t)lang);
   if (region(R_HEADER, hh, 0, 0, X(240), Y(26))) {

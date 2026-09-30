@@ -3,6 +3,7 @@
 #include <unity.h>
 
 #include "miblo_config.h"
+#include "miblo_format.h"
 #include "miblo_policy.h"
 
 using namespace miblo;
@@ -664,6 +665,43 @@ static void test_screen_care() {
   TEST_ASSERT_EQUAL_STRING("sleepMin", bad);
 }
 
+// Version order and the once-per-boot "update available" notice.
+static void test_update_notice() {
+  TEST_ASSERT_TRUE(compareVersions("1.1.0", "1.0.9") > 0);
+  TEST_ASSERT_TRUE(compareVersions("1.0.2", "1.0.10") < 0);
+  TEST_ASSERT_EQUAL_INT(0, compareVersions("1.2.3", "1.2.3"));
+  TEST_ASSERT_EQUAL_INT(0, compareVersions("1.2.3-rc", "1.2.3"));
+  TEST_ASSERT_TRUE(compareVersions("2", "1.9.9") > 0);
+
+  UpdateNotice u;
+  u.observe("", "1.0.1", 1000);             // the plugin doesn't know the release yet
+  TEST_ASSERT_FALSE(u.showing(1000));
+  u.observe("1.1.0", "1.0.1", 2000);        // first snapshot that knows it: newer
+  TEST_ASSERT_TRUE(u.showing(2000));
+  TEST_ASSERT_TRUE(u.showing(2000 + UpdateNotice::kShowMs - 1));
+  TEST_ASSERT_FALSE(u.showing(2000 + UpdateNotice::kShowMs));
+  u.observe("1.2.0", "1.0.1", 9000);        // once per boot
+  TEST_ASSERT_FALSE(u.showing(9000));
+
+  UpdateNotice same;
+  same.observe("1.0.1", "1.0.1", 1000);     // up to date: nothing, and nothing later either
+  TEST_ASSERT_FALSE(same.showing(1000));
+  same.observe("9.9.9", "1.0.1", 2000);
+  TEST_ASSERT_FALSE(same.showing(2000));
+
+  ScreenInputs in;
+  in.nowMs = 100000;
+  in.bootAnimDone = true;
+  in.net = NetState::Connected;
+  in.paired = true;
+  in.hasSnapshot = true;
+  in.lastSnapshotMs = 99000;
+  in.updateNotice = true;
+  TEST_ASSERT_EQUAL(ScreenId::UpdateAvailable, selectScreen(in));
+  in.alert = AlertPhase::Flash;  // alerts come first
+  TEST_ASSERT_EQUAL(ScreenId::AlertFlash, selectScreen(in));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -698,5 +736,6 @@ int main() {
   RUN_TEST(test_night_mode_config_and_brightness);
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
+  RUN_TEST(test_update_notice);
   return UNITY_END();
 }

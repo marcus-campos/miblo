@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 
+#include "board.h"
 #include "context.h"
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
@@ -436,7 +437,9 @@ static void settingsPage() {
   appendEscaped(out, tr(lang, S::WebSave).c_str());
   out += F("</button><p id=\"st\" class=\"m\"></p><h2>");
   appendEscaped(out, tr(lang, S::WebFirmware).c_str());
-  out += F("</h2><p><a href=\"/update\">");
+  out += F("</h2><p class=\"m\">v" MIBLO_FW_VERSION "</p><button class=\"s\" onclick=\"chk()\">");
+  appendEscaped(out, tr(lang, S::WebCheckUpdates).c_str());
+  out += F("</button><p id=\"up\"></p><p><a href=\"/update\">");
   appendEscaped(out, tr(lang, S::WebFirmware).c_str());
   out += F("</a></p><button class=\"s\" onclick=\"post('/pair-code')\">");
   appendEscaped(out, tr(lang, S::WebShowPairCode).c_str());
@@ -453,8 +456,13 @@ static void settingsPage() {
   miblo::configToJson(ctx.cfg, cfg.to<JsonObject>());
   appendJsonForScript(out, cfg);
   out += F(";const T=");
-  DynamicJsonDocument txt(768);
+  DynamicJsonDocument txt(2048);
   txt["saved"] = tr(lang, S::WebSaved);
+  txt["uptodate"] = tr(lang, S::WebUpToDate);
+  txt["newver"] = tr(lang, S::WebNewVersion);
+  txt["how"] = tr(lang, S::WebUpdateHow);
+  txt["chkfail"] = tr(lang, S::WebCheckFailed);
+  txt["dl"] = tr(lang, S::WebDownloadBin);
   txt["failed"] = tr(lang, S::WebFailed);
   txt["hint"] = tr(lang, S::WebCodeHint);
   txt["bad"] = tr(lang, S::WebBadCode);
@@ -478,6 +486,22 @@ static void settingsPage() {
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
       "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
       "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
+      // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
+      // compares with this firmware; a newer one gets the how-to and a link to its .bin.
+      "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
+      "function vc(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);"
+      "for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d;}return 0;}"
+      "function chk(){const st=$('up');st.textContent='...';"
+      "fetch('https://api.github.com/repos/" MIBLO_REPO "/releases/latest',{cache:'no-store'})"
+      ".then(r=>{if(!r.ok)throw 0;return r.json();}).then(j=>{"
+      "const v=String(j.tag_name||'').replace(/^v/,'');if(!/^\\d+\\.\\d+\\.\\d+$/.test(v))throw 0;"
+      "if(vc(v,FW)<=0){st.textContent=T.uptodate.replace('%s',FW);return;}"
+      "st.textContent='';const b=document.createElement('b');b.textContent=T.newver.replace('%s',v);"
+      "st.append(b,' '+T.how);"
+      "const a=(j.assets||[]).find(x=>x.name==='miblo-'+BD+'-'+v+'.bin');"
+      "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
+      "st.append(document.createElement('br'),l);}"
+      "}).catch(()=>{st.textContent=T.chkfail;});}"
       "tzFill($('tz'),C.tz,ch=>{if(ch)save();});"
       "</script>");
   pageEnd(out);

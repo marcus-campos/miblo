@@ -81,4 +81,18 @@ void formatUsd(float usd, char* out, size_t cap) {
   snprintf(out, cap, "$%u.%02u", cents / 100, cents % 100);
 }
 
+int compareVersions(const char* a, const char* b) {
+  for (int part = 0; part < 3; part++) {
+    unsigned x = 0, y = 0;
+    while (*a >= '0' && *a <= '9') x = x * 10 + (unsigned)(*a++ - '0');
+    while (*b >= '0' && *b <= '9') y = y * 10 + (unsigned)(*b++ - '0');
+    if (x != y) return x < y ? -1 : 1;
+    while (*a && *a != '.') a++;
+    while (*b && *b != '.') b++;
+    if (*a == '.') a++;
+    if (*b == '.') b++;
+  }
+  return 0;
+}
+
 }  // namespace miblo

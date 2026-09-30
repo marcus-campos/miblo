@@ -135,6 +135,7 @@ static void handleState() {
   }
   uint32_t now = millis();
   ctx.limits.observe(ctx.snap, now);
+  ctx.update.observe(ctx.snap.latest, MIBLO_FW_VERSION, now);
   ctx.hasSnapshot = true;
   ctx.lastSnapshotMs = now;
   if (ctx.snap.hasUsage) ctx.usageEverSeen = true;

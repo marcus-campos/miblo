@@ -8,3 +8,5 @@
 #define MIBLO_BUILD "dev"
 #endif
 #define MIBLO_PROTO 1
+// GitHub repository of the project (releases, docs).
+#define MIBLO_REPO "marcus-campos/miblo"

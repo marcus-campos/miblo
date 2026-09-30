@@ -8,6 +8,7 @@
 #include "miblo_format.h"
 #include "miblo_overview.h"
 #include "miblo_policy.h"
+#include "miblo_version.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
 #include "platform/ota.h"
@@ -220,6 +221,7 @@ void loop() {
   in.lastSnapshotMs = ctx.lastSnapshotMs;
   in.alert = alert.phase;
   in.limitReset = ctx.limits.celebrating(now);
+  in.updateNotice = ctx.update.showing(now);
   ScreenId screen = miblo::selectScreen(in);
   const miblo::StateCounts counts = miblo::countStates(ctx.snap);
   // Nothing running or waiting: "All done" gives way to the Desk mascot with the limits, which
@@ -315,6 +317,9 @@ void loop() {
       break;
     case ScreenId::Summary:
       screens::summary(lang, ctx.snap, clk);
+      break;
+    case ScreenId::UpdateAvailable:
+      screens::updateAvailable(lang, MIBLO_FW_VERSION, ctx.snap.latest, (uint8_t)(now / 400));
       break;
     case ScreenId::Roam: {
       const screens::DeskMood mood =

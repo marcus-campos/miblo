@@ -1301,7 +1301,7 @@ static const char kZh[] MIBLO_ROM =
     "黑色\0"  // WebMascotBlack
     "灰色\0"  // WebMascotGrey
     "有可用更新\0"  // UpdateAvailable
-    "v%s（当前 v%s）\0"  // UpdateVersions
+    "v%s (当前 v%s)\0"  // UpdateVersions
     "检查更新\0"  // WebCheckUpdates
     "已是最新（v%s）\0"  // WebUpToDate
     "版本 %s 可用。\0"  // WebNewVersion

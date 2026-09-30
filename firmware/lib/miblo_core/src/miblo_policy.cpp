@@ -1,5 +1,7 @@
 #include "miblo_policy.h"
 
+#include "miblo_format.h"
+
 namespace miblo {
 
 JoinFailure classifyDisconnect(uint8_t reason) {
@@ -162,6 +164,7 @@ ScreenId selectScreen(const ScreenInputs& in) {
   if (in.alert == AlertPhase::Flash) return ScreenId::AlertFlash;
   if (in.alert == AlertPhase::Hero) return ScreenId::AlertHero;
   if (in.limitReset) return ScreenId::LimitReset;
+  if (in.updateNotice) return ScreenId::UpdateAvailable;
   return ScreenId::Main;
 }
 
@@ -215,6 +218,15 @@ void pixelShift(uint8_t i, int8_t& dx, int8_t& dy) {
   i %= kShiftSteps;
   dx = kSteps[i][0];
   dy = kSteps[i][1];
+}
+
+void UpdateNotice::observe(const char* latest, const char* current, uint32_t nowMs) {
+  if (decided_ || !latest || !latest[0]) return;  // wait for a snapshot that knows the release
+  decided_ = true;
+  if (compareVersions(latest, current) > 0) {
+    active_ = true;
+    sinceMs_ = nowMs;
+  }
 }
 
 bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs) {

@@ -115,3 +115,8 @@ notes.
     page, `/miblo:pair` (mDNS discovery) or any Claude Code activity lights it again with the
     normal screens. With "Never", pet mode keeps going. Over an hour, the whole picture shifts by
     1-2 px every 5 minutes.
+18. **Update notice:** with an older firmware than the latest release, restart the gadget with
+    Claude Code open: "Update available · vX (you have vY)" shows for ~5 s once, then the normal
+    screens. On the settings page, **Check for updates** reports "Up to date" on the latest
+    firmware, or the new version with a link to its .bin. `/miblo:pair` on an outdated gadget
+    offers the update right after pairing.

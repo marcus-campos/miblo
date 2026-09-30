@@ -220,6 +220,10 @@ make fleet-update            # update the older ones; each unit shows a 4-digit 
 
 ## Updating
 
+- **On the gadget:** right after it starts, if a newer firmware exists, the screen says "Update available" with both versions for 5 seconds, then carries on (the plugin tells it the latest release).
+- **On the settings page:** **Check for updates** asks GitHub from your browser and, when there's a newer version, shows how to install it and a link to its file.
+- **When pairing:** `/miblo:pair` checks right away and offers to update if the gadget is behind.
+
 When a Claude Code session starts, the plugin checks GitHub for a newer release (at most every 6 hours, with a 2-second timeout so it never slows the start). If the plugin or a paired gadget is behind, you get a one-line notice to run `/miblo:update`, at most once a day for the same version.
 
 - **From Claude Code:** `/miblo:update` checks the latest GitHub release and offers to update the **plugin** first, then the **firmware** of each paired gadget that's out of date. Type the 4-digit code shown on the gadget. It takes about a minute, so don't unplug the gadget while it runs. Pairing and settings are kept. If Claude Code asks you to, run `/reload-plugins` afterwards.

@@ -66,6 +66,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   filter["host"] = true;
   filter["usage"] = true;
   filter["today"] = true;
+  filter["latest"] = true;
   filter["more"] = true;
   JsonObject fs = filter["sessions"].createNestedObject();
   for (const char* k : {"id", "name", "st", "tool", "det", "since", "model", "ctx", "tok"}) fs[k] = true;
@@ -92,6 +93,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   out.todayUsd = doc["today"]["usd"].as<float>();
   out.todayTurns = doc["today"]["turns"].as<uint16_t>();
   out.todayWorkSec = doc["today"]["work"].as<uint32_t>();
+  copyStr(out.latest, sizeof(out.latest), doc["latest"], 15);
 
   out.count = 0;
   uint16_t skipped = 0;

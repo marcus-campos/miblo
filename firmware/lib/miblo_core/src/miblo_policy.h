@@ -91,6 +91,7 @@ enum class ScreenId : uint8_t {
   HardResetCountdown,  // quick-restarts-left countdown during the first 10 s of a quick boot
   Desk,           // quiet spell: the mascot playing with the limits
   Roam,           // long idle, screen left on: the mascot wanders around the screen (pet mode)
+  UpdateAvailable,  // right after boot: a newer firmware was released (for kShowMs)
   LimitReset,     // the 5h window just reset after real use: "limit freed"
   Summary         // quiet spell: today's responses, time worked and cost
 };
@@ -114,6 +115,7 @@ struct ScreenInputs {
   uint32_t lastSnapshotMs = 0;
   AlertPhase alert = AlertPhase::None;
   bool limitReset = false;  // LimitWatch::celebrating()
+  bool updateNotice = false;  // UpdateNotice::showing()
 };
 
 ScreenId selectScreen(const ScreenInputs& in);
@@ -182,6 +184,20 @@ constexpr uint32_t kRoamAfterMs = 20UL * 60000;
 constexpr uint32_t kInteractionAwakeMs = 120000;
 bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs);
 bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin);
+
+// Once per boot, when the first snapshot that names the latest release shows a newer version
+// than this firmware, the screen says so for kShowMs, then carries on.
+class UpdateNotice {
+ public:
+  static constexpr uint32_t kShowMs = 5000;
+  void observe(const char* latest, const char* current, uint32_t nowMs);
+  bool showing(uint32_t nowMs) const { return active_ && nowMs - sinceMs_ < kShowMs; }
+
+ private:
+  bool decided_ = false;  // one decision per boot
+  bool active_ = false;
+  uint32_t sinceMs_ = 0;
+};
 
 class QuietClock {
  public:

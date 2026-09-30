@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { updateNotice, CHECK_EVERY_MS, NOTIFY_EVERY_MS } from '../lib/update-notice.js';
+import { updateNotice, createReleaseCache, CHECK_EVERY_MS, NOTIFY_EVERY_MS } from '../lib/update-notice.js';
 
 const json = (body, status = 200) => ({ ok: status < 400, status, json: async () => body });
 
@@ -59,4 +59,46 @@ test('offline or no release: no notice and no error', async () => {
   assert.equal(await updateNotice({ ...s, pluginVersion: '0.2.4', now: () => 0 }), null);
   const t = setup({ tag: 'nightly' });
   assert.equal(await updateNotice({ ...t, pluginVersion: '0.2.4', now: () => 0 }), null);
+});
+
+test('release cache: get() reads the cached version and re-reads the file only every few minutes', () => {
+  const s = setup();
+  let t = 0;
+  const cache = createReleaseCache({ ...s, now: () => t });
+  assert.equal(cache.get(), null);
+  fs.writeFileSync(path.join(s.dataDir, 'update-check.json'), JSON.stringify({ checkedAt: 0, latest: '1.0.2' }));
+  t = 60_000;
+  assert.equal(cache.get(), null);
+  t = 5 * 60_000;
+  assert.equal(cache.get(), '1.0.2');
+  fs.writeFileSync(path.join(s.dataDir, 'update-check.json'), JSON.stringify({ checkedAt: 0, latest: 'junk' }));
+  t = 10 * 60_000;
+  assert.equal(cache.get(), null);
+  assert.equal(s.calls.length, 0);
+});
+
+test('release cache: refreshIfStale() asks GitHub only when the cache is missing or stale', async () => {
+  const s = setup({ tag: 'v1.0.2' });
+  let t = 1000;
+  const cache = createReleaseCache({ ...s, now: () => t });
+  await cache.refreshIfStale();
+  assert.equal(s.calls.length, 1);
+  assert.equal(cache.get(), '1.0.2');
+  t += CHECK_EVERY_MS - 1;
+  await cache.refreshIfStale();
+  assert.equal(s.calls.length, 1);
+  t += 2;
+  await cache.refreshIfStale();
+  assert.equal(s.calls.length, 2);
+});
+
+test('release cache: a failed refresh never throws and leaves the version unknown', async () => {
+  const s = setup({ tag: new Error('offline') });
+  const cache = createReleaseCache({ ...s, now: () => 0 });
+  await cache.refreshIfStale();
+  assert.equal(cache.get(), null);
+  const broken = createReleaseCache({ dataDir: path.join(s.dataDir, 'update-check.json', 'x'), fetchImpl: s.fetchImpl, now: () => 0 });
+  fs.writeFileSync(path.join(s.dataDir, 'update-check.json'), '{}');
+  await broken.refreshIfStale();
+  assert.equal(broken.get(), null);
 });

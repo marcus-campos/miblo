@@ -12,10 +12,12 @@ import { DeviceStore } from '../lib/device-store.js';
 import { DeviceManager } from '../lib/device-manager.js';
 import { discover } from '../lib/mdns.js';
 import { createBridgeServer } from '../lib/bridge-server.js';
+import { createReleaseCache } from '../lib/update-notice.js';
 import { isLinked, installTap } from '../lib/statusline-link.js';
 import { createLogger, errText } from '../lib/logger.js';
 
-export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {} }) {
+export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {},
+  release = createReleaseCache({ dataDir, now }) }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now });
   const day = new DayStats({ dataDir, now });
@@ -28,7 +30,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     timer = null;
     if (tracker.hasActive()) lastActive = now();
     day.observe(tracker.sessions());
-    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day });
+    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day, latest: release.get() });
     await devices.pushAll(snapshot);
   };
   const schedule = () => {
@@ -54,7 +56,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     }),
   });
 
-  return { tracker, metrics, day, devices, server, push, schedule, idleFor: () => now() - lastActive };
+  return { tracker, metrics, day, devices, release, server, push, schedule, idleFor: () => now() - lastActive };
 }
 
 function main() {
@@ -93,6 +95,7 @@ function main() {
     process.exit(1);
   });
   bridge.server.listen(PORT, HOST);
+  bridge.release.refreshIfStale();
   setInterval(() => bridge.push().catch((e) => log(`heartbeat push failed: ${errText(e)}`)), HEARTBEAT_MS);
   setInterval(() => {
     if (bridge.tracker.sweep()) bridge.schedule();

@@ -729,6 +729,7 @@ static void handleSettingsUnlock() {
     else sendJson(*srv, 403, "{\"error\":\"bad code\"}");
     return;
   }
+  ctx.presence.close();  // unlocked: the code leaves the screen at once
   uint8_t rnd[16];
   for (int i = 0; i < 16; i += 4) {
     uint32_t r = hwRandom();

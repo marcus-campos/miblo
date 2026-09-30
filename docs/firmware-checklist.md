@@ -109,3 +109,9 @@ notes.
 16. **Mascot colours and settings command:** `/miblo:settings` opens the settings page; each
     mascot colour saves and applies at once (boot, desk and disconnected mascots), and survives a
     reboot. Night mode dims and restores the backlight at the configured times.
+17. **Screen care:** leave the gadget with Claude Code closed: after ~30 s "Disconnected", after
+    20 min the mascot wanders around the whole screen (no trail, clock under it), and with the
+    default "1 h" the panel goes dark (backlight off) at the one-hour mark. Opening the settings
+    page, `/miblo:pair` (mDNS discovery) or any Claude Code activity lights it again with the
+    normal screens. With "Never", pet mode keeps going. Over an hour, the whole picture shifts by
+    1-2 px every 5 minutes.

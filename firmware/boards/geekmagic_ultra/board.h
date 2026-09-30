@@ -33,6 +33,9 @@ struct Inputs {
 void begin();                        // screen + backlight
 ui::Canvas& canvas();
 void setBacklight(uint8_t percent);  // 0..100
+// Panel on/off: off stops driving the LCD (ST7789 DISPOFF) and turns the backlight off, so an
+// unattended picture can't leave a ghost; on restores both (the caller redraws and relights).
+void setDisplay(bool on);
 Inputs readInputs();
 
 }  // namespace board

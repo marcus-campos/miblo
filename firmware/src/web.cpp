@@ -416,6 +416,12 @@ static void settingsPage() {
     out += F("</option>");
   }
   out += F("</select><label>");
+  appendEscaped(out, tr(lang, S::WebSleep).c_str());
+  out += F("</label><select id=\"sleepMin\"><option value=\"0\">");
+  appendEscaped(out, tr(lang, S::WebSleepNever).c_str());
+  out += F("</option><option value=\"15\">15 min</option><option value=\"30\">30 min</option>"
+           "<option value=\"60\">1 h</option><option value=\"120\">2 h</option><option value=\"240\">4 h</option>"
+           "</select><label>");
   appendEscaped(out, tr(lang, S::WebDeviceName).c_str());
   out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
   appendEscaped(out, ctx.ident.defaultName);
@@ -465,8 +471,8 @@ static void settingsPage() {
       "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
       "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-      "'nightBrightness','mascot','name','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-      "if(k==='mascot')v=Number(v);b[k]=v;}"
+      "'nightBrightness','mascot','sleepMin','name','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+      "if(k==='mascot'||k==='sleepMin')v=Number(v);b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
@@ -478,6 +484,7 @@ static void settingsPage() {
 }
 
 static void handleSettings() {
+  ctx.lastInteractionMs = millis();
   if (!requireJson(*srv)) return;
   if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
     sendJson(*srv, 413, "{\"error\":\"too large\"}");
@@ -506,6 +513,7 @@ static void handleZones() {
 }
 
 static void handleRoot() {
+  ctx.lastInteractionMs = millis();  // someone is looking: wake the screen
   if (net::apActive() && !net::connected()) {
     // No network scan while a submitted network is being tried: a scan in the middle of the
     // station's join attempt can abort it. Phones re-probe the captive portal all the time.

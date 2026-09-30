@@ -88,7 +88,8 @@ void logo(int cx, int cy, int size);
 void setMascotStyle(uint8_t style);
 // Desk mascot with front paws: flat primitives only, inside the square
 // (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
-void deskMascot(int cx, int cy, const MascotLook& look, int half = 64);
+// `table`: the table edge under the paws (left out when the mascot moves around the screen).
+void deskMascot(int cx, int cy, const MascotLook& look, int half = 64, bool table = true);
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens ----
@@ -137,6 +138,13 @@ DeskMood deskMood(uint8_t pct);  // < 50 calm, < 80 watchful, < 95 worried, else
 uint8_t deskPct(const miblo::UsageWindow& w, uint32_t nowEpoch);
 // Expression at `ms` into the mood's loop; `focusLeft`: the gauge that worries it is the left one (5h).
 MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms);
+// The mood the Desk shows for the last known limits (Calm when there are none).
+DeskMood deskMoodFor(const miblo::Snapshot& s, uint32_t nowEpoch, bool* focusLeft = nullptr);
+// Pet mode (long idle, screen left on): the mascot wanders around the whole screen with the
+// clock under it, so nothing stays on the same pixels. `ms`: time in the mode.
+void roam(Lang lang, const Clock& clk, uint32_t ms, DeskMood mood);
+// Where the pet is at `ms` (centre of its box: cat + clock), bouncing inside the screen.
+void roamPosition(uint32_t ms, int& cx, int& cy);
 // Full-screen mascot + two ring gauges (5h, week) + clock.
 void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt = 0);
 // The 5h window just reset after real use: green "limit freed" band, the mascot celebrating, the

@@ -139,7 +139,17 @@ static const char kEn[] MIBLO_ROM =
     "Sphynx (peach)\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Black\0"  // WebMascotBlack
-    "Grey\0";  // WebMascotGrey
+    "Grey\0"  // WebMascotGrey
+    "Update available\0"  // UpdateAvailable
+    "v%s (you have v%s)\0"  // UpdateVersions
+    "Check for updates\0"  // WebCheckUpdates
+    "Up to date (v%s)\0"  // WebUpToDate
+    "Version %s is available.\0"  // WebNewVersion
+    "In Claude Code, run /miblo:update. Or download the file and install it on the firmware update page.\0"  // WebUpdateHow
+    "Couldn't check for updates (no internet?)\0"  // WebCheckFailed
+    "Download the firmware\0"  // WebDownloadBin
+    "Turn the screen off when idle\0"  // WebSleep
+    "Never (the mascot keeps wandering)\0";  // WebSleepNever
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -274,7 +284,17 @@ static const char kPtBR[] MIBLO_ROM =
     "Sphynx (pêssego)\0"  // WebMascotSphynx
     "Laranja\0"  // WebMascotOrange
     "Preto\0"  // WebMascotBlack
-    "Cinza\0";  // WebMascotGrey
+    "Cinza\0"  // WebMascotGrey
+    "Atualização disponível\0"  // UpdateAvailable
+    "v%s (você tem v%s)\0"  // UpdateVersions
+    "Buscar atualizações\0"  // WebCheckUpdates
+    "Tudo atualizado (v%s)\0"  // WebUpToDate
+    "A versão %s está disponível.\0"  // WebNewVersion
+    "No Claude Code, rode /miblo:update. Ou baixe o arquivo e instale na página de atualização de firmware.\0"  // WebUpdateHow
+    "Não foi possível buscar atualizações (sem internet?)\0"  // WebCheckFailed
+    "Baixar o firmware\0"  // WebDownloadBin
+    "Desligar a tela quando ninguém estiver usando\0"  // WebSleep
+    "Nunca (o mascote fica passeando)\0";  // WebSleepNever
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -409,7 +429,17 @@ static const char kPtPT[] MIBLO_ROM =
     "Sphynx (pêssego)\0"  // WebMascotSphynx
     "Laranja\0"  // WebMascotOrange
     "Preto\0"  // WebMascotBlack
-    "Cinzento\0";  // WebMascotGrey
+    "Cinzento\0"  // WebMascotGrey
+    "Atualização disponível\0"  // UpdateAvailable
+    "v%s (tem a v%s)\0"  // UpdateVersions
+    "Procurar atualizações\0"  // WebCheckUpdates
+    "Tudo atualizado (v%s)\0"  // WebUpToDate
+    "A versão %s está disponível.\0"  // WebNewVersion
+    "No Claude Code, execute /miblo:update. Ou descarregue o ficheiro e instale-o na página de atualização de firmware.\0"  // WebUpdateHow
+    "Não foi possível procurar atualizações (sem internet?)\0"  // WebCheckFailed
+    "Descarregar o firmware\0"  // WebDownloadBin
+    "Desligar o ecrã quando ninguém estiver a usar\0"  // WebSleep
+    "Nunca (a mascote fica a passear)\0";  // WebSleepNever
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -544,7 +574,17 @@ static const char kEs[] MIBLO_ROM =
     "Sphynx (melocotón)\0"  // WebMascotSphynx
     "Naranja\0"  // WebMascotOrange
     "Negro\0"  // WebMascotBlack
-    "Gris\0";  // WebMascotGrey
+    "Gris\0"  // WebMascotGrey
+    "Actualización disponible\0"  // UpdateAvailable
+    "v%s (tienes v%s)\0"  // UpdateVersions
+    "Buscar actualizaciones\0"  // WebCheckUpdates
+    "Todo actualizado (v%s)\0"  // WebUpToDate
+    "La versión %s está disponible.\0"  // WebNewVersion
+    "En Claude Code, ejecuta /miblo:update. O descarga el archivo e instálalo en la página de actualización de firmware.\0"  // WebUpdateHow
+    "No se pudo buscar actualizaciones (¿sin internet?)\0"  // WebCheckFailed
+    "Descargar el firmware\0"  // WebDownloadBin
+    "Apagar la pantalla cuando nadie la use\0"  // WebSleep
+    "Nunca (la mascota sigue paseando)\0";  // WebSleepNever
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -679,7 +719,17 @@ static const char kFr[] MIBLO_ROM =
     "Sphynx (pêche)\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Noir\0"  // WebMascotBlack
-    "Gris\0";  // WebMascotGrey
+    "Gris\0"  // WebMascotGrey
+    "Mise à jour disponible\0"  // UpdateAvailable
+    "v%s (vous avez v%s)\0"  // UpdateVersions
+    "Rechercher des mises à jour\0"  // WebCheckUpdates
+    "À jour (v%s)\0"  // WebUpToDate
+    "La version %s est disponible.\0"  // WebNewVersion
+    "Dans Claude Code, lancez /miblo:update. Ou téléchargez le fichier et installez-le sur la page de mise à jour du firmware.\0"  // WebUpdateHow
+    "Impossible de rechercher les mises à jour (pas d'internet ?)\0"  // WebCheckFailed
+    "Télécharger le firmware\0"  // WebDownloadBin
+    "Éteindre l'écran quand personne ne l'utilise\0"  // WebSleep
+    "Jamais (la mascotte continue de se promener)\0";  // WebSleepNever
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -814,7 +864,17 @@ static const char kIt[] MIBLO_ROM =
     "Sphynx (pesca)\0"  // WebMascotSphynx
     "Arancione\0"  // WebMascotOrange
     "Nero\0"  // WebMascotBlack
-    "Grigio\0";  // WebMascotGrey
+    "Grigio\0"  // WebMascotGrey
+    "Aggiornamento disponibile\0"  // UpdateAvailable
+    "v%s (hai la v%s)\0"  // UpdateVersions
+    "Cerca aggiornamenti\0"  // WebCheckUpdates
+    "Aggiornato (v%s)\0"  // WebUpToDate
+    "La versione %s è disponibile.\0"  // WebNewVersion
+    "In Claude Code, esegui /miblo:update. Oppure scarica il file e installalo nella pagina di aggiornamento del firmware.\0"  // WebUpdateHow
+    "Impossibile cercare aggiornamenti (niente internet?)\0"  // WebCheckFailed
+    "Scarica il firmware\0"  // WebDownloadBin
+    "Spegni lo schermo quando nessuno lo usa\0"  // WebSleep
+    "Mai (la mascotte continua a passeggiare)\0";  // WebSleepNever
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -949,7 +1009,17 @@ static const char kDe[] MIBLO_ROM =
     "Sphynx (Pfirsich)\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Schwarz\0"  // WebMascotBlack
-    "Grau\0";  // WebMascotGrey
+    "Grau\0"  // WebMascotGrey
+    "Update verfügbar\0"  // UpdateAvailable
+    "v%s (du hast v%s)\0"  // UpdateVersions
+    "Nach Updates suchen\0"  // WebCheckUpdates
+    "Aktuell (v%s)\0"  // WebUpToDate
+    "Version %s ist verfügbar.\0"  // WebNewVersion
+    "Führe in Claude Code /miblo:update aus. Oder lade die Datei herunter und installiere sie auf der Firmware-Update-Seite.\0"  // WebUpdateHow
+    "Suche nach Updates fehlgeschlagen (kein Internet?)\0"  // WebCheckFailed
+    "Firmware herunterladen\0"  // WebDownloadBin
+    "Bildschirm ausschalten, wenn niemand ihn nutzt\0"  // WebSleep
+    "Nie (das Maskottchen läuft weiter herum)\0";  // WebSleepNever
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1084,7 +1154,17 @@ static const char kRu[] MIBLO_ROM =
     "Сфинкс (персик)\0"  // WebMascotSphynx
     "Рыжий\0"  // WebMascotOrange
     "Чёрный\0"  // WebMascotBlack
-    "Серый\0";  // WebMascotGrey
+    "Серый\0"  // WebMascotGrey
+    "Доступно обновление\0"  // UpdateAvailable
+    "v%s (у вас v%s)\0"  // UpdateVersions
+    "Проверить обновления\0"  // WebCheckUpdates
+    "Всё актуально (v%s)\0"  // WebUpToDate
+    "Доступна версия %s.\0"  // WebNewVersion
+    "В Claude Code выполните /miblo:update. Или скачайте файл и установите его на странице обновления прошивки.\0"  // WebUpdateHow
+    "Не удалось проверить обновления (нет интернета?)\0"  // WebCheckFailed
+    "Скачать прошивку\0"  // WebDownloadBin
+    "Выключать экран, когда им никто не пользуется\0"  // WebSleep
+    "Никогда (талисман продолжает гулять)\0";  // WebSleepNever
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1219,7 +1299,17 @@ static const char kZh[] MIBLO_ROM =
     "斯芬克斯（桃色）\0"  // WebMascotSphynx
     "橙色\0"  // WebMascotOrange
     "黑色\0"  // WebMascotBlack
-    "灰色\0";  // WebMascotGrey
+    "灰色\0"  // WebMascotGrey
+    "有可用更新\0"  // UpdateAvailable
+    "v%s（当前 v%s）\0"  // UpdateVersions
+    "检查更新\0"  // WebCheckUpdates
+    "已是最新（v%s）\0"  // WebUpToDate
+    "版本 %s 可用。\0"  // WebNewVersion
+    "在 Claude Code 中运行 /miblo:update，或下载文件并在固件更新页面安装。\0"  // WebUpdateHow
+    "无法检查更新（没有网络？）\0"  // WebCheckFailed
+    "下载固件\0"  // WebDownloadBin
+    "无人使用时关闭屏幕\0"  // WebSleep
+    "从不（吉祥物继续四处走动）\0";  // WebSleepNever
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

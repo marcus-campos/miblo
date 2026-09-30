@@ -32,6 +32,7 @@ struct Config {
   uint16_t nightTo = 7 * 60;     // 0..1439, != nightFrom; may be earlier than nightFrom (overnight)
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
+  uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
 };
 
 constexpr uint8_t kMascotStyles = 4;

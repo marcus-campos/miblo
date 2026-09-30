@@ -27,7 +27,7 @@ int Sz(int v) { return v * (g_w < g_h ? g_w : g_h) / 240; }
 
 void reset() {
   g_canvas->releaseLayer();
-  g_canvas->fillRect(0, 0, g_w, g_h, color::BG);
+  g_canvas->clear(color::BG);
   g_cache.invalidate();
 }
 
@@ -132,12 +132,12 @@ void setMascotStyle(uint8_t style) {
 
 // The cat itself. `desk` adds what only the big Desk mascot has: a table edge, front paws and
 // the extras (sweat, alarm, zzz, open mouth).
-static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk) {
+static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk, bool table = true) {
   const MascotColors& mc = kMascotColors[g_style];
   const int x = k.dx;
   const int b = k.dy;
   d.rect(-48, -48, 96, 96, color::BG);
-  if (desk) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
+  if (desk && table) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
   d.tri(-36 + x, -42 + b, -32 + x, -4 + b, -8 + x, -18 + b, mc.skin);  // ears
   d.tri(36 + x, -42 + b, 32 + x, -4 + b, 8 + x, -18 + b, mc.skin);
   if (innerEars) {
@@ -269,9 +269,9 @@ void mascot(int cx, int cy, uint8_t frame, bool small) {
   drawCat(d, k, !small, false);
 }
 
-void deskMascot(int cx, int cy, const MascotLook& look, int half) {
+void deskMascot(int cx, int cy, const MascotLook& look, int half, bool table) {
   MascotPen d{*g_canvas, cx, cy, Sz(half), 48};  // the 96-unit box drawn exactly 2 * Sz(half) wide
-  drawCat(d, look, true, true);
+  drawCat(d, look, true, true, table);
 }
 
 void qr(const char* payload, int x, int y, int scale) {

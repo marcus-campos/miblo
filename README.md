@@ -62,6 +62,7 @@
 - **Desk mascot:** 20 s after everything finishes (in any mode), the mascot takes the screen next to two ring gauges with your 5-hour and weekly limits, their reset times and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. It takes turns with the Limits arc and today's summary: 1 minute of mascot, 15 seconds of arc, 1 minute of mascot, 15 seconds of summary. Any activity brings the normal screens back.
 - **Today's summary:** responses finished today, time with Claude working, today's cost and the limits. The count survives the bridge restarting and resets at midnight.
 - **Mascot colours:** sphynx (peach), orange, black or grey, chosen on the settings page.
+- **Pet mode and screen care:** after 20 minutes with nobody using it (computer away, or nothing running), the mascot wanders slowly around the whole screen with the clock, like a little desk pet. After a delay you choose on the settings page (15 min to 4 h, 1 h by default) the screen turns off; "never" keeps the pet wandering. Everything also shifts by a pixel or two every few minutes. LCDs can keep a faint ghost of an image left still for hours; none of this lets that happen. Any Claude Code activity, opening the settings page or `/miblo:pair` brings the normal screens back.
 - **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
 - **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
@@ -71,7 +72,7 @@
 
 - **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, night mode, mascot colour, time zone, language and device name. `/miblo:settings` opens it for you.
+- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language and device name. `/miblo:settings` opens it for you.
 - **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 

@@ -63,6 +63,7 @@ static void handleInfo() {
   doc["nightTo"] = ctx.cfg.nightTo;
   doc["nightBrightness"] = ctx.cfg.nightBrightness;
   doc["mascot"] = ctx.cfg.mascot;
+  doc["sleepMin"] = ctx.cfg.sleepMin;
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

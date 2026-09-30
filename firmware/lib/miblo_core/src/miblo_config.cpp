@@ -99,6 +99,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn(v, 1, 100, next.nightBrightness);
     } else if (strcmp(k, "mascot") == 0) {
       ok = intIn(v, 0, kMascotStyles - 1, next.mascot);
+    } else if (strcmp(k, "sleepMin") == 0) {
+      ok = intIn16(v, 0, 240, next.sleepMin);
     }
     if (!ok) {
       bad = k;
@@ -138,6 +140,7 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["nightTo"] = cfg.nightTo;
   out["nightBrightness"] = cfg.nightBrightness;
   out["mascot"] = cfg.mascot;
+  out["sleepMin"] = cfg.sleepMin;
 }
 
 void configToStored(const Config& cfg, JsonObject out) {

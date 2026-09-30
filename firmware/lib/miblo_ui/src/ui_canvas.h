@@ -81,6 +81,53 @@ class Canvas {
   virtual void endLayer() {}
   // Frees any memory held for layers (called on every screen switch).
   virtual void releaseLayer() {}
+  // Paints the whole physical screen (screen switches), whatever offset a wrapper applies.
+  virtual void clear(uint16_t c) { fillRect(0, 0, spec().w, spec().h, c); }
+};
+
+// Draws through another canvas with everything moved by (dx, dy) pixels. Shifting the whole
+// picture a pixel or two every few minutes keeps static edges (headers, rings, text) from
+// sitting on the same pixels for hours, which is what leaves ghost images on an LCD.
+// Content moved past an edge is simply clipped by the panel.
+class ShiftCanvas : public Canvas {
+ public:
+  explicit ShiftCanvas(Canvas& inner) : in_(inner) {}
+  void setShift(int dx, int dy) { dx_ = dx, dy_ = dy; }
+  int dx() const { return dx_; }
+  int dy() const { return dy_; }
+
+  ScreenSpec spec() const override { return in_.spec(); }
+  void fillRect(int x, int y, int w, int h, uint16_t c) override { in_.fillRect(x + dx_, y + dy_, w, h, c); }
+  void fillRoundRect(int x, int y, int w, int h, int r, uint16_t c) override {
+    in_.fillRoundRect(x + dx_, y + dy_, w, h, r, c);
+  }
+  void drawRect(int x, int y, int w, int h, uint16_t c) override { in_.drawRect(x + dx_, y + dy_, w, h, c); }
+  void fillCircle(int cx, int cy, int r, uint16_t c) override { in_.fillCircle(cx + dx_, cy + dy_, r, c); }
+  void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) override {
+    in_.fillTriangle(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, x2 + dx_, y2 + dy_, c);
+  }
+  void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) override {
+    in_.wideLine(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, width, c, bg);
+  }
+  void arc(int cx, int cy, int r, int ir, int a0, int a1, uint16_t fg, uint16_t bg) override {
+    in_.arc(cx + dx_, cy + dy_, r, ir, a0, a1, fg, bg);
+  }
+  int text(int x, int y, const char* s, Font f, uint16_t fg, Align a, int maxW) override {
+    return in_.text(x + dx_, y + dy_, s, f, fg, a, maxW);
+  }
+  int textWidth(const char* s, Font f) override { return in_.textWidth(s, f); }
+  int textBox(int x, int y, const char* s, Font f, uint16_t fg, uint16_t bg, Align a, int boxW) override {
+    return in_.textBox(x + dx_, y + dy_, s, f, fg, bg, a, boxW);
+  }
+  bool beginLayer(int x, int y, int w, int h) override { return in_.beginLayer(x + dx_, y + dy_, w, h); }
+  void endLayer() override { in_.endLayer(); }
+  void releaseLayer() override { in_.releaseLayer(); }
+  void clear(uint16_t c) override { in_.clear(c); }  // the whole panel, not the shifted area
+
+ private:
+  Canvas& in_;
+  int dx_ = 0;
+  int dy_ = 0;
 };
 
 }  // namespace ui

@@ -38,6 +38,15 @@ void setBacklight(uint8_t percent) {
   analogWrite(kPinBacklight, 255 - duty);  // active LOW
 }
 
+void setDisplay(bool on) {
+  if (on) {
+    tft.writecommand(ST7789_DISPON);
+  } else {
+    setBacklight(0);
+    tft.writecommand(ST7789_DISPOFF);
+  }
+}
+
 Inputs readInputs() { return Inputs{false, false, 0, 0}; }
 
 }  // namespace board

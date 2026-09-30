@@ -90,6 +90,7 @@ enum class ScreenId : uint8_t {
   Main,           // device mode (Overview, Limits, or Sessions)
   HardResetCountdown,  // quick-restarts-left countdown during the first 10 s of a quick boot
   Desk,           // quiet spell: the mascot playing with the limits
+  Roam,           // long idle, screen left on: the mascot wanders around the screen (pet mode)
   LimitReset,     // the 5h window just reset after real use: "limit freed"
   Summary         // quiet spell: today's responses, time worked and cost
 };
@@ -164,12 +165,32 @@ constexpr uint32_t kDeskSummaryMs = 15000;
 // Disconnected: the mascot looks around for the computer, then falls asleep after this long.
 constexpr uint32_t kAwayNapMs = 600000;
 
+// ---- Screen care: an LCD keeps a ghost of what it shows unchanged for hours ----
+// The whole picture moves a little every kShiftEveryMs (see ui::ShiftCanvas), going round
+// kShiftSteps positions within 2 px of the original.
+constexpr uint32_t kShiftEveryMs = 300000;
+constexpr uint8_t kShiftSteps = 9;
+// Offset for step `i` (0..kShiftSteps-1): the centre, then a ring around it.
+void pixelShift(uint8_t i, int8_t& dx, int8_t& dy);
+
+// Nobody using it: `idleMs` is how long the computer has been away (Disconnected) or everything
+// has been quiet (the Desk cycle); 0 on any other screen. After kRoamAfterMs the mascot wanders
+// around the screen (pet mode: nothing stays still); after sleepMin minutes (0 = never) the
+// panel turns off. Someone opening the gadget's pages, or the plugin looking for it, keeps the
+// normal screens up for kInteractionAwakeMs (the address and pairing code are on them).
+constexpr uint32_t kRoamAfterMs = 20UL * 60000;
+constexpr uint32_t kInteractionAwakeMs = 120000;
+bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs);
+bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin);
+
 class QuietClock {
  public:
   // Call on every frame; anything not quiet (activity, an alert, any other screen) restarts the
   // spell. Safe across millis() wrap.
   QuietPhase update(bool quiet, uint32_t nowMs);
   QuietPhase phase() const { return phase_; }
+  // How long it has been quiet (0 while busy).
+  uint32_t quietMs(uint32_t nowMs) const { return phase_ == QuietPhase::Busy ? 0 : nowMs - sinceMs_; }
 
  private:
   QuietPhase phase_ = QuietPhase::Busy;

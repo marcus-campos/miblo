@@ -292,6 +292,12 @@ void renderAll(Lang L) {
     save(s, std::string("26-logo-") + styles[i]);
   }
   screens::setMascotStyle(0);
+  // Pet mode (long idle, screen left on).
+  for (uint32_t ms : {0u, 20000u, 60000u}) {
+    Shot s;
+    screens::roam(L, clk, ms, screens::DeskMood::Calm);
+    save(s, "42-pet-mode-" + std::to_string(ms / 1000));
+  }
 
   for (const Mood& m : kMoods) {
     idle();
@@ -388,6 +394,15 @@ void animateAll(Lang L) {
     const uint32_t loop = moodLoopMs(screens::DeskMood::Celebrate);
     for (uint32_t ms = 0; ms < loop; ms += kFrameMs) {
       screens::limitReset(L, snap, clk, ms);
+      c.frame();
+    }
+  }
+  {
+    // Pet mode: the mascot wandering (30 s, drawn frame by frame like the firmware: no trail).
+    idle();
+    Clip c("pet-mode");
+    for (uint32_t ms = 0; ms < 30000; ms += kFrameMs) {
+      screens::roam(L, clk, ms, screens::DeskMood::Calm);
       c.frame();
     }
   }

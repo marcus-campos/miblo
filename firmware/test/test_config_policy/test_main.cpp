@@ -617,6 +617,53 @@ static void test_mascot_style_config() {
   TEST_ASSERT_EQUAL_UINT8(3, b.mascot);
 }
 
+// Screen care: the pixel shift goes round 9 distinct positions within 2 px; after a long idle the
+// mascot wanders (pet mode) and after sleepMin minutes the panel sleeps (0 = never); a page view
+// or the plugin looking for the gadget keeps the normal screens up.
+static void test_screen_care() {
+  bool seen[5][5] = {};
+  for (uint8_t i = 0; i < kShiftSteps; i++) {
+    int8_t dx, dy;
+    pixelShift(i, dx, dy);
+    TEST_ASSERT_TRUE(dx >= -2 && dx <= 2 && dy >= -2 && dy <= 2);
+    TEST_ASSERT_FALSE(seen[dx + 2][dy + 2]);
+    seen[dx + 2][dy + 2] = true;
+  }
+  int8_t dx, dy;
+  pixelShift(0, dx, dy);
+  TEST_ASSERT_TRUE(dx == 0 && dy == 0);
+  pixelShift(kShiftSteps, dx, dy);  // wraps around
+  TEST_ASSERT_TRUE(dx == 0 && dy == 0);
+
+  const uint32_t never = UINT32_MAX;
+  // pet mode after kRoamAfterMs of idle, unless someone just looked at the gadget
+  TEST_ASSERT_FALSE(petMode(kRoamAfterMs - 1, never));
+  TEST_ASSERT_TRUE(petMode(kRoamAfterMs, never));
+  TEST_ASSERT_FALSE(petMode(kRoamAfterMs, kInteractionAwakeMs - 1));
+  TEST_ASSERT_FALSE(petMode(0, never));  // in use
+  // panel off after sleepMin minutes of idle; 0 = never
+  TEST_ASSERT_FALSE(screenAsleep(60 * 60000 - 1, never, 60));
+  TEST_ASSERT_TRUE(screenAsleep(60 * 60000, never, 60));
+  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, kInteractionAwakeMs - 1, 60));
+  TEST_ASSERT_FALSE(screenAsleep(never, never, 0));
+  TEST_ASSERT_FALSE(screenAsleep(0, never, 1));
+
+  QuietClock q;
+  TEST_ASSERT_EQUAL_UINT32(0, q.quietMs(5000));
+  q.update(true, 1000);
+  TEST_ASSERT_EQUAL_UINT32(4000, q.quietMs(5000));
+  q.update(false, 6000);
+  TEST_ASSERT_EQUAL_UINT32(0, q.quietMs(7000));
+
+  Config c;
+  TEST_ASSERT_EQUAL_UINT16(60, c.sleepMin);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"sleepMin\":0}"));
+  TEST_ASSERT_EQUAL_UINT16(0, c.sleepMin);
+  TEST_ASSERT_FALSE(patch(c, "{\"sleepMin\":241}", &bad));
+  TEST_ASSERT_EQUAL_STRING("sleepMin", bad);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -650,5 +697,6 @@ int main() {
   RUN_TEST(test_quiet_clock_phases);
   RUN_TEST(test_night_mode_config_and_brightness);
   RUN_TEST(test_mascot_style_config);
+  RUN_TEST(test_screen_care);
   return UNITY_END();
 }

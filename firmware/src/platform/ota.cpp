@@ -72,6 +72,7 @@ static void openGate() {
 
 // GET /update: only serves the page; its script opens the gate with POST /update/open.
 static void page() {
+  ctx.lastInteractionMs = millis();  // wake the screen: the code will be shown on it
   Lang lang = web::pageLang(*srv);
   String out;
   web::pageStart(out, lang, web::tr(lang, S::WebFirmware).c_str());

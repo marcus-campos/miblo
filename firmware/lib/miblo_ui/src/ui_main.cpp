@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
@@ -760,15 +761,78 @@ static void ring(int cx, int cy, const char* label, bool present, uint8_t pct, u
   C().text(cx, cy + Y(24), label, Font::Small, color::MUTED, Align::Center, 2 * ir);
 }
 
+DeskMood deskMoodFor(const Snapshot& s, uint32_t now, bool* focusLeft) {
+  const uint8_t p5 = deskPct(s.h5, now);
+  const uint8_t p7 = deskPct(s.d7, now);
+  const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
+  const uint8_t worst = !usage ? 0 : (s.h5.present && (!s.d7.present || p5 >= p7) ? p5 : p7);
+  if (focusLeft) *focusLeft = !usage || !s.d7.present || (s.h5.present && p5 >= p7);
+  return deskMood(worst);
+}
+
+// ---- pet mode ----
+// The box moves at most a pixel a frame and carries a margin of background around the cat, so
+// each redraw also wipes where it was; a bigger jump (a stalled frame) clears the screen first.
+constexpr int kRoamHalfW = 44;    // box half-width on the 240 grid (cat 40 + margin 4)
+constexpr int kRoamCatHalf = 40;
+constexpr int kRoamClockH = 22;   // clock band under the cat
+constexpr int kRoamMargin = 4;
+constexpr uint32_t kRoamVxMs = 260;  // ms per pixel, sideways
+constexpr uint32_t kRoamVyMs = 370;  // ms per pixel, up/down (different: the path covers the screen)
+
+static int bounce(uint32_t steps, int span) {  // 0..span..0..
+  if (span <= 0) return 0;
+  const uint32_t p = steps % (2 * (uint32_t)span);
+  return p <= (uint32_t)span ? (int)p : (int)(2 * span - p);
+}
+
+void roamPosition(uint32_t ms, int& cx, int& cy) {
+  const int bw = 2 * Sz(kRoamHalfW), bh = 2 * Sz(kRoamHalfW) + Y(kRoamClockH);
+  cx = bw / 2 + bounce(ms / kRoamVxMs, X(240) - bw);
+  cy = bh / 2 + bounce(ms / kRoamVyMs, Y(240) - bh);
+}
+
+void roam(Lang lang, const Clock& clk, uint32_t ms, DeskMood mood) {
+  (void)lang;
+  int cx, cy;
+  roamPosition(ms, cx, cy);
+  const MascotLook k = deskLook(mood, true, ms);
+  const int bw = 2 * Sz(kRoamHalfW), bh = 2 * Sz(kRoamHalfW) + Y(kRoamClockH);
+  const int left = cx - bw / 2, top = cy - bh / 2;
+  const uint32_t h = hashStr(hashInt(lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k), 1), clk.hhmm);
+  if (!dirty(R_BODY, h)) return;
+  static int lastX = -1000, lastY = -1000;
+  if (abs(cx - lastX) > Sz(kRoamMargin) || abs(cy - lastY) > Sz(kRoamMargin)) C().clear(color::BG);
+  lastX = cx, lastY = cy;
+  const int catY = top + Sz(kRoamHalfW);
+  auto draw = [&] {
+    C().fillRect(left, top, bw, bh, color::BG);
+    deskMascot(cx, catY, k, kRoamCatHalf, false);
+    C().text(cx, top + bh - Y(5), clk.hhmm, Font::Body, color::DIM, Align::Center, bw);
+  };
+  // In strips, like the desk mascot: no big heap block, no flash.
+  const int stripH = (bh + kCatStrips - 1) / kCatStrips;
+  for (int y = top; y < top + bh; y += stripH) {
+    const int hh = y + stripH <= top + bh ? stripH : top + bh - y;
+    if (!C().beginLayer(left, y, bw, hh)) {
+      draw();
+      break;
+    }
+    draw();
+    C().endLayer();
+  }
+  C().releaseLayer();
+}
+
 void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt) {
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
   const uint8_t p5 = deskPct(s.h5, now);
   const uint8_t p7 = deskPct(s.d7, now);
   const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
-  const uint8_t worst = !usage ? 0 : (s.h5.present && (!s.d7.present || p5 >= p7) ? p5 : p7);
-  const bool focusLeft = !usage || !s.d7.present || (s.h5.present && p5 >= p7);
+  bool focusLeft;
+  const DeskMood mood = deskMoodFor(s, now, &focusLeft);
   field(R_CLOCK, kHashSeed + 19, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
-  deskCat(R_BODY, X(120), Y(72), 48, deskLook(deskMood(worst), focusLeft, nowMs));
+  deskCat(R_BODY, X(120), Y(72), 48, deskLook(mood, focusLeft, nowMs));
   uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
   h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
   h = hashInt(h, (uint32_t)(s.todayUsd * 100));

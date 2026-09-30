@@ -141,6 +141,16 @@ enum class S : uint8_t {
   WebMascotOrange,      // settings: mascot style 1
   WebMascotBlack,       // settings: mascot style 2
   WebMascotGrey,        // settings: mascot style 3
+  UpdateAvailable,      // boot notice title: a newer firmware was released
+  UpdateVersions,       // boot notice: "v%s (you have v%s)" (latest, current)
+  WebCheckUpdates,      // settings: button that asks GitHub (from the browser) for the latest release
+  WebUpToDate,          // settings: "Up to date (v%s)"
+  WebNewVersion,        // settings: "Version %s is available."
+  WebUpdateHow,         // settings: how to install it
+  WebCheckFailed,       // settings: the browser couldn't reach GitHub
+  WebDownloadBin,       // settings: link to the release's .bin for this board
+  WebSleep,             // settings: screen-off delay (a select: never / 15 min ... 4 h)
+  WebSleepNever,        // settings: the "never" option (pet mode keeps going)
   Count
 };
 

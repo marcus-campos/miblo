@@ -209,4 +209,20 @@ QuietPhase QuietClock::update(bool quiet, uint32_t nowMs) {
   return phase_;
 }
 
+void pixelShift(uint8_t i, int8_t& dx, int8_t& dy) {
+  static const int8_t kSteps[kShiftSteps][2] = {{0, 0},  {2, 0},   {2, 2},  {0, 2}, {-2, 2},
+                                                {-2, 0}, {-2, -2}, {0, -2}, {2, -2}};
+  i %= kShiftSteps;
+  dx = kSteps[i][0];
+  dy = kSteps[i][1];
+}
+
+bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs) {
+  return sinceInteractionMs >= kInteractionAwakeMs && idleMs >= kRoamAfterMs;
+}
+
+bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin) {
+  return sleepMin && sinceInteractionMs >= kInteractionAwakeMs && idleMs >= (uint32_t)sleepMin * 60000;
+}
+
 }  // namespace miblo

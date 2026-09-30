@@ -120,6 +120,9 @@ void loop(uint32_t nowMs) {
     miblo::MdnsInfo i = info();
     miblo::MdnsReply r = miblo::mdnsRespond(in, (size_t)len, port, i, out, sizeof(out));
     if (!r.len) continue;
+    // The plugin looking for gadgets (/miblo:pair shows the code on screen next): wake the
+    // screen. Only queries naming our service count, not the LAN's generic service browsing.
+    if (memmem(in, (size_t)len, "\x06_miblo", 7)) ctx.lastInteractionMs = millis();
     if (r.unicast) {
       udp.beginPacket(from, port);
       udp.write(out, r.len);

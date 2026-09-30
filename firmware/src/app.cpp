@@ -90,6 +90,10 @@ static screens::Clock clockNow() {
 }
 
 static uint8_t backlight = 0;  // % last sent to the board (0 = not yet)
+static bool displayOff = false;  // the panel is asleep (nobody using it: see miblo::screenAsleep)
+static uint8_t shiftStep = 0;    // current pixel-shift position (ui::ShiftCanvas)
+static uint32_t shiftAtMs = 0;
+static uint32_t roamSinceMs = 0;  // when pet mode came up
 
 // Local minute of the day, or -1 while the time is unknown.
 static int minuteOfDay() {
@@ -102,6 +106,7 @@ static int minuteOfDay() {
 
 // Brightness for the current time (night mode); only touches the board when it changes.
 static void updateBacklight() {
+  if (displayOff) return;  // stays dark until the panel wakes
   const uint8_t want = miblo::brightnessAt(ctx.cfg, minuteOfDay());
   if (want == backlight) return;
   backlight = want;
@@ -136,7 +141,10 @@ void setup() {
   hardResetRemaining = boot.remaining;
 
   board::begin();
-  screens::bind(board::canvas());
+  // Everything is drawn through a shifting canvas: the picture moves a pixel or two every few
+  // minutes so nothing sits still for hours (LCD ghosting).
+  static ui::ShiftCanvas shifted(board::canvas());
+  screens::bind(shifted);
   if (boot.factoryReset) {
     // Escape hatch: touch as little as possible (a corrupt config must not block the reset), so
     // the message is always in English. Keep it readable for a moment, then wipe and restart.
@@ -229,6 +237,35 @@ void loop() {
   if (wantLimits != mainLimits) firstFrame = true;  // Overview <-> Limits: redraw everything
   mainLimits = wantLimits;
   if (screen == ScreenId::Disconnected && current != ScreenId::Disconnected) awaySinceMs = now;
+
+  // Screen care. Nobody using it (computer away, or all quiet): after a while the mascot wanders
+  // around the screen (pet mode), and after sleepMin minutes the panel goes off; the first sign
+  // of life brings everything back.
+  const bool idleScreen = screen == ScreenId::Disconnected || screen == ScreenId::Desk ||
+                          screen == ScreenId::Summary || (screen == ScreenId::Main && qp != miblo::QuietPhase::Busy);
+  const uint32_t idleMs = !idleScreen ? 0 : screen == ScreenId::Disconnected ? now - awaySinceMs : quiet.quietMs(now);
+  const uint32_t sinceSeen = now - ctx.lastInteractionMs;
+  const bool away = screen == ScreenId::Disconnected;
+  if (miblo::petMode(idleMs, sinceSeen)) screen = ScreenId::Roam;
+  if (screen == ScreenId::Roam && current != ScreenId::Roam) roamSinceMs = now;
+  const bool asleep = miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin);
+  if (asleep != displayOff) {
+    displayOff = asleep;
+    board::setDisplay(!asleep);
+    if (!asleep) {
+      backlight = 0;  // relight at the current brightness
+      updateBacklight();
+      firstFrame = true;
+    }
+  }
+  if (displayOff) return;
+  if (now - shiftAtMs >= miblo::kShiftEveryMs) {
+    shiftAtMs = now;
+    int8_t dx, dy;
+    miblo::pixelShift(++shiftStep, dx, dy);
+    static_cast<ui::ShiftCanvas&>(screens::canvas()).setShift(dx, dy);
+    firstFrame = true;  // redraw everything at the new offset
+  }
   enter(screen);
 
   const Lang lang = uiLang();
@@ -279,6 +316,13 @@ void loop() {
     case ScreenId::Summary:
       screens::summary(lang, ctx.snap, clk);
       break;
+    case ScreenId::Roam: {
+      const screens::DeskMood mood =
+          away ? (now - awaySinceMs >= miblo::kAwayNapMs ? screens::DeskMood::Asleep : screens::DeskMood::Searching)
+               : screens::deskMoodFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now);
+      screens::roam(lang, clk, now - roamSinceMs, mood);
+      break;
+    }
     case ScreenId::AlertFlash: {
       int idx = miblo::findSession(ctx.snap, alert.sid);
       screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs);

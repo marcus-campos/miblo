@@ -361,6 +361,28 @@ static void test_boot_draws_mascot_on_a_layer_only_on_pose_change() {
   TEST_ASSERT_TRUE(fc.calls > 3);
 }
 
+// ShiftCanvas moves every primitive by the shift (layers included) but clears the whole panel.
+static void test_shift_canvas() {
+  TraceCanvas inner({240, 240});
+  ui::ShiftCanvas sc(inner);
+  sc.setShift(2, -2);
+  sc.fillRect(10, 10, 5, 5, 1);
+  sc.fillCircle(50, 60, 3, 2);
+  TEST_ASSERT_EQUAL_STRING("r12,8,5,5,1;c52,58,3,0,2;", inner.trace.c_str());
+  FakeCanvas fc({240, 240});
+  ui::ShiftCanvas sf(fc);
+  sf.setShift(-2, 2);
+  screens::bind(sf);
+  screens::reset();  // the screen switch clears the real panel, from (0, 0)
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  fc.clearLog();
+  sf.beginLayer(20, 30, 40, 50);
+  TEST_ASSERT_EQUAL_INT(18, fc.lastLayer[0]);
+  TEST_ASSERT_EQUAL_INT(32, fc.lastLayer[1]);
+  sf.endLayer();
+  TEST_ASSERT_EQUAL_INT(0, sf.textWidth("abc", ui::Font::Small) - fc.textWidth("abc", ui::Font::Small));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_system_screens_fit_any_resolution);
@@ -371,6 +393,7 @@ int main() {
   RUN_TEST(test_mascot_poses_differ);
   RUN_TEST(test_desk_mascot_stays_in_its_box);
   RUN_TEST(test_mascot_styles_change_only_colours);
+  RUN_TEST(test_shift_canvas);
   RUN_TEST(test_boot_draws_mascot_on_a_layer_only_on_pose_change);
   RUN_TEST(test_hard_reset_countdown_content);
   return UNITY_END();

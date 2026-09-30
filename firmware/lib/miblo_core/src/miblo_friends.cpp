@@ -29,8 +29,13 @@ size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap) {
   out[n++] = p.mascot;
   out[n++] = p.flags;
   if (n >= cap) return 0;
-  out[n++] = (uint8_t)p.gift;
+  out[n++] = p.type == FriendPacket::Who ? p.chance : (uint8_t)p.gift;
   if (!putStr(out, cap, n, p.id) || !putStr(out, cap, n, p.name) || !putStr(out, cap, n, p.to)) return 0;
+  if (p.type == FriendPacket::Invite || p.type == FriendPacket::Host) {
+    if (n >= cap) return 0;
+    out[n++] = p.offset;
+    if (p.type == FriendPacket::Invite && !putStr(out, cap, n, p.host)) return 0;
+  }
   return n;
 }
 
@@ -70,18 +75,27 @@ static bool getStr(const uint8_t* in, size_t len, size_t& n, char* dst, size_t c
 bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
   if (!in || len < 9 || len > kFriendPacketMax * 2 || memcmp(in, kMagic, 4) != 0 || in[4] != kVersion) return false;
   FriendPacket p;
-  if (in[5] < FriendPacket::Beacon || in[5] > FriendPacket::Home) return false;
+  if (in[5] < FriendPacket::Beacon || in[5] > FriendPacket::Host) return false;
   p.type = (FriendPacket::Type)in[5];
   p.mascot = in[6] < kMascotColours ? in[6] : 0;
   p.flags = in[7] & (kFriendRoaming | kFriendNapping | kFriendTired | kFriendBusy);
-  p.gift = in[8] < (uint8_t)Gift::Count ? (Gift)in[8] : Gift::None;  // a newer activity: a plain visit
+  if (p.type == FriendPacket::Who) p.chance = in[8];  // Who: that byte is the answer chance
+  else p.gift = in[8] < (uint8_t)Gift::Count ? (Gift)in[8] : Gift::None;  // a newer activity: a plain visit
   size_t n = 9;
   if (!getStr(in, len, n, p.id, sizeof(p.id)) || !getStr(in, len, n, p.name, sizeof(p.name)) ||
       !getStr(in, len, n, p.to, sizeof(p.to))) {
     return false;
   }
+  if ((p.type == FriendPacket::Invite || p.type == FriendPacket::Host) && n < len) {
+    p.offset = in[n++];
+    if (p.type == FriendPacket::Invite && n < len && !getStr(in, len, n, p.host, sizeof(p.host))) return false;
+    if (!validId(p.host, true)) return false;
+  }
   if (!validId(p.id, false) || !validId(p.to, true) || !validName(p.name)) return false;
-  if (p.type != FriendPacket::Beacon && !p.to[0]) return false;
+  // Home with no addressee: "all my guests, go home" (the host's human got back to work).
+  if (p.type != FriendPacket::Beacon && p.type != FriendPacket::Who && p.type != FriendPacket::Home && !p.to[0]) {
+    return false;
+  }
   out = p;  // anything after the known fields is ignored (a future version may add some)
   return true;
 }
@@ -107,15 +121,20 @@ FriendPlay::Friend* FriendPlay::find(const char* id) {
 FriendPlay::Friend* FriendPlay::remember(const FriendPacket& p, uint32_t nowMs) {
   Friend* f = find(p.id);
   if (!f) {
-    Friend* oldest = nullptr;
     for (Friend& c : friends_) {
       if (!c.used) {
         f = &c;
         break;
       }
-      if (!oldest || nowMs - c.seenMs > nowMs - oldest->seenMs) oldest = &c;
     }
-    if (!f) f = oldest;  // table full: the one heard from longest ago makes room
+    if (!f) {
+      // Table full: a random one makes room (not the oldest: Miblos powered on together announce
+      // themselves in the same order, which would always keep the same few and leave out the rest).
+      // Never the one we are visiting with.
+      const uint32_t r = nextRnd();
+      f = &friends_[r % kMaxFriends];
+      if (visitWith_[0] && strcmp(f->id, visitWith_) == 0) f = &friends_[(r + 1) % kMaxFriends];
+    }
     *f = Friend();
     f->used = true;
     strcpy(f->id, p.id);
@@ -154,7 +173,8 @@ void FriendPlay::demo(uint32_t nowMs, uint32_t untilMs) {
   if (!demo_) return;
   for (Friend& f : friends_) f.greeted = false;
   if (visit_.role == VisitRole::None) {
-    asking_ = false;  // a request still waiting would push the demo's first visit back
+    asking_ = polling_ = awaiting_ = false;  // a poll under way would push the demo's first visit back
+    membersN_ = 0;
     scheduleVisit(nowMs, kDemoFirstVisitMs, 4000);
   }
 }
@@ -173,7 +193,57 @@ void FriendPlay::nextVisit(uint32_t nowMs, bool hosted) {
   const bool demo = demoOn(nowMs);
   const uint32_t min = demo ? kDemoNextVisitMs : kNextVisitMinMs;
   const uint32_t span = demo ? kDemoNextVisitMs : kNextVisitSpanMs;
-  scheduleVisit(nowMs, hosted ? min : min + span / 2, span / 2);
+  (void)hosted;  // who hosts is drawn within each group: no need to steer the turns
+  scheduleVisit(nowMs, min, span);
+}
+
+uint32_t FriendPlay::nextRnd() {
+  rnd_ = rnd_ * 1103515245u + 12345u;
+  return rnd_ >> 8;
+}
+
+bool FriendPlay::free() const {
+  return (flags_ & (kFriendRoaming | kFriendNapping)) == kFriendRoaming && visit_.role == VisitRole::None &&
+         !polling_ && !awaiting_ && !asking_;
+}
+
+// "Who is free?" to the whole network, with the answer chance set so about 2x `wanted` come back.
+void FriendPlay::queuePoll(uint8_t wanted) {
+  const uint16_t others = heardLast_ > heard_ ? heardLast_ : heard_;
+  const uint32_t want = (uint32_t)wanted * kPollWanted;
+  const uint32_t chance = others <= want ? 255u : 255u * want / others;
+  queue(FriendPacket::Who, nullptr, Gift::None);
+  out_[outN_ - 1].chance = (uint8_t)(chance ? chance : 1);
+}
+
+// The group is formed (us + the members that answered): draw the host among all of us, uniformly,
+// so no Miblo is always the one visited, then tell everyone where to go.
+void FriendPlay::formGroup(uint32_t nowMs) {
+  polling_ = false;
+  const uint8_t n = (uint8_t)(membersN_ + 1);
+  const uint8_t h = (uint8_t)(nextRnd() % n);  // 0 = us, 1.. = members_[h - 1]
+  const char* host = h ? members_[h - 1] : id_;
+  const Friend* hf0 = h ? find(host) : nullptr;
+  const bool hostTired = h ? (hf0 && (hf0->flags & kFriendTired)) : (flags_ & kFriendTired);
+  const Gift gift = chooseGift(hostTired, nextRnd());  // a tired host more likely gets a coffee
+  if (h) {  // someone else hosts: tell them to wait, then go there ourselves
+    queue(FriendPacket::Host, host, gift);
+    Friend* hf = find(host);
+    if (hf) {
+      startVisit(VisitRole::Visitor, *hf, gift, nowMs);
+      queue(FriendPacket::VisitOk, host, gift);
+    }
+  } else {  // we host: wait for the guests
+    awaiting_ = true;
+    anchorMs_ = nowMs;
+    hostGift_ = gift;
+  }
+  for (uint8_t i = 0; i < membersN_; i++) {
+    if (i + 1 == h) continue;
+    queue(FriendPacket::Invite, members_[i], gift);
+    if (h) strcpy(out_[outN_ - 1].host, host);
+  }
+  membersN_ = 0;
 }
 
 // Coffee for a tired friend half of the time; otherwise any activity, a plain visit included.
@@ -196,6 +266,8 @@ void FriendPlay::startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs
   visitMs_ = nowMs;
   strcpy(visitWith_, f.id);
   asking_ = false;
+  polling_ = false;
+  awaiting_ = false;
   greetOn_ = false;
   announce_ = true;  // busy now
 }
@@ -206,7 +278,7 @@ void FriendPlay::endVisit(uint32_t nowMs) {
   visit_ = VisitView();
   visitWith_[0] = 0;
   announce_ = true;
-  nextVisit(nowMs, hosted);  // the host goes out next: they take turns
+  nextVisit(nowMs, hosted);
 }
 
 void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rnd) {
@@ -225,6 +297,21 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
   for (Friend& f : friends_) {
     if (f.used && nowMs - f.seenMs > kFriendTtlMs) f = Friend();
   }
+  if (nowMs - heardAtMs_ >= kBeaconEveryMs) {  // a new 30 s window: keep the last one's count
+    heardLast_ = heard_;
+    heard_ = 0;
+    heardAtMs_ = nowMs;
+  }
+  // Our answer to someone's "who is free?", once its random delay is up (if still free).
+  if (replying_ && (int32_t)(nowMs - replyAtMs_) >= 0) {
+    replying_ = false;
+    if (free()) {
+      queue(FriendPacket::Here, replyTo_, Gift::None);
+      strcpy(reservedFor_, replyTo_);  // held for them until they ask
+      reservedUntilMs_ = nowMs + kReserveMs;
+    }
+  }
+  if (reservedFor_[0] && (int32_t)(nowMs - reservedUntilMs_) >= 0) reservedFor_[0] = 0;
   // Beacons: on a schedule, and at once (but not too often) when something changed.
   const uint32_t sinceBeacon = nowMs - beaconMs_;
   if (!beaconed_ || sinceBeacon >= kBeaconEveryMs || (announce_ && sinceBeacon >= kBeaconMinGapMs)) {
@@ -240,7 +327,9 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
     if (nowMs - visitMs_ >= kVisitMs) {
       endVisit(nowMs);
     } else if (!roaming) {
-      if (visit_.role == VisitRole::Visitor) queue(FriendPacket::Home, visitWith_, Gift::None);
+      // Our human is back: a visitor goes home at once (telling its host); a host sends all its
+      // guests home, and they walk back disappointed.
+      queue(FriendPacket::Home, visit_.role == VisitRole::Visitor ? visitWith_ : nullptr, Gift::None);
       endVisit(nowMs);
     }
     return;
@@ -250,8 +339,11 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
     nextVisit(nowMs, true);
   }
   if (!roaming) {
+    if (awaiting_) queue(FriendPacket::Home, nullptr, Gift::None);  // chosen as host, now busy: nobody come
     scheduled_ = false;
     greetOn_ = false;
+    awaiting_ = polling_ = false;
+    membersN_ = 0;
     return;
   }
   if (!wasRoaming || !scheduled_) firstVisit(nowMs);
@@ -270,61 +362,149 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
     }
   }
 
-  // Time to go visiting: an awake friend in pet mode, a tired one first (it gets a coffee).
-  if (!asking_ && !(flags & kFriendNapping) && (int32_t)(nowMs - nextVisitMs_) >= 0) {
-    // Any friend in pet mode, awake and free, at random (with ten Miblos the table keeps the four
-    // heard most recently, so over time every one of them gets visited).
-    Friend* eligible[kMaxFriends];
-    uint8_t n = 0;
-    for (Friend& f : friends_) {
-      if (f.used && (f.flags & (kFriendRoaming | kFriendNapping | kFriendBusy)) == kFriendRoaming) eligible[n++] = &f;
+  // Chosen as host but no guest came (they changed their mind, or a packet was lost).
+  if (awaiting_ && nowMs - anchorMs_ >= kVisitArriveMs) {
+    awaiting_ = false;
+    firstVisit(nowMs);
+  }
+  // The poll is over: go with whoever answered (a smaller group), or look again later.
+  if (polling_ && nowMs - pollMs_ >= kPollMs) {
+    if (membersN_) formGroup(nowMs);
+    else {
+      polling_ = false;
+      firstVisit(nowMs);
     }
-    Friend* pick = n ? eligible[rnd % n] : nullptr;
-    if (pick) {
-      askGift_ = chooseGift(pick->flags & kFriendTired, rnd / kMaxFriends);
-      strcpy(askTo_, pick->id);
-      asking_ = true;
-      askMs_ = nowMs;
-      queue(FriendPacket::VisitAsk, askTo_, askGift_);
-    } else {
-      firstVisit(nowMs);  // nobody to visit: look again later
-    }
+  }
+  // Our turn to organise a visit: draw the size of the group (1:1 most often, sometimes 1:2 or
+  // 1:3; in a demo each as likely) and ask the network who is free. Each one answers with a chance
+  // that brings back a handful of answers, whether there are 2 Miblos or 1000.
+  // (Not while we answered someone else's poll: we are promised to their group.)
+  if (free() && !reservedFor_[0] && !replying_ && !(flags & kFriendNapping) &&
+      (int32_t)(nowMs - nextVisitMs_) >= 0) {
+    const uint32_t r = nextRnd() % 100;
+    groupSize_ = (uint8_t)(2 + (demoOn(nowMs) ? r % kMaxGuests : r < 60 ? 0 : r < 88 ? 1 : 2));
+    membersN_ = 0;
+    polling_ = true;
+    pollMs_ = nowMs;
+    queuePoll((uint8_t)(groupSize_ - 1));
+    scheduled_ = false;  // rescheduled when the visit ends, or when nobody answers
   }
 }
 
 void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs) {
   if (!enabled_ || !id_[0] || strcmp(p.id, id_) == 0) return;  // off, or our own broadcast
   Friend* f = remember(p, nowMs);
-  if (p.type == FriendPacket::Beacon || strcmp(p.to, id_) != 0) return;
+  if (p.type == FriendPacket::Beacon) {
+    if (heard_ < 0xFFFF) heard_++;
+    return;
+  }
+  if (p.type == FriendPacket::Who) {  // someone is organising a visit: answer, maybe
+    if (free() && !reservedFor_[0] && !replying_ && (nextRnd() & 0xFF) < p.chance) {
+      replying_ = true;
+      strcpy(replyTo_, p.id);
+      replyAtMs_ = nowMs + nextRnd() % kHereSpreadMs;
+    }
+    return;
+  }
+  if (p.type == FriendPacket::Home && !p.to[0]) {  // a host sending its guests home
+    turnAway(p.id, nowMs);
+    return;
+  }
+  if (strcmp(p.to, id_) != 0) return;
+  const bool mine = !reservedFor_[0] || strcmp(reservedFor_, p.id) == 0;  // not promised elsewhere
   switch (p.type) {
-    case FriendPacket::VisitAsk: {
-      const bool free = (flags_ & (kFriendRoaming | kFriendNapping)) == kFriendRoaming && visit_.role == VisitRole::None;
-      if (!free) return;
-      if (asking_) {
-        // Both asked each other at once: whoever hosted last time goes visiting now (the other
-        // side remembers the same visit, so both agree); the first time, the lower id.
-        if (strcmp(askTo_, p.id) == 0) {
-          const bool iVisit = f->lastRole == 2 || (f->lastRole == 0 && strcmp(id_, p.id) < 0);
-          if (iVisit) return;
-        }
-        asking_ = false;
-      }
-      queue(FriendPacket::VisitOk, p.id, p.gift);
-      startVisit(VisitRole::Host, *f, p.gift, nowMs);
+    case FriendPacket::Here: {
+      // An answer to our poll: one more member; the group forms once it is full.
+      if (!polling_ || membersN_ >= kMaxGuests) break;
+      bool dup = false;
+      for (uint8_t i = 0; i < membersN_; i++) dup |= strcmp(members_[i], p.id) == 0;
+      if (dup) break;
+      strcpy(members_[membersN_++], p.id);
+      if (membersN_ + 1 >= groupSize_) formGroup(nowMs);
+      break;
+    }
+    case FriendPacket::Host:
+      // Drawn as the host of a group we answered: wait for the guests on that timeline.
+      if (!mine || visit_.role != VisitRole::None || polling_) break;
+      reservedFor_[0] = 0;
+      awaiting_ = true;
+      anchorMs_ = nowMs - (uint32_t)p.offset * 100;
+      hostGift_ = p.gift;
+      break;
+    case FriendPacket::Invite: {
+      // Go visiting: to the host named, or to the sender.
+      if (!mine || visit_.role != VisitRole::None || polling_ || awaiting_) break;
+      const char* hostId = p.host[0] ? p.host : p.id;
+      Friend* hf = find(hostId);
+      if (!hf) break;  // never heard of it: cannot show where we went
+      reservedFor_[0] = 0;
+      startVisit(VisitRole::Visitor, *hf, p.gift, nowMs);
+      visitMs_ = nowMs - (uint32_t)p.offset * 100;
+      queue(FriendPacket::VisitOk, hostId, p.gift);
       break;
     }
     case FriendPacket::VisitOk:
-      if (asking_ && strcmp(askTo_, p.id) == 0 && nowMs - askMs_ < kVisitAskMs && visit_.role == VisitRole::None) {
-        startVisit(VisitRole::Visitor, *f, askGift_, nowMs);
-      } else {
-        queue(FriendPacket::Home, p.id, Gift::None);  // not coming after all: they must not wait for us
+      // A guest is coming: the first starts the visit (on the group's timeline), the next ones join.
+      if (awaiting_) {
+        const uint32_t anchor = anchorMs_;
+        startVisit(VisitRole::Host, *f, hostGift_, anchor);
+      } else if (visit_.role == VisitRole::Host && strcmp(visitWith_, p.id) != 0 &&
+                 nowMs - visitMs_ < kVisitArriveMs && visit_.extra < kMaxGuests - 1) {
+        strcpy(extraIds_[visit_.extra], p.id);
+        visit_.extraMascot[visit_.extra++] = p.mascot;
+      } else if (visit_.role != VisitRole::Host || strcmp(visitWith_, p.id) != 0) {
+        queue(FriendPacket::Home, p.id, Gift::None);  // too late, or not expected: they must not wait
       }
       break;
-    case FriendPacket::Home:
-      if (visit_.role == VisitRole::Host && strcmp(visitWith_, p.id) == 0) endVisit(nowMs);
+    case FriendPacket::VisitAsk:
+      // An older firmware asking to visit us directly: host it 1:1.
+      if (!free() || !mine) break;
+      reservedFor_[0] = 0;
+      queue(FriendPacket::VisitOk, p.id, p.gift);
+      startVisit(VisitRole::Host, *f, p.gift, nowMs);
       break;
-    case FriendPacket::Beacon: break;
+    case FriendPacket::Home:
+      if (visit_.role == VisitRole::Visitor && strcmp(visitWith_, p.id) == 0) {  // the host cannot have us
+        turnAway(p.id, nowMs);
+        break;
+      }
+      if (visit_.role != VisitRole::Host) break;
+      if (strcmp(visitWith_, p.id) == 0 && !visit_.extra) {
+        endVisit(nowMs);
+        break;
+      }
+      if (strcmp(visitWith_, p.id) == 0) {  // the first guest left: the next one takes its place
+        strcpy(visitWith_, extraIds_[0]);
+        if (Friend* nf = find(visitWith_)) strcpy(visit_.name, nf->name);
+        visit_.mascot = visit_.extraMascot[0];
+        for (uint8_t j = 1; j < visit_.extra; j++) {
+          strcpy(extraIds_[j - 1], extraIds_[j]);
+          visit_.extraMascot[j - 1] = visit_.extraMascot[j];
+        }
+        visit_.extra--;
+        break;
+      }
+      for (uint8_t i = 0; i < visit_.extra; i++) {  // an extra guest went home early
+        if (strcmp(extraIds_[i], p.id) != 0) continue;
+        for (uint8_t j = i + 1; j < visit_.extra; j++) {
+          strcpy(extraIds_[j - 1], extraIds_[j]);
+          visit_.extraMascot[j - 1] = visit_.extraMascot[j];
+        }
+        visit_.extra--;
+        break;
+      }
+      break;
+    case FriendPacket::Beacon:
+    case FriendPacket::Who: break;
   }
+}
+
+// Our host got busy: come back home now, disappointed (straight into the walk back).
+void FriendPlay::turnAway(const char* hostId, uint32_t nowMs) {
+  if (visit_.role != VisitRole::Visitor || strcmp(visitWith_, hostId) != 0 || visit_.turnedAway) return;
+  visit_.turnedAway = true;
+  const uint32_t back = kVisitMs - kVisitWalkMs;
+  if (nowMs - visitMs_ < back) visitMs_ = nowMs - back;
 }
 
 VisitView FriendPlay::visit(uint32_t nowMs) const {

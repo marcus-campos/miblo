@@ -159,7 +159,9 @@ void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, De
 // A visit between two Miblos in pet mode (miblo_friends.h). Visitor: our mascot walks off to the
 // right, the screen says who it is visiting, and it walks back in. Host: the friend's mascot (in
 // its own colours) walks in from the left, they play, and it leaves. The limits stay at the bottom.
-void visit(Lang lang, const miblo::Snapshot& s, const Clock& clk, const miblo::VisitView& v);
+// `side` (config friendsSide): where the other Miblos stand, 0 right, 1 left, 2 above, 3 below; our
+// cat leaves that way and a guest comes in from it.
+void visit(Lang lang, const miblo::Snapshot& s, const Clock& clk, const miblo::VisitView& v, uint8_t side = 0);
 // A greeting ("Hi! I'm" / "Tofu", "Good morning" / "Ana", "Happy birthday" / "Ana"): the mascot
 // cheering, `line1` small (may be empty) over `line2` big. `party`: confetti.
 void hello(const char* line1, const char* line2, bool party, uint32_t ms);

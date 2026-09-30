@@ -406,8 +406,8 @@ static const char kSetJs[] PROGMEM =
     "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','mascot','sleepMin','name','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-    "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
+    "'nightBrightness','mascot','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -608,7 +608,19 @@ static void settingsPage() {
   langOptions(out, lang, true);
   out += F("</select>");
   toggle(out, lang, S::WebFriends, F("friends"));
-  out += F("</div>");
+  // Where the other Miblos stand: our cat leaves that way to visit them (only with visits on).
+  out += F("<div data-if=\"friends\">");
+  label(out, lang, S::WebFriendsSide, F("friendsSide"));
+  out += F("<select id=\"friendsSide\">");
+  static const S kSides[] = {S::WebSideRight, S::WebSideLeft, S::WebSideUp, S::WebSideDown};
+  for (uint8_t i = 0; i < 4; i++) {
+    out += F("<option value=\"");
+    out += i;
+    out += F("\">");
+    text(out, lang, kSides[i]);
+    out += F("</option>");
+  }
+  out += F("</select></div></div>");
   pageFlush(out);
 
   // Advanced (collapsed): firmware, pairing code, factory reset.

@@ -180,7 +180,13 @@ static const char kEn[] MIBLO_ROM =
     "Pair programming with %s\0"  // FriendPair
     "%s reviewed it: LGTM!\0"  // FriendReview
     "Hunting a bug with %s\0"  // FriendBug
-    "Friday deploy with %s!\0";  // FriendDeploy
+    "Friday deploy with %s!\0"  // FriendDeploy
+    "The other Miblos are on my\0"  // WebFriendsSide
+    "Right\0"  // WebSideRight
+    "Left\0"  // WebSideLeft
+    "Top\0"  // WebSideUp
+    "Bottom\0"  // WebSideDown
+    "%s got busy\0";  // FriendBusy
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -356,7 +362,13 @@ static const char kPtBR[] MIBLO_ROM =
     "Pair programming com %s\0"  // FriendPair
     "%s revisou: LGTM!\0"  // FriendReview
     "Caçando um bug com %s\0"  // FriendBug
-    "Deploy na sexta com %s!\0";  // FriendDeploy
+    "Deploy na sexta com %s!\0"  // FriendDeploy
+    "Os outros Miblos ficam\0"  // WebFriendsSide
+    "À minha direita\0"  // WebSideRight
+    "À minha esquerda\0"  // WebSideLeft
+    "Em cima\0"  // WebSideUp
+    "Embaixo\0"  // WebSideDown
+    "%s ficou ocupado\0";  // FriendBusy
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -532,7 +544,13 @@ static const char kPtPT[] MIBLO_ROM =
     "Pair programming com %s\0"  // FriendPair
     "%s reviu: LGTM!\0"  // FriendReview
     "À caça de um bug com %s\0"  // FriendBug
-    "Deploy à sexta com %s!\0";  // FriendDeploy
+    "Deploy à sexta com %s!\0"  // FriendDeploy
+    "Os outros Miblos ficam\0"  // WebFriendsSide
+    "À minha direita\0"  // WebSideRight
+    "À minha esquerda\0"  // WebSideLeft
+    "Em cima\0"  // WebSideUp
+    "Em baixo\0"  // WebSideDown
+    "%s ficou ocupado\0";  // FriendBusy
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -708,7 +726,13 @@ static const char kEs[] MIBLO_ROM =
     "Pair programming con %s\0"  // FriendPair
     "%s lo revisó: LGTM!\0"  // FriendReview
     "Cazando un bug con %s\0"  // FriendBug
-    "¡Deploy viernes con %s!\0";  // FriendDeploy
+    "¡Deploy viernes con %s!\0"  // FriendDeploy
+    "Los otros Miblos están\0"  // WebFriendsSide
+    "A mi derecha\0"  // WebSideRight
+    "A mi izquierda\0"  // WebSideLeft
+    "Arriba\0"  // WebSideUp
+    "Abajo\0"  // WebSideDown
+    "%s se puso a trabajar\0";  // FriendBusy
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -884,7 +908,13 @@ static const char kFr[] MIBLO_ROM =
     "Pair programming avec %s\0"  // FriendPair
     "%s a relu : LGTM !\0"  // FriendReview
     "Chasse au bug avec %s\0"  // FriendBug
-    "Prod le vendredi avec %s !\0";  // FriendDeploy
+    "Prod le vendredi avec %s !\0"  // FriendDeploy
+    "Les autres Miblos sont\0"  // WebFriendsSide
+    "À ma droite\0"  // WebSideRight
+    "À ma gauche\0"  // WebSideLeft
+    "Au-dessus\0"  // WebSideUp
+    "En dessous\0"  // WebSideDown
+    "%s est occupé\0";  // FriendBusy
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -1060,7 +1090,13 @@ static const char kIt[] MIBLO_ROM =
     "Pair programming con %s\0"  // FriendPair
     "%s ha revisionato: LGTM!\0"  // FriendReview
     "A caccia di bug con %s\0"  // FriendBug
-    "Deploy di venerdì con %s!\0";  // FriendDeploy
+    "Deploy di venerdì con %s!\0"  // FriendDeploy
+    "Gli altri Miblo sono\0"  // WebFriendsSide
+    "Alla mia destra\0"  // WebSideRight
+    "Alla mia sinistra\0"  // WebSideLeft
+    "Sopra\0"  // WebSideUp
+    "Sotto\0"  // WebSideDown
+    "%s è impegnato\0";  // FriendBusy
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1236,7 +1272,13 @@ static const char kDe[] MIBLO_ROM =
     "Pair Programming mit %s\0"  // FriendPair
     "%s hat reviewt: LGTM!\0"  // FriendReview
     "Bugjagd mit %s\0"  // FriendBug
-    "Freitags-Deploy mit %s!\0";  // FriendDeploy
+    "Freitags-Deploy mit %s!\0"  // FriendDeploy
+    "Die anderen Miblos stehen\0"  // WebFriendsSide
+    "Rechts von mir\0"  // WebSideRight
+    "Links von mir\0"  // WebSideLeft
+    "Oben\0"  // WebSideUp
+    "Unten\0"  // WebSideDown
+    "%s ist beschäftigt\0";  // FriendBusy
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1412,7 +1454,13 @@ static const char kRu[] MIBLO_ROM =
     "Кодим в паре с %s\0"  // FriendPair
     "%s сделал ревью: LGTM!\0"  // FriendReview
     "Ловим баг с %s\0"  // FriendBug
-    "Деплой в пятницу с %s!\0";  // FriendDeploy
+    "Деплой в пятницу с %s!\0"  // FriendDeploy
+    "Другие Miblo стоят\0"  // WebFriendsSide
+    "Справа\0"  // WebSideRight
+    "Слева\0"  // WebSideLeft
+    "Сверху\0"  // WebSideUp
+    "Снизу\0"  // WebSideDown
+    "%s занят\0";  // FriendBusy
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1588,7 +1636,13 @@ static const char kZh[] MIBLO_ROM =
     "和 %s 结对编程\0"  // FriendPair
     "%s 审查通过: LGTM!\0"  // FriendReview
     "和 %s 一起抓 bug\0"  // FriendBug
-    "和 %s 周五上线!\0";  // FriendDeploy
+    "和 %s 周五上线!\0"  // FriendDeploy
+    "其他 Miblo 在我的\0"  // WebFriendsSide
+    "右边\0"  // WebSideRight
+    "左边\0"  // WebSideLeft
+    "上方\0"  // WebSideUp
+    "下方\0"  // WebSideDown
+    "%s 忙起来了\0";  // FriendBusy
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

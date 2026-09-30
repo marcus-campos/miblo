@@ -462,7 +462,7 @@ void loop() {
       break;
     }
     case ScreenId::Visit:
-      screens::visit(lang, ctx.snap, clk, visit);
+      screens::visit(lang, ctx.snap, clk, visit, ctx.cfg.friendsSide);
       break;
     case ScreenId::Hello: {
       char l1[64], l2[64];

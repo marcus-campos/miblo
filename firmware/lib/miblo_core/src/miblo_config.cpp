@@ -134,6 +134,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
     } else if (strcmp(k, "friends") == 0) {
       ok = v.is<bool>();
       if (ok) next.friends = v.as<bool>();
+    } else if (strcmp(k, "friendsSide") == 0) {
+      ok = intIn(v, 0, 3, next.friendsSide);
     } else if (strcmp(k, "lang") == 0) {
       const char* s = v.as<const char*>();
       if (s && s[0] == 0) {
@@ -209,6 +211,7 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   }
   out["born"] = cfg.born;
   out["friends"] = cfg.friends;
+  out["friendsSide"] = cfg.friendsSide;
 }
 
 void configToStored(const Config& cfg, JsonObject out) {

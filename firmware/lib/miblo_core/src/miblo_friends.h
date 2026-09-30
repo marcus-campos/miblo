@@ -13,13 +13,17 @@ namespace miblo {
 
 constexpr uint16_t kFriendPort = 47757;
 constexpr size_t kFriendPacketMax = 120;
-constexpr uint8_t kMaxFriends = 4;
+constexpr uint8_t kMaxFriends = 8;  // when more are around, a random one makes room (no cliques)
 constexpr uint32_t kBeaconEveryMs = 30000;
 constexpr uint32_t kBeaconMinGapMs = 2000;   // a state change is announced at once, but not faster
 constexpr uint32_t kFriendTtlMs = 95000;     // three beacons missed: gone
 constexpr uint32_t kGreetEveryMs = 30UL * 60000;  // a "hi" per friend at most this often
 constexpr uint32_t kGreetShowMs = 5000;
 constexpr uint32_t kVisitAskMs = 4000;       // an unanswered visit request is dropped
+constexpr uint32_t kPollMs = 1800;           // how long "who is free?" collects answers
+constexpr uint32_t kHereSpreadMs = 1400;     // answers are spread over this, not all at once
+constexpr uint8_t kPollWanted = 4;           // answers wanted back (about 4 random Miblos), any network size
+constexpr uint32_t kReserveMs = kHereSpreadMs + kVisitAskMs;  // after answering: only that one may ask
 constexpr uint32_t kFirstVisitMinMs = 60000;  // after pet mode starts: the first visit comes in 1-3 min
 constexpr uint32_t kFirstVisitSpanMs = 120000;
 constexpr uint32_t kNextVisitMinMs = 6UL * 60000;  // then every 6-12 min
@@ -50,14 +54,26 @@ enum class Gift : uint8_t {
 };
 
 struct FriendPacket {
-  enum Type : uint8_t { Beacon = 1, VisitAsk = 2, VisitOk = 3, Home = 4 };
+  // Who: "who is free for a visit?" (broadcast; `chance` says how likely each one should answer, so
+  // a network of any size sends back only a handful). Here: "I am" (to the one who asked).
+  // A visit is organised by whoever's turn it is: it asks the network who is free (Who, answered
+  // with Here), forms a group of 2 to 4 with the first answers, and draws the HOST among all of
+  // them, itself included. Host: the chosen host is told to wait for guests. Invite: each other
+  // member is told to go (to `host`, or to the sender when empty). Guests tell the host they are
+  // coming with VisitOk. `offset` is how far into the visit it is (100 ms steps): one timeline.
+  enum Type : uint8_t {
+    Beacon = 1, VisitAsk = 2, VisitOk = 3, Home = 4, Who = 5, Here = 6, Invite = 7, Host = 8
+  };
   Type type = Beacon;
   char id[16] = "";    // sender, "miblo-4f2a"
   char name[64] = "";  // sender's name (<= 20 characters)
   uint8_t mascot = 0;  // sender's mascot colour
   uint8_t flags = 0;   // kFriend*
-  char to[16] = "";    // addressee (empty for beacons)
+  char to[16] = "";    // addressee (empty for beacons and Who)
   Gift gift = Gift::None;
+  uint8_t chance = 255;  // Who only: each free Miblo answers with probability chance/255
+  uint8_t offset = 0;    // Invite/Host: time into the visit, in 100 ms steps
+  char host[16] = "";    // Invite: the host (empty: the sender itself)
 };
 
 // "MBLO", version, type, mascot, flags, gift, then id, name and to as length-prefixed strings.
@@ -66,12 +82,16 @@ size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap);
 bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out);
 
 enum class VisitRole : uint8_t { None, Visitor, Host };
+constexpr uint8_t kMaxGuests = 3;  // a visit is 1:1, 1:2 or 1:3 (the host draws which)
 struct VisitView {
   VisitRole role = VisitRole::None;
   uint32_t ms = 0;     // time into the visit (see kVisit*)
-  char name[64] = "";  // the other gadget
+  char name[64] = "";  // the other gadget (for a host: the first guest)
   uint8_t mascot = 0;
   Gift gift = Gift::None;
+  bool turnedAway = false;                  // visitor: the host got busy, coming back early
+  uint8_t extra = 0;                        // host: more guests besides the first (0..kMaxGuests-1)
+  uint8_t extraMascot[kMaxGuests - 1] = {};  // their colours
 };
 
 class FriendPlay {
@@ -122,6 +142,11 @@ class FriendPlay {
   // so the two take turns going out.
   void nextVisit(uint32_t nowMs, bool hosted);
   Gift chooseGift(bool friendTired, uint32_t rnd) const;
+  void queuePoll(uint8_t wanted);
+  void turnAway(const char* hostId, uint32_t nowMs);
+  void formGroup(uint32_t nowMs);
+  bool free() const;
+  uint32_t nextRnd();
 
   Friend friends_[kMaxFriends];
   char id_[16] = "";
@@ -148,6 +173,32 @@ class FriendPlay {
   uint32_t nextVisitMs_ = 0;
   bool demo_ = false;
   uint32_t demoUntilMs_ = 0;
+  // "Who is free?": the first answer to arrive gets the visit (answers come after random delays,
+  // so the first one is a fair draw).
+  bool polling_ = false;
+  uint32_t pollMs_ = 0;
+  // Hosting a group: guests still wanted, the invitations out, and the extra guests that came.
+  // Organising: the group size drawn (2..4 with us) and the members that answered so far.
+  uint8_t groupSize_ = 0;
+  char members_[kMaxGuests][16] = {};
+  uint8_t membersN_ = 0;
+  // Chosen as host: waiting for the guests' VisitOk (the visit starts on the first).
+  bool awaiting_ = false;
+  uint32_t anchorMs_ = 0;
+  Gift hostGift_ = Gift::None;
+  char extraIds_[kMaxGuests - 1][16] = {};
+  // After answering someone's poll we are reserved for them until they ask (or give up): nobody
+  // else can take us meanwhile. During a visit we are locked by the visit itself.
+  char reservedFor_[16] = "";
+  uint32_t reservedUntilMs_ = 0;
+  // Our pending "Here" answer (sent after a random delay).
+  bool replying_ = false;
+  char replyTo_[16] = "";
+  uint32_t replyAtMs_ = 0;
+  // Beacons heard per 30 s: about how many Miblos share the network (sets the answer chance).
+  uint16_t heard_ = 0;
+  uint16_t heardLast_ = 0;
+  uint32_t heardAtMs_ = 0;
   // greeting
   char greetName_[64] = "";
   uint32_t greetMs_ = 0;

@@ -182,6 +182,12 @@ enum class S : uint8_t {
   FriendReview,         // visit: "%s reviewed it: LGTM!"
   FriendBug,            // visit: "Hunting a bug with %s"
   FriendDeploy,         // visit: "Friday deploy with %s!"
+  WebFriendsSide,       // settings: where the other Miblos stand (our cat leaves that way)
+  WebSideRight,
+  WebSideLeft,
+  WebSideUp,
+  WebSideDown,
+  FriendBusy,           // visit cut short: "%s got busy" (the host's human got back to work)
   Count
 };
 

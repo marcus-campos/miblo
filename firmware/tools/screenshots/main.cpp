@@ -396,6 +396,31 @@ void renderAll(Lang L) {
       save(s, std::string("44-visit-") + x.name);
     }
   }
+  // Group visits (1:2, 1:3), guests from the right (the default) and from the left.
+  {
+    usage(34, 21);
+    const struct {
+      uint8_t extra, side;
+      miblo::Gift gift;
+      const char* name;
+    } groups[] = {{1, 0, miblo::Gift::None, "44-visit-group-2"},
+                  {2, 0, miblo::Gift::Pair, "44-visit-group-3"},
+                  {2, 1, miblo::Gift::Deploy, "44-visit-group-3-left"}};
+    for (const auto& g : groups) {
+      miblo::VisitView v;
+      strcpy(v.name, "Nina");
+      v.mascot = 1;
+      v.role = miblo::VisitRole::Host;
+      v.gift = g.gift;
+      v.extra = g.extra;
+      v.extraMascot[0] = 2;
+      v.extraMascot[1] = 3;
+      v.ms = miblo::kVisitArriveMs + 5000;
+      Shot sh;
+      screens::visit(L, snap, clk, v, g.side);
+      save(sh, g.name);
+    }
+  }
   // Pet mode antics with the sign: the first cycle of each antic, at a telling moment.
   {
     idle();
@@ -587,6 +612,29 @@ void animateAll(Lang L) {
       v.ms = ms;
       screens::visit(L, snap, clk, v);
       c.frame();
+    }
+  }
+  {
+    // Visits from the other sides (config friendsSide): a guest coming in from the left, and from
+    // above (it crosses the whole screen), as the host sees them.
+    const struct {
+      uint8_t side;
+      const char* name;
+    } sides[] = {{1, "visit-from-left"}, {2, "visit-from-above"}, {3, "visit-away-below"}};
+    for (const auto& sd : sides) {
+      usage(34, 21);
+      miblo::VisitView v;
+      strcpy(v.name, "Nina");
+      v.mascot = 1;
+      v.role = sd.side == 3 ? miblo::VisitRole::Visitor : miblo::VisitRole::Host;
+      v.gift = miblo::Gift::Pair;
+      screens::reset();
+      Clip c(sd.name);
+      for (uint32_t ms = 0; ms < miblo::kVisitMs; ms += kFrameMs) {
+        v.ms = ms;
+        screens::visit(L, snap, clk, v, sd.side);
+        c.frame();
+      }
     }
   }
   {

@@ -1031,55 +1031,83 @@ static void drawProp(const Prop& p) {
   }
 }
 
-// A walking cat: bobbing, eyes towards where it goes.
-static MascotLook walking(uint32_t ms, int dir) {
-  MascotLook k{0, (int8_t)((ms / 180) % 2 ? -2 : 0), (int8_t)(3 * dir), 0, Eyes::Open, Paws::Down, 0};
+// A walking cat: bobbing, eyes towards where it goes (dx, dy: -1, 0 or 1).
+static MascotLook walking(uint32_t ms, int dx, int dy = 0) {
+  MascotLook k{0, (int8_t)((ms / 180) % 2 ? -2 : 0), (int8_t)(3 * dx), (int8_t)(3 * dy), Eyes::Open, Paws::Down, 0};
   return k;
 }
 
-void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitView& v) {
+void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitView& v, uint8_t side) {
   using miblo::VisitRole;
   const uint32_t ms = v.ms;
-  const int half = Sz(kVisitCatHalf);
-  const int offLeft = -half - X(2), offRight = X(240) + half + X(2);
+  // A host may have a group (1:2, 1:3): up to four cats side by side, smaller the more there are.
+  const uint8_t guests = v.role == VisitRole::Host ? (uint8_t)(1 + v.extra) : 1;
+  const uint8_t cats = (uint8_t)(1 + guests);
+  const int catHalf = cats <= 2 ? kVisitCatHalf : cats == 3 ? 33 : 27;
+  const int half = Sz(catHalf);
+  const int cy = Y(kVisitCatY);
   const bool coffee = v.gift == miblo::Gift::Coffee;
   Prop prop{PropKind::None, 0, 0, 0};
-  field(R_CLOCK, kHashSeed + 59, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
+
+  // Which way the friends are (config friendsSide): our cat leaves that way, a guest comes from it.
+  const bool horiz = side < 2;
+  const int dir = side == 1 ? -1 : 1;   // sideways: +1 right, -1 left
+  const int dirY = side == 2 ? -1 : 1;  // up or down: -1 above, +1 below
+  const int offH = dir > 0 ? X(240) + half + X(2) : -half - X(2);
+  const int offV = dirY < 0 ? -half - Y(2) : Y(240) + half + Y(2);
+  // Slots across the band: the host at the far end, the guests from next to it towards the side they
+  // came from (the first guest, who does the activity, right next to the host).
+  auto slot = [&](int i) { return cats == 2 ? X(120) + (i ? X(40) : -X(40)) : X(240) * (2 * i + 1) / (2 * cats); };
+  const int hostIdx = horiz && dir > 0 ? 0 : cats - 1;
+  const int step = hostIdx == 0 ? 1 : -1;
+  const int guestSlot = slot(hostIdx + step);
+  const int hostSlot = slot(hostIdx);
+  const int mid = (hostSlot + guestSlot) / 2;  // between the host and the first guest: the props go there
+  const int toHost = hostSlot > guestSlot ? 1 : -1;            // from the guest towards the host
+  const Paws guestReach = toHost > 0 ? Paws::ReachRight : Paws::ReachLeft;
+  const Paws hostReach = toHost > 0 ? Paws::ReachLeft : Paws::ReachRight;
 
   // Where each cat is and how it looks.
   bool mine = true, guest = false;
-  int myX = X(120), guestX = offLeft;
+  int myX = X(120), myY = cy, guestX = offH, guestY = cy;
   MascotLook me = deskLook(DeskMood::Calm, true, ms), them{};
   if (v.role == VisitRole::Visitor) {
-    if (ms < miblo::kVisitWalkMs) {
-      myX = walk(ms, 0, X(120), offRight);
-      me = walking(ms, 1);
-    } else if (ms >= miblo::kVisitMs - miblo::kVisitWalkMs) {
-      myX = walk(ms, miblo::kVisitMs - miblo::kVisitWalkMs, offRight, X(120));
-      me = walking(ms, -1);
+    const uint32_t back = miblo::kVisitMs - miblo::kVisitWalkMs;
+    if (ms < miblo::kVisitWalkMs || ms >= back) {  // walking out, or back home
+      const bool out = ms < miblo::kVisitWalkMs;
+      if (horiz) myX = out ? walk(ms, 0, X(120), offH) : walk(ms, back, offH, X(120));
+      else myY = out ? walk(ms, 0, cy, offV) : walk(ms, back, offV, cy);
+      me = horiz ? walking(ms, out ? dir : -dir) : walking(ms, 0, out ? dirY : -dirY);
+      if (!out && v.turnedAway) {  // the host's human got back to work: home, sulking
+        me.eyes = Eyes::Sleepy;
+        me.gy = 3;
+        me.extras |= kSweat;
+      }
     } else {
       mine = false;
     }
   } else {
-    myX = X(160);
+    myX = hostSlot;
     const uint32_t in0 = miblo::kVisitWalkMs, out0 = miblo::kVisitPartMs;
     guest = ms >= in0 && ms < out0 + miblo::kVisitWalkMs;
-    if (ms < miblo::kVisitArriveMs) {
-      guestX = walk(ms, in0, offLeft, X(80));
-      them = walking(ms, 1);
-      if (coffee) them.extras |= kCoffee;
-      me.gx = -3;  // looking at the door
-    } else if (ms < out0) {
+    guestX = guestSlot;
+    if (ms < miblo::kVisitArriveMs || ms >= out0) {  // the guest walking in, or leaving
+      const bool in = ms < miblo::kVisitArriveMs;
+      if (horiz) guestX = in ? walk(ms, in0, offH, guestSlot) : walk(ms, out0, guestSlot, offH);
+      else guestY = in ? walk(ms, in0, offV, cy) : walk(ms, out0, cy, offV);
+      them = horiz ? walking(ms, in ? -dir : dir) : walking(ms, 0, in ? -dirY : dirY);
+      if (coffee && in) them.extras |= kCoffee;
+      me.gx = (int8_t)(horiz ? -3 * toHost : 0);  // looking at the door
+      me.gy = (int8_t)(horiz ? 0 : 3 * dirY);
+    } else {
       // Together: the visit's activity (miblo::Gift), happy hops and a heart around it.
-      guestX = X(80);
       const uint32_t t = ms - miblo::kVisitArriveMs;
       const uint32_t stay = miblo::kVisitStayMs;
       const bool firstHalf = t < stay / 2;
-      const int cy = Y(kVisitCatY);
-      them = MascotLook{0, (int8_t)((t / 400) % 3 == 0 ? -4 : 0), 3, 0, Eyes::Happy, Paws::Down, 0};
-      me = MascotLook{0, (int8_t)((t / 400) % 3 == 1 ? -4 : 0), -3, 0, Eyes::Happy, Paws::Down, 0};
-      const MascotLook watchL{0, 0, 3, 3, Eyes::Open, Paws::Down, 0};   // the guest looking at the middle
-      const MascotLook watchR{0, 0, -3, 3, Eyes::Open, Paws::Down, 0};  // the host looking at the middle
+      them = MascotLook{0, (int8_t)((t / 400) % 3 == 0 ? -4 : 0), (int8_t)(3 * toHost), 0, Eyes::Happy, Paws::Down, 0};
+      me = MascotLook{0, (int8_t)((t / 400) % 3 == 1 ? -4 : 0), (int8_t)(-3 * toHost), 0, Eyes::Happy, Paws::Down, 0};
+      const MascotLook watchL{0, 0, (int8_t)(3 * toHost), 3, Eyes::Open, Paws::Down, 0};   // the guest, at the middle
+      const MascotLook watchR{0, 0, (int8_t)(-3 * toHost), 3, Eyes::Open, Paws::Down, 0};  // the host, at the middle
       switch (v.gift) {
         case miblo::Gift::Coffee:  // a coffee changes hands halfway, then a heart
           if (firstHalf) them.extras |= kCoffee;
@@ -1087,51 +1115,51 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           break;
         case miblo::Gift::Duck:  // rubber duck debugging: held out, then set down and explained to
           if (firstHalf) {
-            them.paws = Paws::ReachRight;
-            prop = {PropKind::Duck, guestX + Sz(28), cy + Sz(22), 0};
+            them.paws = guestReach;
+            prop = {PropKind::Duck, guestX + toHost * Sz(28), cy + Sz(22), 0};
           } else {
             them = watchL;
             me = watchR;
             me.eyes = (t / 1200) % 3 == 2 ? Eyes::Happy : Eyes::Open;  // the "aha!" moments
-            prop = {PropKind::Duck, X(120), cy + Sz(28) - ((t / 500) % 2 ? Sz(2) : 0), 0};
+            prop = {PropKind::Duck, mid, cy + Sz(28) - ((t / 500) % 2 ? Sz(2) : 0), 0};
           }
           break;
         case miblo::Gift::Pair:  // pair programming: both typing on a tiny laptop, then it compiles
           if (t < stay - 2500) {
             them = watchL;
             me = watchR;
-            if ((t / 250) % 2) them.paws = Paws::ReachRight;
-            else me.paws = Paws::ReachLeft;
+            if ((t / 250) % 2) them.paws = guestReach;
+            else me.paws = hostReach;
           } else {
             me.extras |= kHeart;
           }
-          prop = {PropKind::Laptop, X(120), cy + Sz(34), (uint8_t)(t / 300)};
+          prop = {PropKind::Laptop, mid, cy + Sz(34), (uint8_t)(t / 300)};
           break;
         case miblo::Gift::Review:  // code review: the guest holds up "LGTM", the host reads it
           if (firstHalf) {
-            them.paws = Paws::ReachRight;
+            them.paws = guestReach;
             me = watchR;
-            prop = {PropKind::Lgtm, guestX + Sz(4), cy + Sz(16), 0};
+            prop = {PropKind::Lgtm, toHost > 0 ? guestX + Sz(4) : guestX - Sz(48), cy + Sz(16), 0};
           } else {
             me.extras |= kHeart;
           }
           break;
         case miblo::Gift::Bug: {  // a bug runs back and forth, both follow it, the host catches it
           const uint32_t caught = 15000;
-          const int bugX = X(94) + shuttle(t, 3000, X(52));
+          const int bugX = mid - Sz(26) + shuttle(t, 3000, Sz(52));
           if (t < caught) {
             them = watchL;
             me = watchR;
             them.eyes = me.eyes = Eyes::Wide;
-            them.gx = bugX < guestX + Sz(20) ? 0 : 3;
-            me.gx = bugX > myX - Sz(20) ? 0 : -3;
+            them.gx = (int8_t)((bugX - guestX) * toHost > Sz(20) ? 3 * toHost : 0);
+            me.gx = (int8_t)((myX - bugX) * toHost > Sz(20) ? -3 * toHost : 0);
             if (t >= caught - 1500) {
-              me.paws = Paws::ReachLeft;  // pounce
+              me.paws = hostReach;  // pounce
               me.dy = -3;
             }
             prop = {PropKind::Bug, bugX, cy + Sz(33), (uint8_t)(t / 120)};
           } else if (t < caught + 900) {
-            prop = {PropKind::Burst, X(120), cy + Sz(30), 0};
+            prop = {PropKind::Burst, mid, cy + Sz(30), 0};
           } else {
             me.extras |= kHeart;
           }
@@ -1142,12 +1170,12 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           if (t < launch) {
             them = watchL;
             me = watchR;
-            prop = {PropKind::Rocket, X(120), cy + Sz(12), 0};
+            prop = {PropKind::Rocket, mid, cy + Sz(12), 0};
           } else if (t < gone) {
-            them = MascotLook{0, 0, 2, -3, Eyes::Wide, Paws::Down, 0};
-            me = MascotLook{0, 0, -2, -3, Eyes::Wide, Paws::Down, 0};
+            them = MascotLook{0, 0, (int8_t)(2 * toHost), -3, Eyes::Wide, Paws::Down, 0};
+            me = MascotLook{0, 0, (int8_t)(-2 * toHost), -3, Eyes::Wide, Paws::Down, 0};
             const int y = cy + Sz(12) - (int)((int64_t)Sz(48) * (int32_t)(t - launch) / (int32_t)(gone - launch));
-            prop = {PropKind::Rocket, X(120), y, (uint8_t)(1 + (t / 120) % 2)};
+            prop = {PropKind::Rocket, mid, y, (uint8_t)(1 + (t / 120) % 2)};
           } else {
             me.extras |= kHeart;
           }
@@ -1158,26 +1186,64 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           if ((t / 1500) % 4 == 3) me.extras |= kHeart;
           break;
       }
+    }
+  }
+  // The rest of a group: they walk in and out with the first guest and cheer along.
+  int exX[miblo::kMaxGuests - 1] = {}, exY[miblo::kMaxGuests - 1] = {};
+  MascotLook exLook[miblo::kMaxGuests - 1] = {};
+  const uint8_t extras = guest ? v.extra : 0;
+  for (uint8_t e = 0; e < extras; e++) {
+    const int sx = slot(hostIdx + step * (2 + e));
+    exX[e] = sx;
+    exY[e] = cy;
+    const uint32_t in0 = miblo::kVisitWalkMs, out0 = miblo::kVisitPartMs;
+    if (ms < miblo::kVisitArriveMs || ms >= out0) {
+      const bool in = ms < miblo::kVisitArriveMs;
+      if (horiz) exX[e] = in ? walk(ms, in0, offH, sx) : walk(ms, out0, sx, offH);
+      else exY[e] = in ? walk(ms, in0, offV, cy) : walk(ms, out0, cy, offV);
+      exLook[e] = horiz ? walking(ms + 90 * (e + 1), in ? -dir : dir) : walking(ms + 90 * (e + 1), 0, in ? -dirY : dirY);
     } else {
-      guestX = walk(ms, out0, X(80), offLeft);
-      them = walking(ms, -1);
-      me.gx = -3;
+      const uint32_t t = ms - miblo::kVisitArriveMs;
+      exLook[e] = MascotLook{0, (int8_t)((t / 400 + e + 2) % 3 == 0 ? -4 : 0), (int8_t)(3 * toHost), 0,
+                             (t / 1600 + e) % 3 ? Eyes::Happy : Eyes::Open, Paws::Down, 0};
     }
   }
 
-  uint32_t h = hashInt(hashInt(kHashSeed + 61, (uint32_t)(mine ? myX + 1000 : 0)), (uint32_t)(guest ? guestX + 1000 : 0));
+  // Walking up or down, a cat crosses the whole screen: then everything is composed (the clock,
+  // the text and the limits come back once it is out of the way).
+  static bool fullScreen = false;
+  bool vertical = (mine && myY != cy) || (guest && guestY != cy);
+  for (uint8_t e = 0; e < extras; e++) vertical |= exY[e] != cy;
+  if (fullScreen && !vertical) {
+    fullScreen = false;
+    reset();  // clears and redraws everything below
+  }
+  fullScreen = vertical;
+  if (!vertical) {
+    field(R_CLOCK, kHashSeed + 59, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
+  }
+
+  uint32_t h = hashInt(hashInt(kHashSeed + 61, (uint32_t)(mine ? myX * 1000 + myY + 1 : 0)),
+                       (uint32_t)(guest ? guestX * 1000 + guestY + 1 : 0));
   h = hashInt(hashInt(h, lookHash(kHashSeed, me)), lookHash(kHashSeed + 1, them));
   h = hashInt(hashInt(h, (uint32_t)prop.kind | (uint32_t)prop.f << 8), (uint32_t)(prop.x * 1000 + prop.y));
+  for (uint8_t e = 0; e < extras; e++) {
+    h = hashInt(lookHash(hashInt(h, (uint32_t)(exX[e] * 1000 + exY[e])), exLook[e]), v.extraMascot[e]);
+  }
   if (dirty(R_BODY, h)) {
-    const int top = Y(kVisitCatY) - half, bh = 2 * half;
+    const int top = vertical ? 0 : cy - half, bh = vertical ? Y(240) : 2 * half;
     const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory();
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
-      if (mine) deskMascot(myX, Y(kVisitCatY), me, kVisitCatHalf, false);
-      if (guest) {  // in its own colours, no hat (the special day is ours)
-        setMascotStyle(v.mascot);
+      if (mine) deskMascot(myX, myY, me, catHalf, false);
+      if (guest) {  // in their own colours, no hat (the special day is ours)
         setMascotAccessory(0);
-        deskMascot(guestX, Y(kVisitCatY), them, kVisitCatHalf, false);
+        setMascotStyle(v.mascot);
+        deskMascot(guestX, guestY, them, catHalf, false);
+        for (uint8_t e = 0; e < extras; e++) {
+          setMascotStyle(v.extraMascot[e]);
+          deskMascot(exX[e], exY[e], exLook[e], catHalf, false);
+        }
         setMascotStyle(myStyle);
         setMascotAccessory(myHat);
       }
@@ -1199,16 +1265,20 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   // What is going on, under the cats.
   char buf[96];
   if (v.role == VisitRole::Visitor) {
-    snprintf(buf, sizeof(buf), t(lang, S::FriendAway), v.name);
-    if (mine) buf[0] = 0;  // still on screen (leaving or back home)
+    snprintf(buf, sizeof(buf), t(lang, v.turnedAway ? S::FriendBusy : S::FriendAway), v.name);
+    if (mine && !v.turnedAway) buf[0] = 0;  // still on screen (leaving or back home)
   } else {
     static const S kLine[] = {S::FriendVisiting, S::FriendCoffee, S::FriendDuck, S::FriendPair,
                               S::FriendReview, S::FriendBug, S::FriendDeploy};
     static_assert(sizeof(kLine) / sizeof(kLine[0]) == (size_t)miblo::Gift::Count, "one line per activity");
     const uint8_t g = (uint8_t)v.gift < (uint8_t)miblo::Gift::Count ? (uint8_t)v.gift : 0;
-    snprintf(buf, sizeof(buf), t(lang, kLine[g]), v.name);
+    char who[40];
+    if (v.extra) snprintf(who, sizeof(who), "%s +%u", v.name, (unsigned)v.extra);  // a group
+    else snprintf(who, sizeof(who), "%s", v.name);
+    snprintf(buf, sizeof(buf), t(lang, kLine[g]), who);
     if (!guest) buf[0] = 0;
   }
+  if (vertical) return;
   const uint32_t ht = hashStr(hashInt(kHashSeed + 67, (uint32_t)lang), buf);
   if (region(R_ROW0, ht, 0, Y(150), X(240), Y(40)) && buf[0]) {
     C().text(X(120), Y(176), buf, Font::BodyBold, color::AMBER, Align::Center, X(228));

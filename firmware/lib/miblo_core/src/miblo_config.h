@@ -38,6 +38,8 @@ struct Config {
   char birthday[6] = "";         // the owner's birthday, "MM-DD"; empty = unknown
   char born[11] = "";            // the gadget's own birthday, "YYYY-MM-DD" (set on the first day it is used)
   bool friends = true;           // pet mode: play with other Miblos on the network (miblo_friends.h)
+  uint8_t friendsSide = 0;       // where the other Miblos stand: 0 right, 1 left, 2 above, 3 below
+                                 // (our cat leaves that way to visit; a guest comes in from there)
 };
 
 constexpr uint8_t kMascotStyles = 4;

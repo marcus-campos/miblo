@@ -150,7 +150,23 @@ static const char kEn[] MIBLO_ROM =
     "Download the firmware\0"  // WebDownloadBin
     "Turn the screen off when idle\0"  // WebSleep
     "Never (the mascot keeps wandering)\0"  // WebSleepNever
-    "Alert blinks\0";  // WebFlashBlinks
+    "Alert blinks\0"  // WebFlashBlinks
+    "Hi! I'm\0"  // HelloIAm
+    "Good morning\0"  // GoodMorning
+    "Good afternoon\0"  // GoodAfternoon
+    "Good evening\0"  // GoodEvening
+    "Happy birthday\0"  // HappyBirthday
+    "It's my birthday!\0"  // MyBirthday
+    "Merry Christmas!\0"  // MerryChristmas
+    "Happy New Year!\0"  // HappyNewYear
+    "Hi, %s!\0"  // FriendHi
+    "%s came to visit!\0"  // FriendVisiting
+    "Visiting %s\0"  // FriendAway
+    "%s brought you coffee\0"  // FriendCoffee
+    "Napping with %s\0"  // FriendNap
+    "Your name (so Miblo can greet you)\0"  // WebOwner
+    "Your birthday (day / month)\0"  // WebBirthday
+    "Play with other Miblos on the network\0";  // WebFriends
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -296,7 +312,23 @@ static const char kPtBR[] MIBLO_ROM =
     "Baixar o firmware\0"  // WebDownloadBin
     "Desligar a tela quando ninguém estiver usando\0"  // WebSleep
     "Nunca (o mascote fica passeando)\0"  // WebSleepNever
-    "Piscadas do alerta\0";  // WebFlashBlinks
+    "Piscadas do alerta\0"  // WebFlashBlinks
+    "Oi! Meu nome é\0"  // HelloIAm
+    "Bom dia\0"  // GoodMorning
+    "Boa tarde\0"  // GoodAfternoon
+    "Boa noite\0"  // GoodEvening
+    "Feliz aniversário\0"  // HappyBirthday
+    "Hoje é meu aniversário!\0"  // MyBirthday
+    "Feliz Natal!\0"  // MerryChristmas
+    "Feliz Ano Novo!\0"  // HappyNewYear
+    "Oi, %s!\0"  // FriendHi
+    "%s veio visitar!\0"  // FriendVisiting
+    "Visitando %s\0"  // FriendAway
+    "%s trouxe um café\0"  // FriendCoffee
+    "Soneca com %s\0"  // FriendNap
+    "Seu nome (para o Miblo te cumprimentar)\0"  // WebOwner
+    "Seu aniversário (dia / mês)\0"  // WebBirthday
+    "Brincar com outros Miblos da rede\0";  // WebFriends
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -442,7 +474,23 @@ static const char kPtPT[] MIBLO_ROM =
     "Descarregar o firmware\0"  // WebDownloadBin
     "Desligar o ecrã quando ninguém estiver a usar\0"  // WebSleep
     "Nunca (a mascote fica a passear)\0"  // WebSleepNever
-    "Piscadelas do alerta\0";  // WebFlashBlinks
+    "Piscadelas do alerta\0"  // WebFlashBlinks
+    "Olá! Chamo-me\0"  // HelloIAm
+    "Bom dia\0"  // GoodMorning
+    "Boa tarde\0"  // GoodAfternoon
+    "Boa noite\0"  // GoodEvening
+    "Feliz aniversário\0"  // HappyBirthday
+    "Hoje faço anos!\0"  // MyBirthday
+    "Feliz Natal!\0"  // MerryChristmas
+    "Feliz Ano Novo!\0"  // HappyNewYear
+    "Olá, %s!\0"  // FriendHi
+    "%s veio de visita!\0"  // FriendVisiting
+    "De visita a %s\0"  // FriendAway
+    "%s trouxe-te um café\0"  // FriendCoffee
+    "Sesta com %s\0"  // FriendNap
+    "O seu nome (para o Miblo o cumprimentar)\0"  // WebOwner
+    "O seu aniversário (dia / mês)\0"  // WebBirthday
+    "Brincar com outros Miblos da rede\0";  // WebFriends
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -588,7 +636,23 @@ static const char kEs[] MIBLO_ROM =
     "Descargar el firmware\0"  // WebDownloadBin
     "Apagar la pantalla cuando nadie la use\0"  // WebSleep
     "Nunca (la mascota sigue paseando)\0"  // WebSleepNever
-    "Parpadeos de la alerta\0";  // WebFlashBlinks
+    "Parpadeos de la alerta\0"  // WebFlashBlinks
+    "¡Hola! Me llamo\0"  // HelloIAm
+    "Buenos días\0"  // GoodMorning
+    "Buenas tardes\0"  // GoodAfternoon
+    "Buenas noches\0"  // GoodEvening
+    "Feliz cumpleaños\0"  // HappyBirthday
+    "¡Hoy es mi cumpleaños!\0"  // MyBirthday
+    "¡Feliz Navidad!\0"  // MerryChristmas
+    "¡Feliz Año Nuevo!\0"  // HappyNewYear
+    "¡Hola, %s!\0"  // FriendHi
+    "¡%s vino de visita!\0"  // FriendVisiting
+    "Visitando a %s\0"  // FriendAway
+    "%s te trajo un café\0"  // FriendCoffee
+    "Siesta con %s\0"  // FriendNap
+    "Tu nombre (para que Miblo te salude)\0"  // WebOwner
+    "Tu cumpleaños (día / mes)\0"  // WebBirthday
+    "Jugar con otros Miblos de la red\0";  // WebFriends
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -734,7 +798,23 @@ static const char kFr[] MIBLO_ROM =
     "Télécharger le firmware\0"  // WebDownloadBin
     "Éteindre l'écran quand personne ne l'utilise\0"  // WebSleep
     "Jamais (la mascotte continue de se promener)\0"  // WebSleepNever
-    "Clignotements de l'alerte\0";  // WebFlashBlinks
+    "Clignotements de l'alerte\0"  // WebFlashBlinks
+    "Salut ! Je m'appelle\0"  // HelloIAm
+    "Bonjour\0"  // GoodMorning
+    "Bon après-midi\0"  // GoodAfternoon
+    "Bonsoir\0"  // GoodEvening
+    "Joyeux anniversaire\0"  // HappyBirthday
+    "C'est mon anniversaire !\0"  // MyBirthday
+    "Joyeux Noël !\0"  // MerryChristmas
+    "Bonne année !\0"  // HappyNewYear
+    "Salut, %s !\0"  // FriendHi
+    "%s est venu me voir !\0"  // FriendVisiting
+    "En visite chez %s\0"  // FriendAway
+    "%s t'a apporté un café\0"  // FriendCoffee
+    "Sieste avec %s\0"  // FriendNap
+    "Votre prénom (pour que Miblo vous salue)\0"  // WebOwner
+    "Votre anniversaire (jour / mois)\0"  // WebBirthday
+    "Jouer avec les autres Miblos du réseau\0";  // WebFriends
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -880,7 +960,23 @@ static const char kIt[] MIBLO_ROM =
     "Scarica il firmware\0"  // WebDownloadBin
     "Spegni lo schermo quando nessuno lo usa\0"  // WebSleep
     "Mai (la mascotte continua a passeggiare)\0"  // WebSleepNever
-    "Lampeggi dell'avviso\0";  // WebFlashBlinks
+    "Lampeggi dell'avviso\0"  // WebFlashBlinks
+    "Ciao! Mi chiamo\0"  // HelloIAm
+    "Buongiorno\0"  // GoodMorning
+    "Buon pomeriggio\0"  // GoodAfternoon
+    "Buonasera\0"  // GoodEvening
+    "Buon compleanno\0"  // HappyBirthday
+    "Oggi è il mio compleanno!\0"  // MyBirthday
+    "Buon Natale!\0"  // MerryChristmas
+    "Felice anno nuovo!\0"  // HappyNewYear
+    "Ciao, %s!\0"  // FriendHi
+    "%s è venuto a trovarmi!\0"  // FriendVisiting
+    "In visita da %s\0"  // FriendAway
+    "%s ti ha portato un caffè\0"  // FriendCoffee
+    "Pisolino con %s\0"  // FriendNap
+    "Il tuo nome (così Miblo ti saluta)\0"  // WebOwner
+    "Il tuo compleanno (giorno / mese)\0"  // WebBirthday
+    "Giocare con gli altri Miblo della rete\0";  // WebFriends
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1026,7 +1122,23 @@ static const char kDe[] MIBLO_ROM =
     "Firmware herunterladen\0"  // WebDownloadBin
     "Bildschirm ausschalten, wenn niemand ihn nutzt\0"  // WebSleep
     "Nie (das Maskottchen läuft weiter herum)\0"  // WebSleepNever
-    "Blinken bei Hinweisen\0";  // WebFlashBlinks
+    "Blinken bei Hinweisen\0"  // WebFlashBlinks
+    "Hallo! Ich bin\0"  // HelloIAm
+    "Guten Morgen\0"  // GoodMorning
+    "Guten Tag\0"  // GoodAfternoon
+    "Guten Abend\0"  // GoodEvening
+    "Alles Gute zum Geburtstag\0"  // HappyBirthday
+    "Heute ist mein Geburtstag!\0"  // MyBirthday
+    "Frohe Weihnachten!\0"  // MerryChristmas
+    "Frohes neues Jahr!\0"  // HappyNewYear
+    "Hallo, %s!\0"  // FriendHi
+    "%s ist zu Besuch!\0"  // FriendVisiting
+    "Zu Besuch bei %s\0"  // FriendAway
+    "%s bringt dir Kaffee\0"  // FriendCoffee
+    "Schläfchen mit %s\0"  // FriendNap
+    "Dein Name (damit Miblo dich begrüßt)\0"  // WebOwner
+    "Dein Geburtstag (Tag / Monat)\0"  // WebBirthday
+    "Mit anderen Miblos im Netzwerk spielen\0";  // WebFriends
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1172,7 +1284,23 @@ static const char kRu[] MIBLO_ROM =
     "Скачать прошивку\0"  // WebDownloadBin
     "Выключать экран, когда им никто не пользуется\0"  // WebSleep
     "Никогда (талисман продолжает гулять)\0"  // WebSleepNever
-    "Мигания при оповещении\0";  // WebFlashBlinks
+    "Мигания при оповещении\0"  // WebFlashBlinks
+    "Привет! Меня зовут\0"  // HelloIAm
+    "Доброе утро\0"  // GoodMorning
+    "Добрый день\0"  // GoodAfternoon
+    "Добрый вечер\0"  // GoodEvening
+    "С днём рождения\0"  // HappyBirthday
+    "Сегодня мой день рождения!\0"  // MyBirthday
+    "С Рождеством!\0"  // MerryChristmas
+    "С Новым годом!\0"  // HappyNewYear
+    "Привет, %s!\0"  // FriendHi
+    "%s пришёл в гости!\0"  // FriendVisiting
+    "В гостях у %s\0"  // FriendAway
+    "%s принёс тебе кофе\0"  // FriendCoffee
+    "Дремлю с %s\0"  // FriendNap
+    "Ваше имя (Miblo будет вас приветствовать)\0"  // WebOwner
+    "Ваш день рождения (день / месяц)\0"  // WebBirthday
+    "Играть с другими Miblo в сети\0";  // WebFriends
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1318,7 +1446,23 @@ static const char kZh[] MIBLO_ROM =
     "下载固件\0"  // WebDownloadBin
     "无人使用时关闭屏幕\0"  // WebSleep
     "从不（吉祥物继续四处走动）\0"  // WebSleepNever
-    "提醒闪烁次数\0";  // WebFlashBlinks
+    "提醒闪烁次数\0"  // WebFlashBlinks
+    "你好! 我是\0"  // HelloIAm
+    "早上好\0"  // GoodMorning
+    "下午好\0"  // GoodAfternoon
+    "晚上好\0"  // GoodEvening
+    "生日快乐\0"  // HappyBirthday
+    "今天是我的生日!\0"  // MyBirthday
+    "圣诞快乐!\0"  // MerryChristmas
+    "新年快乐!\0"  // HappyNewYear
+    "你好, %s!\0"  // FriendHi
+    "%s 来串门了!\0"  // FriendVisiting
+    "正在拜访 %s\0"  // FriendAway
+    "%s 给你带了咖啡\0"  // FriendCoffee
+    "和 %s 一起睡觉\0"  // FriendNap
+    "你的名字(Miblo 会向你问好)\0"  // WebOwner
+    "你的生日(日 / 月)\0"  // WebBirthday
+    "和网络上的其他 Miblo 一起玩\0";  // WebFriends
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

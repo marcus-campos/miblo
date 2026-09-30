@@ -125,9 +125,37 @@ constexpr MascotColors kMascotColors[] = {
     {0x9D16, 0xCD15, 0x5B2E, 0xB3D1, color::PUPIL},                         // grey #9aa3b0
 };
 static uint8_t g_style = 0;
+static uint8_t g_accessory = 0;
 
 void setMascotStyle(uint8_t style) {
   g_style = style < sizeof(kMascotColors) / sizeof(kMascotColors[0]) ? style : 0;
+}
+uint8_t mascotStyle() { return g_style; }
+void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
+uint8_t mascotAccessory() { return g_accessory; }
+
+// Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
+// even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
+static void drawHat(MascotPen& d, int x, int b) {
+  switch (g_accessory) {
+    case 1:  // Santa hat: red, white brim and pompom, tipped to the right
+      d.tri(-15 + x, -18 + b, 15 + x, -18 + b, 11 + x, -40 + b, color::RED);
+      d.rrect(-17 + x, -22 + b, 34, 7, 3, color::WHITE);
+      d.circle(12 + x, -39 + b, 3, color::WHITE);
+      break;
+    case 2:  // witch hat: wide brim, pointy purple crown with an amber band
+      d.rect(-22 + x, -21 + b, 44, 4, 0x3008);
+      d.tri(-12 + x, -19 + b, 12 + x, -19 + b, 4 + x, -43 + b, 0x5011);
+      d.rect(-11 + x, -24 + b, 22, 3, color::AMBER);
+      break;
+    case 3:  // party hat: striped cone with a pompom
+      d.tri(-10 + x, -18 + b, 10 + x, -18 + b, x, -38 + b, color::VIOLET);
+      d.rect(-7 + x, -24 + b, 14, 2, color::AMBER);
+      d.rect(-4 + x, -31 + b, 8, 2, color::GREEN);
+      d.circle(x, -39 + b, 3, color::AMBER);
+      break;
+    default: break;
+  }
 }
 
 // The cat itself. `desk` adds what only the big Desk mascot has: a table edge, front paws and
@@ -177,6 +205,7 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       break;
   }
   d.rrect(-4 + x, 17 + b, 8, 5, 2, mc.nose);
+  drawHat(d, x, b);
   if (!desk) return;
   if (k.extras & kMouthO) d.circle(x, 26 + b, 3, mc.lid);
   // A paw: a skin pad with a darker outline and toe lines, so it reads as a paw even over the
@@ -203,6 +232,19 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       paw(-28, -5, 24, 21, 6);
       paw(4, -5, 24, 21, 6);
       break;
+  }
+  if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming
+    d.rect(29 + x, 6 + b, 2, 5, color::MUTED);
+    d.rect(34 + x, 4 + b, 2, 6, color::MUTED);
+    d.rect(26 + x, 13 + b, 13, 13, color::WHITE);
+    d.rect(27 + x, 14 + b, 11, 3, 0x6A20);  // the coffee
+    d.circle(41 + x, 19 + b, 3, color::WHITE);
+    d.circle(41 + x, 19 + b, 1, color::BG);
+  }
+  if (k.extras & kHeart) {  // beside the left ear, fixed like the alarm marks
+    d.circle(-44, -40, 3, color::RED);
+    d.circle(-39, -40, 3, color::RED);
+    d.tri(-47, -39, -36, -39, -41, -32, color::RED);
   }
   if (k.extras & kSweat) {
     d.tri(36 + x, -12 + b, 32 + x, -3 + b, 40 + x, -3 + b, color::BLUE);

@@ -20,6 +20,8 @@ const USAGE = [
   '  rotate <on|off> [every-seconds] [show-seconds] [id] | rotate --status [id]',
   '  night <on|off> [HH:MM HH:MM] [brightness%] [id] | night --status [id]',
   '  settings [id]',
+  '  rename <id> <name...> | rename <id> --default',
+  '  owner <id> [--name <name...>|--name clear] [--birthday <DD/MM|MM-DD|clear>]',
   '  reset <id>',
   '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
@@ -304,6 +306,165 @@ async function night(args, store, client) {
   return done ? ok(out) : fail(1, out);
 }
 
+// ---- rename: the gadget's name (screen greeting, /miblo commands, mDNS instance) ----
+// Firmware contract (POST /api/config {name}): at most 20 characters and under 64 UTF-8 bytes;
+// "" restores the default Miblo-XXXX; anything else answers 400 {"field":"name"}.
+export const NAME_MAX_CHARS = 20;
+export const NAME_MAX_BYTES = 63;
+const RENAME_USAGE = 'Usage: rename <id> <name...>  (or: rename <id> --default)';
+
+// -> { id, name } (name "" = back to the default) or { error }. The name words are joined with
+// spaces; control characters (and bidi overrides) are dropped, whitespace is collapsed.
+// Words typed by the user -> one name: joined with spaces, control characters (and bidi
+// overrides) dropped, whitespace collapsed.
+const typedName = (words) => words.join(' ')
+  .replace(/[\p{Cc}‎‏‪-‮⁦-⁩]/gu, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
+
+// -> an error message, or null when the firmware will take this (non-empty) name.
+function nameTooLong(name, what) {
+  const chars = [...name].length;
+  if (chars > NAME_MAX_CHARS) return `The ${what} is too long: ${chars} characters, the maximum is ${NAME_MAX_CHARS}.`;
+  if (Buffer.byteLength(name, 'utf8') > NAME_MAX_BYTES) {
+    return `The ${what} is too long for the gadget (${NAME_MAX_BYTES} bytes at most): use fewer emoji or accented characters.`;
+  }
+  return null;
+}
+
+// -> { id, name } (name "" = back to the default) or { error }.
+export function parseRenameArgs(args) {
+  const [id, ...words] = args;
+  if (!id || !words.length) return { error: RENAME_USAGE };
+  if (words.length === 1 && words[0] === '--default') return { id, name: '' };
+  const name = typedName(words);
+  if (!name) return { error: `The name is empty.\n${RENAME_USAGE}` };
+  const tooLong = nameTooLong(name, 'name');
+  return tooLong ? { error: tooLong } : { id, name };
+}
+
+// "miblo-4f2a" -> "Miblo-4F2A", the firmware's default name (used only if the gadget cannot be
+// asked after a reset to the default).
+const defaultNameFor = (id) => {
+  const m = /^miblo-([0-9a-f]{4})$/i.exec(String(id));
+  return m ? `Miblo-${m[1].toUpperCase()}` : null;
+};
+
+async function rename(args, store, client) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  const parsed = parseRenameArgs(args);
+  if (parsed.error) return fail(2, parsed.error);
+  const d = store.list().find((x) => x.id === parsed.id);
+  if (!d) return fail(2, `No paired gadget with id ${cleanId(parsed.id)}.`);
+  const oldLabel = cleanName(d.name) || cleanId(d.id).slice(0, 20);
+  try {
+    await client.setConfig(d.addr, d.token, { name: parsed.name });
+  } catch (e) {
+    if (e.status === 400 && e.data?.field === 'name') {
+      return fail(2, `${oldLabel} rejected the name: use at most ${NAME_MAX_CHARS} characters.`);
+    }
+    if (e.status === 400) return fail(1, `${oldLabel} does not support renaming yet (update its firmware).`);
+    if (e.status === 401) return fail(1, `${oldLabel} no longer accepts this pairing: run /miblo:pair again.`);
+    return fail(1, `Could not reach ${oldLabel}.`);
+  }
+  let name = parsed.name;
+  let shown = name;  // typed by the user, already stripped of control characters
+  if (!name) {
+    // Back to the default: store the name the gadget now reports.
+    let reported = '';
+    try { reported = cleanName((await client.info(d.addr))?.name); } catch { /* best-effort */ }
+    name = reported || defaultNameFor(d.id) || d.name;
+    shown = cleanName(name) || cleanId(d.id).slice(0, 20);
+  }
+  store.update(d.id, { name });
+  return ok(`Renamed ${oldLabel} to ${shown}.`);
+}
+
+// ---- owner: the owner's first name and birthday (greetings on the gadget screen) ----
+// Firmware contract (POST /api/config): owner = name like the device name (20 characters,
+// under 64 bytes), birthday = "MM-DD" (02-29 allowed); "" clears either. Neither is reported by
+// the unauthenticated /api/info, and the plugin does not store them.
+const OWNER_USAGE = 'Usage: owner <id> [--name <name...>|--name clear] [--birthday <DD/MM|MM-DD|clear>]';
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+// "DD/MM" (day first) or "MM-DD" -> "MM-DD", "clear" -> "", else null.
+export function parseBirthday(s) {
+  const v = String(s ?? '').trim();
+  if (v.toLowerCase() === 'clear') return '';
+  let m = /^(\d{1,2})\/(\d{1,2})$/.exec(v);
+  let month;
+  let day;
+  if (m) [day, month] = [Number(m[1]), Number(m[2])];
+  else if ((m = /^(\d{2})-(\d{2})$/.exec(v))) [month, day] = [Number(m[1]), Number(m[2])];
+  else return null;
+  if (month < 1 || month > 12 || day < 1 || day > DAYS_IN_MONTH[month - 1]) return null;
+  return `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+// -> { id, patch } or { error }. --name takes every word up to the next flag.
+export function parseOwnerArgs(args) {
+  const [id, ...rest] = args;
+  if (!id || id.startsWith('--')) return { error: OWNER_USAGE };
+  const patch = {};
+  for (let i = 0; i < rest.length;) {
+    const flag = rest[i++];
+    const words = [];
+    while (i < rest.length && !rest[i].startsWith('--')) words.push(rest[i++]);
+    if (flag === '--name') {
+      if ('owner' in patch) return { error: `--name given twice.\n${OWNER_USAGE}` };
+      const clear = words.length === 1 && words[0].toLowerCase() === 'clear';
+      const name = clear ? '' : typedName(words);
+      if (!clear && !name) return { error: `--name needs a name (or "clear").\n${OWNER_USAGE}` };
+      const tooLong = name && nameTooLong(name, 'name');
+      if (tooLong) return { error: tooLong };
+      patch.owner = name;
+    } else if (flag === '--birthday') {
+      if ('birthday' in patch) return { error: `--birthday given twice.\n${OWNER_USAGE}` };
+      if (words.length !== 1) return { error: `--birthday needs one date, like 14/03 (day/month) or 03-14 (month-day), or "clear".\n${OWNER_USAGE}` };
+      const birthday = parseBirthday(words[0]);
+      if (birthday === null) {
+        return { error: `Invalid birthday "${String(words[0]).slice(0, 12)}": use DD/MM (day first, e.g. 14/03) or MM-DD (e.g. 03-14), a real calendar day.` };
+      }
+      patch.birthday = birthday;
+    } else {
+      return { error: `Unexpected argument "${String(flag).slice(0, 40)}".\n${OWNER_USAGE}` };
+    }
+  }
+  if (!('owner' in patch) && !('birthday' in patch)) return { error: `Give --name, --birthday or both.\n${OWNER_USAGE}` };
+  return { id, patch };
+}
+
+async function owner(args, store, client) {
+  const ok = (out) => ({ code: 0, out: out + '\n' });
+  const fail = (code, out) => ({ code, out: out + '\n' });
+  const parsed = parseOwnerArgs(args);
+  if (parsed.error) return fail(2, parsed.error);
+  const d = store.list().find((x) => x.id === parsed.id);
+  if (!d) return fail(2, `No paired gadget with id ${cleanId(parsed.id)}.`);
+  const label = cleanName(d.name) || cleanId(d.id).slice(0, 20);
+  const { patch } = parsed;
+  try {
+    await client.setConfig(d.addr, d.token, patch);
+  } catch (e) {
+    const field = e.status === 400 ? String(e.data?.field ?? '') : '';
+    if (field === 'owner') return fail(2, `${label} rejected the name: use at most ${NAME_MAX_CHARS} characters.`);
+    if (field === 'birthday') return fail(2, `${label} rejected the birthday: use a real day, DD/MM or MM-DD.`);
+    if (e.status === 400) return fail(1, `${label} does not support names and birthdays yet (update its firmware).`);
+    if (e.status === 401) return fail(1, `${label} no longer accepts this pairing: run /miblo:pair again.`);
+    return fail(1, `Could not reach ${label}.`);
+  }
+  const knows = [];
+  const forgot = [];
+  // The owner name was typed by the user and is already stripped of control characters.
+  if ('owner' in patch) (patch.owner ? knows.push(`name (${patch.owner})`) : forgot.push('name'));
+  if ('birthday' in patch) (patch.birthday ? knows.push(`birthday (${patch.birthday})`) : forgot.push('birthday'));
+  const parts = [];
+  if (knows.length) parts.push(`now knows your ${knows.join(' and ')}`);
+  if (forgot.length) parts.push(`forgot your ${forgot.join(' and ')}`);
+  return ok(`${label} ${parts.join(' and ')}.`);
+}
+
 export async function run(argv, deps) {
   const { dataDir, pluginRoot, settingsPath, client, discoverFn, hostname, fetchStatus, locale } = deps;
   const store = new DeviceStore(dataDir);
@@ -386,6 +547,10 @@ export async function run(argv, deps) {
       return night(args, store, client);
     case 'settings':
       return settings(args, store, deps.openUrl ?? openInBrowser);
+    case 'rename':
+      return rename(args, store, client);
+    case 'owner':
+      return owner(args, store, client);
     case 'reset': {
       const d = store.list().find((x) => x.id === args[0]);
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);

@@ -34,6 +34,10 @@ struct Config {
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
   uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
+  char owner[64] = "";           // the owner's name, <= 20 characters (greetings); empty = unknown
+  char birthday[6] = "";         // the owner's birthday, "MM-DD"; empty = unknown
+  char born[11] = "";            // the gadget's own birthday, "YYYY-MM-DD" (set on the first day it is used)
+  bool friends = true;           // pet mode: play with other Miblos on the network (miblo_friends.h)
 };
 
 constexpr uint8_t kMascotStyles = 4;
@@ -48,6 +52,10 @@ void configToStored(const Config& cfg, JsonObject out);
 // After applyConfigPatch on a stored config: restores the automatic-mode language from "langAuto".
 void restoreStoredLang(Config& cfg, JsonObjectConst stored);
 AlertTiming alertTiming(const Config& cfg);
+// "MM-DD" (a real day of the year, 02-29 included) -> month 1..12 and day 1..31.
+bool parseMonthDay(const char* s, uint8_t& month, uint8_t& day);
+// "YYYY-MM-DD" (year 2020..2199) -> year, month, day.
+bool parseDate(const char* s, uint16_t& year, uint8_t& month, uint8_t& day);
 // Enabled only when rotation is on and the device is in Overview mode.
 RotationTiming rotationTiming(const Config& cfg);
 // Backlight % for the local time. `minuteOfDay`: 0..1439, or -1 when the time is unknown (no

@@ -152,6 +152,22 @@ enum class S : uint8_t {
   WebSleep,             // settings: screen-off delay (a select: never / 15 min ... 4 h)
   WebSleepNever,        // settings: the "never" option (pet mode keeps going)
   WebFlashBlinks,       // settings: how many times the alert flash blinks (2..5)
+  HelloIAm,             // greeting after (re)naming, over the gadget's name: "Hi! I'm" / "Tofu"
+  GoodMorning,          // first activity of the day, over the owner's name (no punctuation)
+  GoodAfternoon,
+  GoodEvening,
+  HappyBirthday,        // the owner's birthday, over their name
+  MyBirthday,           // the gadget's own birthday (a year after it was first used)
+  MerryChristmas,
+  HappyNewYear,
+  FriendHi,             // pet mode: another Miblo showed up on the network: "Hi, %s!"
+  FriendVisiting,       // a friend's mascot is here: "%s came to visit!"
+  FriendAway,           // our mascot went out: "Visiting %s"
+  FriendCoffee,         // the visitor brought a coffee: "%s brought you coffee"
+  FriendNap,            // both asleep: "Napping with %s"
+  WebOwner,             // settings: the owner's name
+  WebBirthday,          // settings: the owner's birthday (day and month selects)
+  WebFriends,           // settings: pet mode visits between Miblos on the network
   Count
 };
 

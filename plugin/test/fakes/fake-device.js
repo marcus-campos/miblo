@@ -59,6 +59,31 @@ export function startFakeDevice({
     if (merged.nightFrom === merged.nightTo) return 'nightTo' in patch ? 'nightTo' : 'nightFrom';
     return null;
   };
+  // Device name (miblo_config.cpp): at most 20 characters and under 64 UTF-8 bytes; "" restores
+  // the default. /api/info reports the configured name, or the default one.
+  const currentName = () => (typeof state.config.name === 'string' && state.config.name !== '' ? state.config.name : name);
+  const badNameField = (patch) => {
+    if (!('name' in patch)) return null;
+    const n = patch.name;
+    if (typeof n !== 'string' || [...n].length > 20 || Buffer.byteLength(n, 'utf8') >= 64) return 'name';
+    return null;
+  };
+  // Owner name and birthday (never reported by /api/info): owner like the device name,
+  // birthday "MM-DD" with a real day (02-29 allowed); "" clears either.
+  const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const badOwnerField = (patch) => {
+    const n = patch.owner;
+    if ('owner' in patch && (typeof n !== 'string' || [...n].length > 20 || Buffer.byteLength(n, 'utf8') >= 64)) return 'owner';
+    if ('birthday' in patch) {
+      const b = patch.birthday;
+      if (typeof b !== 'string') return 'birthday';
+      if (b === '') return null;
+      const m = /^(\d{2})-(\d{2})$/.exec(b);
+      const [mo, da] = m ? [Number(m[1]), Number(m[2])] : [0, 0];
+      if (!m || mo < 1 || mo > 12 || da < 1 || da > DAYS_IN_MONTH[mo - 1]) return 'birthday';
+    }
+    return null;
+  };
   const asJson = (buf) => {
     const text = buf.toString('utf8');
     try { return text ? JSON.parse(text) : {}; } catch { return null; }
@@ -76,7 +101,7 @@ export function startFakeDevice({
     if (req.method === 'GET' && req.url === '/api/info') {
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
-      return send(200, { id, name, fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg() });
+      return send(200, { id, name: currentName(), fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg() });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -101,7 +126,7 @@ export function startFakeDevice({
     if (!authed(req)) return send(401, { error: 'unauthorized' });
     if (req.method === 'POST' && req.url === '/api/state') { state.snapshots.push(body); return send(200, { ok: true }); }
     if (req.method === 'POST' && req.url === '/api/config') {
-      const bad = badRotationField(body ?? {}) ?? badNightField(body ?? {});
+      const bad = badRotationField(body ?? {}) ?? badNightField(body ?? {}) ?? badNameField(body ?? {}) ?? badOwnerField(body ?? {});
       if (bad) return send(400, { error: 'invalid', field: bad });  // all-or-nothing, like the firmware
       Object.assign(state.config, body);
       return send(200, { ok: true });

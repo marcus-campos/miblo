@@ -33,6 +33,47 @@ static bool intIn(JsonVariantConst v, int lo, int hi, uint8_t& out) {
   return true;
 }
 
+static uint8_t daysIn(uint8_t month) {
+  static const uint8_t kDays[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  return month >= 1 && month <= 12 ? kDays[month - 1] : 0;
+}
+
+static bool digits(const char* s, int n, int& out) {
+  out = 0;
+  for (int i = 0; i < n; i++) {
+    if (s[i] < '0' || s[i] > '9') return false;
+    out = out * 10 + (s[i] - '0');
+  }
+  return true;
+}
+
+bool parseMonthDay(const char* s, uint8_t& month, uint8_t& day) {
+  int m, d;
+  if (!s || strlen(s) != 5 || s[2] != '-' || !digits(s, 2, m) || !digits(s + 3, 2, d)) return false;
+  if (m < 1 || m > 12 || d < 1 || d > daysIn((uint8_t)m)) return false;
+  month = (uint8_t)m;
+  day = (uint8_t)d;
+  return true;
+}
+
+bool parseDate(const char* s, uint16_t& year, uint8_t& month, uint8_t& day) {
+  int y;
+  if (!s || strlen(s) != 10 || s[4] != '-' || !digits(s, 4, y) || y < 2020 || y > 2199) return false;
+  if (!parseMonthDay(s + 5, month, day)) return false;
+  if (month == 2 && day == 29 && !(y % 4 == 0 && (y % 100 != 0 || y % 400 == 0))) return false;
+  year = (uint16_t)y;
+  return true;
+}
+
+// A name typed by a person: <= 20 characters, no control characters.
+static bool personName(const char* s, size_t cap) {
+  if (!s || strlen(s) >= cap || utf8Length(s) > 20) return false;
+  for (const char* p = s; *p; p++) {
+    if ((uint8_t)*p < 0x20 || *p == 0x7F) return false;
+  }
+  return true;
+}
+
 static bool intIn16(JsonVariantConst v, int lo, int hi, uint16_t& out) {
   if (!v.is<int>()) return false;
   int x = v.as<int>();
@@ -73,8 +114,26 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       if (ok) strcpy(next.tz, s);
     } else if (strcmp(k, "name") == 0) {
       const char* s = v.as<const char*>();
-      ok = s && strlen(s) < sizeof(next.name) && utf8Length(s) <= 20;
+      ok = personName(s, sizeof(next.name));
       if (ok) strcpy(next.name, s);
+    } else if (strcmp(k, "owner") == 0) {
+      const char* s = v.as<const char*>();
+      ok = personName(s, sizeof(next.owner));
+      if (ok) strcpy(next.owner, s);
+    } else if (strcmp(k, "birthday") == 0) {
+      const char* s = v.as<const char*>();
+      uint8_t m, d;
+      ok = s && (s[0] == 0 || parseMonthDay(s, m, d));
+      if (ok) strcpy(next.birthday, s);
+    } else if (strcmp(k, "born") == 0) {
+      const char* s = v.as<const char*>();
+      uint16_t y;
+      uint8_t m, d;
+      ok = s && (s[0] == 0 || parseDate(s, y, m, d));
+      if (ok) strcpy(next.born, s);
+    } else if (strcmp(k, "friends") == 0) {
+      ok = v.is<bool>();
+      if (ok) next.friends = v.as<bool>();
     } else if (strcmp(k, "lang") == 0) {
       const char* s = v.as<const char*>();
       if (s && s[0] == 0) {
@@ -144,6 +203,10 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["nightBrightness"] = cfg.nightBrightness;
   out["mascot"] = cfg.mascot;
   out["sleepMin"] = cfg.sleepMin;
+  out["owner"] = cfg.owner;
+  out["birthday"] = cfg.birthday;
+  out["born"] = cfg.born;
+  out["friends"] = cfg.friends;
 }
 
 void configToStored(const Config& cfg, JsonObject out) {

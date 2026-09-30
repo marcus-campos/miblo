@@ -65,6 +65,7 @@ static void handleInfo() {
   doc["mascot"] = ctx.cfg.mascot;
   doc["sleepMin"] = ctx.cfg.sleepMin;
   doc["flashBlinks"] = ctx.cfg.flashBlinks;
+  doc["friends"] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());
@@ -166,6 +167,7 @@ static void handleConfig() {
     return;
   }
   ctx.configChanged = true;
+  ctx.lastInteractionMs = millis();  // someone is setting it up: wake the screen (a new name says hi)
   json(200, "{\"ok\":true}");
 }
 

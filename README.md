@@ -63,6 +63,8 @@
 - **Today's summary:** responses finished today, time with Claude working, today's cost and the limits. The count survives the bridge restarting and resets at midnight.
 - **Mascot colours:** sphynx (peach), orange, black or grey, chosen on the settings page.
 - **Pet mode and screen care:** after 20 minutes with nobody using it (computer away, or nothing running), the mascot wanders slowly around the whole screen like a little desk pet, carrying a small card: the clock, your 5-hour and weekly limits, the next reset (or "limit freed"), and the last task that finished and how long ago. After a delay you choose on the settings page (15 min to 4 h, 1 h by default) the screen turns off; "never" keeps the pet wandering. Everything also shifts by a pixel or two every few minutes. LCDs can keep a faint ghost of an image left still for hours; none of this lets that happen. Any Claude Code activity, opening the settings page or `/miblo:pair` brings the normal screens back.
+- **Several Miblos on one network (an easter egg):** Miblos in pet mode notice each other. A mascot says "Hi, Nina!" when another one shows up, and every few minutes one walks off its screen and into the other's to visit, in its own colours. If the other one's limits are past 80%, the visitor brings a coffee. At night, sleeping Miblos nap in step. Only the gadget's name, mascot colour and a few flags go on the network (in pet mode, napping, limits past 80%); nothing about your sessions. It's on by default; turn it off on the settings page.
+- **Greetings and special days:** the mascot says "Hi! I'm Tofu" when you name it. If it knows your first name, it says good morning (or good afternoon, or good evening) at your first Claude Code activity of the day. On your birthday it wishes you a happy birthday with a party hat and confetti. It also wears a Santa hat at Christmas, a witch hat at Halloween and a party hat at New Year, and celebrates its own birthday one year after its first day with you.
 - **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
 - **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
@@ -72,7 +74,7 @@
 
 - **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language and device name. `/miblo:settings` opens it for you.
+- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language, device name, and your name and birthday. `/miblo:settings` opens it for you.
 - **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 
@@ -113,7 +115,7 @@ For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#
    - Your router needs **WPA2**. WPA3-only routers aren't supported. If a "WPA2/WPA3" mixed-mode router refuses the connection, switch it to WPA2.
 
    Once it connects, the screen shows "Wi-Fi connected", a 4-digit pairing code and the gadget's IP.
-3. **Pair.** In Claude Code, run `/miblo:pair` and type the 4-digit code from the screen.
+3. **Pair.** In Claude Code, run `/miblo:pair` and type the 4-digit code from the screen. It then asks what to call the gadget (up to 20 characters). A name helps when you have several Miblos. Reply `keep` to leave it as `Miblo-XXXX`. It also offers to tell the gadget your first name and birthday, so it can greet you. Reply `skip` if you'd rather not.
 4. **Allow the status line link.** `/miblo:pair` asks before linking your status line. This link is what the limits, context and cost need. Your current status line keeps working exactly the same. If you say no, you still get session states and alerts, but no limits. You can undo it any time with `/miblo:unlink-statusline`.
 
 The gadget updates on your next Claude Code activity.
@@ -124,11 +126,13 @@ The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you
 
 | Command | Arguments | What it does |
 |---|---|---|
-| `/miblo:pair` | `[ip]` | Finds gadgets over mDNS (or uses the IP you give), asks for the 4-digit code on the screen and pairs. It then offers to link the status line. |
+| `/miblo:pair` | `[ip]` | Finds gadgets over mDNS (or uses the IP you give), asks for the 4-digit code on the screen and pairs. It then asks what to call the gadget, offers to tell it your name and birthday, and offers to link the status line. |
 | `/miblo:status` | | Shows whether the bridge is running and the status line is linked, and lists each paired gadget (online/offline), the active sessions, the limits and today's summary (responses finished, time worked, cost). |
 | `/miblo:mode` | `<overview\|limits\|sessions> [id]` | Sets a gadget's display mode. |
 | `/miblo:rotate` | `<on\|off> [every-seconds] [show-seconds] [id]` | In Overview, shows the Limits screen for `show-seconds` once every `every-seconds`. `every` must be 10–3600 s, `show` must be 3–300 s and shorter than `every`. With no arguments, it shows the current setting and offers presets (every 1 min for 10 s, every 5 min for 15 s, every 15 min for 20 s, or off). |
 | `/miblo:night` | `<on\|off> [HH:MM HH:MM] [brightness%] [id]` | Dims the screen between the two local times (the window may cross midnight) to the night brightness (1–100%, never brighter than the normal brightness). With no arguments, it shows the current setting and offers presets (22:00–07:00 at 10%, 23:00–07:00 at 5%, 20:00–08:00 at 20%, or off). |
+| `/miblo:rename` | `[id] [name]` | Renames a gadget (up to 20 characters). The name shows on the gadget screen, in the `/miblo` commands and on the network. With no arguments, it asks which gadget and the new name. `--default` brings back `Miblo-XXXX`. |
+| `/miblo:owner` | `[id] [--name <name>] [--birthday <DD/MM>]` | Tells the gadget your first name and birthday (day first, e.g. `14/03`, or `03-14`), so it says good morning and wishes you a happy birthday. `clear` removes either one. Both stay on the gadget only. |
 | `/miblo:settings` | `[id]` | Opens the gadget's web settings page in your browser and prints its URL (also reachable at `http://<id>.local`). |
 | `/miblo:update` | `[id] [--file path]` | Updates the plugin and then the gadget firmware from the latest GitHub release. You confirm each step and type the on-screen code. `--file` sends a local `miblo-<board>-<version>.bin` instead. |
 | `/miblo:link-statusline` | | Links Claude Code's status line to Miblo. Your original status line keeps its exact output. |

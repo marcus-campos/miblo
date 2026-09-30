@@ -9,6 +9,8 @@
 #include "miblo_overview.h"
 #include "miblo_policy.h"
 #include "miblo_version.h"
+#include "miblo_occasions.h"
+#include "platform/friends_net.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
 #include "platform/ota.h"
@@ -95,6 +97,42 @@ static bool displayOff = false;  // the panel is asleep (nobody using it: see mi
 static uint8_t shiftStep = 0;    // current pixel-shift position (ui::ShiftCanvas)
 static uint32_t shiftAtMs = 0;
 static uint32_t roamSinceMs = 0;  // when pet mode came up
+static char shownName[64] = "";   // the name the screen last knew (a change greets with it)
+static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
+static uint32_t occasionAtMs = 0;
+
+// Local date and minute of the day; false while the time is unknown.
+static bool today(miblo::Date& d, int& minute) {
+  const time_t now = time(nullptr);
+  if (now <= 1600000000) return false;
+  struct tm lt;
+  localtime_r(&now, &lt);
+  d = miblo::Date{(uint16_t)(lt.tm_year + 1900), (uint8_t)(lt.tm_mon + 1), (uint8_t)lt.tm_mday};
+  minute = lt.tm_hour * 60 + lt.tm_min;
+  return true;
+}
+
+// Once a minute: today's hat, and the gadget's own birthday noted on the first day it is used.
+static void updateOccasion(uint32_t now) {
+  if (occasionAtMs && now - occasionAtMs < 60000) return;
+  occasionAtMs = now;
+  miblo::Date d;
+  int minute;
+  uint8_t want = 0;
+  if (today(d, minute)) {
+    want = (uint8_t)miblo::accessoryFor(miblo::occasionOn(ctx.cfg, d));
+    if (!ctx.cfg.born[0] && ctx.tokens.count() > 0) {
+      snprintf(ctx.cfg.born, sizeof(ctx.cfg.born), "%04u-%02u-%02u", (unsigned)d.year, (unsigned)d.month,
+               (unsigned)d.day);
+      ctx.configChanged = true;
+    }
+  }
+  if (want != accessory) {
+    accessory = want;
+    screens::setMascotAccessory(want);
+    firstFrame = true;
+  }
+}
 
 // Local minute of the day, or -1 while the time is unknown.
 static int minuteOfDay() {
@@ -171,6 +209,7 @@ void setup() {
   storage::loadConfig(ctx.cfg);
   storage::loadTokens(ctx.tokens);
   applyConfig();
+  strlcpy(shownName, deviceName(), sizeof(shownName));
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
@@ -188,6 +227,7 @@ void loop() {
   server.handleClient();
   net::loop(now);
   mdns::loop(now);
+  friendsnet::loop(now);
 
   if (!bootCountCleared && now - bootMs >= miblo::kPowerCycleWindowMs) {
     storage::writeBootCount(0);
@@ -199,6 +239,11 @@ void loop() {
     applyConfig();
     net::applyTimezone();
     mdns::announce();
+    if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
+      strlcpy(shownName, deviceName(), sizeof(shownName));
+      ctx.greeter.named(now);
+    }
+    occasionAtMs = 0;  // a birthday may have been set
     firstFrame = true;  // language/mode may have changed: redraw everything
   }
   if (ctx.factoryResetRequested) {
@@ -260,8 +305,38 @@ void loop() {
   const uint32_t idleMs = !idleScreen ? 0 : screen == ScreenId::Disconnected ? now - awaySinceMs : quiet.quietMs(now);
   const uint32_t sinceSeen = now - ctx.lastInteractionMs;
   const bool away = screen == ScreenId::Disconnected;
-  if (miblo::petMode(idleMs, sinceSeen)) screen = ScreenId::Roam;
-  if (screen == ScreenId::Roam && current != ScreenId::Roam) roamSinceMs = now;
+  const bool pet = miblo::petMode(idleMs, sinceSeen);
+  if (pet) screen = ScreenId::Roam;
+  if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
+
+  // Other Miblos on the network: what we tell them (in pet mode, napping, limits past 80%), and
+  // a visit takes over the pet mode screen.
+  const uint32_t nowEpoch = clockNow().epoch;
+  const bool napping = pet && away && now - awaySinceMs >= miblo::kAwayNapMs;
+  const screens::DeskMood limitsMood = screens::deskMoodFor(ctx.snap, nowEpoch ? nowEpoch : ctx.snap.now);
+  const bool tired = ctx.usageEverSeen &&
+                     (limitsMood == screens::DeskMood::Worried || limitsMood == screens::DeskMood::Scared);
+  ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot);
+  ctx.friends.update(now, ctx.cfg.friends && net::connected(),
+                     (pet ? miblo::kFriendRoaming : 0) | (napping ? miblo::kFriendNapping : 0) |
+                         (tired ? miblo::kFriendTired : 0),
+                     hwRandom());
+  const miblo::VisitView visit = ctx.friends.visit(now);
+  if (screen == ScreenId::Roam && visit.role != miblo::VisitRole::None) screen = ScreenId::Visit;
+
+  // Greetings: the first activity of the day, or a new name. Only over ordinary screens.
+  updateOccasion(now);
+  miblo::Date day{};
+  int minute = 0;
+  const bool timeKnown = today(day, minute);
+  ctx.greeter.update(now, screen == ScreenId::Main && counts.running > 0, timeKnown, day, minute, ctx.cfg);
+  const miblo::Greeting greeting = ctx.greeter.showing(now);
+  if (greeting != miblo::Greeting::None &&
+      (screen == ScreenId::Main || screen == ScreenId::Desk || screen == ScreenId::Summary ||
+       screen == ScreenId::Disconnected || screen == ScreenId::Roam || screen == ScreenId::Visit ||
+       screen == ScreenId::Paired)) {
+    screen = ScreenId::Hello;
+  }
   const bool asleep = miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin);
   if (asleep != displayOff) {
     displayOff = asleep;
@@ -334,10 +409,29 @@ void loop() {
       screens::updateAvailable(lang, MIBLO_FW_VERSION, ctx.snap.latest, (uint8_t)(now / 400));
       break;
     case ScreenId::Roam: {
-      const screens::DeskMood mood =
+      screens::DeskMood mood =
           away ? (now - awaySinceMs >= miblo::kAwayNapMs ? screens::DeskMood::Asleep : screens::DeskMood::Searching)
                : screens::deskMoodFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now);
-      screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood);
+      char note[96] = "";
+      uint32_t lookMs = UINT32_MAX;
+      if (const char* hi = ctx.friends.greeting(now)) {
+        snprintf(note, sizeof(note), screens::t(lang, S::FriendHi), hi);
+        mood = screens::DeskMood::Celebrate;
+      } else if (const char* buddy = ctx.friends.napBuddy()) {
+        // Napping together: the same wall-clock phase on both screens, so the zzz go in step.
+        snprintf(note, sizeof(note), screens::t(lang, S::FriendNap), buddy);
+        if (clk.valid) lookMs = (clk.epoch % 86400) * 1000;
+      }
+      screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood, note, lookMs);
+      break;
+    }
+    case ScreenId::Visit:
+      screens::visit(lang, ctx.snap, clk, visit);
+      break;
+    case ScreenId::Hello: {
+      char l1[64], l2[64];
+      miblo::greetingLines(lang, greeting, ctx.cfg.owner, deviceName(), l1, sizeof(l1), l2, sizeof(l2));
+      screens::hello(l1, l2, miblo::greetingIsParty(greeting), ctx.greeter.elapsed(now));
       break;
     }
     case ScreenId::AlertFlash: {

@@ -2,6 +2,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "miblo_friends.h"
 #include "miblo_i18n.h"
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
@@ -65,7 +66,8 @@ uint8_t mascotPose(uint8_t frame);
 // Expression of the big Desk mascot (design units of the 96-unit box).
 enum class Eyes : uint8_t { Open, Closed, Wide, Sleepy, Happy };  // Happy: "^ ^"
 enum class Paws : uint8_t { Down, ReachLeft, ReachRight, Cover };  // Cover: paws over the eyes
-enum : uint8_t { kSweat = 1, kAlarm = 2, kZ1 = 4, kZ2 = 8, kMouthO = 16 };  // MascotLook::extras
+// MascotLook::extras. kCoffee: a cup in hand (a friend's visit); kHeart: a heart beside the ear.
+enum : uint8_t { kSweat = 1, kAlarm = 2, kZ1 = 4, kZ2 = 8, kMouthO = 16, kCoffee = 32, kHeart = 64 };
 struct MascotLook {
   int8_t dx;   // whole cat sideways (shiver)
   int8_t dy;   // whole cat up/down (hop < 0)
@@ -86,6 +88,11 @@ void logo(int cx, int cy, int size);
 // Mascot colours (config "mascot"): 0 sphynx (peach), 1 orange, 2 black, 3 grey. Applies to
 // every mascot drawn from then on.
 void setMascotStyle(uint8_t style);
+uint8_t mascotStyle();
+// A hat for special days (miblo::Accessory: 0 none, 1 Santa, 2 witch, 3 party), on every mascot
+// drawn from then on.
+void setMascotAccessory(uint8_t accessory);
+uint8_t mascotAccessory();
 // Desk mascot with front paws: flat primitives only, inside the square
 // (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
 // `table`: the table edge under the paws (left out when the mascot moves around the screen).
@@ -142,8 +149,18 @@ MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms);
 DeskMood deskMoodFor(const miblo::Snapshot& s, uint32_t nowEpoch, bool* focusLeft = nullptr);
 // Pet mode (long idle, screen left on): the mascot wanders around the whole screen carrying a
 // small card (clock, 5h/week limits, the next reset or "limit freed", the last finished task and
-// how long ago), so nothing stays on the same pixels. `ms`: time in the mode.
-void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood);
+// how long ago), so nothing stays on the same pixels. `ms`: time in the mode. `note`: a line
+// that replaces the last task for a while ("Hi, Nina!", "Napping with Nina"). `lookMs`: the
+// expression's clock when it must differ from `ms` (napping in step with a friend).
+void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood,
+          const char* note = nullptr, uint32_t lookMs = UINT32_MAX);
+// A visit between two Miblos in pet mode (miblo_friends.h). Visitor: our mascot walks off to the
+// right, the screen says who it is visiting, and it walks back in. Host: the friend's mascot (in
+// its own colours) walks in from the left, they play, and it leaves. The limits stay at the bottom.
+void visit(Lang lang, const miblo::Snapshot& s, const Clock& clk, const miblo::VisitView& v);
+// A greeting ("Hi! I'm" / "Tofu", "Good morning" / "Ana", "Happy birthday" / "Ana"): the mascot
+// cheering, `line1` small (may be empty) over `line2` big. `party`: confetti.
+void hello(const char* line1, const char* line2, bool party, uint32_t ms);
 // Where the pet is at `ms` (centre of its box: cat + card), bouncing inside the screen.
 void roamPosition(uint32_t ms, int& cx, int& cy);
 // Full-screen mascot + two ring gauges (5h, week) + clock.

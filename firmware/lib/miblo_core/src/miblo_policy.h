@@ -93,7 +93,9 @@ enum class ScreenId : uint8_t {
   Roam,           // long idle, screen left on: the mascot wanders around the screen (pet mode)
   UpdateAvailable,  // right after boot: a newer firmware was released (for kShowMs)
   LimitReset,     // the 5h window just reset after real use: "limit freed"
-  Summary         // quiet spell: today's responses, time worked and cost
+  Summary,        // quiet spell: today's responses, time worked and cost
+  Visit,          // pet mode: another Miblo's mascot is here, or ours went out (miblo_friends.h)
+  Hello           // a greeting: the new name, good morning, happy birthday (miblo_occasions.h)
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;

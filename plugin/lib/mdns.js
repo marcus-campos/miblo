@@ -94,7 +94,9 @@ export function parseMessage(buf) {
 // before they reach the terminal or Claude's context.
 const clean = (s, n) => String(s ?? '').replace(/[^A-Za-z0-9 ._-]/g, '').slice(0, n);
 export const cleanId = (s) => clean(s, 32);
-export const cleanName = (s) => clean(s, 20);
+// Names may be in any script ("Escritório", "Кот", "猫"): letters, marks and digits of any
+// language, never control or bidi characters. At most 20 characters, as on the gadget.
+export const cleanName = (s) => [...String(s ?? '').replace(/[^\p{L}\p{M}\p{N} ._'-]/gu, '')].slice(0, 20).join('');
 
 export function resolveDevices(records, service) {
   const lc = (s) => String(s).toLowerCase();

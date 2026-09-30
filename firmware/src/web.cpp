@@ -24,7 +24,7 @@ static const char kCss[] PROGMEM =
     "input[type=checkbox]{width:auto;margin-right:8px}button{margin-top:16px;padding:12px;width:100%;border:0;"
     "border-radius:8px;background:#f5a524;color:#111;font-weight:700;font-size:16px}"
     "button.s{background:#333;color:#eee}button.d{background:#ef4444;color:#fff}.m{color:#888}.w{color:#f5a524}"
-    "a{color:#60a5fa}";
+    "a{color:#60a5fa}.r{display:flex;gap:8px}";
 
 // Fills the time zone <select> with the device's IANA list (GET /api/zones, one name per line).
 // `cur` is the stored value: an IANA name → selected; "UTC0" (never set) or a legacy POSIX rule →
@@ -430,6 +430,14 @@ static void settingsPage() {
   out += F("</label><input id=\"name\" maxlength=\"20\" placeholder=\"");
   appendEscaped(out, ctx.ident.defaultName);
   out += F("\"><label>");
+  appendEscaped(out, tr(lang, S::WebOwner).c_str());
+  out += F("</label><input id=\"owner\" maxlength=\"20\"><label>");
+  appendEscaped(out, tr(lang, S::WebBirthday).c_str());
+  // Day and month, two selects (the year is never asked); filled and read by the script.
+  out += F("</label><div class=\"r\"><select id=\"bd\"></select><select id=\"bm\"></select></div>"
+           "<label><input id=\"friends\" type=\"checkbox\">");
+  appendEscaped(out, tr(lang, S::WebFriends).c_str());
+  out += F("</label><label>");
   appendEscaped(out, tr(lang, S::WebTimezone).c_str());
   out += F("</label><select id=\"tz\"></select><label>");
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
@@ -455,7 +463,7 @@ static void settingsPage() {
   pageFlush(out);
   out += F("</button><script>const C=");
 
-  DynamicJsonDocument cfg(768);
+  DynamicJsonDocument cfg(1024);
   miblo::configToJson(ctx.cfg, cfg.to<JsonObject>());
   appendJsonForScript(out, cfg);
   out += F(";const T=");
@@ -478,12 +486,17 @@ static void settingsPage() {
       "const p2=n=>String(n).padStart(2,'0');"
       "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
       "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
+      // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
+      "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
+      "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
+      "if(C.birthday){$('bm').value=C.birthday.slice(0,2);$('bd').value=C.birthday.slice(3);}"
       "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
       "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
       "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-      "'nightBrightness','mascot','sleepMin','name','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+      "'nightBrightness','mascot','sleepMin','name','owner','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
       "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
+      "b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"

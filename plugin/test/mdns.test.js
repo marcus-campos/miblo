@@ -218,3 +218,12 @@ test('resolveDevices sanitizes untrusted id/name and drops empty ids', () => {
   ]);
   assert.deepEqual(resolveDevices(records('$$$', 'N'), '_miblo._tcp.local'), []);
 });
+
+test('cleanName keeps names in any language but drops control and bidi characters', async () => {
+  const { cleanName } = await import('../lib/mdns.js');
+  assert.equal(cleanName('Escritório 3'), 'Escritório 3');
+  assert.equal(cleanName('Кот'), 'Кот');
+  assert.equal(cleanName('猫猫'), '猫猫');
+  assert.equal(cleanName('a‮b\u0007c\n'), 'abc');
+  assert.equal(cleanName('ééééééééééééééééééééé'), 'éééééééééééééééééééé');
+});

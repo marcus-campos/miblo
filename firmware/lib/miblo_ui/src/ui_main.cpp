@@ -718,7 +718,8 @@ MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
 static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
                                  (uint32_t)(uint8_t)k.gy << 24);
-  return hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
+  h = hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
+  return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8);  // a hat or colour change redraws
 }
 
 // The mascot in its box (`half` on the 240 grid), only redrawn when the expression changes. It
@@ -794,10 +795,11 @@ void roamPosition(uint32_t ms, int& cx, int& cy) {
   cy = roamH() / 2 + bounce(ms / kRoamVyMs, Y(240) - roamH());
 }
 
-void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood) {
+void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
+          uint32_t lookMs) {
   int cx, cy;
   roamPosition(ms, cx, cy);
-  const MascotLook k = deskLook(mood, true, ms);
+  const MascotLook k = deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs);
   const int bw = roamW(), bh = roamH();
   const int left = cx - bw / 2, top = cy - bh / 2;
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
@@ -831,9 +833,16 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     while (*w == ' ') w++;
     memmove(lastWhen, w, strlen(w) + 1);
   }
+  uint16_t nameFg = color::BLUE;
+  if (note && note[0]) {  // a friend's "hi" or a nap together, in place of the last task
+    snprintf(lastName, sizeof(lastName), "%s", note);
+    lastWhen[0] = 0;
+    nameFg = color::AMBER;
+  }
 
   uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k);
   h = hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim), reset), lastName), lastWhen);
+  h = hashInt(h, mascotAccessory());
   if (!dirty(R_BODY, h)) return;
   static int lastX = -1000, lastY = -1000;
   if (abs(cx - lastX) > X(kRoamMargin) || abs(cy - lastY) > Y(kRoamMargin)) C().clear(color::BG);
@@ -847,7 +856,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     C().text(cx, y0 + Y(16), clk.hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
     if (lim[0]) C().text(cx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
     if (reset[0]) C().text(cx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
-    if (lastName[0]) C().text(cx, y0 + Y(66), lastName, Font::SmallBold, color::BLUE, Align::Center, w);
+    if (lastName[0]) C().text(cx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
     if (lastWhen[0]) C().text(cx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
   };
   // In strips, like the desk mascot: no big heap block, no flash.
@@ -862,6 +871,147 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     C().endLayer();
   }
   C().releaseLayer();
+}
+
+// ---- visits between Miblos (miblo_friends.h) ----
+// Both cats walk on one horizontal band, recomposed in strips on every change (no trail, no flash).
+constexpr int kVisitCatHalf = 40;
+constexpr int kVisitCatY = 104;
+
+// Position along a walk: from `a` to `b` over [t0, t0 + kVisitWalkMs).
+static int walk(uint32_t ms, uint32_t t0, int a, int b) {
+  if (ms <= t0) return a;
+  if (ms >= t0 + miblo::kVisitWalkMs) return b;
+  return a + (int)((int64_t)(b - a) * (int32_t)(ms - t0) / (int32_t)miblo::kVisitWalkMs);
+}
+
+// A walking cat: bobbing, eyes towards where it goes.
+static MascotLook walking(uint32_t ms, int dir) {
+  MascotLook k{0, (int8_t)((ms / 180) % 2 ? -2 : 0), (int8_t)(3 * dir), 0, Eyes::Open, Paws::Down, 0};
+  return k;
+}
+
+void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitView& v) {
+  using miblo::VisitRole;
+  const uint32_t ms = v.ms;
+  const int half = Sz(kVisitCatHalf);
+  const int offLeft = -half - X(2), offRight = X(240) + half + X(2);
+  const bool coffee = v.gift == miblo::Gift::Coffee;
+  field(R_CLOCK, kHashSeed + 59, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
+
+  // Where each cat is and how it looks.
+  bool mine = true, guest = false;
+  int myX = X(120), guestX = offLeft;
+  MascotLook me = deskLook(DeskMood::Calm, true, ms), them{};
+  if (v.role == VisitRole::Visitor) {
+    if (ms < miblo::kVisitWalkMs) {
+      myX = walk(ms, 0, X(120), offRight);
+      me = walking(ms, 1);
+    } else if (ms >= miblo::kVisitMs - miblo::kVisitWalkMs) {
+      myX = walk(ms, miblo::kVisitMs - miblo::kVisitWalkMs, offRight, X(120));
+      me = walking(ms, -1);
+    } else {
+      mine = false;
+    }
+  } else {
+    myX = X(160);
+    const uint32_t in0 = miblo::kVisitWalkMs, out0 = miblo::kVisitPartMs;
+    guest = ms >= in0 && ms < out0 + miblo::kVisitWalkMs;
+    if (ms < miblo::kVisitArriveMs) {
+      guestX = walk(ms, in0, offLeft, X(80));
+      them = walking(ms, 1);
+      if (coffee) them.extras |= kCoffee;
+      me.gx = -3;  // looking at the door
+    } else if (ms < out0) {
+      // Together: happy hops in turn; a coffee changes hands halfway, then a heart.
+      guestX = X(80);
+      const uint32_t t = ms - miblo::kVisitArriveMs;
+      const bool firstHalf = t < miblo::kVisitStayMs / 2;
+      them = MascotLook{0, (int8_t)((t / 400) % 3 == 0 ? -4 : 0), 3, 0, Eyes::Happy, Paws::Down, 0};
+      me = MascotLook{0, (int8_t)((t / 400) % 3 == 1 ? -4 : 0), -3, 0, Eyes::Happy, Paws::Down, 0};
+      if (coffee && firstHalf) them.extras |= kCoffee;
+      if (coffee && !firstHalf) me.extras |= kCoffee | kHeart;
+      if (!coffee && (t / 1500) % 4 == 3) me.extras |= kHeart;
+    } else {
+      guestX = walk(ms, out0, X(80), offLeft);
+      them = walking(ms, -1);
+      me.gx = -3;
+    }
+  }
+
+  uint32_t h = hashInt(hashInt(kHashSeed + 61, (uint32_t)(mine ? myX + 1000 : 0)), (uint32_t)(guest ? guestX + 1000 : 0));
+  h = hashInt(hashInt(h, lookHash(kHashSeed, me)), lookHash(kHashSeed + 1, them));
+  if (dirty(R_BODY, h)) {
+    const int top = Y(kVisitCatY) - half, bh = 2 * half;
+    const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory();
+    auto draw = [&] {
+      C().fillRect(0, top, X(240), bh, color::BG);
+      if (mine) deskMascot(myX, Y(kVisitCatY), me, kVisitCatHalf, false);
+      if (guest) {  // in its own colours, no hat (the special day is ours)
+        setMascotStyle(v.mascot);
+        setMascotAccessory(0);
+        deskMascot(guestX, Y(kVisitCatY), them, kVisitCatHalf, false);
+        setMascotStyle(myStyle);
+        setMascotAccessory(myHat);
+      }
+    };
+    const int stripH = (bh + kCatStrips - 1) / kCatStrips;
+    for (int y = top; y < top + bh; y += stripH) {
+      const int sh = y + stripH <= top + bh ? stripH : top + bh - y;
+      if (!C().beginLayer(0, y, X(240), sh)) {
+        draw();
+        break;
+      }
+      draw();
+      C().endLayer();
+    }
+    C().releaseLayer();
+  }
+
+  // What is going on, under the cats.
+  char buf[96];
+  if (v.role == VisitRole::Visitor) {
+    snprintf(buf, sizeof(buf), t(lang, S::FriendAway), v.name);
+    if (mine) buf[0] = 0;  // still on screen (leaving or back home)
+  } else {
+    snprintf(buf, sizeof(buf), t(lang, coffee ? S::FriendCoffee : S::FriendVisiting), v.name);
+    if (!guest) buf[0] = 0;
+  }
+  const uint32_t ht = hashStr(hashInt(kHashSeed + 67, (uint32_t)lang), buf);
+  if (region(R_ROW0, ht, 0, Y(150), X(240), Y(40)) && buf[0]) {
+    C().text(X(120), Y(176), buf, Font::BodyBold, color::AMBER, Align::Center, X(228));
+  }
+  compactLimits(R_LIMITS, lang, s, Y(206), Y(30), Y(226), color::BG);
+}
+
+// ---- greetings ----
+
+void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
+  deskCat(R_BODY, X(120), Y(90), 56, deskLook(DeskMood::Celebrate, true, ms));
+  if (party) {
+    // Confetti along the top and the bottom, reshuffled a few times a second.
+    static const uint16_t kColors[] = {color::AMBER, color::GREEN, color::BLUE, color::CORAL, color::VIOLET, color::RED};
+    const uint32_t frame = ms / 250;
+    for (uint8_t band = 0; band < 2; band++) {
+      const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
+      if (!region(band ? R_FOOT : R_HEADER, hashInt(kHashSeed + 71 + band, frame), 0, y0, X(240), bandH)) continue;
+      uint32_t r = frame * 2654435761u + band * 97u + 1;
+      for (int i = 0; i < 14; i++) {
+        r = r * 1103515245u + 12345u;
+        const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
+        const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
+        C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), kColors[(r >> 4) % 6]);
+      }
+    }
+  }
+  const uint32_t h = hashStr(hashStr(hashInt(kHashSeed + 73, party), line1), line2);
+  if (region(R_LIMITS, h, 0, Y(152), X(240), Y(62))) {
+    const bool two = line1 && line1[0];
+    if (two) C().text(X(120), Y(172), line1, Font::Body, color::MUTED, Align::Center, X(228));
+    // The big line in the title font when it fits, else a size down (long phrases, some languages).
+    const Font big = C().textWidth(line2, Font::Title) <= X(228) ? Font::Title : Font::BodyBold;
+    C().text(X(120), two ? Y(202) : Y(190), line2, big, party ? color::AMBER : color::TEXT, Align::Center, X(228));
+  }
 }
 
 void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt) {

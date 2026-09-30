@@ -21,6 +21,7 @@
 
 #include "TFT_eSPI.h"
 #include "fonts.h"
+#include "miblo_occasions.h"
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
 #include "platform/tft_canvas.h"
@@ -321,6 +322,72 @@ void renderAll(Lang L) {
     save(s, std::string("26-logo-") + styles[i]);
   }
   screens::setMascotStyle(0);
+  // Hats for special days, on the desk mascot.
+  const char* hats[] = {"santa", "witch", "party"};
+  for (uint8_t i = 0; i < 3; i++) {
+    screens::setMascotAccessory(i + 1);
+    Shot s;
+    screens::desk(L, snap, clk, 0);
+    save(s, std::string("27-hat-") + hats[i]);
+  }
+  screens::setMascotAccessory(0);
+  // Greetings.
+  {
+    miblo::Config c;
+    strcpy(c.owner, "Ana");
+    char l1[64], l2[64];
+    const struct {
+      miblo::Greeting g;
+      const char* name;
+      uint8_t hat;
+    } greets[] = {{miblo::Greeting::Named, "named", 0},
+                  {miblo::Greeting::Morning, "morning", 0},
+                  {miblo::Greeting::OwnerBirthday, "birthday", 3},
+                  {miblo::Greeting::MibloBirthday, "miblo-birthday", 3},
+                  {miblo::Greeting::Christmas, "christmas", 1}};
+    for (const auto& g : greets) {
+      screens::setMascotAccessory(g.hat);
+      miblo::greetingLines(L, g.g, c.owner, "Tofu", l1, sizeof(l1), l2, sizeof(l2));
+      Shot s;
+      screens::hello(l1, l2, miblo::greetingIsParty(g.g), 0);
+      save(s, std::string("09-hello-") + g.name);
+    }
+    screens::setMascotAccessory(0);
+  }
+  // Pet mode with other Miblos around: a hi, a nap together, and visits.
+  {
+    char note[96];
+    snprintf(note, sizeof(note), screens::t(L, S::FriendHi), "Nina");
+    Shot a;
+    screens::roam(L, snap, clk, 20000, screens::DeskMood::Celebrate, note);
+    save(a, "43-pet-friend-hi");
+    snprintf(note, sizeof(note), screens::t(L, S::FriendNap), "Nina");
+    Shot b;
+    screens::roam(L, snap, clk, 20000, screens::DeskMood::Asleep, note);
+    save(b, "43-pet-nap-together");
+    usage(34, 21);
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.mascot = 1;
+    const struct {
+      miblo::VisitRole role;
+      miblo::Gift gift;
+      uint32_t ms;
+      const char* name;
+    } visits[] = {{miblo::VisitRole::Host, miblo::Gift::None, miblo::kVisitArriveMs + 1000, "host"},
+                  {miblo::VisitRole::Host, miblo::Gift::Coffee, miblo::kVisitArriveMs + 1000, "host-coffee"},
+                  {miblo::VisitRole::Host, miblo::Gift::Coffee, miblo::kVisitArriveMs + miblo::kVisitStayMs - 1000,
+                   "host-coffee-given"},
+                  {miblo::VisitRole::Visitor, miblo::Gift::None, miblo::kVisitArriveMs + 1000, "away"}};
+    for (const auto& x : visits) {
+      v.role = x.role;
+      v.gift = x.gift;
+      v.ms = x.ms;
+      Shot s;
+      screens::visit(L, snap, clk, v);
+      save(s, std::string("44-visit-") + x.name);
+    }
+  }
   // Pet mode (long idle, screen left on).
   for (uint32_t ms : {0u, 20000u, 60000u}) {
     Shot s;
@@ -434,6 +501,49 @@ void animateAll(Lang L) {
       screens::roam(L, snap, clk, ms, screens::DeskMood::Calm);
       c.frame();
     }
+  }
+  {
+    // A visit, as the host sees it: the friend walks in, they play, it leaves (30 s).
+    idle();
+    usage(34, 21);
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.mascot = 1;
+    v.role = miblo::VisitRole::Host;
+    v.gift = miblo::Gift::Coffee;
+    Clip c("visit-host");
+    for (uint32_t ms = 0; ms < miblo::kVisitMs; ms += kFrameMs) {
+      v.ms = ms;
+      screens::visit(L, snap, clk, v);
+      c.frame();
+    }
+  }
+  {
+    // A visit, as the visitor's own screen shows it: out to the right, back from the right.
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.mascot = 1;
+    v.role = miblo::VisitRole::Visitor;
+    Clip c("visit-away");
+    for (uint32_t ms = 0; ms < miblo::kVisitMs; ms += kFrameMs) {
+      v.ms = ms;
+      screens::visit(L, snap, clk, v);
+      c.frame();
+    }
+  }
+  {
+    // Happy birthday, with the party hat and confetti.
+    miblo::Config cfg;
+    strcpy(cfg.owner, "Ana");
+    char l1[64], l2[64];
+    miblo::greetingLines(L, miblo::Greeting::OwnerBirthday, cfg.owner, "Tofu", l1, sizeof(l1), l2, sizeof(l2));
+    screens::setMascotAccessory(3);
+    Clip c("hello-birthday");
+    for (uint32_t ms = 0; ms < 6000; ms += kFrameMs) {
+      screens::hello(l1, l2, true, ms);
+      c.frame();
+    }
+    screens::setMascotAccessory(0);
   }
   miblo::RunTracker none;
   attention();

@@ -3,8 +3,10 @@
 
 #include "miblo_alerts.h"
 #include "miblo_config.h"
+#include "miblo_friends.h"
 #include "miblo_i18n.h"
 #include "miblo_limits.h"
+#include "miblo_occasions.h"
 #include "miblo_policy.h"
 #include "miblo_overview.h"
 #include "miblo_security.h"
@@ -29,6 +31,8 @@ struct Context {
   miblo::RunTracker runs;
   miblo::LimitWatch limits;  // "limit freed" and the burn-rate projection
   miblo::UpdateNotice update;  // "update available" once per boot
+  miblo::FriendPlay friends;   // other Miblos on the network (pet mode visits)
+  miblo::Greeter greeter;      // "Hi! I'm Tofu", "Good morning, Ana", birthdays
 
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;

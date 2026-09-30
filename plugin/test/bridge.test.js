@@ -120,6 +120,23 @@ test('a finished response and the time worked reach the snapshot, /status and th
   }
 });
 
+test('the cached latest release reaches the snapshot, and is omitted when unknown', async () => {
+  const dev = await startFakeDevice();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const client = new DeviceClient();
+  const token = await client.pair(dev.addr, '4827', 'test');
+  new DeviceStore(dataDir).upsert({ id: 'x', name: 'X', addr: dev.addr, token });
+  try {
+    await createBridge({ dataDir, client, discoverFn: async () => [] }).push();
+    assert.ok(!('latest' in dev.state.snapshots.at(-1)));
+    fs.writeFileSync(path.join(dataDir, 'update-check.json'), JSON.stringify({ checkedAt: Date.now(), latest: '1.0.2' }));
+    await createBridge({ dataDir, client, discoverFn: async () => [] }).push();
+    assert.equal(dev.state.snapshots.at(-1).latest, '1.0.2');
+  } finally {
+    await dev.close();
+  }
+});
+
 function rawRequest(port, { method = 'GET', path: p = '/health', headers = {}, body } = {}) {
   return new Promise((resolve, reject) => {
     const req = httpMod.request({ host: '127.0.0.1', port, method, path: p, headers, setHost: false }, (res) => {

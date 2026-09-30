@@ -2,6 +2,7 @@
 // the installed plugin and the firmware of each paired gadget. Runs inside the synchronous
 // SessionStart hook, so every network call has a short timeout, the release is cached for
 // CHECK_EVERY_MS and the notice for one version is shown at most once per NOTIFY_EVERY_MS.
+// The bridge reads the same cache to send the latest version to the gadgets.
 import fs from 'node:fs';
 import path from 'node:path';
 import { GITHUB_API, REPO, compareVersions } from './firmware-update.js';
@@ -10,6 +11,7 @@ export const CHECK_EVERY_MS = 6 * 3600_000;
 export const NOTIFY_EVERY_MS = 24 * 3600_000;
 const GITHUB_TIMEOUT_MS = 2000;
 const DEVICE_TIMEOUT_MS = 800;
+const REREAD_MS = 5 * 60_000;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 
 function readJson(file) {
@@ -46,6 +48,37 @@ async function latestRelease({ fetchImpl, cacheFile, now, githubApi, repo }) {
   }
   writeJson(cacheFile, { ...cache, checkedAt: now, latest });
   return latest;
+}
+
+// The bridge's view of the cached release: get() is cheap (the file is re-read at most every
+// REREAD_MS, since the SessionStart hook refreshes it), refreshIfStale() asks GitHub in the
+// background when the cache is missing or older than CHECK_EVERY_MS. Never throws.
+export function createReleaseCache({ dataDir, fetchImpl = globalThis.fetch, now = () => Date.now(),
+  githubApi = GITHUB_API, repo = REPO }) {
+  const cacheFile = path.join(dataDir, 'update-check.json');
+  let latest = null;
+  let readAt = -Infinity;
+  const valid = (v) => (VERSION_RE.test(v ?? '') ? v : null);
+  const reread = () => {
+    latest = valid(readJson(cacheFile).latest);
+    readAt = now();
+  };
+  return {
+    get() {
+      if (now() - readAt >= REREAD_MS) reread();
+      return latest;
+    },
+    async refreshIfStale() {
+      try {
+        const { checkedAt } = readJson(cacheFile);
+        if (typeof checkedAt === 'number' && now() - checkedAt < CHECK_EVERY_MS) return;
+        latest = await latestRelease({ fetchImpl, cacheFile, now: now(), githubApi, repo });
+        readAt = now();
+      } catch {
+        // unknown until the next check
+      }
+    },
+  };
 }
 
 // Paired gadgets running firmware older than `latest` (offline ones are skipped).

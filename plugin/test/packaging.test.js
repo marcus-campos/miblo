@@ -48,12 +48,15 @@ for (const name of COMMANDS) {
     assert.match(md, /\$ARGUMENTS/);
   });
 
-  test(`the /miblo:${name} command pre-approves only the miblo CLI`, () => {
-    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
-    const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-    assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
-    assert.ok(!line.includes('Bash(node:*)'));
-  });
+  // pair also offers the update, see below
+  if (name !== 'pair') {
+    test(`the /miblo:${name} command pre-approves only the miblo CLI`, () => {
+      const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+      const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+      assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
+      assert.ok(!line.includes('Bash(node:*)'));
+    });
+  }
 
   test(`the /miblo:${name} command has its own description`, () => {
     const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
@@ -62,12 +65,15 @@ for (const name of COMMANDS) {
   });
 }
 
-test('the /miblo:update command references the CLI and pre-approves only miblo.js and the two plugin-update commands', () => {
-  const md = fs.readFileSync(path.join(root, 'commands/update.md'), 'utf8');
-  assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
-  assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
-  assert.match(md, /\$ARGUMENTS/);
-  assert.match(md, /^description: \S/m);
-  const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-  assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
-});
+// /miblo:pair offers the update right after pairing, so it allows the same commands as /miblo:update.
+for (const name of ['update', 'pair']) {
+  test(`the /miblo:${name} command references the CLI and pre-approves only miblo.js and the two plugin-update commands`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
+    assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
+    assert.match(md, /\$ARGUMENTS/);
+    assert.match(md, /^description: \S/m);
+    const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+    assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+  });
+}

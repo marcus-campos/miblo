@@ -29,6 +29,13 @@ test('today merges the day stats (responses and seconds worked) with the cost', 
   assert.deepEqual(s.today, { usd: 0, turns: 7, work: 3600 });
 });
 
+test('latest is sent when known and omitted otherwise', () => {
+  const { tracker, metrics, snap } = world();
+  assert.equal(buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, latest: '1.0.2' }).latest, '1.0.2');
+  assert.ok(!('latest' in snap()));
+  assert.ok(!('latest' in buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, latest: null })));
+});
+
 test('session fields, short ids and metrics', () => {
   const { tracker, metrics, snap } = world();
   const sid = 'abcd1234-5678-90ab-cdef-000000000000';

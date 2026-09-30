@@ -22,7 +22,7 @@ function world(day = { turns: 12, work: 4380 }) {
     metrics.ingest({ session_id: sid, model: { display_name: model }, cost: { total_cost_usd: usd },
       context_window: { used_percentage: ctx, total_input_tokens: inTok, total_output_tokens: outTok }, ...(rl ? { rate_limits: rl } : {}) }, { fresh: true });
   const rl = { five_hour: { used_percentage: 62, resets_at: S + 7800 }, seven_day: { used_percentage: 38, resets_at: S + 240000 } };
-  const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics, day: { today: () => day } }); };
+  const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics, day: { today: () => day }, latest: '1.0.2' }); };
   return { ev, sl, rl, finish };
 }
 

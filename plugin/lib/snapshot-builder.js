@@ -39,9 +39,36 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest 
     ...(latest ? { latest } : {}),
   };
 
-  while (snapshot.sessions.length > 0 && Buffer.byteLength(JSON.stringify(snapshot)) > SNAPSHOT_MAX_BYTES) {
-    snapshot.sessions.pop();
-    snapshot.more += 1;
+  return trimSnapshot(snapshot, MAX_SESSIONS, SNAPSHOT_MAX_BYTES);
+}
+
+// A copy of `snapshot` that fits a gadget's own caps (from its /api/info): at most `maxSessions`
+// sessions and `maxBytes` when serialized; the dropped ones are counted in `more`. Mixed fleets
+// (a 1.5.0 gadget beside an older one) each get as much as they can show.
+export function trimSnapshot(snapshot, maxSessions, maxBytes) {
+  if (!Array.isArray(snapshot.sessions)) return snapshot;
+  const extra = Math.max(0, snapshot.sessions.length - maxSessions);
+  if (!extra && Buffer.byteLength(JSON.stringify(snapshot)) <= maxBytes) return snapshot;
+  const s = { ...snapshot, sessions: snapshot.sessions.slice(0, maxSessions), more: snapshot.more + extra };
+  while (s.sessions.length > 0 && Buffer.byteLength(JSON.stringify(s)) > maxBytes) {
+    s.sessions.pop();
+    s.more += 1;
   }
-  return snapshot;
+  return s;
+}
+
+// A tiny snapshot with ONLY the alerts and the sessions they name (minimal fields), for when the
+// gadget is momentarily low on memory and refused the full one (503): alerts are the most
+// important thing to show, so this always fits and gets through.
+export function alertOnlySnapshot(snapshot) {
+  const alerts = snapshot.alerts ?? [];
+  if (!alerts.length) return null;
+  const sids = new Set(alerts.map((a) => a.sid));
+  const kept = (snapshot.sessions ?? []).filter((s) => sids.has(s.id))
+    .map((s) => ({ id: s.id, name: s.name, st: s.st, tool: s.tool, det: s.det, since: s.since }));
+  const dropped = (snapshot.sessions ?? []).length - kept.length;
+  return {
+    v: snapshot.v, seq: snapshot.seq, now: snapshot.now, usage: snapshot.usage ?? null,
+    sessions: kept, more: (snapshot.more ?? 0) + Math.max(0, dropped), alerts,
+  };
 }

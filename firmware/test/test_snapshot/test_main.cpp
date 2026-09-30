@@ -107,20 +107,19 @@ static void test_idle_fixture() {
 static void test_overflow_fixture() {
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("overflow.json"), snap));
   TEST_ASSERT_FALSE(snap.hasUsage);
-  TEST_ASSERT_EQUAL_UINT8(8, snap.count);
-  TEST_ASSERT_EQUAL_UINT16(2, snap.more);
-  TEST_ASSERT_EQUAL_FLOAT(0.0f, snap.todayUsd);
+  TEST_ASSERT_EQUAL_UINT8(20, snap.count);
+  TEST_ASSERT_EQUAL_UINT16(4, snap.more);
 }
 
 static void test_unknown_fields_are_ignored_and_extra_sessions_go_to_more() {
   std::string json = "{\"v\":1,\"seq\":1,\"now\":100,\"future\":{\"x\":[1,2,3]},\"usage\":null,\"today\":{\"tok\":5,\"usd\":1.25},\"sessions\":[";
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < kMaxSessions + 2; i++) {
     if (i) json += ",";
     json += "{\"id\":\"s" + std::to_string(i) + "\",\"name\":\"p\",\"st\":\"running\",\"newField\":true}";
   }
   json += "],\"more\":1,\"alerts\":[{\"id\":5,\"kind\":\"alien\",\"sid\":\"s0\"},{\"id\":6,\"kind\":\"done\",\"sid\":\"s1\"}]}";
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(json, snap));
-  TEST_ASSERT_EQUAL_UINT8(8, snap.count);
+  TEST_ASSERT_EQUAL_UINT8(kMaxSessions, snap.count);
   TEST_ASSERT_EQUAL_UINT16(3, snap.more);
   TEST_ASSERT_FALSE(snap.hasUsage);
   TEST_ASSERT_EQUAL_FLOAT(1.25f, snap.todayUsd);  // old today.tok field is ignored
@@ -147,7 +146,7 @@ static void test_errors_leave_previous_snapshot_untouched() {
   TEST_ASSERT_EQUAL(ParseResult::BadJson, parseText("{\"v\":1,\"seq\":8", snap));
   TEST_ASSERT_EQUAL(ParseResult::BadJson, parseText("[1,2]", snap));
   TEST_ASSERT_EQUAL(ParseResult::BadVersion, parseText("{\"seq\":9}", snap));
-  std::string big = "{\"v\":1,\"host\":\"" + std::string(3100, 'x') + "\"}";
+  std::string big = "{\"v\":1,\"host\":\"" + std::string(kSnapshotMaxBytes + 10, 'x') + "\"}";
   TEST_ASSERT_EQUAL(ParseResult::TooLarge, parseText(big, snap));
   TEST_ASSERT_EQUAL_UINT32(7, snap.seq);
   TEST_ASSERT_EQUAL_STRING("keep", snap.host);

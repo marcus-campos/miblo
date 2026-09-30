@@ -11,7 +11,7 @@
   },
   "sessions": [
     {
-      "id": "77777770",
+      "id": "session0",
       "name": "project-0",
       "st": "running",
       "tool": "Read",
@@ -22,7 +22,7 @@
       "tok": null
     },
     {
-      "id": "77777771",
+      "id": "session0",
       "name": "project-1",
       "st": "running",
       "tool": "Read",
@@ -33,7 +33,7 @@
       "tok": null
     },
     {
-      "id": "77777772",
+      "id": "session0",
       "name": "project-2",
       "st": "running",
       "tool": "Read",
@@ -44,7 +44,7 @@
       "tok": null
     },
     {
-      "id": "77777773",
+      "id": "session0",
       "name": "project-3",
       "st": "running",
       "tool": "Read",
@@ -55,7 +55,7 @@
       "tok": null
     },
     {
-      "id": "77777774",
+      "id": "session0",
       "name": "project-4",
       "st": "running",
       "tool": "Read",
@@ -66,7 +66,7 @@
       "tok": null
     },
     {
-      "id": "77777775",
+      "id": "session0",
       "name": "project-5",
       "st": "running",
       "tool": "Read",
@@ -77,7 +77,7 @@
       "tok": null
     },
     {
-      "id": "77777776",
+      "id": "session0",
       "name": "project-6",
       "st": "running",
       "tool": "Read",
@@ -88,7 +88,7 @@
       "tok": null
     },
     {
-      "id": "77777777",
+      "id": "session0",
       "name": "project-7",
       "st": "running",
       "tool": "Read",
@@ -97,9 +97,141 @@
       "model": "",
       "ctx": null,
       "tok": null
+    },
+    {
+      "id": "session0",
+      "name": "project-8",
+      "st": "running",
+      "tool": "Read",
+      "det": "f8.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session0",
+      "name": "project-9",
+      "st": "running",
+      "tool": "Read",
+      "det": "f9.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-10",
+      "st": "running",
+      "tool": "Read",
+      "det": "f10.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-11",
+      "st": "running",
+      "tool": "Read",
+      "det": "f11.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-12",
+      "st": "running",
+      "tool": "Read",
+      "det": "f12.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-13",
+      "st": "running",
+      "tool": "Read",
+      "det": "f13.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-14",
+      "st": "running",
+      "tool": "Read",
+      "det": "f14.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-15",
+      "st": "running",
+      "tool": "Read",
+      "det": "f15.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-16",
+      "st": "running",
+      "tool": "Read",
+      "det": "f16.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-17",
+      "st": "running",
+      "tool": "Read",
+      "det": "f17.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-18",
+      "st": "running",
+      "tool": "Read",
+      "det": "f18.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "session1",
+      "name": "project-19",
+      "st": "running",
+      "tool": "Read",
+      "det": "f19.js",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
     }
   ],
-  "more": 2,
+  "more": 4,
   "alerts": [],
   "latest": "1.0.2"
 }

@@ -4,24 +4,29 @@
 
 namespace miblo {
 
-constexpr size_t kSnapshotMaxBytes = 3072;
-constexpr uint8_t kMaxSessions = 8;
+// Sized on the device (stress-tested with /api/info "diag"): the biggest snapshot, parsed, still
+// leaves more than 10% of the RAM free. The plugin reads both from /api/info (maxSessions,
+// maxBytes) and trims what it sends; older firmware without them gets 8 sessions / 3072 bytes.
+constexpr size_t kSnapshotMaxBytes = 6144;
+constexpr uint8_t kMaxSessions = 20;
 constexpr uint8_t kMaxAlerts = 8;
 
 enum class SessionState : uint8_t { Idle, Running, Perm, Question, Done };
 enum class AlertKind : uint8_t { Perm, Question, Done };
 
-// Sizes: protocol limit in characters × 4 bytes (worst-case UTF-8) + NUL.
+// Text fields hold the protocol's character limit at up to 3 bytes per character (accents, CJK,
+// Cyrillic); longer UTF-8 (emoji) is cut at a character boundary, and the screen shows at most
+// ~30 characters per line anyway. 240 bytes a row (was 432 at 4 bytes per character).
 struct SessionRow {
   char id[9];
-  char name[84];     // <= 20 characters
+  char name[61];     // <= 20 characters
   SessionState st;
-  char tool[132];    // <= 32 characters
-  char det[132];     // <= 32 characters
-  uint32_t since;    // epoch in seconds
-  char model[52];    // <= 12 characters
+  char tool[33];     // <= 32 characters (tool names are ASCII)
+  char det[97];      // <= 32 characters
+  char model[25];    // <= 12 characters
   int16_t ctx;       // -1 = null
-  int64_t tok;       // -1 = null
+  uint32_t since;    // epoch in seconds
+  int32_t tok;       // -1 = null (context size: well under 2^31)
 };
 
 struct UsageWindow {
@@ -59,6 +64,9 @@ enum class ParseResult : uint8_t { Ok, TooLarge, BadJson, BadVersion };
 // Parses `json` (up to `len` bytes; the buffer is used zero-copy and may be
 // modified). On any error `out` is NOT changed. Unknown fields are ignored.
 ParseResult parseSnapshot(char* json, size_t len, Snapshot& out);
+// Optional: called while the parsed document is alive (the moment the parse uses the most memory),
+// for the device's diagnostics.
+void setParseProbe(void (*probe)());
 
 bool parseSessionState(const char* s, SessionState& out);
 bool parseAlertKind(const char* s, AlertKind& out);

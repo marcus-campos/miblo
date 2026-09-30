@@ -30,3 +30,16 @@ inline String resetReason() { return String((int)esp_reset_reason()); }
 #else
 #error "Miblo: unsupported platform (use ESP8266 or ESP32)"
 #endif
+
+// A big request (parsing a snapshot, rendering a page) must never drive the heap so low that the
+// Wi-Fi SDK, which allocates its own packet buffers, is starved and faults. When the largest free
+// block or the total free heap is below these, such a request is refused (503) instead. The Wi-Fi
+// stack keeps well over 10 KB of headroom this way.
+// The Wi-Fi SDK allocates its own packet buffers; if the heap is too low it faults. A request
+// that needs `needBytes` of body/parse space is refused (503) when serving it would leave the SDK
+// under this reserve. Smaller requests (e.g. an alerts-only snapshot) still get through when a
+// full one would not, so an alert is never lost to low memory.
+inline uint32_t kSdkHeapReserve() { return 12288; }
+inline bool heapLowForRequest(uint32_t needBytes) {
+  return maxFreeBlock() < needBytes + 4096 || freeHeap() < needBytes + kSdkHeapReserve();
+}

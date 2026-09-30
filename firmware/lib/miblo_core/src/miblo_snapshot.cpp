@@ -9,7 +9,11 @@
 namespace miblo {
 
 // 4 KB is enough on the ESP8266 (16-byte slots, zero-copy strings); on a 64-bit host the slots double.
-static constexpr size_t kDocCapacity = sizeof(void*) == 4 ? 4096 : 8192;
+// The parsed document (zero-copy: strings stay in the body) needs about as many bytes of slots as
+// the JSON has text (~160 B of slots for a ~250 B session); sized per request, never above this.
+static constexpr size_t kDocMax = sizeof(void*) == 4 ? 7168 : 14336;
+static void (*g_probe)() = nullptr;
+void setParseProbe(void (*probe)()) { g_probe = probe; }
 
 bool parseSessionState(const char* s, SessionState& out) {
   if (!s) return false;
@@ -59,7 +63,7 @@ static void readWindow(JsonVariantConst v, UsageWindow& w) {
 ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   if (len > kSnapshotMaxBytes) return ParseResult::TooLarge;
 
-  DynamicJsonDocument filter(1024);
+  DynamicJsonDocument filter(768);
   filter["v"] = true;
   filter["seq"] = true;
   filter["now"] = true;
@@ -73,9 +77,11 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   JsonObject fa = filter["alerts"].createNestedObject();
   for (const char* k : {"id", "kind", "sid"}) fa[k] = true;
 
-  DynamicJsonDocument doc(kDocCapacity);
+  const size_t cap = (len + 1024) * (sizeof(void*) == 4 ? 1 : 2);
+  DynamicJsonDocument doc(cap < kDocMax ? cap : kDocMax);
   DeserializationError err =
       deserializeJson(doc, json, len, DeserializationOption::Filter(filter), DeserializationOption::NestingLimit(6));
+  if (g_probe) g_probe();
   if (err) return ParseResult::BadJson;
   if (!doc.is<JsonObject>()) return ParseResult::BadJson;
   if (!doc["v"].is<int>() || doc["v"].as<int>() < 1) return ParseResult::BadVersion;
@@ -113,7 +119,8 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
     r.since = s["since"].as<uint32_t>();
     copyStr(r.model, sizeof(r.model), s["model"], 12);
     r.ctx = s["ctx"].is<int>() ? (int16_t)s["ctx"].as<int>() : -1;
-    r.tok = s["tok"].is<int64_t>() ? s["tok"].as<int64_t>() : -1;
+    const int64_t tok = s["tok"].is<int64_t>() ? s["tok"].as<int64_t>() : -1;
+    r.tok = tok < 0 ? -1 : tok > INT32_MAX ? INT32_MAX : (int32_t)tok;
   }
   out.more = (uint16_t)(doc["more"].as<uint16_t>() + skipped);
 

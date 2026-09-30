@@ -52,8 +52,8 @@ const scenarios = {
   },
   overflow() {
     const w = world({ turns: 999, work: 86399 });
-    for (let i = 0; i < 10; i++) {
-      w.ev(`7777777${i}-x`, 'PreToolUse', `/w/project-${i}`, { tool_name: 'Read', tool_input: { file_path: `/w/f${i}.js` } });
+    for (let i = 0; i < 24; i++) {
+      w.ev(`session-${String(i).padStart(2, '0')}`, 'PreToolUse', `/w/project-${i}`, { tool_name: 'Read', tool_input: { file_path: `/w/f${i}.js` } });
     }
     return w.finish();
   },
@@ -68,6 +68,6 @@ for (const [name, build] of Object.entries(scenarios)) {
       fs.writeFileSync(file, JSON.stringify(actual, null, 2) + '\n');
     }
     assert.deepEqual(actual, JSON.parse(fs.readFileSync(file, 'utf8')));
-    assert.ok(Buffer.byteLength(JSON.stringify(actual)) <= 3072);
+    assert.ok(Buffer.byteLength(JSON.stringify(actual)) <= 4608);
   });
 }

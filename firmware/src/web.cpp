@@ -4,6 +4,8 @@
 
 #include "board.h"
 #include "context.h"
+#include "miblo_snapshot.h"
+#include "platform/platform.h"
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
@@ -14,7 +16,7 @@ using miblo::Lang;
 using miblo::S;
 
 static WebServerT* srv = nullptr;
-static constexpr uint32_t kMaxPostBody = 4096;  // any POST except /update (the snapshot is ≤ 3072 B)
+static constexpr uint32_t kMaxPostBody = miblo::kSnapshotMaxBytes + 512;  // any POST except /update; fits a full snapshot
 
 // Shared by every page (portal, settings, firmware update): cards, toggles, a fixed save bar.
 static const char kCss[] PROGMEM =
@@ -364,6 +366,18 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 // once (POST /settings); a refused field is highlighted.
 static const char kSetJs[] PROGMEM =
     "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
+    // To change anything the browser must prove presence with the code on the gadget screen; the
+    // session token is kept so the code is asked once, not on every save.
+    "let TOK=null;try{TOK=localStorage.getItem('miblo_tok')}catch(e){}"
+    "function hdr(){return TOK?{...J,'X-Miblo-Web':TOK}:{...J};}"
+    "async function unlock(){await fetch('/settings-code',{method:'POST',headers:J,body:'{}'});"
+    "for(let i=0;i<3;i++){const c=prompt(T.unlock);if(!c)return false;"
+    "const r=await fetch('/settings-unlock',{method:'POST',headers:J,body:JSON.stringify({code:c})});"
+    "if(r.ok){TOK=(await r.json()).token;try{localStorage.setItem('miblo_tok',TOK)}catch(e){}await loadSecret();return true;}"
+    "alert(T.ubad);}return false;}"
+    // A POST that carries the token and, on 401, asks for the code once and retries.
+    "async function areq(u,b){let r=await fetch(u,{method:'POST',headers:hdr(),body:b});"
+    "if(r.status===401){if(!await unlock())return r;r=await fetch(u,{method:'POST',headers:hdr(),body:b});}return r;}"
     // Night times travel as minutes of the day; the page shows them as HH:MM.
     "const p2=n=>String(n).padStart(2,'0');"
     "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
@@ -371,7 +385,13 @@ static const char kSetJs[] PROGMEM =
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
-    "if(C.birthday){$('bm').value=C.birthday.slice(0,2);$('bd').value=C.birthday.slice(3);}"
+    // Owner and birthday are private: fetched only once the on-screen code unlocks the page.
+    "let SEC=false;"
+    "async function loadSecret(){const r=await fetch('/settings-secret',{headers:hdr()});"
+    "if(r.status===401){TOK=null;try{localStorage.removeItem('miblo_tok')}catch(e){}return;}"
+    "if(!r.ok)return;const s=await r.json();$('owner').value=s.owner||'';"
+    "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
+    "if(TOK)loadSecret();"
     // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
     "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
     "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
@@ -386,10 +406,10 @@ static const char kSetJs[] PROGMEM =
     "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','mascot','sleepMin','name','owner','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "'nightBrightness','mascot','sleepMin','name','friends','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
     "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
-    "b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';st('...');"
-    "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
+    "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
+    "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
     "if(r.ok){const re=b.lang!==C.lang;Object.assign(C,b);$('h').textContent=b.name||$('name').placeholder;"
     "st(T.saved,'ok');if(re)location.reload();return;}"
@@ -398,9 +418,10 @@ static const char kSetJs[] PROGMEM =
     "for(let p=e.closest('[hidden]');p;p=p.parentElement.closest('[hidden]'))p.hidden=false;"
     "e.classList.add('bad');e.scrollIntoView({block:'center'});st(T.failed+'. '+T.chk,'no');"
     "})).catch(()=>st(T.failed,'no'));}"
-    "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"
-    "function rst(){post('/reset-code').then(()=>{const c=prompt(T.hint);if(!c)return;"
-    "post('/factory-reset?code='+encodeURIComponent(c)).then(r=>{if(!r.ok)alert(T.bad);});});}"
+    "function post(u){return areq(u,'{}');}"
+    "function rst(){post('/reset-code').then(r=>{if(!r.ok)return;const c=prompt(T.hint);if(!c)return;"
+    "fetch('/factory-reset?code='+encodeURIComponent(c),{method:'POST',headers:J,body:'{}'})"
+    ".then(r=>{if(!r.ok)alert(T.bad);});});}"
     // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
     // compares with this firmware; a newer one gets the how-to and a link to its .bin.
     "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
@@ -617,7 +638,7 @@ static void settingsPage() {
   pageFlush(out);
 
   DynamicJsonDocument cfg(1024);
-  miblo::configToJson(ctx.cfg, cfg.to<JsonObject>());
+  miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday on the public page
   appendJsonForScript(out, cfg);
   out += F(";const T=");
   DynamicJsonDocument txt(2048);
@@ -631,6 +652,9 @@ static void settingsPage() {
   txt["hint"] = tr(lang, S::WebCodeHint);
   txt["bad"] = tr(lang, S::WebBadCode);
   txt["chk"] = tr(lang, S::WebCheckField);
+  txt["unlock"] = tr(lang, S::WebUnlock);
+  txt["utitle"] = tr(lang, S::WebUnlockTitle);
+  txt["ubad"] = tr(lang, S::WebUnlockBad);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
@@ -639,11 +663,88 @@ static void settingsPage() {
   pageEnd(out);
 }
 
+// A state-changing web request is authorized by a paired computer's bearer token (the plugin) or
+// by a web session the browser earned with the on-screen code. Everyone else on the LAN is
+// refused: an unpaired prankster cannot change anything.
+static bool webAuthorized() {
+  char token[40];
+  if (miblo::bearerToken(srv->header(F("Authorization")).c_str(), token, sizeof(token)) && ctx.tokens.matches(token)) {
+    return true;
+  }
+  return ctx.webSession.valid(srv->header(F("X-Miblo-Web")).c_str(), millis());
+}
+
+// POST /settings-code: show a code on the gadget screen so the person at the keyboard can prove
+// they are the one in front of it. Unauthenticated by design (this bootstraps the web session),
+// but rate-limited and protected by the gate's escalating lockout on wrong codes.
+static void handleSettingsCode() {
+  if (!ctx.publicReqs.allow(millis())) {
+    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    return;
+  }
+  if (!requireJson(*srv)) return;
+  const uint32_t now = millis();
+  char code[5];
+  miblo::formatCode(hwRandom(), code);
+  if (!ctx.presence.open(miblo::PresenceGate::Purpose::Settings, code, now)) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    return;
+  }
+  ctx.lastInteractionMs = now;  // keep the screen on so the code is readable
+  sendJson(*srv, 200, "{\"ok\":true}");
+}
+
+// POST /settings-unlock {code}: on the right code, issue a web session token the browser keeps.
+static void handleSettingsUnlock() {
+  if (!requireJson(*srv)) return;
+  const uint32_t now = millis();
+  if (ctx.presence.locked(now)) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    return;
+  }
+  if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, srv->arg(F("code")).c_str(), now)) {
+    sendJson(*srv, 403, "{\"error\":\"bad code\"}");
+    return;
+  }
+  uint8_t rnd[16];
+  for (int i = 0; i < 16; i += 4) {
+    uint32_t r = hwRandom();
+    memcpy(rnd + i, &r, 4);
+  }
+  ctx.webSession.issue(rnd, now);
+  char token[33];
+  miblo::makeToken(rnd, token);
+  String out = String(F("{\"token\":\"")) + token + F("\"}");
+  sendJson(*srv, 200, out.c_str());
+}
+
+// GET /settings-secret: the private fields (owner, birthday), only for an unlocked session.
+static void handleSettingsSecret() {
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  StaticJsonDocument<128> doc;
+  doc["owner"] = ctx.cfg.owner;
+  doc["birthday"] = ctx.cfg.birthday;
+  String out;
+  serializeJson(doc, out);
+  sendJson(*srv, 200, out.c_str());
+}
+
 static void handleSettings() {
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
   ctx.lastInteractionMs = millis();
   if (!requireJson(*srv)) return;
   if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
     sendJson(*srv, 413, "{\"error\":\"too large\"}");
+    return;
+  }
+  if (heapLowForRequest(1024)) {
+    sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
   }
   DynamicJsonDocument doc(1024);
@@ -669,6 +770,14 @@ static void handleZones() {
 }
 
 static void handleRoot() {
+  if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated page render)
+    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    return;
+  }
+  if (heapLowForRequest(9216)) {  // rendering the page needs several KB: never risk a crash
+    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    return;
+  }
   ctx.lastInteractionMs = millis();  // someone is looking: wake the screen
   if (net::apActive() && !net::connected()) {
     // No network scan while a submitted network is being tried: a scan in the middle of the
@@ -681,6 +790,10 @@ static void handleRoot() {
 }
 
 static void handlePairCode() {
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
   if (!requireJson(*srv)) return;
   ctx.showPairCode = true;
   ctx.pairCodeAtMs = millis();
@@ -688,6 +801,10 @@ static void handlePairCode() {
 }
 
 static void handleResetCode() {
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
   char code[5];
@@ -736,14 +853,25 @@ static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const 
     return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
   }
   uint32_t len = 0;
-  if (!miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len) || len <= kMaxPostBody) {
-    return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);
+  if (haveLen && len > kMaxPostBody) {
+    static const char kReply[] PROGMEM =
+        "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nConnection: close\r\n"
+        "Content-Length: 21\r\n\r\n{\"error\":\"too large\"}";
+    client->print(FPSTR(kReply));
+    return ESP8266WebServer::CLIENT_MUST_STOP;
   }
-  static const char kReply[] PROGMEM =
-      "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nConnection: close\r\n"
-      "Content-Length: 21\r\n\r\n{\"error\":\"too large\"}";
-  client->print(FPSTR(kReply));
-  return ESP8266WebServer::CLIENT_MUST_STOP;
+  // Before buffering the body in RAM: if that would leave the Wi-Fi stack short, refuse now (503)
+  // so the buffering itself can never starve it. The plugin then resends a smaller (alerts-only)
+  // snapshot, which fits.
+  if (haveLen && len > 512 && heapLowForRequest(len)) {
+    static const char kBusy[] PROGMEM =
+        "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
+        "Content-Length: 16\r\n\r\n{\"error\":\"busy\"}";
+    client->print(FPSTR(kBusy));
+    return ESP8266WebServer::CLIENT_MUST_STOP;
+  }
+  return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
 }
 #endif
 
@@ -754,10 +882,13 @@ void begin(WebServerT& server) {
 #endif
   // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API
   // (api.cpp); Content-Type: the CSRF check on the pages' state-changing POSTs (requireJson).
-  server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type");
+  server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type", "X-Miblo-Web");
   server.on(F("/"), HTTP_GET, handleRoot);
   server.on(F("/wifi"), HTTP_POST, handleWifi);
   server.on(F("/settings"), HTTP_POST, handleSettings);
+  server.on(F("/settings-code"), HTTP_POST, handleSettingsCode);
+  server.on(F("/settings-unlock"), HTTP_POST, handleSettingsUnlock);
+  server.on(F("/settings-secret"), HTTP_GET, handleSettingsSecret);
   server.on(F("/api/zones"), HTTP_GET, handleZones);
   server.on(F("/api/wifi-status"), HTTP_GET, handleWifiStatus);
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);

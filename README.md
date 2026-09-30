@@ -74,8 +74,10 @@
 
 - **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language, device name, and your name and birthday. `/miblo:settings` opens it for you.
-- **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
+- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language, device name, and your name and birthday. `/miblo:settings` opens it for you. Changing a setting requires the 4-digit code shown on the gadget's screen (proof you are the one in front of it); your name and birthday are never shown on the page until it is unlocked.
+- **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen, so no one on the network can reflash it without physical access.
+- **Nobody on the network can mess with it.** Every setting change, rename and firmware update needs either the paired plugin or the on-screen code; unpaired devices can only read the public status. Requests are rate-limited and the gadget sheds load rather than ever freezing.
+- **Up to 20 active sessions at once**, the ones that need you first; the rest cycle through the pages, and an alert is always shown even when memory is tight.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 
 **Privacy**

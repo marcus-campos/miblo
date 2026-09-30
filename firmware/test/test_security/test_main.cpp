@@ -284,6 +284,54 @@ static void test_ota_code_required() {
   TEST_ASSERT_TRUE(otaCodeRequired(true, false, 0, false));
 }
 
+static void test_web_session() {
+  WebSession w;
+  uint8_t rnd[16];
+  for (int i = 0; i < 16; i++) rnd[i] = (uint8_t)(i * 7 + 1);
+  char token[33];
+  makeToken(rnd, token);
+  TEST_ASSERT_FALSE(w.valid(token, 1000));  // nothing issued yet
+  w.issue(rnd, 1000);
+  TEST_ASSERT_TRUE(w.valid(token, 1000));
+  TEST_ASSERT_TRUE(w.valid(token, 1000 + WebSession::kTtlMs - 1));
+  TEST_ASSERT_FALSE(w.valid(token, 1000 + WebSession::kTtlMs));  // expired
+  TEST_ASSERT_FALSE(w.valid("deadbeef", 1000));                  // wrong token
+  TEST_ASSERT_FALSE(w.valid(nullptr, 1000));
+  w.issue(rnd, 2000);  // a new session shifts the window
+  TEST_ASSERT_TRUE(w.valid(token, 2000 + WebSession::kTtlMs - 1));
+  w.clear();
+  TEST_ASSERT_FALSE(w.valid(token, 2000));
+}
+
+static void test_rate_limiter_token_bucket() {
+  RateLimiter rl(10, 5);  // burst 10, 5/s
+  uint32_t t = 100000;
+  // The burst: 10 allowed back to back, the 11th refused.
+  for (int i = 0; i < 10; i++) TEST_ASSERT_TRUE(rl.allow(t));
+  TEST_ASSERT_FALSE(rl.allow(t));
+  TEST_ASSERT_FALSE(rl.allow(t + 999));  // less than a second later: still empty
+  // One second on: 5 more tokens.
+  t += 1000;
+  for (int i = 0; i < 5; i++) TEST_ASSERT_TRUE(rl.allow(t));
+  TEST_ASSERT_FALSE(rl.allow(t));
+  // Idle a long time: refill is capped at the burst, never more.
+  t += 100000;
+  TEST_ASSERT_EQUAL_UINT8(10, rl.tokens(t));
+  for (int i = 0; i < 10; i++) TEST_ASSERT_TRUE(rl.allow(t));
+  TEST_ASSERT_FALSE(rl.allow(t));
+  // Sub-second remainder is kept: 1500 ms after empty gives 5 (not 7) then 5 more at 2000.
+  t += 1500;
+  TEST_ASSERT_EQUAL_UINT8(5, rl.tokens(t));
+  // Clock wrap: still refills, never floods.
+  RateLimiter w(4, 2);
+  uint32_t big = 0xFFFFF000u;
+  for (int i = 0; i < 4; i++) TEST_ASSERT_TRUE(w.allow(big));
+  TEST_ASSERT_FALSE(w.allow(big));
+  TEST_ASSERT_TRUE(w.allow(big + 1000));   // 0x...FC00 -> wraps past 0
+  TEST_ASSERT_TRUE(w.allow(big + 1000));
+  TEST_ASSERT_FALSE(w.allow(big + 1000));
+}
+
 static void test_via_soft_ap_subnet() {
   const uint8_t ap[4] = {192, 168, 4, 1};
   const uint8_t phone[4] = {192, 168, 4, 2};
@@ -317,6 +365,8 @@ int main() {
   RUN_TEST(test_presence_failures_survive_reopen);
   RUN_TEST(test_presence_lockout_clock_wrap);
   RUN_TEST(test_ota_code_required);
+  RUN_TEST(test_web_session);
+  RUN_TEST(test_rate_limiter_token_bucket);
   RUN_TEST(test_via_soft_ap_subnet);
   return UNITY_END();
 }

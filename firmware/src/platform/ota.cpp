@@ -6,6 +6,7 @@
 #include "../web.h"
 #include "miblo_version.h"
 #include "net.h"
+#include "platform.h"
 #include "storage.h"
 
 namespace ota {
@@ -72,6 +73,10 @@ static void openGate() {
 
 // GET /update: only serves the page; its script opens the gate with POST /update/open.
 static void page() {
+  if (heapLowForRequest(4096)) {
+    web::sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    return;
+  }
   ctx.lastInteractionMs = millis();  // wake the screen: the code will be shown on it
   Lang lang = web::pageLang(*srv);
   String out;

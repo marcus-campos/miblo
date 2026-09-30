@@ -67,23 +67,57 @@ test('truncates by characters, not bytes, with an ellipsis', () => {
   assert.equal(s.det.length, 32);
 });
 
-test('caps at 8 sessions and reports the rest in more', () => {
+test('caps at 20 sessions and reports the rest in more', () => {
   const { tracker, snap } = world();
-  for (let i = 0; i < 11; i++) tracker.handle({ session_id: `s${i}`, hook_event_name: 'SessionStart', cwd: `/w/p${i}` });
+  for (let i = 0; i < 23; i++) tracker.handle({ session_id: `s${i}`, hook_event_name: 'SessionStart', cwd: `/w/p${i}` });
   const s = snap();
-  assert.equal(s.sessions.length, 8);
+  assert.equal(s.sessions.length, 20);
   assert.equal(s.more, 3);
 });
 
-test('never exceeds 3072 bytes, moving trailing sessions to more', () => {
+test('never exceeds 6144 bytes, moving trailing sessions to more', () => {
   const { tracker, metrics, snap } = world();
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 20; i++) {
     const sid = `session-${i}`;
     tracker.handle({ session_id: sid, hook_event_name: 'PermissionRequest', cwd: `/w/${'项'.repeat(30)}${i}`, tool_name: `mcp__srv__${'t'.repeat(40)}`, tool_input: {} });
     tracker.handle({ session_id: sid, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: '命'.repeat(40) } });
     metrics.ingest({ session_id: sid, model: { display_name: '模型模型模型模型模型模型模型' }, context_window: { used_percentage: 100, total_input_tokens: 999999999, total_output_tokens: 1 } });
   }
   const s = snap(123456789);
-  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 3072);
-  assert.equal(s.sessions.length + s.more, 8);
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 6144);
+  assert.equal(s.sessions.length + s.more, 20);
+});
+
+test('trimSnapshot fits an older gadget that reports smaller caps', async () => {
+  const { trimSnapshot } = await import('../lib/snapshot-builder.js');
+  const { tracker, metrics, snap } = world();
+  for (let i = 0; i < 20; i++) {
+    const sid = `s-${i}`;
+    tracker.handle({ session_id: sid, hook_event_name: 'PermissionRequest', cwd: `/w/${'项'.repeat(30)}${i}`, tool_name: `mcp__srv__${'t'.repeat(40)}`, tool_input: {} });
+    metrics.ingest({ session_id: sid, model: { display_name: '模型模型模型模型模型' }, context_window: { used_percentage: 100, total_input_tokens: 999999999, total_output_tokens: 1 } });
+  }
+  const full = snap(123456789);
+  const legacy = trimSnapshot(full, 8, 3072);
+  assert.ok(Buffer.byteLength(JSON.stringify(legacy)) <= 3072);
+  assert.ok(legacy.sessions.length <= 8);
+  assert.equal(legacy.sessions.length + legacy.more, full.sessions.length + full.more);
+  // A gadget with room for everything gets the snapshot unchanged.
+  assert.equal(trimSnapshot(full, 20, 6144), full);
+});
+
+test('alerting sessions are kept over quiet working ones when trimming', () => {
+  const { tracker, snap } = world();
+  // 22 working sessions (no alert) + 2 that need the user: the alerting ones must survive the cap.
+  for (let i = 0; i < 22; i++) {
+    tracker.handle({ session_id: `work-${i}`, hook_event_name: 'SessionStart', cwd: `/w/w${i}` });
+    tracker.handle({ session_id: `work-${i}`, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' } });
+  }
+  tracker.handle({ session_id: 'ask-1', hook_event_name: 'PermissionRequest', cwd: '/w/a1', tool_name: 'Bash', tool_input: {} });
+  tracker.handle({ session_id: 'ask-2', hook_event_name: 'Notification', notification_type: 'elicitation_dialog', cwd: '/w/a2' });
+  const s = snap();
+  const ids = s.sessions.map((x) => x.id);
+  assert.ok(ids.includes('ask1'), 'permission session shown');
+  assert.ok(ids.includes('ask2'), 'question session shown');
+  // Every alert points at a session that is actually present, so the gadget can name it.
+  for (const a of s.alerts) assert.ok(ids.includes(a.sid), `alert ${a.sid} has its session`);
 });

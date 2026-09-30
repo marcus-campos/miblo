@@ -210,4 +210,41 @@ bool viaSoftApSubnet(bool apActive, const uint8_t remote[4], const uint8_t local
   return true;
 }
 
+
+void WebSession::issue(const uint8_t rnd[16], uint32_t nowMs) {
+  makeToken(rnd, token_);
+  issuedAtMs_ = nowMs;
+}
+
+bool WebSession::valid(const char* token, uint32_t nowMs) const {
+  if (!token_[0] || !token || nowMs - issuedAtMs_ >= kTtlMs) return false;
+  return constantTimeEquals(token_, token);
+}
+
+void RateLimiter::refill(uint32_t nowMs) {
+  if (!started_) {
+    started_ = true;
+    lastMs_ = nowMs;
+    return;
+  }
+  const uint32_t elapsed = nowMs - lastMs_;  // wrap-safe (unsigned)
+  if (elapsed < 1000 || rate_ == 0) return;
+  const uint32_t add = (elapsed / 1000) * rate_;
+  uint32_t t = tokens_ + add;
+  tokens_ = t > burst_ ? burst_ : (uint8_t)t;
+  lastMs_ += (elapsed / 1000) * 1000;  // keep the sub-second remainder
+}
+
+bool RateLimiter::allow(uint32_t nowMs) {
+  refill(nowMs);
+  if (tokens_ == 0) return false;
+  tokens_--;
+  return true;
+}
+
+uint8_t RateLimiter::tokens(uint32_t nowMs) {
+  refill(nowMs);
+  return tokens_;
+}
+
 }  // namespace miblo

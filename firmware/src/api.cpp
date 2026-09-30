@@ -3,8 +3,11 @@
 #include <ArduinoJson.h>
 #include <time.h>
 
+#include "app.h"
 #include "board.h"
+#include "platform/platform.h"
 #include "context.h"
+#include "miblo_snapshot.h"
 #include "miblo_utf8.h"
 #include "miblo_version.h"
 #include "platform/crashlog.h"
@@ -25,6 +28,10 @@ static bool authorized() {
 }
 
 static void handleInfo() {
+  if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated)
+    json(429, "{\"error\":\"slow down\"}");
+    return;
+  }
   // 27 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the
   // ESP8266; 1024 leaves room for future caps.
   StaticJsonDocument<1536> doc;  // + "crash" (~300 B) after a crash
@@ -50,6 +57,9 @@ static void handleInfo() {
   doc["maxBlock"] = maxFreeBlock();
   doc["reset"] = resetReason();
   doc["uptime"] = millis() / 1000;
+  doc["minHeapParse"] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
+  doc["maxSessions"] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
+  doc["maxBytes"] = miblo::kSnapshotMaxBytes;
   // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
   // and the current WiFi.status() (wl_status_t).
   doc["wifiReason"] = net::lastDisconnectReason();
@@ -128,6 +138,10 @@ static void handleState() {
     json(400, "{\"error\":\"too large\"}");
     return;
   }
+  if (heapLowForRequest(plain.length())) {  // low heap: refuse (the plugin resends an alerts-only snapshot)
+    json(503, "{\"error\":\"busy\"}");
+    return;
+  }
   // Parsed in place, in the server's own copy of the body (zero-copy JSON: it gets modified,
   // and nothing reads it afterwards): no second 3 KB buffer.
   miblo::ParseResult r = plain.length()
@@ -155,6 +169,10 @@ static void handleState() {
 static void handleConfig() {
   if (!authorized()) {
     json(401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  if (heapLowForRequest(srv->arg(F("plain")).length())) {
+    json(503, "{\"error\":\"busy\"}");
     return;
   }
   DynamicJsonDocument doc(1024);

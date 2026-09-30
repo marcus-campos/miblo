@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 export const PORT = Number(process.env.MIBLO_PORT || 47821);
 export const HOST = '127.0.0.1';
 export const PROTOCOL_VERSION = 1;
-export const MAX_SESSIONS = 8;
+export const MAX_SESSIONS = 20;      // the most a current gadget shows; per-gadget caps come from /api/info
+export const LEGACY_MAX_SESSIONS = 8;  // a gadget that does not report its caps (firmware < 1.5.0)
 export const NAME_LEN = 20;
 export const DET_LEN = 32;
 export const MODEL_LEN = 12;
-export const SNAPSHOT_MAX_BYTES = 3072;
+export const SNAPSHOT_MAX_BYTES = 6144;
+export const LEGACY_SNAPSHOT_MAX_BYTES = 3072;
 export const ALERT_TTL_MS = 30_000;
 export const DEBOUNCE_MS = 150;
 export const HEARTBEAT_MS = 10_000;

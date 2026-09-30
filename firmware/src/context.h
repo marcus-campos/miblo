@@ -26,6 +26,11 @@ struct Context {
   miblo::TokenStore tokens;
   miblo::PairingGuard pairing;
   miblo::PresenceGate presence;
+  // Throttles expensive UNAUTHENTICATED responses (the page and /api/info) so a flood from an
+  // unpaired client cannot starve the display loop: 120/min sustained, burst 20. The plugin's
+  // authenticated /api/state push never passes through here.
+  miblo::RateLimiter publicReqs{20, 2};
+  miblo::WebSession webSession;  // browser proved the on-screen code: may change settings for a while
   miblo::Snapshot snap{};
   miblo::AlertSequencer alerts;
   miblo::RunTracker runs;

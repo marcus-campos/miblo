@@ -65,6 +65,15 @@ static const char* modeName(Lang lang) {
   return screens::t(lang, S::ModeOverview);
 }
 
+static miblo::S presenceCodeTitle(miblo::PresenceGate::Purpose p) {
+  switch (p) {
+    case miblo::PresenceGate::Purpose::Update: return miblo::S::CodeUpdate;
+    case miblo::PresenceGate::Purpose::Settings: return miblo::S::CodeSettings;
+    case miblo::PresenceGate::Purpose::Reset: break;
+  }
+  return miblo::S::CodeReset;
+}
+
 static screens::SetupNote setupNote(miblo::JoinFailure f) {
   switch (f) {
     case miblo::JoinFailure::NotFound: return screens::SetupNote::NotFound;
@@ -183,8 +192,16 @@ static bool poweredOn() {
 #endif
 }
 
+static uint32_t g_minHeapParse = 0xFFFFFFFFu;  // least free heap seen during a snapshot parse
+static void parseHeapProbe() {
+  const uint32_t h = freeHeap();
+  if (h < g_minHeapParse) g_minHeapParse = h;
+}
+uint32_t minHeapDuringParse() { return g_minHeapParse == 0xFFFFFFFFu ? 0 : g_minHeapParse; }
+
 void setup() {
   Serial.begin(115200);
+  miblo::setParseProbe(parseHeapProbe);
   storage::begin();
   // Hard reset without a button: 6 power-ons in a row, each with less than 10 s of
   // uptime. Persist the counter before anything slow so a quick unplug still counts.
@@ -255,6 +272,7 @@ void loop() {
     firstFrame = true;  // language/mode may have changed: redraw everything
   }
   if (ctx.factoryResetRequested) {
+    ctx.webSession.clear();
     delay(300);  // let the HTTP response go out
     storage::factoryReset();
   }
@@ -405,9 +423,8 @@ void loop() {
                     (miblo::kPairCodeScreenMs - (now - ctx.pairCodeAtMs)) / 1000);
       break;
     case ScreenId::PresenceCode:
-      screens::code(lang,
-                    ctx.presence.purpose() == miblo::PresenceGate::Purpose::Update ? S::CodeUpdate : S::CodeReset,
-                    ctx.presence.code(), ctx.presence.remainingMs(now) / 1000);
+      screens::code(lang, presenceCodeTitle(ctx.presence.purpose()), ctx.presence.code(),
+                    ctx.presence.remainingMs(now) / 1000);
       break;
     case ScreenId::Updating:
       screens::updating(lang, ctx.updatePct);

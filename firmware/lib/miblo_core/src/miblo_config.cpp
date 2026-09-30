@@ -182,7 +182,7 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
   return true;
 }
 
-void configToJson(const Config& cfg, JsonObject out) {
+void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["mode"] = modeCode(cfg.mode);
   out["brightness"] = cfg.brightness;
   out["alerts"] = cfg.alerts;
@@ -203,8 +203,10 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["nightBrightness"] = cfg.nightBrightness;
   out["mascot"] = cfg.mascot;
   out["sleepMin"] = cfg.sleepMin;
-  out["owner"] = cfg.owner;
-  out["birthday"] = cfg.birthday;
+  if (includePrivate) {
+    out["owner"] = cfg.owner;
+    out["birthday"] = cfg.birthday;
+  }
   out["born"] = cfg.born;
   out["friends"] = cfg.friends;
 }

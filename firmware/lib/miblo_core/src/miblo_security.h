@@ -95,7 +95,7 @@ class TokenStore {
 // resets the failures and the escalation.
 class PresenceGate {
  public:
-  enum class Purpose : uint8_t { Update, Reset };
+  enum class Purpose : uint8_t { Update, Reset, Settings };
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
@@ -130,6 +130,45 @@ class PresenceGate {
 // updatable without physical presence). Any saved network, any pairing, or a request from another
 // interface (the home LAN) also keeps the code (and its escalating lockout) mandatory.
 bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
+
+// A token bucket that throttles how often an EXPENSIVE, UNAUTHENTICATED response is produced
+// (the settings/portal page and /api/info), so a flood from an unpaired client on the LAN cannot
+// starve the display loop into a watchdog reset. Authenticated endpoints (/api/state, /api/config)
+// are already cheap to refuse (a 401 before any work) and are not throttled. allow() grants a
+// token when one is available, refilling `ratePerSec` tokens per second up to `burst`; over the
+// budget it returns false and the caller answers 429 at once. Safe across the 32-bit ms wrap.
+class RateLimiter {
+ public:
+  RateLimiter(uint8_t burst, uint8_t ratePerSec) : burst_(burst), rate_(ratePerSec), tokens_(burst) {}
+  bool allow(uint32_t nowMs);
+  // Tokens available right now (for diagnostics/tests), without consuming one.
+  uint8_t tokens(uint32_t nowMs);
+
+ private:
+  void refill(uint32_t nowMs);
+  uint8_t burst_;
+  uint8_t rate_;
+  uint8_t tokens_;
+  uint32_t lastMs_ = 0;
+  bool started_ = false;
+};
+
+// One short-lived web session. To change settings from the browser a person proves physical
+// presence by typing the code shown on the gadget's screen (PresenceGate, Purpose::Settings);
+// on success a 128-bit token is issued and kept here, so the code is asked once per session, not
+// once per save. The browser sends it back in the "X-Miblo-Web" header. Cleared on expiry, on a
+// factory reset, or when a new session is issued (only one browser session at a time).
+class WebSession {
+ public:
+  static constexpr uint32_t kTtlMs = 3600000;  // 1 h
+  void issue(const uint8_t rnd[16], uint32_t nowMs);
+  bool valid(const char* token, uint32_t nowMs) const;
+  void clear() { token_[0] = 0; }
+
+ private:
+  char token_[33] = "";
+  uint32_t issuedAtMs_ = 0;
+};
 
 // Did this request arrive over the unit's own setup AP? true only when the soft AP is up, its IP
 // is in 192.168.4.0/24, the client (remote) IP is in that same /24 and the local address the

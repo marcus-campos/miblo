@@ -45,7 +45,10 @@ constexpr uint8_t kMascotStyles = 4;
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField);
-void configToJson(const Config& cfg, JsonObject out);
+// includePrivate=false omits owner and birthday (the private fields), so the settings page can
+// be served to anyone on the LAN without leaking them; they are fetched only after the on-screen
+// code unlocks the page.
+void configToJson(const Config& cfg, JsonObject out, bool includePrivate = true);
 // What goes to flash: configToJson plus, in automatic language mode, the negotiated language
 // ("langAuto"), so the screen keeps speaking it after a reboot (configToJson's "lang" is "" then).
 void configToStored(const Config& cfg, JsonObject out);

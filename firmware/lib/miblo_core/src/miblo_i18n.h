@@ -173,6 +173,10 @@ enum class S : uint8_t {
   WebSecDevice,         // settings: section heading (device name, time zone, language, visits)
   WebAdvanced,          // settings: collapsed section (firmware, pairing code, factory reset)
   WebCheckField,        // settings: a save was refused; the offending field is highlighted
+  CodeSettings,         // PresenceCode screen: "Code to change settings"
+  WebUnlock,            // settings page: "Type the code on the gadget screen to change settings"
+  WebUnlockTitle,       // settings page: "Enter the code" (prompt)
+  WebUnlockBad,         // settings page: "Wrong code"
   Count
 };
 

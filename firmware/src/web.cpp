@@ -374,6 +374,7 @@ static const char kSetJs[] PROGMEM =
     "for(let i=0;i<3;i++){const c=prompt(T.unlock);if(!c)return false;"
     "const r=await fetch('/settings-unlock',{method:'POST',headers:J,body:JSON.stringify({code:c})});"
     "if(r.ok){TOK=(await r.json()).token;try{localStorage.setItem('miblo_tok',TOK)}catch(e){}await loadSecret();return true;}"
+    "if(r.status===429){const j=await r.json().catch(()=>({}));alert(T.failed+' ('+(j.retryAfter||60)+' s)');return false;}"
     "alert(T.ubad);}return false;}"
     // A POST that carries the token and, on 401, asks for the code once and retries.
     "async function areq(u,b){let r=await fetch(u,{method:'POST',headers:hdr(),body:b});"
@@ -714,8 +715,18 @@ static void handleSettingsUnlock() {
     sendLocked(*srv, ctx.presence.lockRemainingMs(now));
     return;
   }
-  if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, srv->arg(F("code")).c_str(), now)) {
-    sendJson(*srv, 403, "{\"error\":\"bad code\"}");
+  // The page sends {"code":"1234"} as JSON (a ?code= argument also works).
+  char code[8] = "";
+  StaticJsonDocument<96> doc;
+  if (!deserializeJson(doc, srv->arg(F("plain")))) {
+    JsonVariantConst c = doc["code"];
+    if (c.is<const char*>()) strlcpy(code, c.as<const char*>(), sizeof(code));
+    else if (c.is<int>()) snprintf(code, sizeof(code), "%04d", c.as<int>());
+  }
+  if (!code[0]) strlcpy(code, srv->arg(F("code")).c_str(), sizeof(code));
+  if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, code, now)) {
+    if (ctx.presence.locked(now)) sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    else sendJson(*srv, 403, "{\"error\":\"bad code\"}");
     return;
   }
   uint8_t rnd[16];

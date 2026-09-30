@@ -1,6 +1,6 @@
 {
   "name": "miblo",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "displayName": "Miblo",
   "description": "Shows Claude Code session status, alerts and usage limits on a Miblo desk gadget.",
   "author": { "name": "Marcus Campos" }

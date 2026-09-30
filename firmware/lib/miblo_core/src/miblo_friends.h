@@ -28,7 +28,7 @@ constexpr uint32_t kNextVisitSpanMs = 6UL * 60000;
 // its own screen (to the right), walks into the host's (from the left), they play, it walks
 // back out (to the left) and home again (from the right).
 constexpr uint32_t kDemoFirstVisitMs = 8000;   // + up to 4 s
-constexpr uint32_t kDemoNextVisitMs = 20000;   // + up to 20 s
+constexpr uint32_t kDemoNextVisitMs = 20000;   // + up to 20 s (the last host asks in the first half)
 constexpr uint32_t kVisitWalkMs = 3000;
 constexpr uint32_t kVisitStayMs = 18000;
 constexpr uint32_t kVisitArriveMs = 2 * kVisitWalkMs;              // guest fully in on the host
@@ -36,7 +36,18 @@ constexpr uint32_t kVisitPartMs = kVisitArriveMs + kVisitStayMs;   // guest star
 constexpr uint32_t kVisitMs = kVisitPartMs + 2 * kVisitWalkMs;      // visitor back home
 
 enum : uint8_t { kFriendRoaming = 1, kFriendNapping = 2, kFriendTired = 4, kFriendBusy = 8 };
-enum class Gift : uint8_t { None, Coffee };
+// What a visit is about (chosen by the visitor at random, a coffee more likely for a tired friend):
+// programmer things. Unknown values from a newer firmware decode as None.
+enum class Gift : uint8_t {
+  None,    // just a visit (hearts)
+  Coffee,  // brings a coffee
+  Duck,    // rubber duck debugging
+  Pair,    // pair programming on a tiny laptop
+  Review,  // code review: holds up an "LGTM" sign
+  Bug,     // hunting a bug together
+  Deploy,  // deploying (a rocket takes off)
+  Count
+};
 
 struct FriendPacket {
   enum Type : uint8_t { Beacon = 1, VisitAsk = 2, VisitOk = 3, Home = 4 };
@@ -96,13 +107,21 @@ class FriendPlay {
     uint32_t seenMs = 0;
     bool greeted = false;
     uint32_t greetedMs = 0;
+    uint8_t lastRole = 0;  // our role in the last visit with this friend: 0 none, 1 visitor, 2 host
   };
   Friend* find(const char* id);
   Friend* remember(const FriendPacket& p, uint32_t nowMs);
   void queue(FriendPacket::Type type, const char* to, Gift gift);
-  void startVisit(VisitRole role, const Friend& f, Gift gift, uint32_t nowMs);
+  void startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs);
   void endVisit(uint32_t nowMs);
   void scheduleVisit(uint32_t nowMs, uint32_t minMs, uint32_t spanMs);
+  bool demoOn(uint32_t nowMs);
+  // The first visit after pet mode starts (or when nobody was around to visit).
+  void firstVisit(uint32_t nowMs);
+  // The next one after a visit: the one that just hosted asks in the first half of the window,
+  // so the two take turns going out.
+  void nextVisit(uint32_t nowMs, bool hosted);
+  Gift chooseGift(bool friendTired, uint32_t rnd) const;
 
   Friend friends_[kMaxFriends];
   char id_[16] = "";

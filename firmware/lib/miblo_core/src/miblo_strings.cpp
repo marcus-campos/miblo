@@ -175,7 +175,12 @@ static const char kEn[] MIBLO_ROM =
     "Code to change settings\0"  // CodeSettings
     "To change settings, type the code shown on the gadget screen.\0"  // WebUnlock
     "Code on the screen\0"  // WebUnlockTitle
-    "Wrong code\0";  // WebUnlockBad
+    "Wrong code\0"  // WebUnlockBad
+    "Rubber ducking with %s\0"  // FriendDuck
+    "Pair programming with %s\0"  // FriendPair
+    "%s reviewed it: LGTM!\0"  // FriendReview
+    "Hunting a bug with %s\0"  // FriendBug
+    "Friday deploy with %s!\0";  // FriendDeploy
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -346,7 +351,12 @@ static const char kPtBR[] MIBLO_ROM =
     "Código para mudar as configurações\0"  // CodeSettings
     "Para mudar as configurações, digite o código que aparece na tela do aparelho.\0"  // WebUnlock
     "Código na tela\0"  // WebUnlockTitle
-    "Código incorreto\0";  // WebUnlockBad
+    "Código incorreto\0"  // WebUnlockBad
+    "Debug de pato com %s\0"  // FriendDuck
+    "Pair programming com %s\0"  // FriendPair
+    "%s revisou: LGTM!\0"  // FriendReview
+    "Caçando um bug com %s\0"  // FriendBug
+    "Deploy na sexta com %s!\0";  // FriendDeploy
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -517,7 +527,12 @@ static const char kPtPT[] MIBLO_ROM =
     "Código para alterar as definições\0"  // CodeSettings
     "Para alterar as definições, introduza o código no ecrã do aparelho.\0"  // WebUnlock
     "Código no ecrã\0"  // WebUnlockTitle
-    "Código incorreto\0";  // WebUnlockBad
+    "Código incorreto\0"  // WebUnlockBad
+    "Debug com o pato e %s\0"  // FriendDuck
+    "Pair programming com %s\0"  // FriendPair
+    "%s reviu: LGTM!\0"  // FriendReview
+    "À caça de um bug com %s\0"  // FriendBug
+    "Deploy à sexta com %s!\0";  // FriendDeploy
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -688,7 +703,12 @@ static const char kEs[] MIBLO_ROM =
     "Código para cambiar los ajustes\0"  // CodeSettings
     "Para cambiar los ajustes, escribe el código que aparece en la pantalla.\0"  // WebUnlock
     "Código en la pantalla\0"  // WebUnlockTitle
-    "Código incorrecto\0";  // WebUnlockBad
+    "Código incorrecto\0"  // WebUnlockBad
+    "%s trajo el patito de goma\0"  // FriendDuck
+    "Pair programming con %s\0"  // FriendPair
+    "%s lo revisó: LGTM!\0"  // FriendReview
+    "Cazando un bug con %s\0"  // FriendBug
+    "¡Deploy viernes con %s!\0";  // FriendDeploy
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -859,7 +879,12 @@ static const char kFr[] MIBLO_ROM =
     "Code pour modifier les réglages\0"  // CodeSettings
     "Pour modifier les réglages, saisissez le code affiché à l'écran.\0"  // WebUnlock
     "Code à l'écran\0"  // WebUnlockTitle
-    "Code incorrect\0";  // WebUnlockBad
+    "Code incorrect\0"  // WebUnlockBad
+    "%s a apporté le canard\0"  // FriendDuck
+    "Pair programming avec %s\0"  // FriendPair
+    "%s a relu : LGTM !\0"  // FriendReview
+    "Chasse au bug avec %s\0"  // FriendBug
+    "Prod le vendredi avec %s !\0";  // FriendDeploy
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -1030,7 +1055,12 @@ static const char kIt[] MIBLO_ROM =
     "Codice per cambiare le impostazioni\0"  // CodeSettings
     "Per cambiare le impostazioni, digita il codice mostrato sullo schermo.\0"  // WebUnlock
     "Codice sullo schermo\0"  // WebUnlockTitle
-    "Codice errato\0";  // WebUnlockBad
+    "Codice errato\0"  // WebUnlockBad
+    "%s ha portato la papera\0"  // FriendDuck
+    "Pair programming con %s\0"  // FriendPair
+    "%s ha revisionato: LGTM!\0"  // FriendReview
+    "A caccia di bug con %s\0"  // FriendBug
+    "Deploy di venerdì con %s!\0";  // FriendDeploy
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1201,7 +1231,12 @@ static const char kDe[] MIBLO_ROM =
     "Code zum Ändern der Einstellungen\0"  // CodeSettings
     "Zum Ändern der Einstellungen den Code auf dem Bildschirm eingeben.\0"  // WebUnlock
     "Code auf dem Bildschirm\0"  // WebUnlockTitle
-    "Falscher Code\0";  // WebUnlockBad
+    "Falscher Code\0"  // WebUnlockBad
+    "Enten-Debugging mit %s\0"  // FriendDuck
+    "Pair Programming mit %s\0"  // FriendPair
+    "%s hat reviewt: LGTM!\0"  // FriendReview
+    "Bugjagd mit %s\0"  // FriendBug
+    "Freitags-Deploy mit %s!\0";  // FriendDeploy
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1372,7 +1407,12 @@ static const char kRu[] MIBLO_ROM =
     "Код для изменения настроек\0"  // CodeSettings
     "Чтобы изменить настройки, введите код с экрана устройства.\0"  // WebUnlock
     "Код на экране\0"  // WebUnlockTitle
-    "Неверный код\0";  // WebUnlockBad
+    "Неверный код\0"  // WebUnlockBad
+    "%s принёс резиновую уточку\0"  // FriendDuck
+    "Кодим в паре с %s\0"  // FriendPair
+    "%s сделал ревью: LGTM!\0"  // FriendReview
+    "Ловим баг с %s\0"  // FriendBug
+    "Деплой в пятницу с %s!\0";  // FriendDeploy
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1543,7 +1583,12 @@ static const char kZh[] MIBLO_ROM =
     "修改设置的验证码\0"  // CodeSettings
     "要修改设置, 请输入屏幕上显示的验证码.\0"  // WebUnlock
     "屏幕上的验证码\0"  // WebUnlockTitle
-    "验证码错误\0";  // WebUnlockBad
+    "验证码错误\0"  // WebUnlockBad
+    "%s 带来了小黄鸭\0"  // FriendDuck
+    "和 %s 结对编程\0"  // FriendPair
+    "%s 审查通过: LGTM!\0"  // FriendReview
+    "和 %s 一起抓 bug\0"  // FriendBug
+    "和 %s 周五上线!\0";  // FriendDeploy
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

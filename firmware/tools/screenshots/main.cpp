@@ -378,7 +378,15 @@ void renderAll(Lang L) {
                   {miblo::VisitRole::Host, miblo::Gift::Coffee, miblo::kVisitArriveMs + 1000, "host-coffee"},
                   {miblo::VisitRole::Host, miblo::Gift::Coffee, miblo::kVisitArriveMs + miblo::kVisitStayMs - 1000,
                    "host-coffee-given"},
-                  {miblo::VisitRole::Visitor, miblo::Gift::None, miblo::kVisitArriveMs + 1000, "away"}};
+                  {miblo::VisitRole::Visitor, miblo::Gift::None, miblo::kVisitArriveMs + 1000, "away"},
+                  {miblo::VisitRole::Host, miblo::Gift::Duck, miblo::kVisitArriveMs + 3000, "duck-held"},
+                  {miblo::VisitRole::Host, miblo::Gift::Duck, miblo::kVisitArriveMs + 12000, "duck"},
+                  {miblo::VisitRole::Host, miblo::Gift::Pair, miblo::kVisitArriveMs + 5250, "pair"},
+                  {miblo::VisitRole::Host, miblo::Gift::Review, miblo::kVisitArriveMs + 4000, "review"},
+                  {miblo::VisitRole::Host, miblo::Gift::Bug, miblo::kVisitArriveMs + 6000, "bug"},
+                  {miblo::VisitRole::Host, miblo::Gift::Bug, miblo::kVisitArriveMs + 15300, "bug-caught"},
+                  {miblo::VisitRole::Host, miblo::Gift::Deploy, miblo::kVisitArriveMs + 1000, "deploy-pad"},
+                  {miblo::VisitRole::Host, miblo::Gift::Deploy, miblo::kVisitArriveMs + 6000, "deploy-launch"}};
     for (const auto& x : visits) {
       v.role = x.role;
       v.gift = x.gift;
@@ -386,6 +394,27 @@ void renderAll(Lang L) {
       Shot s;
       screens::visit(L, snap, clk, v);
       save(s, std::string("44-visit-") + x.name);
+    }
+  }
+  // Pet mode antics with the sign: the first cycle of each antic, at a telling moment.
+  {
+    idle();
+    const struct {
+      screens::RoamAntic a;
+      uint32_t at;
+      const char* name;
+    } antics[] = {{screens::RoamAntic::Bat, 1000, "bat"},     {screens::RoamAntic::Spill, 2500, "spill-drops"},
+                  {screens::RoamAntic::Spill, 4000, "spill-scared"}, {screens::RoamAntic::Spill, 7000, "spill-ashamed"},
+                  {screens::RoamAntic::Cursor, 2000, "cursor"}, {screens::RoamAntic::Nap, 4000, "nap"}};
+    for (const auto& x : antics) {
+      for (uint32_t c = 1; c < 64; c++) {
+        uint32_t at;
+        if (screens::roamAntic(c * screens::kAnticEveryMs + x.at, &at) != x.a) continue;
+        Shot sh;
+        screens::roam(L, snap, clk, c * screens::kAnticEveryMs + x.at, screens::DeskMood::Calm);
+        save(sh, std::string("45-pet-") + x.name);
+        break;
+      }
     }
   }
   // Pet mode (long idle, screen left on).
@@ -525,6 +554,35 @@ void animateAll(Lang L) {
     v.mascot = 1;
     v.role = miblo::VisitRole::Visitor;
     Clip c("visit-away");
+    for (uint32_t ms = 0; ms < miblo::kVisitMs; ms += kFrameMs) {
+      v.ms = ms;
+      screens::visit(L, snap, clk, v);
+      c.frame();
+    }
+  }
+  {
+    // Pet mode: the coffee spilled on the sign (the whole antic, from its first cycle).
+    idle();
+    for (uint32_t c = 1; c < 64; c++) {
+      uint32_t at;
+      if (screens::roamAntic(c * screens::kAnticEveryMs, &at) != screens::RoamAntic::Spill) continue;
+      Clip clip("pet-spill");
+      for (uint32_t ms = 0; ms < screens::kAnticMs; ms += kFrameMs) {
+        screens::roam(L, snap, clk, c * screens::kAnticEveryMs + ms, screens::DeskMood::Calm);
+        clip.frame();
+      }
+      break;
+    }
+  }
+  {
+    // A visit about a Friday deploy, as the host sees it (the whole visit).
+    usage(34, 21);
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.mascot = 1;
+    v.role = miblo::VisitRole::Host;
+    v.gift = miblo::Gift::Deploy;
+    Clip c("visit-deploy");
     for (uint32_t ms = 0; ms < miblo::kVisitMs; ms += kFrameMs) {
       v.ms = ms;
       screens::visit(L, snap, clk, v);

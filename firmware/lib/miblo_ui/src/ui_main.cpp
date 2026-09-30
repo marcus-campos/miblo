@@ -787,6 +787,13 @@ static int bounce(uint32_t steps, int span) {  // 0..span..0..
   return p <= (uint32_t)span ? (int)p : (int)(2 * span - p);
 }
 
+// 0..span..0 over `period` ms (a back-and-forth run).
+static int shuttle(uint32_t t, uint32_t period, int span) {
+  const uint32_t p = t % period;
+  const uint32_t half = period / 2;
+  return (int)((int64_t)span * (p < half ? p : period - p) / half);
+}
+
 static int roamW() { return 2 * X(kRoamHalfW); }
 static int roamH() { return 2 * Sz(kRoamCatHalf) + Y(kRoamCardH) + 2 * Y(kRoamMargin); }
 
@@ -795,11 +802,72 @@ void roamPosition(uint32_t ms, int& cx, int& cy) {
   cy = roamH() / 2 + bounce(ms / kRoamVyMs, Y(240) - roamH());
 }
 
+RoamAntic roamAntic(uint32_t ms, uint32_t* atMs) {
+  const uint32_t cycle = ms / kAnticEveryMs, at = ms % kAnticEveryMs;
+  if (atMs) *atMs = at;
+  if (cycle == 0 || at >= kAnticMs) return RoamAntic::None;
+  return (RoamAntic)(1 + (cycle * 2654435761u >> 7) % 4);  // a varied order, the same on every run
+}
+
+// The pet's sign: visible (not the screen's black), with a lighter edge.
+constexpr uint16_t kSignFill = 0x2125;  // #26262c
+constexpr uint16_t kSignEdge = 0x5ACC;  // #5a5a66
+constexpr uint16_t kCoffeeBrown = 0x6A20;
+
 void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
           uint32_t lookMs) {
   int cx, cy;
   roamPosition(ms, cx, cy);
-  const MascotLook k = deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs);
+  MascotLook k = deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs);
+  // Antics while it is calm and nothing else is being said (a friend's hi, a nap together).
+  uint32_t at = 0;
+  const bool playful = (mood == DeskMood::Calm || mood == DeskMood::Watchful) && !(note && note[0]);
+  const RoamAntic antic = playful ? roamAntic(ms, &at) : RoamAntic::None;
+  int signDx = 0;          // the sign wiggles when batted
+  bool blot = false;       // coffee spilled on the sign
+  int drops = 0;           // coffee drops falling (0..3)
+  int curX = -1, curY = 0; // the mouse cursor on the sign (-1 = none)
+  switch (antic) {
+    case RoamAntic::Bat: {  // bats at the sign with one paw, then the other
+      const bool left = (at / 400) % 2;
+      k = MascotLook{0, 0, (int8_t)(left ? -3 : 3), 3, Eyes::Open, left ? Paws::ReachLeft : Paws::ReachRight, 0};
+      if ((at / 200) % 2) signDx = left ? -Sz(2) : Sz(2);
+      if (at >= kAnticMs - 1500) k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    }
+    case RoamAntic::Spill:  // coffee in paw, it tips over the sign: scared, then hides its eyes
+      if (at < 2000) {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, kCoffee};
+      } else if (at < 3000) {
+        k = MascotLook{2, -2, 3, 3, Eyes::Open, Paws::Down, kCoffee};
+        drops = 1 + (int)((at - 2000) / 350);
+      } else if (at < 6000) {
+        k = MascotLook{(int8_t)((at / 120) % 2 ? -1 : 1), 0, 0, 3, Eyes::Wide, Paws::Down, kSweat | kMouthO};
+        blot = true;
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Cover, kSweat};
+        blot = true;
+      }
+      break;
+    case RoamAntic::Cursor: {  // a mouse cursor runs over the sign; eyes on it, then a pounce
+      const uint32_t pounce = kAnticMs - 1500;
+      if (at < pounce) {
+        curX = shuttle(at, 2600, 100);  // 0..100 across the sign, placed below
+        curY = shuttle(at + 700, 1900, 100);
+        k = MascotLook{0, 0, (int8_t)(curX < 35 ? -3 : curX > 65 ? 3 : 0), 3, Eyes::Wide, Paws::Down, 0};
+      } else {
+        k = MascotLook{0, (int8_t)(at < pounce + 500 ? -4 : 0), 0, 3, Eyes::Happy,
+                       at < pounce + 500 ? Paws::ReachLeft : Paws::Down, 0};
+      }
+      break;
+    }
+    case RoamAntic::Nap:  // dozes off on the sign
+      if (at < 1200) k = MascotLook{0, 0, 0, 0, Eyes::Sleepy, Paws::Down, 0};
+      else if (at < kAnticMs - 1000) k = MascotLook{0, 3, 0, 0, Eyes::Closed, Paws::Down, (uint8_t)((at / 900) % 2 ? kZ1 : kZ1 | kZ2)};
+      else k = MascotLook{0, 0, 0, -3, Eyes::Open, Paws::Down, 0};
+      break;
+    case RoamAntic::None: break;
+  }
   const int bw = roamW(), bh = roamH();
   const int left = cx - bw / 2, top = cy - bh / 2;
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
@@ -843,6 +911,8 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k);
   h = hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim), reset), lastName), lastWhen);
   h = hashInt(h, mascotAccessory());
+  h = hashInt(hashInt(h, (uint32_t)(signDx + 16) | (uint32_t)blot << 8 | (uint32_t)drops << 9),
+              (uint32_t)((curX + 1) * 1000 + curY));
   if (!dirty(R_BODY, h)) return;
   static int lastX = -1000, lastY = -1000;
   if (abs(cx - lastX) > X(kRoamMargin) || abs(cy - lastY) > Y(kRoamMargin)) C().clear(color::BG);
@@ -851,13 +921,31 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   const int y0 = catY + Sz(kRoamCatHalf);
   auto draw = [&] {
     C().fillRect(left, top, bw, bh, color::BG);
-    deskMascot(cx, catY, k, kRoamCatHalf, false);
-    const int w = bw - 2 * X(kRoamMargin);
-    C().text(cx, y0 + Y(16), clk.hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
-    if (lim[0]) C().text(cx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
-    if (reset[0]) C().text(cx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
-    if (lastName[0]) C().text(cx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
-    if (lastWhen[0]) C().text(cx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
+    // The sign, held up to the cat's paws (drawn first: the paws rest on its top edge).
+    const int sx = left + X(kRoamMargin) + signDx, sw = bw - 2 * X(kRoamMargin);
+    const int sy = y0 - Sz(10), sh = top + bh - Y(kRoamMargin) - sy;
+    C().fillRoundRect(sx, sy, sw, sh, Sz(6), kSignEdge);
+    C().fillRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, Sz(5), kSignFill);
+    const int w = sw - 2 * X(kRoamMargin);
+    const int tx = cx + signDx;
+    C().text(tx, y0 + Y(16), clk.hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
+    if (lim[0]) C().text(tx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
+    if (reset[0]) C().text(tx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
+    if (lastName[0]) C().text(tx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
+    if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
+    if (blot) {  // a coffee stain across the top of the sign
+      C().fillCircle(cx - Sz(14), sy + Sz(9), Sz(6), kCoffeeBrown);
+      C().fillCircle(cx - Sz(3), sy + Sz(12), Sz(8), kCoffeeBrown);
+      C().fillCircle(cx + Sz(11), sy + Sz(8), Sz(5), kCoffeeBrown);
+      C().fillCircle(cx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
+    }
+    for (int i = 0; i < drops; i++) C().fillCircle(cx + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
+    if (curX >= 0) {  // the mouse cursor: a white arrow
+      const int ax = sx + Sz(10) + (sw - Sz(24)) * curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * curY / 100;
+      C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
+      C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
+    }
+    deskMascot(cx, catY, k, kRoamCatHalf, false, false);  // over the sign, no background square
   };
   // In strips, like the desk mascot: no big heap block, no flash.
   const int stripH = (bh + kCatStrips - 1) / kCatStrips;
@@ -885,6 +973,64 @@ static int walk(uint32_t ms, uint32_t t0, int a, int b) {
   return a + (int)((int64_t)(b - a) * (int32_t)(ms - t0) / (int32_t)miblo::kVisitWalkMs);
 }
 
+// Props of the programmer activities (miblo::Gift), drawn over the band after the cats.
+enum class PropKind : uint8_t { None, Duck, Laptop, Lgtm, Bug, Rocket, Burst };
+struct Prop {
+  PropKind kind;
+  int x, y;   // screen coordinates (see drawProp for the anchor of each)
+  uint8_t f;  // animation frame: code lines, rocket flame
+};
+constexpr uint16_t kDuckYellow = 0xFFE0;
+constexpr uint16_t kOrange = 0xFC00;
+constexpr uint16_t kGrey = 0x8410;
+constexpr uint16_t kDarkGreen = 0x0400;
+
+static void drawProp(const Prop& p) {
+  const int x = p.x, y = p.y, u = Sz(1) < 1 ? 1 : Sz(1);
+  switch (p.kind) {
+    case PropKind::Duck:  // rubber duck (centre of the body)
+      C().fillCircle(x, y, Sz(6), kDuckYellow);
+      C().fillCircle(x + Sz(5), y - Sz(6), Sz(4), kDuckYellow);
+      C().fillTriangle(x + Sz(8), y - Sz(7), x + Sz(13), y - Sz(5), x + Sz(8), y - Sz(4), kOrange);
+      C().fillRect(x + Sz(6), y - Sz(8), u + u, u + u, color::PUPIL);
+      break;
+    case PropKind::Laptop:  // (centre of the keyboard) with code scrolling on the screen
+      C().fillRect(x - Sz(15), y, Sz(30), Sz(3), kGrey);
+      C().fillRect(x - Sz(12), y - Sz(17), Sz(24), Sz(17), kGrey);
+      C().fillRect(x - Sz(11), y - Sz(16), Sz(22), Sz(15), color::BLACK);
+      for (int i = 0; i < 4; i++) {
+        const int len = 4 + (p.f * 5 + i * 7) % 13;
+        C().fillRect(x - Sz(9) + (i % 2) * Sz(3), y - Sz(14) + i * Sz(3), Sz(len), u, i % 3 ? color::GREEN : color::BLUE);
+      }
+      break;
+    case PropKind::Lgtm:  // code review sign (top-left corner)
+      C().fillRoundRect(x, y, Sz(44), Sz(16), Sz(3), color::WHITE);
+      C().text(x + Sz(22), y + Sz(12), "LGTM", Font::SmallBold, kDarkGreen, Align::Center, Sz(42));
+      break;
+    case PropKind::Bug:  // a little bug (centre of the body), legs going
+      for (int s = -1; s <= 1; s += 2) {
+        for (int l = -1; l <= 1; l++) C().fillRect(x + l * Sz(2), y + s * Sz(3) + (p.f % 2 ? s : 0), u, Sz(2), color::PUPIL);
+      }
+      C().fillCircle(x, y, Sz(3), color::RED);
+      C().fillCircle(x + Sz(3), y, Sz(2), color::PUPIL);
+      break;
+    case PropKind::Rocket:  // (tip of the nose), flame when f > 0
+      C().fillTriangle(x, y, x - Sz(4), y + Sz(6), x + Sz(4), y + Sz(6), color::RED);
+      C().fillRect(x - Sz(4), y + Sz(6), Sz(8), Sz(12), color::WHITE);
+      C().fillCircle(x, y + Sz(10), Sz(2), color::BLUE);
+      C().fillTriangle(x - Sz(4), y + Sz(12), x - Sz(8), y + Sz(19), x - Sz(4), y + Sz(18), color::RED);
+      C().fillTriangle(x + Sz(4), y + Sz(12), x + Sz(8), y + Sz(19), x + Sz(4), y + Sz(18), color::RED);
+      if (p.f) C().fillTriangle(x - Sz(3), y + Sz(18), x + Sz(3), y + Sz(18), x, y + Sz(21 + (p.f % 2) * 3), color::AMBER);
+      break;
+    case PropKind::Burst:  // the bug is fixed: a spark
+      C().fillRect(x - Sz(6), y - u, Sz(12), u + u, color::AMBER);
+      C().fillRect(x - u, y - Sz(6), u + u, Sz(12), color::AMBER);
+      C().fillCircle(x, y, Sz(2), color::WHITE);
+      break;
+    case PropKind::None: break;
+  }
+}
+
 // A walking cat: bobbing, eyes towards where it goes.
 static MascotLook walking(uint32_t ms, int dir) {
   MascotLook k{0, (int8_t)((ms / 180) % 2 ? -2 : 0), (int8_t)(3 * dir), 0, Eyes::Open, Paws::Down, 0};
@@ -897,6 +1043,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   const int half = Sz(kVisitCatHalf);
   const int offLeft = -half - X(2), offRight = X(240) + half + X(2);
   const bool coffee = v.gift == miblo::Gift::Coffee;
+  Prop prop{PropKind::None, 0, 0, 0};
   field(R_CLOCK, kHashSeed + 59, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
 
   // Where each cat is and how it looks.
@@ -923,15 +1070,94 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
       if (coffee) them.extras |= kCoffee;
       me.gx = -3;  // looking at the door
     } else if (ms < out0) {
-      // Together: happy hops in turn; a coffee changes hands halfway, then a heart.
+      // Together: the visit's activity (miblo::Gift), happy hops and a heart around it.
       guestX = X(80);
       const uint32_t t = ms - miblo::kVisitArriveMs;
-      const bool firstHalf = t < miblo::kVisitStayMs / 2;
+      const uint32_t stay = miblo::kVisitStayMs;
+      const bool firstHalf = t < stay / 2;
+      const int cy = Y(kVisitCatY);
       them = MascotLook{0, (int8_t)((t / 400) % 3 == 0 ? -4 : 0), 3, 0, Eyes::Happy, Paws::Down, 0};
       me = MascotLook{0, (int8_t)((t / 400) % 3 == 1 ? -4 : 0), -3, 0, Eyes::Happy, Paws::Down, 0};
-      if (coffee && firstHalf) them.extras |= kCoffee;
-      if (coffee && !firstHalf) me.extras |= kCoffee | kHeart;
-      if (!coffee && (t / 1500) % 4 == 3) me.extras |= kHeart;
+      const MascotLook watchL{0, 0, 3, 3, Eyes::Open, Paws::Down, 0};   // the guest looking at the middle
+      const MascotLook watchR{0, 0, -3, 3, Eyes::Open, Paws::Down, 0};  // the host looking at the middle
+      switch (v.gift) {
+        case miblo::Gift::Coffee:  // a coffee changes hands halfway, then a heart
+          if (firstHalf) them.extras |= kCoffee;
+          else me.extras |= kCoffee | kHeart;
+          break;
+        case miblo::Gift::Duck:  // rubber duck debugging: held out, then set down and explained to
+          if (firstHalf) {
+            them.paws = Paws::ReachRight;
+            prop = {PropKind::Duck, guestX + Sz(28), cy + Sz(22), 0};
+          } else {
+            them = watchL;
+            me = watchR;
+            me.eyes = (t / 1200) % 3 == 2 ? Eyes::Happy : Eyes::Open;  // the "aha!" moments
+            prop = {PropKind::Duck, X(120), cy + Sz(28) - ((t / 500) % 2 ? Sz(2) : 0), 0};
+          }
+          break;
+        case miblo::Gift::Pair:  // pair programming: both typing on a tiny laptop, then it compiles
+          if (t < stay - 2500) {
+            them = watchL;
+            me = watchR;
+            if ((t / 250) % 2) them.paws = Paws::ReachRight;
+            else me.paws = Paws::ReachLeft;
+          } else {
+            me.extras |= kHeart;
+          }
+          prop = {PropKind::Laptop, X(120), cy + Sz(34), (uint8_t)(t / 300)};
+          break;
+        case miblo::Gift::Review:  // code review: the guest holds up "LGTM", the host reads it
+          if (firstHalf) {
+            them.paws = Paws::ReachRight;
+            me = watchR;
+            prop = {PropKind::Lgtm, guestX + Sz(4), cy + Sz(16), 0};
+          } else {
+            me.extras |= kHeart;
+          }
+          break;
+        case miblo::Gift::Bug: {  // a bug runs back and forth, both follow it, the host catches it
+          const uint32_t caught = 15000;
+          const int bugX = X(94) + shuttle(t, 3000, X(52));
+          if (t < caught) {
+            them = watchL;
+            me = watchR;
+            them.eyes = me.eyes = Eyes::Wide;
+            them.gx = bugX < guestX + Sz(20) ? 0 : 3;
+            me.gx = bugX > myX - Sz(20) ? 0 : -3;
+            if (t >= caught - 1500) {
+              me.paws = Paws::ReachLeft;  // pounce
+              me.dy = -3;
+            }
+            prop = {PropKind::Bug, bugX, cy + Sz(33), (uint8_t)(t / 120)};
+          } else if (t < caught + 900) {
+            prop = {PropKind::Burst, X(120), cy + Sz(30), 0};
+          } else {
+            me.extras |= kHeart;
+          }
+          break;
+        }
+        case miblo::Gift::Deploy: {  // a rocket on the pad, lift-off (both look up), then cheers
+          const uint32_t launch = 3000, gone = 9000;
+          if (t < launch) {
+            them = watchL;
+            me = watchR;
+            prop = {PropKind::Rocket, X(120), cy + Sz(12), 0};
+          } else if (t < gone) {
+            them = MascotLook{0, 0, 2, -3, Eyes::Wide, Paws::Down, 0};
+            me = MascotLook{0, 0, -2, -3, Eyes::Wide, Paws::Down, 0};
+            const int y = cy + Sz(12) - (int)((int64_t)Sz(48) * (int32_t)(t - launch) / (int32_t)(gone - launch));
+            prop = {PropKind::Rocket, X(120), y, (uint8_t)(1 + (t / 120) % 2)};
+          } else {
+            me.extras |= kHeart;
+          }
+          break;
+        }
+        case miblo::Gift::None:
+        case miblo::Gift::Count:
+          if ((t / 1500) % 4 == 3) me.extras |= kHeart;
+          break;
+      }
     } else {
       guestX = walk(ms, out0, X(80), offLeft);
       them = walking(ms, -1);
@@ -941,6 +1167,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
 
   uint32_t h = hashInt(hashInt(kHashSeed + 61, (uint32_t)(mine ? myX + 1000 : 0)), (uint32_t)(guest ? guestX + 1000 : 0));
   h = hashInt(hashInt(h, lookHash(kHashSeed, me)), lookHash(kHashSeed + 1, them));
+  h = hashInt(hashInt(h, (uint32_t)prop.kind | (uint32_t)prop.f << 8), (uint32_t)(prop.x * 1000 + prop.y));
   if (dirty(R_BODY, h)) {
     const int top = Y(kVisitCatY) - half, bh = 2 * half;
     const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory();
@@ -954,6 +1181,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
         setMascotStyle(myStyle);
         setMascotAccessory(myHat);
       }
+      drawProp(prop);
     };
     const int stripH = (bh + kCatStrips - 1) / kCatStrips;
     for (int y = top; y < top + bh; y += stripH) {
@@ -974,7 +1202,11 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     snprintf(buf, sizeof(buf), t(lang, S::FriendAway), v.name);
     if (mine) buf[0] = 0;  // still on screen (leaving or back home)
   } else {
-    snprintf(buf, sizeof(buf), t(lang, coffee ? S::FriendCoffee : S::FriendVisiting), v.name);
+    static const S kLine[] = {S::FriendVisiting, S::FriendCoffee, S::FriendDuck, S::FriendPair,
+                              S::FriendReview, S::FriendBug, S::FriendDeploy};
+    static_assert(sizeof(kLine) / sizeof(kLine[0]) == (size_t)miblo::Gift::Count, "one line per activity");
+    const uint8_t g = (uint8_t)v.gift < (uint8_t)miblo::Gift::Count ? (uint8_t)v.gift : 0;
+    snprintf(buf, sizeof(buf), t(lang, kLine[g]), v.name);
     if (!guest) buf[0] = 0;
   }
   const uint32_t ht = hashStr(hashInt(kHashSeed + 67, (uint32_t)lang), buf);

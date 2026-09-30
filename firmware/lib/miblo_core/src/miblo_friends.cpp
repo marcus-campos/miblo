@@ -74,8 +74,7 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
   p.type = (FriendPacket::Type)in[5];
   p.mascot = in[6] < kMascotColours ? in[6] : 0;
   p.flags = in[7] & (kFriendRoaming | kFriendNapping | kFriendTired | kFriendBusy);
-  if (in[8] > (uint8_t)Gift::Coffee) return false;
-  p.gift = (Gift)in[8];
+  p.gift = in[8] < (uint8_t)Gift::Count ? (Gift)in[8] : Gift::None;  // a newer activity: a plain visit
   size_t n = 9;
   if (!getStr(in, len, n, p.id, sizeof(p.id)) || !getStr(in, len, n, p.name, sizeof(p.name)) ||
       !getStr(in, len, n, p.to, sizeof(p.to))) {
@@ -160,17 +159,35 @@ void FriendPlay::demo(uint32_t nowMs, uint32_t untilMs) {
   }
 }
 
-void FriendPlay::scheduleVisit(uint32_t nowMs, uint32_t minMs, uint32_t spanMs) {
+bool FriendPlay::demoOn(uint32_t nowMs) {
   if (demo_ && (int32_t)(demoUntilMs_ - nowMs) <= 0) demo_ = false;
-  if (demo_ && minMs > kDemoNextVisitMs) {  // demo: visits come quickly
-    minMs = kDemoNextVisitMs;
-    spanMs = kDemoNextVisitMs;
-  }
+  return demo_;
+}
+
+void FriendPlay::firstVisit(uint32_t nowMs) {
+  if (demoOn(nowMs)) scheduleVisit(nowMs, kDemoNextVisitMs, kDemoNextVisitMs);
+  else scheduleVisit(nowMs, kFirstVisitMinMs, kFirstVisitSpanMs);
+}
+
+void FriendPlay::nextVisit(uint32_t nowMs, bool hosted) {
+  const bool demo = demoOn(nowMs);
+  const uint32_t min = demo ? kDemoNextVisitMs : kNextVisitMinMs;
+  const uint32_t span = demo ? kDemoNextVisitMs : kNextVisitSpanMs;
+  scheduleVisit(nowMs, hosted ? min : min + span / 2, span / 2);
+}
+
+// Coffee for a tired friend half of the time; otherwise any activity, a plain visit included.
+Gift FriendPlay::chooseGift(bool friendTired, uint32_t rnd) const {
+  if (friendTired && (rnd & 1)) return Gift::Coffee;
+  return (Gift)((rnd >> 1) % (uint32_t)Gift::Count);
+}
+
+void FriendPlay::scheduleVisit(uint32_t nowMs, uint32_t minMs, uint32_t spanMs) {
   scheduled_ = true;
   nextVisitMs_ = nowMs + minMs + (spanMs ? rnd_ % spanMs : 0);
 }
 
-void FriendPlay::startVisit(VisitRole role, const Friend& f, Gift gift, uint32_t nowMs) {
+void FriendPlay::startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs) {
   visit_ = VisitView();
   visit_.role = role;
   strcpy(visit_.name, f.name);
@@ -184,10 +201,12 @@ void FriendPlay::startVisit(VisitRole role, const Friend& f, Gift gift, uint32_t
 }
 
 void FriendPlay::endVisit(uint32_t nowMs) {
+  const bool hosted = visit_.role == VisitRole::Host;
+  if (Friend* f = find(visitWith_)) f->lastRole = hosted ? 2 : 1;
   visit_ = VisitView();
   visitWith_[0] = 0;
   announce_ = true;
-  scheduleVisit(nowMs, kNextVisitMinMs, kNextVisitSpanMs);
+  nextVisit(nowMs, hosted);  // the host goes out next: they take turns
 }
 
 void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rnd) {
@@ -228,14 +247,14 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
   }
   if (asking_ && nowMs - askMs_ >= kVisitAskMs) {
     asking_ = false;
-    scheduleVisit(nowMs, kNextVisitMinMs, kNextVisitSpanMs);
+    nextVisit(nowMs, true);
   }
   if (!roaming) {
     scheduled_ = false;
     greetOn_ = false;
     return;
   }
-  if (!wasRoaming || !scheduled_) scheduleVisit(nowMs, kFirstVisitMinMs, kFirstVisitSpanMs);
+  if (!wasRoaming || !scheduled_) firstVisit(nowMs);
 
   // Say hi to a friend that is in pet mode too (once in a while each).
   if (!greetOn_ || nowMs - greetMs_ >= kGreetShowMs) {
@@ -253,23 +272,22 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
 
   // Time to go visiting: an awake friend in pet mode, a tired one first (it gets a coffee).
   if (!asking_ && !(flags & kFriendNapping) && (int32_t)(nowMs - nextVisitMs_) >= 0) {
-    Friend* pick = nullptr;
-    uint8_t seen = 0;
+    // Any friend in pet mode, awake and free, at random (with ten Miblos the table keeps the four
+    // heard most recently, so over time every one of them gets visited).
+    Friend* eligible[kMaxFriends];
+    uint8_t n = 0;
     for (Friend& f : friends_) {
-      if (!f.used || (f.flags & (kFriendRoaming | kFriendNapping | kFriendBusy)) != kFriendRoaming) continue;
-      const bool better = !pick || ((f.flags & kFriendTired) && !(pick->flags & kFriendTired));
-      const bool same = pick && ((f.flags & kFriendTired) == (pick->flags & kFriendTired));
-      seen++;
-      if (better || (same && rnd % seen == 0)) pick = &f;
+      if (f.used && (f.flags & (kFriendRoaming | kFriendNapping | kFriendBusy)) == kFriendRoaming) eligible[n++] = &f;
     }
+    Friend* pick = n ? eligible[rnd % n] : nullptr;
     if (pick) {
-      askGift_ = (pick->flags & kFriendTired) ? Gift::Coffee : Gift::None;
+      askGift_ = chooseGift(pick->flags & kFriendTired, rnd / kMaxFriends);
       strcpy(askTo_, pick->id);
       asking_ = true;
       askMs_ = nowMs;
       queue(FriendPacket::VisitAsk, askTo_, askGift_);
     } else {
-      scheduleVisit(nowMs, kFirstVisitMinMs, kFirstVisitSpanMs);  // nobody to visit: look again later
+      firstVisit(nowMs);  // nobody to visit: look again later
     }
   }
 }
@@ -283,8 +301,12 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs) {
       const bool free = (flags_ & (kFriendRoaming | kFriendNapping)) == kFriendRoaming && visit_.role == VisitRole::None;
       if (!free) return;
       if (asking_) {
-        // Both asked at once: the lower id is the visitor.
-        if (strcmp(askTo_, p.id) == 0 && strcmp(id_, p.id) < 0) return;
+        // Both asked each other at once: whoever hosted last time goes visiting now (the other
+        // side remembers the same visit, so both agree); the first time, the lower id.
+        if (strcmp(askTo_, p.id) == 0) {
+          const bool iVisit = f->lastRole == 2 || (f->lastRole == 0 && strcmp(id_, p.id) < 0);
+          if (iVisit) return;
+        }
         asking_ = false;
       }
       queue(FriendPacket::VisitOk, p.id, p.gift);
@@ -294,6 +316,8 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs) {
     case FriendPacket::VisitOk:
       if (asking_ && strcmp(askTo_, p.id) == 0 && nowMs - askMs_ < kVisitAskMs && visit_.role == VisitRole::None) {
         startVisit(VisitRole::Visitor, *f, askGift_, nowMs);
+      } else {
+        queue(FriendPacket::Home, p.id, Gift::None);  // not coming after all: they must not wait for us
       }
       break;
     case FriendPacket::Home:

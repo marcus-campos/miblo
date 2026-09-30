@@ -177,6 +177,11 @@ enum class S : uint8_t {
   WebUnlock,            // settings page: "Type the code on the gadget screen to change settings"
   WebUnlockTitle,       // settings page: "Enter the code" (prompt)
   WebUnlockBad,         // settings page: "Wrong code"
+  FriendDuck,           // visit: "%s brought the rubber duck" (rubber duck debugging)
+  FriendPair,           // visit: "Pair programming with %s"
+  FriendReview,         // visit: "%s reviewed it: LGTM!"
+  FriendBug,            // visit: "Hunting a bug with %s"
+  FriendDeploy,         // visit: "Friday deploy with %s!"
   Count
 };
 

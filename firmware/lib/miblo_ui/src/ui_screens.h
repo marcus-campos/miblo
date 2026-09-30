@@ -96,7 +96,9 @@ uint8_t mascotAccessory();
 // Desk mascot with front paws: flat primitives only, inside the square
 // (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
 // `table`: the table edge under the paws (left out when the mascot moves around the screen).
-void deskMascot(int cx, int cy, const MascotLook& look, int half = 64, bool table = true);
+// `box` false: no background square, so the cat can sit over something drawn first (the pet mode's
+// sign, with the paws on its edge); the caller then clears what the cat leaves behind.
+void deskMascot(int cx, int cy, const MascotLook& look, int half = 64, bool table = true, bool box = true);
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens ----
@@ -163,6 +165,13 @@ void visit(Lang lang, const miblo::Snapshot& s, const Clock& clk, const miblo::V
 void hello(const char* line1, const char* line2, bool party, uint32_t ms);
 // Where the pet is at `ms` (centre of its box: cat + card), bouncing inside the screen.
 void roamPosition(uint32_t ms, int& cx, int& cy);
+// Pet mode antics with its sign, now and then while it is calm: batting at the sign, spilling a
+// coffee on it (then scared and ashamed), chasing the mouse cursor across it, a nap on it.
+enum class RoamAntic : uint8_t { None, Bat, Spill, Cursor, Nap };
+constexpr uint32_t kAnticEveryMs = 40000;  // one antic at the start of every 40 s (from the second)
+constexpr uint32_t kAnticMs = 9000;
+// The antic playing at `ms` into pet mode, and how far into it (*atMs).
+RoamAntic roamAntic(uint32_t ms, uint32_t* atMs);
 // Full-screen mascot + two ring gauges (5h, week) + clock.
 void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt = 0);
 // The 5h window just reset after real use: green "limit freed" band, the mascot celebrating, the

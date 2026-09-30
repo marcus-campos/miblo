@@ -202,7 +202,8 @@ static void test_visit_brings_coffee_to_a_tired_friend() {
   a.receive(packet(FriendPacket::Beacon, "miblo-bbbb", "Nina", kFriendRoaming), 0);
   a.receive(packet(FriendPacket::Beacon, "miblo-cccc", "Mochi", kFriendRoaming | kFriendTired), 0);
   drain(a);
-  a.update(kFirstVisitMinMs, true, kFriendRoaming, 0);
+  // rnd 5: picks the second friend (5 % 2) and, as it is tired, the coffee ((5 / 4) & 1).
+  a.update(kFirstVisitMinMs, true, kFriendRoaming, 5);
   FriendPacket p;
   bool asked = false;
   while (a.nextPacket(p)) {
@@ -329,6 +330,66 @@ static void test_demo_hurries_visits() {
   TEST_ASSERT_FALSE(asked(200000 + kVisitAskMs + 2 * kDemoNextVisitMs));
 }
 
+// Two Miblos that keep asking at the same moment take turns: whoever hosted goes out next.
+static void test_visits_take_turns() {
+  FriendPlay a, b;
+  a.setSelf("miblo-aaaa", "Tofu", 0);
+  b.setSelf("miblo-bbbb", "Nina", 0);
+  uint32_t t = 0;
+  a.update(t, true, kFriendRoaming, 0);
+  b.update(t, true, kFriendRoaming, 0);
+  deliver(a, b, t);
+  deliver(b, a, t);
+  int aVisits = 0, bVisits = 0;
+  for (int round = 0; round < 6; round++) {
+    // Both ask each other in the same instant (the worst case for fairness).
+    for (int step = 0; step < 2000 && a.visit(t).role == VisitRole::None; step++) {
+      t += 1000;
+      a.update(t, true, kFriendRoaming, 0);
+      b.update(t, true, kFriendRoaming, 0);
+      deliver(a, b, t);
+      deliver(b, a, t);
+      deliver(a, b, t);
+    }
+    TEST_ASSERT_TRUE(a.visit(t).role != VisitRole::None);
+    if (a.visit(t).role == VisitRole::Visitor) aVisits++;
+    else bVisits++;
+    t += kVisitMs;
+    a.update(t, true, kFriendRoaming, 0);
+    b.update(t, true, kFriendRoaming, 0);
+    deliver(a, b, t);
+    deliver(b, a, t);
+  }
+  TEST_ASSERT_EQUAL(3, aVisits);  // strictly alternating
+  TEST_ASSERT_EQUAL(3, bVisits);
+}
+
+static void test_every_activity_can_come_up_and_unknown_ones_decode_as_visits() {
+  bool seen[(int)Gift::Count] = {};
+  for (uint32_t r = 0; r < 64; r++) {
+    FriendPlay g;  // fresh each time: a new ask with rnd r
+    g.setSelf("miblo-aaaa", "Tofu", 0);
+    g.update(0, true, kFriendRoaming, 0);
+    drain(g);
+    const uint32_t at = kFirstVisitMinMs + kFirstVisitSpanMs;
+    g.receive(packet(FriendPacket::Beacon, "miblo-bbbb", "Nina", kFriendRoaming), at);  // heard recently
+    g.update(at, true, kFriendRoaming, r);
+    FriendPacket p;
+    while (g.nextPacket(p)) {
+      if (p.type == FriendPacket::VisitAsk) seen[(int)p.gift] = true;
+    }
+  }
+  for (int i = 0; i < (int)Gift::Count; i++) TEST_ASSERT_TRUE_MESSAGE(seen[i], "activity never chosen");
+  // A gift value from a newer firmware is a plain visit, not a rejected packet.
+  FriendPacket p = packet(FriendPacket::VisitAsk, "miblo-bbbb", "Nina", kFriendRoaming, "miblo-aaaa");
+  uint8_t buf[kFriendPacketMax];
+  const size_t n = encodeFriendPacket(p, buf, sizeof(buf));
+  buf[8] = 200;
+  FriendPacket q;
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+  TEST_ASSERT_EQUAL(Gift::None, q.gift);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_packet_round_trip);
@@ -343,5 +404,7 @@ int main(int, char**) {
   RUN_TEST(test_simultaneous_requests_lower_id_visits);
   RUN_TEST(test_nap_buddy);
   RUN_TEST(test_demo_hurries_visits);
+  RUN_TEST(test_visits_take_turns);
+  RUN_TEST(test_every_activity_can_come_up_and_unknown_ones_decode_as_visits);
   return UNITY_END();
 }

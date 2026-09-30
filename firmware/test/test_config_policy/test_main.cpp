@@ -716,6 +716,22 @@ static void test_all_done_only_after_a_finish() {
   TEST_ASSERT_EQUAL_INT((int)QuietPhase::Desk, (int)done.update(true, 1000 + kAllDoneMs, false));
 }
 
+// Alert blinks: 2 by default, 2..5, each blink 750 ms of flash.
+static void test_flash_blinks() {
+  Config c;
+  TEST_ASSERT_EQUAL_UINT8(2, c.flashBlinks);
+  TEST_ASSERT_EQUAL_UINT32(1500, alertTiming(c).flashMs);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"flashBlinks\":5}"));
+  TEST_ASSERT_EQUAL_UINT32(5 * kBlinkMs, alertTiming(c).flashMs);
+  TEST_ASSERT_FALSE(patch(c, "{\"flashBlinks\":1}", &bad));
+  TEST_ASSERT_EQUAL_STRING("flashBlinks", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"flashBlinks\":6}", &bad));
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL(5, doc["flashBlinks"].as<int>());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -752,5 +768,6 @@ int main() {
   RUN_TEST(test_screen_care);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);
+  RUN_TEST(test_flash_blinks);
   return UNITY_END();
 }

@@ -151,6 +151,7 @@ enum class S : uint8_t {
   WebDownloadBin,       // settings: link to the release's .bin for this board
   WebSleep,             // settings: screen-off delay (a select: never / 15 min ... 4 h)
   WebSleepNever,        // settings: the "never" option (pet mode keeps going)
+  WebFlashBlinks,       // settings: how many times the alert flash blinks (2..5)
   Count
 };
 

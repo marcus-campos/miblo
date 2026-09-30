@@ -380,6 +380,9 @@ static void settingsPage() {
            "type=\"checkbox\">");
   appendEscaped(out, tr(lang, S::WebAlerts).c_str());
   out += F("</label><label>");
+  appendEscaped(out, tr(lang, S::WebFlashBlinks).c_str());
+  out += F("</label><select id=\"flashBlinks\"><option>2</option><option>3</option><option>4</option>"
+           "<option>5</option></select><label>");
   appendEscaped(out, tr(lang, S::WebHeroPerm).c_str());
   out += F("</label><input id=\"heroPermSec\" type=\"number\" min=\"3\" max=\"60\"><label>");
   appendEscaped(out, tr(lang, S::WebHeroDone).c_str());
@@ -478,9 +481,9 @@ static void settingsPage() {
       "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
       "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
       "function save(){const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
-      "'reminderMin','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
+      "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
       "'nightBrightness','mascot','sleepMin','name','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-      "if(k==='mascot'||k==='sleepMin')v=Number(v);b[k]=v;}"
+      "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks')v=Number(v);b[k]=v;}"
       "fetch('/settings',{method:'POST',headers:J,body:JSON.stringify(b)})"
       ".then(r=>{$('st').textContent=r.ok?T.saved:T.failed;}).catch(()=>{$('st').textContent=T.failed;});}"
       "function post(u){return fetch(u,{method:'POST',headers:J,body:'{}'});}"

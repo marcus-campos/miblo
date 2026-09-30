@@ -117,7 +117,7 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap);
 
 // Alert flash: alternates colour/dark every kFlashPhaseMs; each phase repaints the whole
 // screen first, then draws the text (transparent) on that phase's colour.
-constexpr uint32_t kFlashPhaseMs = 375;  // the default 1.5 s flash = 2 full blinks
+constexpr uint32_t kFlashPhaseMs = 375;  // half of miblo::kBlinkMs: config flashBlinks x 750 ms
 void flash(Lang lang, miblo::AlertKind kind, const char* name, uint32_t elapsedMs);
 void hero(Lang lang, const miblo::Snapshot& s, int idx, miblo::AlertKind kind, bool discreet, const Clock& clk,
           const miblo::RunTracker& runs);

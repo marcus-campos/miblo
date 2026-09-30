@@ -149,7 +149,8 @@ static const char kEn[] MIBLO_ROM =
     "Couldn't check for updates (no internet?)\0"  // WebCheckFailed
     "Download the firmware\0"  // WebDownloadBin
     "Turn the screen off when idle\0"  // WebSleep
-    "Never (the mascot keeps wandering)\0";  // WebSleepNever
+    "Never (the mascot keeps wandering)\0"  // WebSleepNever
+    "Alert blinks\0";  // WebFlashBlinks
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -294,7 +295,8 @@ static const char kPtBR[] MIBLO_ROM =
     "Não foi possível buscar atualizações (sem internet?)\0"  // WebCheckFailed
     "Baixar o firmware\0"  // WebDownloadBin
     "Desligar a tela quando ninguém estiver usando\0"  // WebSleep
-    "Nunca (o mascote fica passeando)\0";  // WebSleepNever
+    "Nunca (o mascote fica passeando)\0"  // WebSleepNever
+    "Piscadas do alerta\0";  // WebFlashBlinks
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -439,7 +441,8 @@ static const char kPtPT[] MIBLO_ROM =
     "Não foi possível procurar atualizações (sem internet?)\0"  // WebCheckFailed
     "Descarregar o firmware\0"  // WebDownloadBin
     "Desligar o ecrã quando ninguém estiver a usar\0"  // WebSleep
-    "Nunca (a mascote fica a passear)\0";  // WebSleepNever
+    "Nunca (a mascote fica a passear)\0"  // WebSleepNever
+    "Piscadelas do alerta\0";  // WebFlashBlinks
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -584,7 +587,8 @@ static const char kEs[] MIBLO_ROM =
     "No se pudo buscar actualizaciones (¿sin internet?)\0"  // WebCheckFailed
     "Descargar el firmware\0"  // WebDownloadBin
     "Apagar la pantalla cuando nadie la use\0"  // WebSleep
-    "Nunca (la mascota sigue paseando)\0";  // WebSleepNever
+    "Nunca (la mascota sigue paseando)\0"  // WebSleepNever
+    "Parpadeos de la alerta\0";  // WebFlashBlinks
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -729,7 +733,8 @@ static const char kFr[] MIBLO_ROM =
     "Impossible de rechercher les mises à jour (pas d'internet ?)\0"  // WebCheckFailed
     "Télécharger le firmware\0"  // WebDownloadBin
     "Éteindre l'écran quand personne ne l'utilise\0"  // WebSleep
-    "Jamais (la mascotte continue de se promener)\0";  // WebSleepNever
+    "Jamais (la mascotte continue de se promener)\0"  // WebSleepNever
+    "Clignotements de l'alerte\0";  // WebFlashBlinks
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -874,7 +879,8 @@ static const char kIt[] MIBLO_ROM =
     "Impossibile cercare aggiornamenti (niente internet?)\0"  // WebCheckFailed
     "Scarica il firmware\0"  // WebDownloadBin
     "Spegni lo schermo quando nessuno lo usa\0"  // WebSleep
-    "Mai (la mascotte continua a passeggiare)\0";  // WebSleepNever
+    "Mai (la mascotte continua a passeggiare)\0"  // WebSleepNever
+    "Lampeggi dell'avviso\0";  // WebFlashBlinks
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1019,7 +1025,8 @@ static const char kDe[] MIBLO_ROM =
     "Suche nach Updates fehlgeschlagen (kein Internet?)\0"  // WebCheckFailed
     "Firmware herunterladen\0"  // WebDownloadBin
     "Bildschirm ausschalten, wenn niemand ihn nutzt\0"  // WebSleep
-    "Nie (das Maskottchen läuft weiter herum)\0";  // WebSleepNever
+    "Nie (das Maskottchen läuft weiter herum)\0"  // WebSleepNever
+    "Blinken bei Hinweisen\0";  // WebFlashBlinks
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1164,7 +1171,8 @@ static const char kRu[] MIBLO_ROM =
     "Не удалось проверить обновления (нет интернета?)\0"  // WebCheckFailed
     "Скачать прошивку\0"  // WebDownloadBin
     "Выключать экран, когда им никто не пользуется\0"  // WebSleep
-    "Никогда (талисман продолжает гулять)\0";  // WebSleepNever
+    "Никогда (талисман продолжает гулять)\0"  // WebSleepNever
+    "Мигания при оповещении\0";  // WebFlashBlinks
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -1309,7 +1317,8 @@ static const char kZh[] MIBLO_ROM =
     "无法检查更新（没有网络？）\0"  // WebCheckFailed
     "下载固件\0"  // WebDownloadBin
     "无人使用时关闭屏幕\0"  // WebSleep
-    "从不（吉祥物继续四处走动）\0";  // WebSleepNever
+    "从不（吉祥物继续四处走动）\0"  // WebSleepNever
+    "提醒闪烁次数\0";  // WebFlashBlinks
 
 const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

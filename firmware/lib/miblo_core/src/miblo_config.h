@@ -18,6 +18,7 @@ struct Config {
   bool alerts = true;
   uint8_t heroPermSec = 10;  // 3..60
   uint8_t heroDoneSec = 5;   // 2..60
+  uint8_t flashBlinks = 2;   // 2..5 blinks when an alert comes in
   uint8_t reminderMin = 2;   // 0..30 (0 = no reminder)
   bool discreet = false;
   char tz[48] = "UTC0";      // IANA name ("America/Sao_Paulo"); legacy: POSIX rule ("<-03>3"). See miblo_tz.h

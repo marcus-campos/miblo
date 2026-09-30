@@ -53,7 +53,7 @@
   - **While something is running,** your sessions come first. You get up to 3 session cards per page, each with the name, how long it has been in that state and what it's doing now ("Editing Header.tsx", "Bash · npm test"). Above them is a compact `5h / 7d` limits strip. Cards are ordered by what needs you first, then what is still working, then what has finished.
   - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s the desk mascot takes over (see below).
 - **Alerts:**
-  - **Amber** when a session needs you (a permission request or a question). You get a flash, then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
+  - **Amber** when a session needs you (a permission request or a question). You get a flash (2 blinks by default, 2 to 5 on the settings page), then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
   - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert.
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
 - **Limit forecast:** when your recent pace would use up the 5-hour window before it resets, the Limits arc and the desk screen say when, in amber ("runs out in 1h20").
@@ -72,7 +72,7 @@
 
 - **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
 - **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts and their durations, discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language and device name. `/miblo:settings` opens it for you.
+- **Settings page** in the browser (`http://miblo-xxxx.local`) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, mascot colour, screen-off delay, time zone, language and device name. `/miblo:settings` opens it for you.
 - **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 

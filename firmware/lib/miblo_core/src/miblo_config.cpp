@@ -59,6 +59,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn(v, 3, 60, next.heroPermSec);
     } else if (strcmp(k, "heroDoneSec") == 0) {
       ok = intIn(v, 2, 60, next.heroDoneSec);
+    } else if (strcmp(k, "flashBlinks") == 0) {
+      ok = intIn(v, 2, 5, next.flashBlinks);
     } else if (strcmp(k, "reminderMin") == 0) {
       ok = intIn(v, 0, 30, next.reminderMin);
     } else if (strcmp(k, "discreet") == 0) {
@@ -127,6 +129,7 @@ void configToJson(const Config& cfg, JsonObject out) {
   out["alerts"] = cfg.alerts;
   out["heroPermSec"] = cfg.heroPermSec;
   out["heroDoneSec"] = cfg.heroDoneSec;
+  out["flashBlinks"] = cfg.flashBlinks;
   out["reminderMin"] = cfg.reminderMin;
   out["discreet"] = cfg.discreet;
   out["tz"] = cfg.tz;
@@ -159,6 +162,7 @@ AlertTiming alertTiming(const Config& cfg) {
   t.enabled = cfg.alerts;
   t.heroPermMs = (uint32_t)cfg.heroPermSec * 1000;
   t.heroDoneMs = (uint32_t)cfg.heroDoneSec * 1000;
+  t.flashMs = (uint32_t)cfg.flashBlinks * kBlinkMs;
   t.reminderMs = (uint32_t)cfg.reminderMin * 60000;
   return t;
 }

@@ -5,10 +5,13 @@
 
 namespace miblo {
 
+// One blink of the alert flash: colour then dark (ui kFlashPhaseMs each).
+constexpr uint32_t kBlinkMs = 750;
+
 // Alert sequence timings. All configurable from the page/API.
 struct AlertTiming {
   bool enabled = true;
-  uint32_t flashMs = 1500;
+  uint32_t flashMs = 1500;  // kBlinkMs per blink: 2 blinks by default
   uint32_t heroPermMs = 10000;   // hero for "needs you" (permission/question)
   uint32_t heroDoneMs = 5000;    // hero for "finished"
   uint32_t reminderMs = 120000;  // 0 = no reminder

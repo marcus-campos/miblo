@@ -140,10 +140,11 @@ uint8_t deskPct(const miblo::UsageWindow& w, uint32_t nowEpoch);
 MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms);
 // The mood the Desk shows for the last known limits (Calm when there are none).
 DeskMood deskMoodFor(const miblo::Snapshot& s, uint32_t nowEpoch, bool* focusLeft = nullptr);
-// Pet mode (long idle, screen left on): the mascot wanders around the whole screen with the
-// clock under it, so nothing stays on the same pixels. `ms`: time in the mode.
-void roam(Lang lang, const Clock& clk, uint32_t ms, DeskMood mood);
-// Where the pet is at `ms` (centre of its box: cat + clock), bouncing inside the screen.
+// Pet mode (long idle, screen left on): the mascot wanders around the whole screen carrying a
+// small card (clock, 5h/week limits, the next reset or "limit freed", the last finished task and
+// how long ago), so nothing stays on the same pixels. `ms`: time in the mode.
+void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood);
+// Where the pet is at `ms` (centre of its box: cat + card), bouncing inside the screen.
 void roamPosition(uint32_t ms, int& cx, int& cy);
 // Full-screen mascot + two ring gauges (5h, week) + clock.
 void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt = 0);

@@ -320,7 +320,7 @@ void loop() {
       const screens::DeskMood mood =
           away ? (now - awaySinceMs >= miblo::kAwayNapMs ? screens::DeskMood::Asleep : screens::DeskMood::Searching)
                : screens::deskMoodFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now);
-      screens::roam(lang, clk, now - roamSinceMs, mood);
+      screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood);
       break;
     }
     case ScreenId::AlertFlash: {

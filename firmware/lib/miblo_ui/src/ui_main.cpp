@@ -771,14 +771,14 @@ DeskMood deskMoodFor(const Snapshot& s, uint32_t now, bool* focusLeft) {
 }
 
 // ---- pet mode ----
-// The box moves at most a pixel a frame and carries a margin of background around the cat, so
-// each redraw also wipes where it was; a bigger jump (a stalled frame) clears the screen first.
-constexpr int kRoamHalfW = 44;    // box half-width on the 240 grid (cat 40 + margin 4)
-constexpr int kRoamCatHalf = 40;
-constexpr int kRoamClockH = 22;   // clock band under the cat
+// The box moves at most a pixel a frame and carries a margin of background around its content,
+// so each redraw also wipes where it was; a bigger jump (a stalled frame) clears the screen first.
+constexpr int kRoamHalfW = 74;    // box half-width on the 240 grid (card lines + margin)
+constexpr int kRoamCatHalf = 36;  // the cat: 72 px
+constexpr int kRoamCardH = 88;    // clock, limits, reset, last task (name + when), under the cat
 constexpr int kRoamMargin = 4;
-constexpr uint32_t kRoamVxMs = 260;  // ms per pixel, sideways
-constexpr uint32_t kRoamVyMs = 370;  // ms per pixel, up/down (different: the path covers the screen)
+constexpr uint32_t kRoamVxMs = 300;  // ms per pixel, sideways
+constexpr uint32_t kRoamVyMs = 420;  // ms per pixel, up/down (different: the path covers the screen)
 
 static int bounce(uint32_t steps, int span) {  // 0..span..0..
   if (span <= 0) return 0;
@@ -786,29 +786,69 @@ static int bounce(uint32_t steps, int span) {  // 0..span..0..
   return p <= (uint32_t)span ? (int)p : (int)(2 * span - p);
 }
 
+static int roamW() { return 2 * X(kRoamHalfW); }
+static int roamH() { return 2 * Sz(kRoamCatHalf) + Y(kRoamCardH) + 2 * Y(kRoamMargin); }
+
 void roamPosition(uint32_t ms, int& cx, int& cy) {
-  const int bw = 2 * Sz(kRoamHalfW), bh = 2 * Sz(kRoamHalfW) + Y(kRoamClockH);
-  cx = bw / 2 + bounce(ms / kRoamVxMs, X(240) - bw);
-  cy = bh / 2 + bounce(ms / kRoamVyMs, Y(240) - bh);
+  cx = roamW() / 2 + bounce(ms / kRoamVxMs, X(240) - roamW());
+  cy = roamH() / 2 + bounce(ms / kRoamVyMs, Y(240) - roamH());
 }
 
-void roam(Lang lang, const Clock& clk, uint32_t ms, DeskMood mood) {
-  (void)lang;
+void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood) {
   int cx, cy;
   roamPosition(ms, cx, cy);
   const MascotLook k = deskLook(mood, true, ms);
-  const int bw = 2 * Sz(kRoamHalfW), bh = 2 * Sz(kRoamHalfW) + Y(kRoamClockH);
+  const int bw = roamW(), bh = roamH();
   const int left = cx - bw / 2, top = cy - bh / 2;
-  const uint32_t h = hashStr(hashInt(lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k), 1), clk.hhmm);
+  const uint32_t now = clk.epoch ? clk.epoch : s.now;
+
+  // The card's lines (empty when unknown).
+  char lim[48] = "", reset[48] = "", lastName[48] = "", lastWhen[64] = "";
+  uint16_t resetFg = color::DIM;
+  const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
+  if (usage) {
+    char a[16] = "--", b[16] = "--";
+    if (s.h5.present) snprintf(a, sizeof(a), "%u%%", deskPct(s.h5, now));
+    if (s.d7.present) snprintf(b, sizeof(b), "%u%%", deskPct(s.d7, now));
+    snprintf(lim, sizeof(lim), "%s %s%s%s %s", t(lang, S::Short5h), a, kDot, t(lang, S::Short7d), b);
+    if (s.h5.present && s.h5.reset && now >= s.h5.reset) {  // the 5h window has reset since
+      snprintf(reset, sizeof(reset), "%s", t(lang, S::LimitFreed));
+      resetFg = color::GREEN;
+    } else if (s.h5.present && s.h5.reset) {
+      char when[32];
+      formatWhen(lang, s.h5.reset, now, when, sizeof(when));
+      snprintf(reset, sizeof(reset), t(lang, S::ResetsAt), when);
+    }
+  }
+  const int lf = miblo::lastFinished(s);
+  if (lf >= 0) {
+    char ago[16];
+    miblo::formatInState(since(s.sessions[lf], clk), ago, sizeof(ago));
+    snprintf(lastName, sizeof(lastName), "%s", s.sessions[lf].name);
+    // "finished 12m ago" without the name (it has its own line): the phrase with an empty name.
+    snprintf(lastWhen, sizeof(lastWhen), t(lang, S::FinishedAgo), "", ago);
+    char* w = lastWhen;
+    while (*w == ' ') w++;
+    memmove(lastWhen, w, strlen(w) + 1);
+  }
+
+  uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k);
+  h = hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim), reset), lastName), lastWhen);
   if (!dirty(R_BODY, h)) return;
   static int lastX = -1000, lastY = -1000;
-  if (abs(cx - lastX) > Sz(kRoamMargin) || abs(cy - lastY) > Sz(kRoamMargin)) C().clear(color::BG);
+  if (abs(cx - lastX) > X(kRoamMargin) || abs(cy - lastY) > Y(kRoamMargin)) C().clear(color::BG);
   lastX = cx, lastY = cy;
-  const int catY = top + Sz(kRoamHalfW);
+  const int catY = top + Y(kRoamMargin) + Sz(kRoamCatHalf);
+  const int y0 = catY + Sz(kRoamCatHalf);
   auto draw = [&] {
     C().fillRect(left, top, bw, bh, color::BG);
     deskMascot(cx, catY, k, kRoamCatHalf, false);
-    C().text(cx, top + bh - Y(5), clk.hhmm, Font::Body, color::DIM, Align::Center, bw);
+    const int w = bw - 2 * X(kRoamMargin);
+    C().text(cx, y0 + Y(16), clk.hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
+    if (lim[0]) C().text(cx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
+    if (reset[0]) C().text(cx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
+    if (lastName[0]) C().text(cx, y0 + Y(66), lastName, Font::SmallBold, color::BLUE, Align::Center, w);
+    if (lastWhen[0]) C().text(cx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
   };
   // In strips, like the desk mascot: no big heap block, no flash.
   const int stripH = (bh + kCatStrips - 1) / kCatStrips;

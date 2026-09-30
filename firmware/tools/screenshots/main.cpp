@@ -295,7 +295,7 @@ void renderAll(Lang L) {
   // Pet mode (long idle, screen left on).
   for (uint32_t ms : {0u, 20000u, 60000u}) {
     Shot s;
-    screens::roam(L, clk, ms, screens::DeskMood::Calm);
+    screens::roam(L, snap, clk, ms, screens::DeskMood::Calm);
     save(s, "42-pet-mode-" + std::to_string(ms / 1000));
   }
 
@@ -402,7 +402,7 @@ void animateAll(Lang L) {
     idle();
     Clip c("pet-mode");
     for (uint32_t ms = 0; ms < 30000; ms += kFrameMs) {
-      screens::roam(L, clk, ms, screens::DeskMood::Calm);
+      screens::roam(L, snap, clk, ms, screens::DeskMood::Calm);
       c.frame();
     }
   }

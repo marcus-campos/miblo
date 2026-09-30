@@ -939,6 +939,45 @@ static void test_limit_reset_and_summary_content() {
   TEST_ASSERT_TRUE(fc.drew("0min"));
 }
 
+// Pet mode: the wandering card carries the clock, the limits, the next reset (or "limit freed"
+// once the 5h window has reset) and the last finished task, and stays on screen all along its path.
+static void test_pet_mode_card_and_path() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    idle();
+    screens::reset();
+    for (uint32_t ms = 0; ms < 400000; ms += 997) screens::roam(Lang::En, snap, testClock(), ms, screens::DeskMood::Calm);
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  }
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("14:32"));
+  TEST_ASSERT_TRUE(fc.drew("5h 62%"));
+  TEST_ASSERT_TRUE(fc.drew("7d 38%"));
+  TEST_ASSERT_TRUE(fc.drew("resets "));
+  TEST_ASSERT_TRUE(fc.drew("infra"));             // the most recently finished session
+  TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
+  // The 5h window has reset since the last snapshot: 0% and "limit freed".
+  screens::Clock later = testClock();
+  later.epoch = NOW + 3 * 3600;
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, later, 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("5h 0%"));
+  TEST_ASSERT_TRUE(fc.drew("LIMIT FREED"));
+  // It moves: later on it is somewhere else.
+  int x0, y0, x1, y1;
+  screens::roamPosition(0, x0, y0);
+  screens::roamPosition(60000, x1, y1);
+  TEST_ASSERT_TRUE(x0 != x1 || y0 != y1);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_main_screens_fit_any_resolution);
@@ -962,5 +1001,6 @@ int main() {
   RUN_TEST(test_desk_mascot_redraws_in_strips_without_flashing);
   RUN_TEST(test_burn_rate_lines);
   RUN_TEST(test_limit_reset_and_summary_content);
+  RUN_TEST(test_pet_mode_card_and_path);
   return UNITY_END();
 }

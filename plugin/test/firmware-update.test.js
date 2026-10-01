@@ -292,3 +292,13 @@ test('a gadget that dropped this pairing: version unknown in check, open refuses
     assert.match(o.out, /\/miblo:pair/);
   } finally { await t.close(); }
 });
+
+test('open while another code is on the gadget screen says so (busy), not "wrong codes"', async () => {
+  const t = await setup({ device: { otherCodeSec: 240 } });
+  try {
+    const o = await t.cli('open', 'miblo-0000');
+    assert.equal(o.code, 2);
+    assert.match(o.out, /Another code is on the gadget screen\. Try again in 240 s\./);
+    assert.doesNotMatch(o.out, /wrong codes/);
+  } finally { await t.close(); }
+});

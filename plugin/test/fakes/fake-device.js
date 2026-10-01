@@ -16,6 +16,7 @@ export function startFakeDevice({
   id = 'miblo-4f2a', name = 'Miblo-4F2A', code = '4827', now = () => Date.now(),
   fw = '0.0.0-fake', board = 'geekmagic_ultra', otaCode = '1234', otaCodeRequired = true, rebootMs = 30,
   tokens = [],  // already paired with these tokens (e.g. to another computer)
+  otherCodeSec = 0,  // another purpose's code is on the screen for this long: /update/open is busy
 } = {}) {
   const state = {
     token: null, tokens: [...tokens], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
@@ -156,6 +157,8 @@ export function startFakeDevice({
     if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(415, { error: 'json only' });
     if (!otaCodeRequired) return send(200, { ok: true, codeRequired: false });
     if (otaLocked(send)) return undefined;
+    // A code for another purpose on the screen is never replaced (PresenceGate::busyFor).
+    if (otherCodeSec > 0) return send(429, { error: 'busy', retryAfter: otherCodeSec });
     state.gateOpen = true;
     return send(200, { ok: true, codeRequired: true });
   }

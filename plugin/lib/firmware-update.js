@@ -372,5 +372,8 @@ export class FirmwareUpdater {
 
 function lockedMsg(data) {
   const secs = Math.max(1, Math.ceil(Number(data?.retryAfter ?? 60)));
+  // "busy": a code for something else (settings, reset, Wi-Fi) is on the screen; the gadget never
+  // replaces it, so wait for it to expire.
+  if (data?.error === 'busy') return `Another code is on the gadget screen. Try again in ${secs} s.`;
   return `Too many wrong codes. Try again in ${secs} s.`;
 }

@@ -1257,7 +1257,7 @@ static void test_warm_color() {
 
   // Every colour at every level is exactly round(v * m / 255) per channel (warmColor computes it
   // with a multiply and a shift): green and blue scaled by the level's multipliers, red kept.
-  static const uint32_t kGain[3][2] = {{219, 186}, {196, 137}, {169, 87}};  // green, blue (of 255)
+  static const uint32_t kGain[3][2] = {{222, 188}, {199, 139}, {173, 89}};  // green, blue (of 255)
   for (uint8_t level = 1; level <= 3; level++) {
     const uint32_t gm = kGain[level - 1][0], bm = kGain[level - 1][1];
     for (uint32_t c = 0; c <= 0xFFFF; c++) {

@@ -86,10 +86,14 @@ class Canvas {
 };
 
 // Blue light filter: `c` as it looks under a warmer white point, the colour temperature of each
-// level being 4500 K, 3500 K and 2700 K (black-body RGB multipliers after Tanner Helland's
-// approximation: green 219/196/169, blue 186/137/87 out of 255; red stays). Level 0 returns `c`
-// unchanged; levels above 3 are treated as 3. A switch, not a table: on the ESP8266 a const
-// table would sit in RAM.
+// level being 4500 K, 3500 K and 2700 K. The multipliers are the black-body white of that
+// temperature in sRGB (CIE 1931 2-degree observer, the one sRGB and colour temperature are
+// defined with; brightest channel = 255): green 222/199/173 and blue 188/139/89 out of 255. Red
+// stays: it is the brightest channel of any white below 6500 K, so lowering it would only dim the
+// screen (night mode's job). Scaling a gamma-encoded value by m scales that channel's light by
+// m^2.2 whatever the colour, so white lands on the target and all colours shift alike.
+// Level 0 returns `c` unchanged; levels above 3 are treated as 3. A switch, not a table: on the
+// ESP8266 a const table would sit in RAM.
 // Each channel becomes round(v * m / 255), computed as (v * m * 257 + 2^15) >> 16: the ESP8266
 // has no divide instruction (every division is a call into ROM, and this runs for each shape
 // drawn), and for every 5- and 6-bit v and these multipliers the two agree exactly
@@ -98,9 +102,9 @@ inline uint16_t warmColor(uint16_t c, uint8_t level) {
   uint32_t gm, bm;
   switch (level) {
     case 0: return c;
-    case 1: gm = 219, bm = 186; break;
-    case 2: gm = 196, bm = 137; break;
-    default: gm = 169, bm = 87; break;
+    case 1: gm = 222, bm = 188; break;
+    case 2: gm = 199, bm = 139; break;
+    default: gm = 173, bm = 89; break;
   }
   const uint32_t g = (((c >> 5) & 63) * gm * 257 + 0x8000) >> 16;
   const uint32_t b = ((c & 31) * bm * 257 + 0x8000) >> 16;

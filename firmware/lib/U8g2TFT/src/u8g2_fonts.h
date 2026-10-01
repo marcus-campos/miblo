@@ -62,14 +62,14 @@
 #endif
 
 
-/* --- Miblo: fontes em flash no ESP8266 (como no u8g2 oficial) --- */
+/* --- Miblo: fonts in flash on the ESP8266 (same as official u8g2) --- */
 #if defined(ESP8266)
 #  include <pgmspace.h>
 #  define U8X8_FONT_SECTION(name) __attribute__((section(".irom.text." name)))
 #  define u8x8_pgm_read(adr) pgm_read_byte(adr)
 #  define U8X8_PROGMEM
 #endif
-/* --- fim do patch Miblo --- */
+/* --- end of Miblo patch --- */
 
 #ifndef U8X8_FONT_SECTION
 #  define U8X8_FONT_SECTION(name) 

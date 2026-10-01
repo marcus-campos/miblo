@@ -6,12 +6,22 @@ reads the bytes with a direct pointer. The patch below puts the fonts in `.irom.
 and swaps the read for pgm_read_byte — same as what official u8g2 does for the ESP8266. Run
 once; the result (lib/U8g2TFT/) is committed.
 
+The CJK font is not taken from Bodmer: u8g2 only ships Unifont with a few hundred Chinese glyphs,
+so the GB2312 set below is converted here from the official Unifont BDF with u8g2's own bdfconv
+(built from source at a pinned commit; needs a C compiler).
+
 Usage: firmware/.venv/bin/python firmware/scripts/vendor_u8g2.py
 """
 import codecs
+import glob
+import gzip
+import io
 import os
 import re
+import subprocess
 import sys
+import tarfile
+import tempfile
 import urllib.request
 
 COMMIT = "a170ef8b6d8414b1ee2ecc97b5b913e08f5597ac"
@@ -34,8 +44,19 @@ FONTS = [
     "u8g2_font_8x13_t_cyrillic",
     "u8g2_font_10x20_t_cyrillic",
     "u8g2_font_inr24_t_cyrillic",
-    "u8g2_font_wqy14_t_gb2312a",
+    "u8g2_font_unifont_t_gb2312a",
 ]
+
+# Unifont (SIL OFL 1.1, or GPLv2+ with the font embedding exception; Miblo uses it under the OFL).
+UNIFONT_VERSION = "18.0.01"
+UNIFONT_BDF = (f"https://unifoundry.com/pub/unifont/unifont-{UNIFONT_VERSION}/font-builds/"
+               f"unifont-{UNIFONT_VERSION}.bdf.gz")
+# u8g2 commit whose tools/font/bdfconv converts the BDF.
+U8G2_COMMIT = "d6c8499c5f2707cac8eccd09fd8f677d12b17977"
+# GB2312 rows drawn by the CJK font: punctuation (1), numbered symbols (2), full-width ASCII (3),
+# pinyin (8), box drawing (9) and the 3755 level-1 hanzi (16-55). Latin, Cyrillic and digits come
+# from the fonts before it in each stack.
+GB2312_ROWS = [1, 2, 3, 8, 9] + list(range(16, 56))
 
 # Fonts only used for a few characters: vendored as a subset (same glyph data and metrics, the
 # other glyphs dropped) under a new name. fub20 draws percentages and "--" (NumM) and the "%"
@@ -94,6 +115,48 @@ def subset_font(data, chars):
     return bytes(header) + body + b"\0\4\377\377"
 
 
+def gb2312_chars():
+    """Unicode code points of ASCII plus the GB2312_ROWS of GB2312."""
+    chars = set(range(32, 127))
+    for row in GB2312_ROWS:
+        for col in range(1, 95):
+            try:
+                chars.add(ord(bytes([0xA0 + row, 0xA0 + col]).decode("gb2312")))
+            except UnicodeDecodeError:
+                pass  # unassigned cell
+    return sorted(chars)
+
+
+def unifont_lines(name):
+    """C definition lines of a u8g2 font with gb2312_chars(), converted from the Unifont BDF."""
+    with tempfile.TemporaryDirectory() as tmp:
+        url = f"https://codeload.github.com/olikraus/u8g2/tar.gz/{U8G2_COMMIT}"
+        with urllib.request.urlopen(url, timeout=300) as r:
+            tar = tarfile.open(fileobj=io.BytesIO(r.read()))
+        prefix = f"u8g2-{U8G2_COMMIT}/tools/font/bdfconv/"
+        tar.extractall(tmp, members=[m for m in tar.getmembers() if m.name.startswith(prefix)], filter="data")
+        src = os.path.join(tmp, prefix)
+        tool = os.path.join(tmp, "bdfconv")
+        subprocess.run(["cc", "-O2", "-w", "-o", tool] + glob.glob(os.path.join(src, "*.c")), check=True)
+
+        with urllib.request.urlopen(UNIFONT_BDF, timeout=300) as r:
+            bdf = os.path.join(tmp, "unifont.bdf")
+            with open(bdf, "wb") as f:
+                f.write(gzip.decompress(r.read()))
+        mapfile = os.path.join(tmp, "chars.map")
+        with open(mapfile, "w") as f:
+            f.write(",\n".join(f"${c:x}" for c in gb2312_chars()) + "\n")
+        out = os.path.join(tmp, "font.c")
+        subprocess.run([tool, "-b", "0", "-f", "1", "-M", mapfile, "-n", name, "-o", out, bdf], check=True)
+        with open(out, encoding="utf-8") as f:
+            lines = f.read().split("\n")
+    start = next(i for i, l in enumerate(lines) if l.startswith(f"const uint8_t {name}["))
+    end = start
+    while not lines[end].rstrip().endswith('";'):
+        end += 1
+    return lines[start:end + 1]
+
+
 def font_c(name, data):
     """C definition of a font, in the u8g2 style (octal escapes, 64 bytes per line)."""
     out = [f'const uint8_t {name}[{len(data) + 1}] U8G2_FONT_SECTION("{name}") = ']
@@ -127,6 +190,15 @@ def main():
            '#include "u8g2_fonts.h"', ""]
     total = 0
     for font in FONTS:
+        if font == "u8g2_font_unifont_t_gb2312a":
+            print(f"converting Unifont {UNIFONT_VERSION}...")
+            lines = unifont_lines(font)
+            out.extend(lines)
+            out.append("")
+            size = int(re.search(r"\[(\d+)\]", lines[0]).group(1))
+            total += size
+            print(f"  {font}: {size} bytes")
+            continue
         start = next((i for i, l in enumerate(source) if l.startswith(f"const uint8_t {font}[")), None)
         if start is None:
             sys.exit(f"font not found: {font}")

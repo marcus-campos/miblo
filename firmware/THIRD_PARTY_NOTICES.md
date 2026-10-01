@@ -2,6 +2,41 @@
 
 Fonts and the text renderer: see [`lib/U8g2TFT/THIRD_PARTY_NOTICES.md`](lib/U8g2TFT/THIRD_PARTY_NOTICES.md).
 
+The firmware images (`miblo-*.bin` and the installer `loader`) also link the libraries below.
+Verbatim copies of their license texts are in [`licenses/`](licenses/).
+
+## ESP8266 Arduino core
+
+- **Component:** the Arduino framework for the ESP8266 (PlatformIO package
+  `framework-arduinoespressif8266` 3.30102.0, i.e. core 3.1.2), statically linked into every image.
+- **License:** GNU LGPL 2.1 for the core files ([`licenses/esp8266-arduino-LGPL-2.1.txt`](licenses/esp8266-arduino-LGPL-2.1.txt)).
+  Miblo's own source is public, so anyone can rebuild and relink the images against a modified
+  core, as the LGPL requires.
+- **Bundled components** (licenses as stated in the core's README): Espressif NONOS SDK (Espressif
+  MIT License, which permits use on ESP8266 chips only; text in
+  [`licenses/espressif-nonos-sdk.txt`](licenses/espressif-nonos-sdk.txt)), lwIP (BSD), BearSSL (MIT), LittleFS (BSD 3-Clause), umm_malloc (MIT), SPIFFS (MIT),
+  uzlib (zlib).
+- **Upstream:** <https://github.com/esp8266/Arduino>.
+
+## TFT_eSPI
+
+- **Component:** display driver (`bodmer/TFT_eSPI@2.5.43`).
+- **License:** FreeBSD (Bodmer's code) plus the MIT and BSD notices of the Adafruit libraries it
+  derives from; all reproduced in [`licenses/TFT_eSPI.txt`](licenses/TFT_eSPI.txt).
+- **Copyright:** (c) 2023 Bodmer; (c) 2012 Adafruit Industries.
+
+## ArduinoJson
+
+- **Component:** JSON parsing (`bblanchon/ArduinoJson@6.21.5`).
+- **License:** MIT ([`licenses/ArduinoJson.txt`](licenses/ArduinoJson.txt)).
+- **Copyright:** (c) 2014-2023 Benoit Blanchon.
+
+## QRCode
+
+- **Component:** QR code generation (`ricmoo/QRCode@0.0.1`).
+- **License:** MIT ([`licenses/QRCode.txt`](licenses/QRCode.txt)).
+- **Copyright:** (c) 2017 Richard Moore.
+
 ## Time zone table: posix_tz_db
 
 - **Component:** `lib/miblo_core/src/miblo_tz_table.{h,cpp}` (IANA zone name → POSIX TZ rule),

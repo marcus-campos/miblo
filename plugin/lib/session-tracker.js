@@ -7,7 +7,9 @@ const ALERTING = new Set(['perm', 'question', 'done']);
 // background_tasks entries are documented as in flight; drop any finished one defensively.
 const FINISHED = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled']);
 // Watchers that live on after the turn without the session doing anything (Claude Code's monitor
-// of a published artifact, for one, runs for hours): never counted as work in flight.
+// of a published artifact, for one, runs for hours): never counted as work in flight. The payload
+// cannot tell them from a monitor the agent started to wait for (a CI run): that one reads as done
+// too, and the session turns back to running as soon as the monitor wakes it.
 const PASSIVE = new Set(['monitor']);
 
 // Reserved activity tools for a Stop that waits on background work (det = the count).

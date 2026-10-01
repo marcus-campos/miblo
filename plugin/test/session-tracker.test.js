@@ -238,6 +238,15 @@ test('a monitor next to real background work is not counted', () => {
   assert.equal(s.det, '1');
 });
 
+test('a monitor next to an agent leaves an agents-only wait', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'Stop', { background_tasks: [{ type: 'monitor', status: 'running' }, { type: 'subagent', status: 'running' }] });
+  const [s] = tracker.sessions();
+  assert.equal(s.tool, '_wait_agents');
+  assert.equal(s.det, '1');
+});
+
 test('Stop with an empty or all-finished background_tasks is done, even with tracked agents', () => {
   for (const stop of [{ background_tasks: [] }, { background_tasks: [{ type: 'subagent', status: 'completed' }] }]) {
     const { tracker, ev } = setup();

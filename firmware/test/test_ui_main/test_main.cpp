@@ -1145,6 +1145,55 @@ static void test_pet_antics_stay_on_screen() {
   }
 }
 
+// Every activity (the 7 old and the 30 new), host and visitor, 1 to 3 guests, every side, every
+// supported resolution, all along the stay: nothing off screen (walking in and out, the cats
+// leave the screen on purpose: the panel clips them). And a frame that differs only in an item's
+// animation redraws.
+static void test_visits_stay_on_screen_all_activities() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    idle();
+    screens::reset();
+    for (int g = 0; g < (int)miblo::Gift::Count; g++)
+      for (int role = 0; role < 2; role++)
+        for (uint8_t extra = 0; extra < 3; extra++)
+          for (uint8_t side = 0; side < 4; side++) {
+            if (role == 1 && extra) continue;  // a visitor sees only itself
+            miblo::VisitView v;
+            strcpy(v.name, "Nina");
+            v.mascot = 1;
+            v.extraMascot[0] = 2;
+            v.extraMascot[1] = 3;
+            v.role = role ? miblo::VisitRole::Visitor : miblo::VisitRole::Host;
+            v.gift = (miblo::Gift)g;
+            v.extra = extra;
+            for (uint32_t ms = miblo::kVisitArriveMs; ms < miblo::kVisitPartMs; ms += 250) {
+              v.ms = ms;
+              screens::visit(Lang::En, snap, testClock(), v, side);
+            }
+          }
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  }
+  // Pair programming at t = 590 and 610 ms: same looks (paws switch every 250 ms), only the
+  // laptop's code frame (every 300 ms) differs, and that alone redraws the cats.
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  miblo::VisitView v;
+  strcpy(v.name, "Nina");
+  v.role = miblo::VisitRole::Host;
+  v.gift = miblo::Gift::Pair;
+  v.ms = miblo::kVisitArriveMs + 590;
+  screens::visit(Lang::En, snap, testClock(), v);
+  const int before = fc.calls;
+  v.ms = miblo::kVisitArriveMs + 610;
+  screens::visit(Lang::En, snap, testClock(), v);
+  TEST_ASSERT_GREATER_THAN_INT(before, fc.calls);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_pet_antics_order);
@@ -1176,6 +1225,7 @@ int main() {
   RUN_TEST(test_pet_scene_quiet_when_not_playful);
   RUN_TEST(test_props_stay_near_their_anchor);
   RUN_TEST(test_pet_antics_stay_on_screen);
+  RUN_TEST(test_visits_stay_on_screen_all_activities);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

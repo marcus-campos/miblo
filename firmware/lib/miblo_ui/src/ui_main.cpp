@@ -8,6 +8,7 @@
 #include "miblo_policy.h"
 #include "miblo_rom.h"
 #include "ui_screens.h"
+#include "ui_visit_kit.h"
 
 namespace screens {
 
@@ -34,7 +35,6 @@ enum : uint8_t {
 // Session cards per page, in the Overview (Working / Needs you) and in the Sessions mode.
 constexpr uint8_t kRows = 3;
 
-static ui::Canvas& C() { return canvas(); }
 static const char* const kDot = " \xC2\xB7 ";  // " · "
 
 static uint16_t levelColor(uint8_t pct, uint16_t base) {
@@ -777,6 +777,35 @@ enum class PropKind : uint8_t {
   Tail, Fly, Yarn, Mug, Box, Keys, Note, Puff, Glasses, Bubble, Fish, Butterfly, Balloon, Plane,
   Bowl, Button, Cucumber, Blanket, Laser, Dots, Drop
 };
+// The visit activity files (ui_visit_kit.h) name these by number.
+static_assert((uint8_t)PropKind::Duck == vprop::Duck, "ui_visit_kit.h's vprop::Duck");
+static_assert((uint8_t)PropKind::Laptop == vprop::Laptop, "ui_visit_kit.h's vprop::Laptop");
+static_assert((uint8_t)PropKind::Lgtm == vprop::Lgtm, "ui_visit_kit.h's vprop::Lgtm");
+static_assert((uint8_t)PropKind::Bug == vprop::Bug, "ui_visit_kit.h's vprop::Bug");
+static_assert((uint8_t)PropKind::Rocket == vprop::Rocket, "ui_visit_kit.h's vprop::Rocket");
+static_assert((uint8_t)PropKind::Burst == vprop::Burst, "ui_visit_kit.h's vprop::Burst");
+static_assert((uint8_t)PropKind::Tail == vprop::Tail, "ui_visit_kit.h's vprop::Tail");
+static_assert((uint8_t)PropKind::Fly == vprop::Fly, "ui_visit_kit.h's vprop::Fly");
+static_assert((uint8_t)PropKind::Yarn == vprop::Yarn, "ui_visit_kit.h's vprop::Yarn");
+static_assert((uint8_t)PropKind::Mug == vprop::Mug, "ui_visit_kit.h's vprop::Mug");
+static_assert((uint8_t)PropKind::Box == vprop::Box, "ui_visit_kit.h's vprop::Box");
+static_assert((uint8_t)PropKind::Keys == vprop::Keys, "ui_visit_kit.h's vprop::Keys");
+static_assert((uint8_t)PropKind::Note == vprop::Note, "ui_visit_kit.h's vprop::Note");
+static_assert((uint8_t)PropKind::Puff == vprop::Puff, "ui_visit_kit.h's vprop::Puff");
+static_assert((uint8_t)PropKind::Glasses == vprop::Glasses, "ui_visit_kit.h's vprop::Glasses");
+static_assert((uint8_t)PropKind::Bubble == vprop::Bubble, "ui_visit_kit.h's vprop::Bubble");
+static_assert((uint8_t)PropKind::Fish == vprop::Fish, "ui_visit_kit.h's vprop::Fish");
+static_assert((uint8_t)PropKind::Butterfly == vprop::Butterfly, "ui_visit_kit.h's vprop::Butterfly");
+static_assert((uint8_t)PropKind::Balloon == vprop::Balloon, "ui_visit_kit.h's vprop::Balloon");
+static_assert((uint8_t)PropKind::Plane == vprop::Plane, "ui_visit_kit.h's vprop::Plane");
+static_assert((uint8_t)PropKind::Bowl == vprop::Bowl, "ui_visit_kit.h's vprop::Bowl");
+static_assert((uint8_t)PropKind::Button == vprop::Button, "ui_visit_kit.h's vprop::Button");
+static_assert((uint8_t)PropKind::Cucumber == vprop::Cucumber, "ui_visit_kit.h's vprop::Cucumber");
+static_assert((uint8_t)PropKind::Blanket == vprop::Blanket, "ui_visit_kit.h's vprop::Blanket");
+static_assert((uint8_t)PropKind::Laser == vprop::Laser, "ui_visit_kit.h's vprop::Laser");
+static_assert((uint8_t)PropKind::Dots == vprop::Dots, "ui_visit_kit.h's vprop::Dots");
+static_assert((uint8_t)PropKind::Drop == vprop::Drop, "ui_visit_kit.h's vprop::Drop");
+static_assert((uint8_t)PropKind::Drop < kItemsA, "PropKind fits below the visit files' kinds");
 struct Prop {
   PropKind kind;
   int x, y;   // screen coordinates (see drawProp for the anchor of each)
@@ -985,7 +1014,7 @@ static int bounce(uint32_t steps, int span) {  // 0..span..0..
 }
 
 // 0..span..0 over `period` ms (a back-and-forth run).
-static int shuttle(uint32_t t, uint32_t period, int span) {
+int shuttle(uint32_t t, uint32_t period, int span) {
   const uint32_t p = t % period;
   const uint32_t half = period / 2;
   return (int)((int64_t)span * (p < half ? p : period - p) / half);
@@ -1080,6 +1109,7 @@ static int lerp(int a, int b, uint32_t t, uint32_t len) {
   if (t >= len) return b;
   return a + (int)((int64_t)(b - a) * (int32_t)t / (int32_t)len);
 }
+int lerpTo(int a, int b, uint32_t t, uint32_t len) { return lerp(a, b, t, len); }
 
 // The cat roaming with the sign in its paws, the box centred on (rx, ry).
 static void heldLayout(int rx, int ry, RoamScene& sc) {
@@ -1633,6 +1663,19 @@ void drawPropForTest(uint8_t kind, int x, int y, uint8_t f, int x2) { drawProp(P
 #endif
 
 // ---- visits between Miblos (miblo_friends.h) ----
+void drawPropKind(uint8_t kind, int x, int y, uint8_t f) { drawProp(Prop{(PropKind)kind, x, y, f, 0}); }
+
+void addItem(VisitFrame& f, uint8_t kind, int x, int y, uint8_t fr) {
+  if (f.n < sizeof(f.items) / sizeof(f.items[0])) f.items[f.n++] = VisitItem{kind, x, y, fr};
+}
+
+static void drawVisitItem(const VisitItem& it) {
+  if (it.kind < kItemsA) drawPropKind(it.kind, it.x, it.y, it.f);
+  else if (it.kind < kItemsB) drawVisitItemA(it);
+  else if (it.kind < kItemsC) drawVisitItemB(it);
+  else if (it.kind < kItemsEnd) drawVisitItemC(it);
+}
+
 // Both cats walk on one horizontal band, recomposed in strips on every change (no trail, no flash).
 constexpr int kVisitCatHalf = 40;
 constexpr int kVisitCatY = 104;
@@ -1660,7 +1703,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   const int half = Sz(catHalf);
   const int cy = Y(kVisitCatY);
   const bool coffee = v.gift == miblo::Gift::Coffee;
-  Prop prop{PropKind::None, 0, 0, 0};
+  VisitFrame frame{};  // the activity's props (up to four), drawn over the cats
 
   // Which way the friends are (config friendsSide): our cat leaves that way, a guest comes from it.
   const bool horiz = side < 2;
@@ -1682,6 +1725,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
 
   // Where each cat is and how it looks.
   bool mine = true, guest = false;
+  bool together = false;  // host: the guests are in, doing the activity
   int myX = X(120), myY = cy, guestX = offH, guestY = cy;
   MascotLook me = deskLook(DeskMood::Calm, true, ms), them{};
   if (v.role == VisitRole::Visitor) {
@@ -1714,6 +1758,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
       me.gy = (int8_t)(horiz ? 0 : 3 * dirY);
     } else {
       // Together: the visit's activity (miblo::Gift), happy hops and a heart around it.
+      together = true;
       const uint32_t t = ms - miblo::kVisitArriveMs;
       const uint32_t stay = miblo::kVisitStayMs;
       const bool firstHalf = t < stay / 2;
@@ -1729,12 +1774,12 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
         case miblo::Gift::Duck:  // rubber duck debugging: held out, then set down and explained to
           if (firstHalf) {
             them.paws = guestReach;
-            prop = {PropKind::Duck, guestX + toHost * Sz(28), cy + Sz(22), 0};
+            addItem(frame, vprop::Duck, guestX + toHost * Sz(28), cy + Sz(22), 0);
           } else {
             them = watchL;
             me = watchR;
             me.eyes = (t / 1200) % 3 == 2 ? Eyes::Happy : Eyes::Open;  // the "aha!" moments
-            prop = {PropKind::Duck, mid, cy + Sz(28) - ((t / 500) % 2 ? Sz(2) : 0), 0};
+            addItem(frame, vprop::Duck, mid, cy + Sz(28) - ((t / 500) % 2 ? Sz(2) : 0), 0);
           }
           break;
         case miblo::Gift::Pair:  // pair programming: both typing on a tiny laptop, then it compiles
@@ -1746,13 +1791,13 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           } else {
             me.extras |= kHeart;
           }
-          prop = {PropKind::Laptop, mid, cy + Sz(34), (uint8_t)(t / 300)};
+          addItem(frame, vprop::Laptop, mid, cy + Sz(34), (uint8_t)(t / 300));
           break;
         case miblo::Gift::Review:  // code review: the guest holds up "LGTM", the host reads it
           if (firstHalf) {
             them.paws = guestReach;
             me = watchR;
-            prop = {PropKind::Lgtm, toHost > 0 ? guestX + Sz(4) : guestX - Sz(48), cy + Sz(16), 0};
+            addItem(frame, vprop::Lgtm, toHost > 0 ? guestX + Sz(4) : guestX - Sz(48), cy + Sz(16), 0);
           } else {
             me.extras |= kHeart;
           }
@@ -1770,9 +1815,9 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
               me.paws = hostReach;  // pounce
               me.dy = -3;
             }
-            prop = {PropKind::Bug, bugX, cy + Sz(33), (uint8_t)(t / 120)};
+            addItem(frame, vprop::Bug, bugX, cy + Sz(33), (uint8_t)(t / 120));
           } else if (t < caught + 900) {
-            prop = {PropKind::Burst, mid, cy + Sz(30), 0};
+            addItem(frame, vprop::Burst, mid, cy + Sz(30), 0);
           } else {
             me.extras |= kHeart;
           }
@@ -1783,21 +1828,31 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           if (t < launch) {
             them = watchL;
             me = watchR;
-            prop = {PropKind::Rocket, mid, cy + Sz(12), 0};
+            addItem(frame, vprop::Rocket, mid, cy + Sz(12), 0);
           } else if (t < gone) {
             them = MascotLook{0, 0, (int8_t)(2 * toHost), -3, Eyes::Wide, Paws::Down, 0};
             me = MascotLook{0, 0, (int8_t)(-2 * toHost), -3, Eyes::Wide, Paws::Down, 0};
             const int y = cy + Sz(12) - (int)((int64_t)Sz(48) * (int32_t)(t - launch) / (int32_t)(gone - launch));
-            prop = {PropKind::Rocket, mid, y, (uint8_t)(1 + (t / 120) % 2)};
+            addItem(frame, vprop::Rocket, mid, y, (uint8_t)(1 + (t / 120) % 2));
           } else {
             me.extras |= kHeart;
           }
           break;
         }
-        case miblo::Gift::None:
-        case miblo::Gift::Count:
-          if ((t / 1500) % 4 == 3) me.extras |= kHeart;
+        default: {  // the 30 newer activities, scripted in ui_visit_a/b/c.cpp
+          const VisitStage st{t, hostSlot, guestX, mid, cy, half, toHost, Y(30), cy + half};
+          frame.me = me;
+          frame.them = them;
+          if (visitActivityA(v.gift, st, frame) || visitActivityB(v.gift, st, frame) ||
+              visitActivityC(v.gift, st, frame)) {
+            me = frame.me;
+            them = frame.them;
+            break;
+          }
+          frame.n = 0;
+          if ((t / 1500) % 4 == 3) me.extras |= kHeart;  // none (or not scripted yet): just hearts
           break;
+        }
       }
     }
   }
@@ -1832,19 +1887,29 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     reset();  // clears and redraws everything below
   }
   fullScreen = vertical;
+  // Together, the props may go up to Y(30) (just under the clock); walking, only the cats' band is
+  // redrawn, so what a prop left above it is cleared once.
+  static bool tall = false;
+  const bool wasTall = tall;
+  tall = together && !vertical;
+  if (wasTall && !tall && !vertical) C().fillRect(0, Y(30), X(240), cy - half - Y(30), color::BG);
   if (!vertical) {
     field(R_CLOCK, kHashSeed + 59, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
   }
 
-  uint32_t h = hashInt(hashInt(kHashSeed + 61, (uint32_t)(mine ? myX * 1000 + myY + 1 : 0)),
+  uint32_t h = hashInt(hashInt(kHashSeed + 61 + tall, (uint32_t)(mine ? myX * 1000 + myY + 1 : 0)),
                        (uint32_t)(guest ? guestX * 1000 + guestY + 1 : 0));
   h = hashInt(hashInt(h, lookHash(kHashSeed, me)), lookHash(kHashSeed + 1, them));
-  h = hashInt(hashInt(h, (uint32_t)prop.kind | (uint32_t)prop.f << 8), (uint32_t)(prop.x * 1000 + prop.y));
+  for (uint8_t i = 0; i < frame.n; i++) {
+    const VisitItem& it = frame.items[i];
+    h = hashInt(hashInt(h, (uint32_t)it.kind | (uint32_t)it.f << 8), (uint32_t)(it.x * 1000 + it.y));
+  }
   for (uint8_t e = 0; e < extras; e++) {
     h = hashInt(lookHash(hashInt(h, (uint32_t)(exX[e] * 1000 + exY[e])), exLook[e]), v.extraMascot[e]);
   }
   if (dirty(R_BODY, h)) {
-    const int top = vertical ? 0 : cy - half, bh = vertical ? Y(240) : 2 * half;
+    const int top = vertical ? 0 : tall ? Y(30) : cy - half;
+    const int bh = vertical ? Y(240) : tall ? cy + half - Y(30) : 2 * half;
     const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory();
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
@@ -1860,7 +1925,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
         setMascotStyle(myStyle);
         setMascotAccessory(myHat);
       }
-      drawProp(prop);
+      for (uint8_t i = 0; i < frame.n; i++) drawVisitItem(frame.items[i]);
     };
     const int stripH = (bh + kCatStrips - 1) / kCatStrips;
     for (int y = top; y < top + bh; y += stripH) {

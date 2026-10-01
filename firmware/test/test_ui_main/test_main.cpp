@@ -1098,6 +1098,21 @@ static void test_floor_sign_keeps_lines_and_icon() {
 }
 
 // Not playful (a friend's note, or not calm): no antic, the sign stays in its paws.
+// Every prop stays within 70 px of its anchor at the 240 grid (the antics lay them out with that
+// much room from the screen edges).
+static void test_props_stay_near_their_anchor() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  for (uint8_t kind = 1; kind <= 27; kind++)
+    for (uint8_t f = 0; f < 24; f++) screens::drawPropForTest(kind, 120, 120, f, kind == 9 ? 60 : 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  FakeCanvas small({140, 140});  // anchors at the centre of a 140 px canvas: 70 px of room
+  screens::bind(small);
+  for (uint8_t kind = 1; kind <= 27; kind++)
+    for (uint8_t f = 0; f < 24; f++) screens::drawPropForTest(kind, 70, 70, f, 0);
+  TEST_ASSERT_EQUAL_INT(0, small.outOfBounds);
+}
+
 static void test_pet_scene_quiet_when_not_playful() {
   uint32_t c = 1;
   while (screens::anticOnSign(screens::roamAntic(c * screens::kAnticEveryMs, nullptr))) c++;
@@ -1143,6 +1158,7 @@ int main() {
   RUN_TEST(test_pet_mode_shows_computer_away);
   RUN_TEST(test_floor_sign_keeps_lines_and_icon);
   RUN_TEST(test_pet_scene_quiet_when_not_playful);
+  RUN_TEST(test_props_stay_near_their_anchor);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

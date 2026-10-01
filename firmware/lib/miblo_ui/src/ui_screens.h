@@ -169,6 +169,9 @@ void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, De
           const char* note = nullptr, uint32_t lookMs = UINT32_MAX, bool computerAway = false);
 // Where roam() draws the crossed-out laptop for a pet centred at (cx, cy): its box.
 void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h);
+#ifdef PIO_UNIT_TESTING
+void drawPropForTest(uint8_t kind, int x, int y, uint8_t f, int x2);  // tests: one prop, by PropKind value
+#endif
 // A visit between two Miblos in pet mode (miblo_friends.h). Visitor: our mascot walks off to the
 // right, the screen says who it is visiting, and it walks back in. Host: the friend's mascot (in
 // its own colours) walks in from the left, they play, and it leaves. The limits stay at the bottom.

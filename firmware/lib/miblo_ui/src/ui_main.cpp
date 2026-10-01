@@ -772,7 +772,11 @@ DeskMood deskMoodFor(const Snapshot& s, uint32_t now, bool* focusLeft) {
 }
 
 // Props of the programmer activities (miblo::Gift), drawn over the band after the cats.
-enum class PropKind : uint8_t { None, Duck, Laptop, Lgtm, Bug, Rocket, Burst };
+enum class PropKind : uint8_t {
+  None, Duck, Laptop, Lgtm, Bug, Rocket, Burst,
+  Tail, Fly, Yarn, Mug, Box, Keys, Note, Puff, Glasses, Bubble, Fish, Butterfly, Balloon, Plane,
+  Bowl, Button, Cucumber, Blanket, Laser, Dots, Drop
+};
 struct Prop {
   PropKind kind;
   int x, y;   // screen coordinates (see drawProp for the anchor of each)
@@ -783,6 +787,16 @@ constexpr uint16_t kDuckYellow = 0xFFE0;
 constexpr uint16_t kOrange = 0xFC00;
 constexpr uint16_t kGrey = 0x8410;
 constexpr uint16_t kDarkGreen = 0x0400;
+constexpr uint16_t kCoffeeBrown = 0x6A20;
+constexpr uint16_t kBoxBrown = 0xB3C9;      // #b07848 cardboard
+constexpr uint16_t kBoxDark = 0x8AC6;       // #8a5a34 its flaps
+constexpr uint16_t kYarnDark = 0x5AD6;      // #5a5ab0 yarn lines, blanket stripes
+constexpr uint16_t kWater = 0x5DBC;         // #5ab4e6
+constexpr uint16_t kFishBlue = 0x7D3A;      // #7aa6d0
+constexpr uint16_t kCucumber = 0x3CC7;      // #3a9a3a
+constexpr uint16_t kCucumberDark = 0x2B45;  // #2a6a2a
+constexpr uint16_t kBubble = 0x9DFF;        // #9cbcff
+constexpr uint16_t kLaserGlow = 0x7800;     // #780000
 
 static void drawProp(const Prop& p) {
   const int x = p.x, y = p.y, u = Sz(1) < 1 ? 1 : Sz(1);
@@ -826,11 +840,131 @@ static void drawProp(const Prop& p) {
       C().fillRect(x - u, y - Sz(6), u + u, Sz(12), color::AMBER);
       C().fillCircle(x, y, Sz(2), color::WHITE);
       break;
+    case PropKind::Tail: {  // (its base) a curl in the cat's colour, swinging with f
+      const int sw = (int)(p.f % 8 < 4 ? p.f % 8 : 8 - p.f % 8) - 2;  // -2..2
+      for (int i = 0; i < 6; i++) C().fillCircle(x + sw * i * Sz(1), y - i * Sz(4), Sz(3), mascotSkin());
+      C().fillCircle(x + sw * Sz(6) + (sw >= 0 ? Sz(3) : -Sz(3)), y - Sz(22), Sz(3), mascotSkin());
+      break;
+    }
+    case PropKind::Fly:  // (body) wings flicker with f
+      C().fillCircle(x, y, Sz(2), color::PUPIL);
+      if (p.f % 2) {
+        C().fillCircle(x - Sz(2), y - Sz(3), Sz(2), color::MUTED);
+        C().fillCircle(x + Sz(2), y - Sz(3), Sz(2), color::MUTED);
+      }
+      break;
+    case PropKind::Yarn:  // (centre of the ball) rolling lines; x2: where its thread starts
+      if (p.x2) {
+        const int a = p.x2 < x ? p.x2 : x, b = p.x2 < x ? x : p.x2;
+        C().fillRect(a, y + Sz(6), b - a, u, kYarnDark);
+      }
+      C().fillCircle(x, y, Sz(8), color::VIOLET);
+      for (int i = -1; i <= 1; i++) C().fillRect(x - Sz(6), y + i * Sz(3) + (int)(p.f % 3) - 1, Sz(12), u, kYarnDark);
+      break;
+    case PropKind::Mug:  // (centre) a blue mug of coffee
+      C().fillRect(x - Sz(6), y - Sz(7), Sz(12), Sz(14), color::BLUE);
+      C().fillCircle(x + Sz(8), y, Sz(4), color::BLUE);
+      C().fillCircle(x + Sz(8), y, Sz(2), color::BG);
+      C().fillRect(x - Sz(5), y - Sz(6), Sz(10), Sz(2), kCoffeeBrown);
+      break;
+    case PropKind::Box:  // (centre of the front) open cardboard box, flaps out
+      C().fillRect(x - Sz(32), y - Sz(14), Sz(64), Sz(28), kBoxBrown);
+      C().fillTriangle(x - Sz(32), y - Sz(14), x - Sz(40), y - Sz(22), x - Sz(14), y - Sz(14), kBoxDark);
+      C().fillTriangle(x + Sz(32), y - Sz(14), x + Sz(40), y - Sz(22), x + Sz(14), y - Sz(14), kBoxDark);
+      C().fillRect(x - Sz(32), y - Sz(14), Sz(64), u + u, kBoxDark);
+      break;
+    case PropKind::Keys:  // (centre) a little piano keyboard
+      C().fillRect(x - Sz(30), y - Sz(7), Sz(60), Sz(14), color::WHITE);
+      for (int i = 0; i < 9; i++)
+        if (i % 3 != 2) C().fillRect(x - Sz(26) + i * Sz(6), y - Sz(7), Sz(4), Sz(8), color::BLACK);
+      break;
+    case PropKind::Note:  // (the note's head) an eighth note
+      C().fillCircle(x, y, Sz(3), color::AMBER);
+      C().fillRect(x + Sz(2), y - Sz(10), u + u, Sz(10), color::AMBER);
+      C().fillRect(x + Sz(2), y - Sz(10), Sz(5), u + u, color::AMBER);
+      break;
+    case PropKind::Puff: {  // (centre) a sneeze cloud growing with f (0..4)
+      const int r = Sz(2 + (p.f > 4 ? 4 : p.f));
+      C().fillCircle(x, y, r, color::WHITE);
+      C().fillCircle(x + r, y - r / 2, r * 3 / 4, color::WHITE);
+      C().fillCircle(x - r / 2, y + r / 2, r * 2 / 3, color::WHITE);
+      break;
+    }
+    case PropKind::Glasses:  // (between the lenses) sunglasses with a glint
+      C().fillRoundRect(x - Sz(19), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
+      C().fillRoundRect(x + Sz(3), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
+      C().fillRect(x - Sz(3), y - Sz(3), Sz(6), u + u, color::BLACK);
+      C().fillRect(x - Sz(16), y - Sz(3), Sz(4), u + u, color::WHITE);
+      break;
+    case PropKind::Bubble:  // (centre) a soap bubble
+      C().fillCircle(x, y, Sz(6), kBubble);
+      C().fillCircle(x, y, Sz(5), color::BG);
+      C().fillCircle(x - Sz(2), y - Sz(2), u, color::WHITE);
+      break;
+    case PropKind::Fish: {  // (centre) a fish snack; f = bites taken (3: only the tail is left)
+      const uint8_t bites = p.f > 3 ? 3 : p.f;
+      C().fillTriangle(x + Sz(8), y, x + Sz(14), y - Sz(5), x + Sz(14), y + Sz(5), kFishBlue);
+      if (bites < 3) C().fillCircle(x, y, Sz(7 - 2 * bites), kFishBlue);
+      if (bites == 0) C().fillCircle(x - Sz(4), y - Sz(1), u, color::PUPIL);
+      break;
+    }
+    case PropKind::Butterfly: {  // (body) wings beating with f
+      const int w = p.f % 2 ? Sz(3) : Sz(7);
+      C().fillTriangle(x, y, x - w, y - Sz(6), x - w, y + Sz(2), color::VIOLET);
+      C().fillTriangle(x, y, x + w, y - Sz(6), x + w, y + Sz(2), color::VIOLET);
+      C().fillTriangle(x, y, x - w + u, y + Sz(6), x - u, y + Sz(6), color::AMBER);
+      C().fillTriangle(x, y, x + w - u, y + Sz(6), x + u, y + Sz(6), color::AMBER);
+      C().fillRect(x - u, y - Sz(4), u + u, Sz(9), color::PUPIL);
+      break;
+    }
+    case PropKind::Balloon:  // (centre) a red balloon on a string
+      C().fillRect(x, y + Sz(12), u, Sz(16), color::MUTED);
+      C().fillCircle(x, y, Sz(11), color::RED);
+      C().fillTriangle(x - Sz(2), y + Sz(13), x + Sz(2), y + Sz(13), x, y + Sz(10), color::RED);
+      C().fillCircle(x - Sz(4), y - Sz(4), Sz(2), color::WHITE);
+      break;
+    case PropKind::Plane: {  // (nose) a paper plane; f 0: flying right, 1: flying left
+      const int d = p.f ? 1 : -1;  // the tail is behind the nose
+      C().fillTriangle(x, y, x + d * Sz(18), y - Sz(7), x + d * Sz(12), y, color::WHITE);
+      C().fillTriangle(x, y, x + d * Sz(18), y + Sz(3), x + d * Sz(12), y, color::MUTED);
+      break;
+    }
+    case PropKind::Bowl: {  // (centre of the water) a fish bowl; f moves the fish
+      C().fillCircle(x, y, Sz(14), kWater);
+      C().fillRect(x - Sz(14), y - Sz(14), Sz(28), Sz(6), color::BG);
+      C().fillRect(x - Sz(10), y - Sz(9), Sz(20), u, color::WHITE);
+      const int fx = x - Sz(8) + (int)(p.f % 20 < 10 ? p.f % 20 : 20 - p.f % 20) * Sz(16) / 10;
+      C().fillCircle(fx, y + Sz(3), Sz(3), kOrange);
+      C().fillTriangle(fx - Sz(3), y + Sz(3), fx - Sz(6), y, fx - Sz(6), y + Sz(6), kOrange);
+      break;
+    }
+    case PropKind::Button:  // (centre of the top) a big red button; f 1: pressed
+      C().fillRect(x - Sz(10), y + Sz(2), Sz(20), Sz(6), kGrey);
+      C().fillRoundRect(x - Sz(7), y - (p.f ? 0 : Sz(3)), Sz(14), Sz(5) + (p.f ? 0 : Sz(3)), Sz(2), color::RED);
+      break;
+    case PropKind::Cucumber:  // (centre) standing up
+      C().fillRoundRect(x - Sz(6), y - Sz(16), Sz(12), Sz(32), Sz(6), kCucumber);
+      for (int i = 0; i < 3; i++)
+        C().fillRect(x - Sz(2) + (i % 2) * Sz(3), y - Sz(10) + i * Sz(8), u + u, u + u, kCucumberDark);
+      break;
+    case PropKind::Blanket:  // (centre of its top edge) a striped blanket
+      C().fillRoundRect(x - Sz(36), y, Sz(72), Sz(24), Sz(6), color::VIOLET);
+      for (int i = 0; i < 3; i++) C().fillRect(x - Sz(36), y + Sz(5) + i * Sz(7), Sz(72), u + u, kYarnDark);
+      break;
+    case PropKind::Laser:  // (centre) a laser dot with its glow
+      C().fillCircle(x, y, Sz(4), kLaserGlow);
+      C().fillCircle(x, y, Sz(2), color::RED);
+      break;
+    case PropKind::Dots:  // (left dot) "..." while talking; f = how many (1..3)
+      for (int i = 0; i < p.f && i < 3; i++) C().fillCircle(x + i * Sz(6), y, Sz(2), color::WHITE);
+      break;
+    case PropKind::Drop:  // (centre) a splash of water
+      C().fillCircle(x, y, Sz(2), kWater);
+      C().fillTriangle(x - Sz(2), y, x + Sz(2), y, x, y - Sz(4), kWater);
+      break;
     case PropKind::None: break;
   }
 }
-
-constexpr uint16_t kCoffeeBrown = 0x6A20;
 
 // ---- pet mode ----
 // The box moves at most a pixel a frame and carries a margin of background around its content,
@@ -1188,6 +1322,10 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   }
   C().releaseLayer();
 }
+
+#ifdef PIO_UNIT_TESTING
+void drawPropForTest(uint8_t kind, int x, int y, uint8_t f, int x2) { drawProp(Prop{(PropKind)kind, x, y, f, x2}); }
+#endif
 
 // ---- visits between Miblos (miblo_friends.h) ----
 // Both cats walk on one horizontal band, recomposed in strips on every change (no trail, no flash).

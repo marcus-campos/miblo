@@ -90,16 +90,20 @@ class Canvas {
 // approximation: green 219/196/169, blue 186/137/87 out of 255; red stays). Level 0 returns `c`
 // unchanged; levels above 3 are treated as 3. A switch, not a table: on the ESP8266 a const
 // table would sit in RAM.
+// Each channel becomes round(v * m / 255), computed as (v * m * 257 + 2^15) >> 16: the ESP8266
+// has no divide instruction (every division is a call into ROM, and this runs for each shape
+// drawn), and for every 5- and 6-bit v and these multipliers the two agree exactly
+// (test_warm_color checks all 65536 colours at each level).
 inline uint16_t warmColor(uint16_t c, uint8_t level) {
-  uint16_t gm, bm;
+  uint32_t gm, bm;
   switch (level) {
     case 0: return c;
     case 1: gm = 219, bm = 186; break;
     case 2: gm = 196, bm = 137; break;
     default: gm = 169, bm = 87; break;
   }
-  const uint16_t g = (uint16_t)((((c >> 5) & 63) * gm + 127) / 255);
-  const uint16_t b = (uint16_t)(((c & 31) * bm + 127) / 255);
+  const uint32_t g = (((c >> 5) & 63) * gm * 257 + 0x8000) >> 16;
+  const uint32_t b = ((c & 31) * bm * 257 + 0x8000) >> 16;
   return (uint16_t)((c & 0xF800) | g << 5 | b);
 }
 
@@ -148,7 +152,7 @@ class ShiftCanvas : public Canvas {
   void clear(uint16_t c) override { in_.clear(f(c)); }  // the whole panel, not the shifted area
 
  private:
-  uint16_t f(uint16_t c) const { return warmColor(c, warm_); }
+  uint16_t f(uint16_t c) const { return warm_ ? warmColor(c, warm_) : c; }
 
   Canvas& in_;
   int dx_ = 0;

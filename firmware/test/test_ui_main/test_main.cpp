@@ -1255,6 +1255,18 @@ static void test_warm_color() {
   }
   TEST_ASSERT_EQUAL_HEX16(ui::warmColor(0xFFFF, 3), ui::warmColor(0xFFFF, 9));  // clamped
 
+  // Every colour at every level is exactly round(v * m / 255) per channel (warmColor computes it
+  // with a multiply and a shift): green and blue scaled by the level's multipliers, red kept.
+  static const uint32_t kGain[3][2] = {{219, 186}, {196, 137}, {169, 87}};  // green, blue (of 255)
+  for (uint8_t level = 1; level <= 3; level++) {
+    const uint32_t gm = kGain[level - 1][0], bm = kGain[level - 1][1];
+    for (uint32_t c = 0; c <= 0xFFFF; c++) {
+      const uint32_t g = (((c >> 5) & 63) * gm + 127) / 255, b = ((c & 31) * bm + 127) / 255;
+      const uint16_t want = (uint16_t)((c & 0xF800) | g << 5 | b);
+      if (ui::warmColor((uint16_t)c, level) != want) TEST_ASSERT_EQUAL_HEX16(want, ui::warmColor((uint16_t)c, level));
+    }
+  }
+
   FakeCanvas fc({240, 240});
   ui::ShiftCanvas sc(fc);
   sc.setWarmth(2);

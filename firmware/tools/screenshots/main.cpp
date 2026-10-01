@@ -424,6 +424,37 @@ void renderAll(Lang L) {
       save(sh, g.name);
     }
   }
+  // Every visit activity, as the host sees it, with 1 and 3 guests, at two moments of the stay:
+  // 44-visit-<activity>-<1|3>-<a|b>.
+  {
+    usage(34, 21);
+    static const char* const kGiftNames[] = {
+        "none",     "coffee",  "duck",      "pair",     "review",     "bug",      "deploy",  "highfive",
+        "pingpong", "dance",   "pizza",     "cake",     "merge",      "standup",  "hackathon", "selfie",
+        "chess",    "game",    "gossip",    "toast",    "movie",      "blocks",   "brainstorm", "pomodoro",
+        "hotfix",   "tests",   "notfound",  "shipit",   "sprint",     "origami",  "nostalgia", "panic",
+        "picnic",   "fishing", "umbrella",  "canphone", "kite"};
+    static_assert(sizeof(kGiftNames) / sizeof(kGiftNames[0]) == (size_t)miblo::Gift::Count, "one name per gift");
+    for (int g = 0; g < (int)miblo::Gift::Count; g++) {
+      for (const int guests : {1, 3}) {
+        for (const uint32_t at : {5000u, 12000u}) {
+          miblo::VisitView v;
+          strcpy(v.name, "Nina");
+          v.mascot = 1;
+          v.role = miblo::VisitRole::Host;
+          v.gift = (miblo::Gift)g;
+          v.extra = (uint8_t)(guests - 1);
+          v.extraMascot[0] = 2;
+          v.extraMascot[1] = 3;
+          v.ms = miblo::kVisitArriveMs + at;
+          Shot sh;
+          screens::visit(L, snap, clk, v);
+          save(sh, std::string("44-visit-") + kGiftNames[g] + (guests == 1 ? "-1-" : "-3-") +
+                       (at == 5000u ? "a" : "b"));
+        }
+      }
+    }
+  }
   // Pet mode antics: two moments of each, and the sign going down on the floor.
   {
     idle();

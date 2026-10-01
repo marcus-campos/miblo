@@ -115,9 +115,14 @@ inline uint16_t warmColor(uint16_t c, uint8_t level) {
 // picture a pixel or two every few minutes keeps static edges (headers, rings, text) from
 // sitting on the same pixels for hours, which is what leaves ghost images on an LCD.
 // Content moved past an edge is simply clipped by the panel.
-// It is also where the blue light filter is applied (setWarmth): every colour it forwards goes
-// through warmColor, so all screens, the mascot and the props are filtered alike. Changing the
-// warmth does not repaint what is already on the panel: the caller redraws everything.
+// It is also where the blue light filter is applied (setWarmth): every colour argument it forwards
+// (the colour of each shape, line, arc and text, the backgrounds of lines, arcs and text boxes,
+// and the whole-panel clear) goes through warmColor, so all screens, the mascot and the props are
+// filtered alike, layers included (their palettes hold the warmed colours). Two things stay
+// unfiltered on purpose: board::begin()'s first clear, drawn straight on the panel before the
+// first frame repaints it, and the factory-reset message (app.cpp), drawn before the config (and
+// so the filter) is loaded, so that a corrupt config can never block the reset. Changing the warmth does not repaint what is already on the panel: the
+// caller redraws everything.
 class ShiftCanvas : public Canvas {
  public:
   explicit ShiftCanvas(Canvas& inner) : in_(inner) {}

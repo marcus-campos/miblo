@@ -608,7 +608,7 @@ static const char kPtPT[] MIBLO_ROM =
     "%s reviu: LGTM!\0"  // FriendReview
     "À caça de um bug com %s\0"  // FriendBug
     "Deploy à sexta com %s!\0"  // FriendDeploy
-    "Mais cinco com %s!\0"  // FriendHighFive
+    "Dá cá cinco, %s!\0"  // FriendHighFive
     "Pingue-pongue com %s\0"  // FriendPingPong
     "A dançar com %s\0"  // FriendDance
     "Pizza com %s\0"  // FriendPizza
@@ -631,7 +631,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Ship it com %s!\0"  // FriendShipIt
     "Sprint com %s\0"  // FriendSprint
     "Origami com %s\0"  // FriendOrigami
-    "Stack Underflow com %s\0"  // FriendNostalgia
+    "Velho Stack Underflow, %s\0"  // FriendNostalgia
     "Kernel panic com %s!\0"  // FriendPanic
     "Piquenique com %s\0"  // FriendPicnic
     "À pesca com %s\0"  // FriendFishing
@@ -825,7 +825,7 @@ static const char kEs[] MIBLO_ROM =
     "Ping-pong con %s\0"  // FriendPingPong
     "Bailando con %s\0"  // FriendDance
     "Pizza con %s\0"  // FriendPizza
-    "¡Tarta de release con %s!\0"  // FriendCake
+    "¡Pastel de release con %s!\0"  // FriendCake
     "Merge conflict con %s\0"  // FriendMerge
     "Daily con %s\0"  // FriendStandup
     "Hackathon con %s\0"  // FriendHackathon
@@ -844,7 +844,7 @@ static const char kEs[] MIBLO_ROM =
     "¡Ship it con %s!\0"  // FriendShipIt
     "Sprint con %s\0"  // FriendSprint
     "Origami con %s\0"  // FriendOrigami
-    "Stack Underflow con %s\0"  // FriendNostalgia
+    "Viejo Stack Underflow, %s\0"  // FriendNostalgia
     "¡Kernel panic con %s!\0"  // FriendPanic
     "Pícnic con %s\0"  // FriendPicnic
     "Pescando con %s\0"  // FriendFishing
@@ -1057,7 +1057,7 @@ static const char kFr[] MIBLO_ROM =
     "Ship it avec %s !\0"  // FriendShipIt
     "Sprint avec %s\0"  // FriendSprint
     "Origami avec %s\0"  // FriendOrigami
-    "Stack Underflow avec %s\0"  // FriendNostalgia
+    "Vieux Stack Underflow, %s\0"  // FriendNostalgia
     "Kernel panic avec %s !\0"  // FriendPanic
     "Pique-nique avec %s\0"  // FriendPicnic
     "Pêche avec %s\0"  // FriendFishing
@@ -1683,7 +1683,7 @@ static const char kRu[] MIBLO_ROM =
     "Хакатон с %s\0"  // FriendHackathon
     "Селфи с %s!\0"  // FriendSelfie
     "Шахматы с %s\0"  // FriendChess
-    "Играем с %s\0"  // FriendGame
+    "Видеоигры с %s\0"  // FriendGame
     "%s делится сплетней\0"  // FriendGossip
     "Чокаемся с %s!\0"  // FriendToast
     "Кино с %s\0"  // FriendMovie
@@ -1696,7 +1696,7 @@ static const char kRu[] MIBLO_ROM =
     "Ship it с %s!\0"  // FriendShipIt
     "Спринт с %s\0"  // FriendSprint
     "Оригами с %s\0"  // FriendOrigami
-    "Stack Underflow с %s\0"  // FriendNostalgia
+    "Былой Stack Underflow, %s\0"  // FriendNostalgia
     "Kernel panic с %s!\0"  // FriendPanic
     "Пикник с %s\0"  // FriendPicnic
     "Рыбалка с %s\0"  // FriendFishing
@@ -1902,19 +1902,19 @@ static const char kZh[] MIBLO_ROM =
     "和 %s 看电影\0"  // FriendMovie
     "和 %s 搭积木\0"  // FriendBlocks
     "和 %s 头脑风暴\0"  // FriendBrainstorm
-    "和 %s 一起番茄钟\0"  // FriendPomodoro
+    "和 %s 用番茄钟\0"  // FriendPomodoro
     "和 %s 紧急修复!\0"  // FriendHotfix
     "和 %s 测试全绿\0"  // FriendTests
     "和 %s 找 404\0"  // FriendNotFound
     "和 %s Ship it!\0"  // FriendShipIt
     "和 %s 冲刺\0"  // FriendSprint
     "和 %s 折纸\0"  // FriendOrigami
-    "和 %s 忆 Stack Underflow\0"  // FriendNostalgia
+    "和 %s 怀念 Stack Underflow\0"  // FriendNostalgia
     "和 %s 内核恐慌!\0"  // FriendPanic
     "和 %s 野餐\0"  // FriendPicnic
     "和 %s 钓鱼\0"  // FriendFishing
     "和 %s 共撑一把伞\0"  // FriendUmbrella
-    "和 %s 玩传声筒\0"  // FriendCanPhone
+    "和 %s 玩纸杯电话\0"  // FriendCanPhone
     "和 %s 一起放飞\0"  // FriendKite
     "其他 Miblo 在我的\0"  // WebFriendsSide
     "右边\0"  // WebSideRight

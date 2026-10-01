@@ -130,4 +130,12 @@ void tr(Lang lang, S id, char* out, size_t cap) {
   out[len] = 0;
 }
 
+Lang pageLanguage(bool paired, bool langSet, Lang stored, Lang browser, bool& store) {
+  store = false;
+  if (paired) return browser;
+  if (langSet) return stored;
+  store = browser != stored;
+  return browser;
+}
+
 }  // namespace miblo

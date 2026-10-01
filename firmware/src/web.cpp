@@ -106,6 +106,21 @@ void sendLocked(WebServerT& server, uint32_t remainingMs) {
   sendJson(server, 429, out);
 }
 
+bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs) {
+  char code[5];
+  miblo::formatCode(hwRandom(), code);
+  if (ctx.presence.open(p, code, nowMs)) return true;
+  if (ctx.presence.locked(nowMs)) {
+    sendLocked(server, ctx.presence.lockRemainingMs(nowMs));
+  } else {  // another purpose's code is on the screen: never replaced, retry once it is gone
+    char out[48];
+    snprintf(out, sizeof(out), "{\"error\":\"busy\",\"retryAfter\":%u}",
+             (unsigned)((ctx.presence.remainingMs(nowMs) + 999) / 1000));
+    sendJson(server, 429, out);
+  }
+  return false;
+}
+
 // Second layer for the human pages. The server hook installed in begin() refuses most POST
 // bodies over kMaxPostBody before ESP8266WebServer buffers them, but only when Content-Length
 // arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
@@ -127,10 +142,14 @@ bool requireJson(WebServerT& server) {
   return false;
 }
 
+// Before pairing (setup), automatic mode makes the screen follow the browser's language. A paired
+// gadget draws the page in the browser's language and never changes or saves anything for a page
+// view (nobody on the LAN can make it write its flash, or learn its language, by opening a page).
 Lang pageLang(WebServerT& server) {
-  if (ctx.cfg.langSet) return ctx.cfg.lang;
-  Lang l = miblo::negotiateLang(requestHeader(server, F("Accept-Language")).c_str());
-  if (l != ctx.cfg.lang) {  // automatic mode: the screen follows the last browser's language
+  const Lang browser = miblo::negotiateLang(requestHeader(server, F("Accept-Language")).c_str());
+  bool store = false;
+  const Lang l = miblo::pageLanguage(ctx.tokens.count() > 0, ctx.cfg.langSet, ctx.cfg.lang, browser, store);
+  if (store) {
     ctx.cfg.lang = l;
     ctx.configChanged = true;
   }
@@ -247,6 +266,10 @@ static void joinStatusPage(Lang lang) {
 // GET /api/wifi-status: progress of the submitted network, plus diagnostics (last station
 // disconnect reason and WiFi.status()) for field reports.
 static void handleWifiStatus() {
+  if (!net::apActive()) {  // only the setup portal's join page needs it
+    sendJson(*srv, 404, "{\"error\":\"not found\"}");
+    return;
+  }
   StaticJsonDocument<256> doc;
   doc["state"] = miblo::joinStatusName(net::state(), net::joinFailure(), net::trialBusy());
   if (net::connected()) {
@@ -263,8 +286,16 @@ static void handleWifiStatus() {
   sendJson(*srv, 200, out.c_str());
 }
 
+// Joining a network from the portal needs the on-screen code unless the unit is fresh (no saved
+// network, not paired; a factory-reset unit is fresh again): see miblo::wifiCodeRequired.
+static bool wifiCodeNeeded() { return miblo::wifiCodeRequired(net::hasSavedNetwork(), ctx.tokens.count()); }
+
+// Only from a client of the setup network, while it is up: never from the home LAN.
+static bool fromSetupNetwork() { return net::apActive() && srv->client().localIP() == WiFi.softAPIP(); }
+
 static void portalPage() {
   Lang lang = pageLang(*srv);
+  const bool needCode = wifiCodeNeeded();
   String out;
   pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
   out += F("<h1>");
@@ -304,11 +335,22 @@ static void portalPage() {
   appendEscaped(out, tr(lang, S::WebNetworkName).c_str());
   out += F("</label><input name=\"ssid_other\" maxlength=\"32\"></div><label>");
   appendEscaped(out, tr(lang, S::WebPassword).c_str());
-  out += F("</label><input name=\"pass\" type=\"password\" maxlength=\"64\"><label for=\"tz\">");
+  out += F("</label><input name=\"pass\" type=\"password\" maxlength=\"64\">");
+  if (needCode) {  // a configured unit: the code its screen shows (requested by the script below)
+    out += F("<label for=\"code\">");
+    appendEscaped(out, tr(lang, S::WebCodeHint).c_str());
+    out += F("</label><input id=\"code\" name=\"code\" inputmode=\"numeric\" maxlength=\"4\" "
+             "autocomplete=\"off\" required><button type=\"button\" class=\"s\" onclick=\"sc()\">");
+    appendEscaped(out, tr(lang, S::WebUnlockTitle).c_str());  // "Code on the screen"
+    out += F("</button><p class=\"w\" id=\"cw\" hidden>");
+    appendEscaped(out, tr(lang, S::WebFailed).c_str());
+    out += F("</p>");
+  }
+  out += F("<label for=\"tz\">");
   appendEscaped(out, tr(lang, S::WebTimezone).c_str());
   out += F("<span class=\"v\" id=\"tzn\"></span></label><div class=\"r\"><select id=\"tzr\"></select>"
            "<select name=\"tz\" id=\"tz\" data-cur=\"");
-  appendEscaped(out, ctx.cfg.tz);
+  if (!needCode) appendEscaped(out, ctx.cfg.tz);  // a configured unit's zone is not for passers-by
   out += F("\"></select></div><label>");
   appendEscaped(out, tr(lang, S::WebLanguage).c_str());
   out += F("</label><select name=\"lang\">");
@@ -318,20 +360,78 @@ static void portalPage() {
   out += F("</button></form><script>");
   pageSendP(out, kTzJs);
   out += F("{const t=document.getElementById('tz');tzFill(document.getElementById('tzr'),t,t.dataset.cur,null);}"
-           "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();"
-           "</script>");
+           "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();");
+  if (needCode) {
+    // The code goes on the screen only when the person asks for it (not when a passer-by merely
+    // loads the page).
+    out += F("function sc(){const w=document.getElementById('cw');w.hidden=true;"
+             "fetch('/wifi-code',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
+             ".then(r=>{if(r.status===429)return r.json().then(j=>{"
+             "w.textContent=w.dataset.t+' ('+(j.retryAfter||60)+' s)';w.hidden=false;});}).catch(()=>{});}"
+             "{const w=document.getElementById('cw');w.dataset.t=w.textContent;}");
+  }
+  out += F("</script>");
   pageEnd(out);
 }
 
+// A short page with one message and a link back to the form.
+static void messagePage(Lang lang, const String& msg) {
+  String out;
+  pageStart(out, lang, tr(lang, S::WebSetupTitle).c_str());
+  out += F("<h1>");
+  appendEscaped(out, msg.c_str());
+  out += F("</h1><p><a href=\"/\">");
+  appendEscaped(out, tr(lang, S::WebTryAgain).c_str());
+  out += F("</a></p>");
+  pageEnd(out);
+}
+
+// POST /wifi-code (JSON, from the setup network): a configured unit shows the code its portal
+// form needs; a fresh unit answers codeRequired:false.
+static void handleWifiCode() {
+  if (!fromSetupNetwork()) {
+    sendJson(*srv, 403, "{\"error\":\"forbidden\"}");
+    return;
+  }
+  if (!ctx.publicReqs.allow(millis())) {
+    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    return;
+  }
+  if (!requireJson(*srv)) return;
+  if (!wifiCodeNeeded()) {
+    sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
+    return;
+  }
+  const uint32_t now = millis();
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Wifi, now)) return;
+  ctx.lastInteractionMs = now;
+  sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":true}");
+}
+
 static void handleWifi() {
-  // Only from a client of the setup network, while it is up: never from the home LAN.
-  if (!net::apActive() || srv->client().localIP() != WiFi.softAPIP()) {
+  if (!fromSetupNetwork()) {
     srv->send(403, F("text/plain"), F("forbidden"));
     return;
   }
   if (bodyTooLarge()) {
     srv->send(413, F("text/plain"), F("payload too large"));
     return;
+  }
+  if (wifiCodeNeeded()) {
+    // A configured unit's open setup AP: only someone who can read its screen moves it.
+    const Lang lang = pageLang(*srv);
+    const uint32_t now = millis();
+    if (ctx.presence.locked(now)) {
+      char b[16];
+      snprintf(b, sizeof(b), " (%u s)", (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      messagePage(lang, tr(lang, S::WebFailed) + b);
+      return;
+    }
+    if (!ctx.presence.check(miblo::PresenceGate::Purpose::Wifi, srv->arg(F("code")).c_str(), now)) {
+      messagePage(lang, tr(lang, S::WebBadCode));
+      return;
+    }
+    ctx.presence.close();  // used: the code leaves the screen
   }
   String ssid = srv->arg(F("ssid"));
   if (ssid.length() == 0) ssid = srv->arg(F("ssid_other"));
@@ -361,18 +461,24 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
   out += tmp;
 }
 
-// The settings page's script (after `const C=<config>;const T=<texts>;` and kTzJs). It fills the
-// fields from C, shows or hides the fields that depend on a toggle, and posts every setting at
-// once (POST /settings); a refused field is highlighted.
+// The settings page's script (after `const C=<config>;const V=<{fw,board}|null>;const T=<texts>;`
+// and kTzJs). It fills the fields from C, shows or hides the fields that depend on a toggle, and
+// posts every setting at once (POST /settings); a refused field is highlighted. V is null on a
+// paired gadget's locked page: C is empty and #all hidden until the on-screen code unlocks it, then
+// the settings, name and version come from /settings-secret.
 static const char kSetJs[] PROGMEM =
     "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
     // To change anything the browser must prove presence with the code on the gadget screen; the
     // session token is kept so the code is asked once, not on every save.
     "let TOK=null;try{TOK=localStorage.getItem('miblo_tok')}catch(e){}"
     "function hdr(){return TOK?{...J,'X-Miblo-Web':TOK}:{...J};}"
-    "async function unlock(){await fetch('/settings-code',{method:'POST',headers:J,body:'{}'});"
+    "async function unlock(){const q=await fetch('/settings-code',{method:'POST',headers:J,body:'{}'}).catch(()=>null);"
+    // Refused (another code on the screen, a lockout, or no answer): say so, never prompt in vain.
+    "if(!q||q.status===429){const j=q?await q.json().catch(()=>({})):{};"
+    "alert(T.failed+(j.retryAfter?' ('+j.retryAfter+' s)':''));return false;}"
     "for(let i=0;i<3;i++){const c=prompt(T.unlock);if(!c)return false;"
-    "const r=await fetch('/settings-unlock',{method:'POST',headers:J,body:JSON.stringify({code:c})});"
+    "const r=await fetch('/settings-unlock',{method:'POST',headers:J,body:JSON.stringify({code:c})}).catch(()=>null);"
+    "if(!r){alert(T.failed);return false;}"
     "if(r.ok){TOK=(await r.json()).token;try{localStorage.setItem('miblo_tok',TOK)}catch(e){}await loadSecret();return true;}"
     "if(r.status===429){const j=await r.json().catch(()=>({}));alert(T.failed+' ('+(j.retryAfter||60)+' s)');return false;}"
     "alert(T.ubad);}return false;}"
@@ -381,23 +487,31 @@ static const char kSetJs[] PROGMEM =
     "if(r.status===401){if(!await unlock())return r;r=await fetch(u,{method:'POST',headers:hdr(),body:b});}return r;}"
     // Night times travel as minutes of the day; the page shows them as HH:MM.
     "const p2=n=>String(n).padStart(2,'0');"
-    "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
-    "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
     // A delay set through the API that the page doesn't offer (sleepMin 45, petMin 3) shows as the
     // nearest option (the longer one on a tie; "never" only for 0), never as a blank select.
+    "function fill(){for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
+    "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
     "for(const k of['petMin','sleepMin']){if(!(k in C))continue;const e=$(k),v=Number(C[k]);let b=null;"
     "for(const o of e.options){const n=Number(o.value);if((n===0)!==(v===0))continue;"
-    "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}"
+    "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}}fill();"
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
     // Owner and birthday are private: fetched only once the on-screen code unlocks the page.
     "let SEC=false;"
-    "async function loadSecret(){const r=await fetch('/settings-secret',{headers:hdr()});"
-    "if(r.status===401){TOK=null;try{localStorage.removeItem('miblo_tok')}catch(e){}return;}"
-    "if(!r.ok)return;const s=await r.json();$('owner').value=s.owner||'';"
+    // Never throws: no answer, a 503 (busy) or a bad reply say "failed, try again" on a locked page.
+    "function nf(){if(!V&&!SEC)$('m').textContent=T.failed+'. '+T.again;}"
+    "async function loadSecret(){const r=await fetch('/settings-secret',{headers:hdr()}).catch(()=>null);"
+    "if(r&&r.status===401){TOK=null;try{localStorage.removeItem('miblo_tok')}catch(e){}return;}"
+    "if(!r||!r.ok){nf();return;}const s=await r.json().catch(()=>null);if(!s){nf();return;}"
+    // Locked page: the first unlock brings everything a paired gadget keeps from the LAN.
+    "if(!V&&!SEC&&s.cfg){Object.assign(C,s.cfg);fill();FW=s.fw||'';BD=s.board||'';"
+    "$('h').textContent=C.name||$('name').placeholder;"
+    "$('m').textContent=T.ver+' '+FW+' \\u00b7 '+T.pc.replace('%u',s.paired);"
+    "$('ub').hidden=true;$('all').hidden=false;tz();dep();rv();pd();}"
+    "$('owner').value=s.owner||'';"
     "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
-    "if(TOK)loadSecret();"
+    "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
     // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
     "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
     "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
@@ -416,7 +530,7 @@ static const char kSetJs[] PROGMEM =
     "dep();rv();pd();"
     "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
     "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
-    "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
+    "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
     "'nightBrightness','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
@@ -437,7 +551,7 @@ static const char kSetJs[] PROGMEM =
     ".then(r=>{if(!r.ok)alert(T.bad);});});}"
     // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
     // compares with this firmware; a newer one gets the how-to and a link to its .bin.
-    "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
+    "let FW=V?V.fw:'',BD=V?V.board:'';"
     "function vc(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);"
     "for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d;}return 0;}"
     "function chk(){const st=$('up');st.textContent='...';"
@@ -451,7 +565,7 @@ static const char kSetJs[] PROGMEM =
     "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
     "st.append(document.createElement('br'),l);}"
     "}).catch(()=>{st.textContent=T.chkfail;});}"
-    "tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});";
+    "function tz(){tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});}if(V)tz();";
 
 // Settings page builders; every text is escaped.
 static void text(String& out, Lang lang, S id) { appendEscaped(out, tr(lang, id).c_str()); }
@@ -513,21 +627,36 @@ static void option(String& out, Lang lang, const __FlashStringHelper* value, S i
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName());
+  // A paired gadget tells the LAN only its id: its name, version and settings reach a browser
+  // only after the code on its screen unlocks the page (the script then reads /settings-secret).
+  // Before pairing everything is shown, as setup needs it.
+  const bool open = ctx.tokens.count() == 0;
+  const char* title = open ? deviceName() : ctx.ident.defaultName;
+  pageStart(out, lang, title);
   out += F("<h1 id=\"h\">");
-  appendEscaped(out, deviceName());
-  out += F("</h1><p class=\"m\">");
-  text(out, lang, S::WebVersion);
-  out += F(" " MIBLO_FW_VERSION " &middot; ");
-  char line[96];
-  snprintf(line, sizeof(line), tr(lang, S::WebPairedCount).c_str(), (unsigned)ctx.tokens.count());
-  appendEscaped(out, line);
+  appendEscaped(out, title);
+  out += F("</h1><p class=\"m\" id=\"m\">");
+  if (open) {
+    text(out, lang, S::WebVersion);
+    out += F(" " MIBLO_FW_VERSION " &middot; ");
+    char line[96];
+    snprintf(line, sizeof(line), tr(lang, S::WebPairedCount).c_str(), (unsigned)ctx.tokens.count());
+    appendEscaped(out, line);
+  }
   out += F("</p>");
-  if (!ctx.usageEverSeen) {
+  if (open && !ctx.usageEverSeen) {
     out += F("<p class=\"w\">");
     text(out, lang, S::WebLimitsHint);
     out += F("</p>");
   }
+  // Locked page: only this until the code is typed.
+  out += F("<div id=\"ub\" hidden><p class=\"w\">");
+  text(out, lang, S::WebUnlock);
+  out += F("</p><button onclick=\"unlock()\">");
+  text(out, lang, S::WebUnlockTitle);
+  out += F("</button></div><div id=\"all\"");
+  if (!open) out += F(" hidden");
+  out += F(">");
 
   // Screen: what it shows and how.
   out += F("<div class=\"c\"><h2>");
@@ -666,13 +795,15 @@ static void settingsPage() {
   // Always-visible save bar.
   out += F("<div class=\"bar\"><div><span id=\"st\"></span><button onclick=\"save()\">");
   text(out, lang, S::WebSave);
-  out += F("</button></div></div><script>const C=");
+  out += F("</button></div></div></div><script>const C=");
   pageFlush(out);
 
   DynamicJsonDocument cfg(1024);
-  miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday on the public page
+  if (open) miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday here
+  else cfg.to<JsonObject>();                                             // locked: nothing
   appendJsonForScript(out, cfg);
-  out += F(";const T=");
+  out += open ? F(";const V={\"fw\":\"" MIBLO_FW_VERSION "\",\"board\":\"" MIBLO_BOARD_NAME "\"};const T=")
+              : F(";const V=null;const T=");
   DynamicJsonDocument txt(2048);
   txt["saved"] = tr(lang, S::WebSaved);
   txt["uptodate"] = tr(lang, S::WebUpToDate);
@@ -687,6 +818,9 @@ static void settingsPage() {
   txt["unlock"] = tr(lang, S::WebUnlock);
   txt["utitle"] = tr(lang, S::WebUnlockTitle);
   txt["ubad"] = tr(lang, S::WebUnlockBad);
+  txt["ver"] = tr(lang, S::WebVersion);
+  txt["pc"] = tr(lang, S::WebPairedCount);
+  txt["again"] = tr(lang, S::WebTryAgain);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
@@ -716,12 +850,7 @@ static void handleSettingsCode() {
   }
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
-  char code[5];
-  miblo::formatCode(hwRandom(), code);
-  if (!ctx.presence.open(miblo::PresenceGate::Purpose::Settings, code, now)) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    return;
-  }
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Settings, now)) return;
   ctx.lastInteractionMs = now;  // keep the screen on so the code is readable
   sendJson(*srv, 200, "{\"ok\":true}");
 }
@@ -761,15 +890,24 @@ static void handleSettingsUnlock() {
   sendJson(*srv, 200, out.c_str());
 }
 
-// GET /settings-secret: the private fields (owner, birthday), only for an unlocked session.
+// GET /settings-secret, only for an unlocked session: the private fields (owner, birthday) and,
+// for a paired gadget's locked page, the settings, version, board and number of paired computers.
 static void handleSettingsSecret() {
   if (!webAuthorized()) {
     sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
     return;
   }
-  StaticJsonDocument<128> doc;
+  if (heapLowForRequest(2048)) {
+    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    return;
+  }
+  DynamicJsonDocument doc(1536);
   doc["owner"] = ctx.cfg.owner;
   doc["birthday"] = ctx.cfg.birthday;
+  miblo::configToJson(ctx.cfg, doc.createNestedObject("cfg"), false);
+  doc["fw"] = MIBLO_FW_VERSION;
+  doc["board"] = MIBLO_BOARD_NAME;
+  doc["paired"] = ctx.tokens.count();
   String out;
   serializeJson(doc, out);
   sendJson(*srv, 200, out.c_str());
@@ -849,13 +987,7 @@ static void handleResetCode() {
     return;
   }
   if (!requireJson(*srv)) return;
-  const uint32_t now = millis();
-  char code[5];
-  miblo::formatCode(hwRandom(), code);
-  if (!ctx.presence.open(miblo::PresenceGate::Purpose::Reset, code, now)) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    return;
-  }
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Reset, millis())) return;
   sendJson(*srv, 200, "{\"ok\":true}");
 }
 
@@ -928,6 +1060,7 @@ void begin(WebServerT& server) {
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type", "X-Miblo-Web");
   server.on(F("/"), HTTP_GET, handleRoot);
   server.on(F("/wifi"), HTTP_POST, handleWifi);
+  server.on(F("/wifi-code"), HTTP_POST, handleWifiCode);
   server.on(F("/settings"), HTTP_POST, handleSettings);
   server.on(F("/settings-code"), HTTP_POST, handleSettingsCode);
   server.on(F("/settings-unlock"), HTTP_POST, handleSettingsUnlock);

@@ -227,3 +227,14 @@ test('cleanName keeps names in any language but drops control and bidi character
   assert.equal(cleanName('a‮b\u0007c\n'), 'abc');
   assert.equal(cleanName('ééééééééééééééééééééé'), 'éééééééééééééééééééé');
 });
+
+test('a gadget that announces only its id (TXT "id=" alone) resolves, named after its instance', () => {
+  const inst = 'Miblo-B452._miblo._tcp.local';
+  const records = parseMessage(response([
+    rr('_miblo._tcp.local', 12, enc(inst)),
+    rr(inst, 33, Buffer.concat([Buffer.from([0, 0, 0, 0, 0, 80]), enc('miblo-b452.local')])),
+    rr(inst, 16, Buffer.concat([Buffer.from([13]), Buffer.from('id=miblo-b452')])),
+    rr('miblo-b452.local', 1, Buffer.from([192, 168, 0, 7])),
+  ]));
+  assert.deepEqual(resolveDevices(records, '_miblo._tcp.local'), [{ id: 'miblo-b452', name: 'Miblo-B452', addr: '192.168.0.7:80' }]);
+});

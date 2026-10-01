@@ -10,16 +10,19 @@ const json = (body, status = 200) => ({ ok: status < 400, status, json: async ()
 function setup({ tag = 'v0.3.0', fw = '0.2.4', devices = [{ id: 'miblo-b452', name: 'Miblo-B452', addr: '10.0.0.5' }] } = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-upd-'));
   const calls = [];
-  const fetchImpl = async (url) => {
+  const headers = [];
+  const fetchImpl = async (url, opts = {}) => {
     calls.push(url);
+    headers.push(opts.headers ?? {});
     if (url.includes('api.github.com')) {
       if (tag instanceof Error) throw tag;
       return json({ tag_name: tag });
     }
     if (fw instanceof Error) throw fw;
+    if (fw === null) return json({ id: 'miblo-b452', paired: true, proto: 1 });  // reduced: no token match
     return json({ fw, board: 'geekmagic_ultra' });
   };
-  return { dataDir, calls, store: { list: () => devices }, fetchImpl };
+  return { dataDir, calls, headers, store: { list: () => devices }, fetchImpl };
 }
 
 test('names the outdated plugin and gadgets', async () => {
@@ -101,4 +104,13 @@ test('release cache: a failed refresh never throws and leaves the version unknow
   fs.writeFileSync(path.join(s.dataDir, 'update-check.json'), '{}');
   await broken.refreshIfStale();
   assert.equal(broken.get(), null);
+});
+
+test('asks each gadget with its pairing token; a reduced /api/info is skipped quietly', async () => {
+  const s = setup({ devices: [{ id: 'miblo-b452', name: 'Miblo-B452', addr: '10.0.0.5', token: 'tk' }] });
+  await updateNotice({ ...s, pluginVersion: '0.3.0', now: () => 0 });
+  const i = s.calls.findIndex((u) => u.includes('/api/info'));
+  assert.equal(s.headers[i].authorization, 'Bearer tk');
+  const r = setup({ fw: null });
+  assert.equal(await updateNotice({ ...r, pluginVersion: '0.3.0', now: () => 0 }), null);
 });

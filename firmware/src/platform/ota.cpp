@@ -52,27 +52,27 @@ static void resetState() {
 // POST /update/open (JSON, body {}): opens the presence gate so the screen shows the code.
 // A plain GET never changes state (a link or <img> from another site cannot light up the code).
 static void openGate() {
+  if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated)
+    web::sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    return;
+  }
   if (!web::requireJson(*srv)) return;  // 415: CSRF guard
   if (!codeRequired()) {
     // Never-configured unit on its own AP: no gate, no code on screen.
     web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
     return;
   }
-  const uint32_t now = millis();
-  if (ctx.presence.locked(now)) {
-    web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    return;
-  }
-  if (!ctx.presence.active(now) || ctx.presence.purpose() != PresenceGate::Purpose::Update) {
-    char code[5];
-    miblo::formatCode(hwRandom(), code);
-    ctx.presence.open(PresenceGate::Purpose::Update, code, now);  // the screen now shows the code
-  }
+  // The screen now shows the code (an active update code is kept; another purpose's: busy).
+  if (!web::openPresence(*srv, PresenceGate::Purpose::Update, millis())) return;
   web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":true}");
 }
 
 // GET /update: only serves the page; its script opens the gate with POST /update/open.
 static void page() {
+  if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated page render), as GET /
+    web::sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    return;
+  }
   if (heapLowForRequest(4096)) {
     web::sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
@@ -83,9 +83,13 @@ static void page() {
   web::pageStart(out, lang, web::tr(lang, S::WebFirmware).c_str());
   out += F("<h1>");
   web::appendEscaped(out, web::tr(lang, S::WebFirmware).c_str());
-  out += F("</h1><p class=\"m\">");
-  web::appendEscaped(out, web::tr(lang, S::WebVersion).c_str());
-  out += F(" " MIBLO_FW_VERSION "</p><label id=\"cl\">");
+  out += F("</h1>");
+  if (!ctx.tokens.count()) {  // a paired gadget's version is for its computers (/api/info)
+    out += F("<p class=\"m\">");
+    web::appendEscaped(out, web::tr(lang, S::WebVersion).c_str());
+    out += F(" " MIBLO_FW_VERSION "</p>");
+  }
+  out += F("<label id=\"cl\">");
   web::appendEscaped(out, web::tr(lang, S::WebCodeHint).c_str());
   out += F("</label><input id=\"code\" inputmode=\"numeric\" maxlength=\"4\" autocomplete=\"off\"><label>.bin</label>"
            "<input id=\"f\" type=\"file\" accept=\".bin\"><button onclick=\"up()\">");

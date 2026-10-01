@@ -19,7 +19,7 @@ Rules: reply in the user's language; keep replies short; never show pairing toke
 Run `MIBLO update check [id] [--file path]`. It prints JSON:
 `{ plugin: {current, latest, needsUpdate}, firmware: {latest, error?}, devices: [{id, name, online, fw, board, latest, boardMatch, needsUpdate}] }`.
 
-- If `plugin.needsUpdate` is false/null and no device has `needsUpdate: true`: say everything is up to date (mention offline gadgets, `boardMatch: false`, or `firmware.error` if present) and stop.
+- If `plugin.needsUpdate` is false/null and no device has `needsUpdate: true`: say everything is up to date (mention offline gadgets, gadgets with `unauthorized: true` (they no longer accept this computer's pairing: suggest `/miblo:pair`), `boardMatch: false`, or `firmware.error` if present) and stop.
 
 ## 2. Plugin (before the firmware)
 

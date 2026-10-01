@@ -12,7 +12,7 @@ struct MdnsInfo {
   const char* host;      // "miblo-4f2a"  → miblo-4f2a.local
   uint8_t ip[4];
   uint16_t port;
-  const char* txt[4];    // "id=miblo-4f2a", "name=Miblo-4F2A", "fw=0.1.0"
+  const char* txt[4];    // today only "id=miblo-4f2a" (see mdnsPublicIdentity)
   uint8_t txtCount;
 };
 
@@ -25,6 +25,12 @@ constexpr uint16_t kMdnsPort = 5353;
 
 MdnsReply mdnsRespond(const uint8_t* pkt, size_t len, uint16_t srcPort, const MdnsInfo& info, uint8_t* out,
                       size_t cap);
+
+// What the gadget tells the whole LAN about itself: only its id. Instance = the id-derived
+// default name ("Miblo-4F2A", never the name its owner gave it), host = the id, and one TXT
+// string "id=<id>" written into `txtBuf` (no name, no firmware version: a paired computer reads
+// those from /api/info with its token).
+void mdnsPublicIdentity(MdnsInfo& info, const char* id, const char* defaultName, char* txtBuf, size_t cap);
 
 // Unsolicited announcement (PTR + SRV + TXT + A), sent by multicast on connect.
 size_t mdnsAnnounce(const MdnsInfo& info, uint8_t* out, size_t cap);

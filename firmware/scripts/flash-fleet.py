@@ -10,7 +10,10 @@ portal). The script finds the units, works out what each one runs and installs M
                       GET /api/info and check that "fw" is the expected version
   Miblo            -> skipped when already on the expected version; otherwise updated only with
                       --update (POST /update/open shows a 4-digit code on the screen, you type it
-                      here, then the image goes to POST /update?code=XXXX); one unit at a time
+                      here, then the image goes to POST /update?code=XXXX); one unit at a time.
+                      A paired unit tells this tool only its id (/api/info has no "fw" without
+                      the pairing token): its version shows as "?", it is offered as an update,
+                      and the update is verified by the unit's own "OK" reply to the upload
   anything else    -> skipped
 
 Finding units: --host/--subnet name them explicitly or scan a CIDR; --discover instead asks the
@@ -112,6 +115,7 @@ class Timing:
     ap_join_timeout: float = 30.0   # --via-ap: joined network must give an IP and answer on :80
     scan_interval: float = 3.0      # --via-ap: between Wi-Fi scans
     mdns_timeout: float = 2.5       # --discover: how long to collect mDNS answers
+    reboot_settle: float = 3.0      # paired unit: after its "OK" the old image still answers ~0.8 s
 
 
 @dataclass
@@ -139,6 +143,8 @@ class Unit:
     chip: Optional[str] = None      # --via-ap: "4f2a" (from the SSID or the device id)
     bssid: Optional[str] = None     # --via-ap: the access point joined, when the name is shared
     verify: bool = False            # LAN: installed, the unit restarted on its Miblo-Setup network
+    paired: bool = False            # Miblo paired to a computer: /api/info shows only its id
+    upload_status: int = 0          # HTTP status of the last image upload (0 = no reply)
 
     @property
     def label(self) -> str:
@@ -148,6 +154,8 @@ class Unit:
 
     @property
     def before(self) -> str:
+        if self.kind == MIBLO and self.paired:
+            return "miblo ? (paired)"
         if self.kind == MIBLO:
             return "miblo %s%s" % (self.fw or "?", " (%s)" % self.build if self.build else "")
         if self.kind == LOADER:
@@ -272,6 +280,12 @@ def classify(unit: Unit, timing: Timing) -> None:
         unit.build = info.get("build")
         unit.board = info.get("board")
         unit.name = info.get("name") or info.get("id")
+        return
+    if info and info.get("paired") is True and info.get("id"):
+        # A paired Miblo tells the LAN only {id, paired, proto}: version and board unknown.
+        unit.kind = MIBLO
+        unit.paired = True
+        unit.name = str(info.get("id"))
         return
     info = get_json(base + "/info", timing.http_timeout)
     if info and info.get("app") == "miblo-loader":
@@ -667,6 +681,28 @@ class Runner:
 
     def wait_for_miblo(self, unit: Unit, limit: Optional[float] = None) -> None:
         want = self.images.version
+        if unit.paired:
+            # A paired unit's /api/info has no "fw" (only its id) without the pairing token: the
+            # update is verified by the unit's own reply to the upload (HTTP 200 "OK", sent once
+            # the image is written and checked), then by the unit answering again after its reboot.
+            # The firmware reboots ~0.8 s after that reply: wait first, so the old image can't be
+            # the one that "answers again".
+            # Board gap: a paired unit doesn't report its board either, so plan() can't skip a
+            # unit of another board; the firmware's own image check is the only guard then.
+            if unit.upload_status == 200:
+                self.log(unit, "update: verified by the update's own reply (paired unit: /api/info doesn't show its version)")
+                unit.after = "miblo %s (paired)" % want
+            else:
+                # As for any unit: a connection dropped after sending counts as accepted (the unit
+                # may reboot before its reply gets out), but here nothing can confirm the version.
+                self.log(unit, "update: no reply to the upload (the unit may have restarted first); "
+                         "paired unit: its version can't be checked")
+                unit.after = "miblo ? (paired, unverified)"
+            self.sleep(self.timing.reboot_settle)
+            self.poll(unit, "/api/info", lambda d: bool(d.get("id")),
+                      self.timing.stage2_timeout if limit is None else limit,
+                      "the unit to answer again after its reboot")
+            return
         self.log(unit, "waiting for Miblo %s to boot..." % want)
         doc = self.poll(unit, "/api/info", lambda d: d.get("fw") == want,
                         self.timing.stage2_timeout if limit is None else limit,
@@ -707,11 +743,14 @@ class Runner:
 
     def locked_wait(self, unit: Unit, data: bytes) -> None:
         try:
-            wait = float(json.loads(data.decode()).get("retryAfter", 60))
+            doc = json.loads(data.decode())
+            wait = float(doc.get("retryAfter", 60))
+            busy = doc.get("error") == "busy"
         except (ValueError, AttributeError):
-            wait = 60.0
+            wait, busy = 60.0, False
         wait = min(max(wait, 1.0), self.timing.max_retry_wait)
-        self.log(unit, "device locked (too many attempts), retrying in %gs..." % wait)
+        why = "another code is on its screen" if busy else "device locked (too many attempts)"
+        self.log(unit, "%s, retrying in %gs..." % (why, wait))
         self.sleep(wait)
 
     def open_gate(self, unit: Unit) -> dict:
@@ -755,6 +794,7 @@ class Runner:
             status, data = upload(base_url(unit.host) + "/update", image, self.timing)
             if status not in (200, 0):
                 raise FlashError("update failed: HTTP %d %s" % (status, text_of(data)[:80]))
+            unit.upload_status = status
             after(unit)
             return
         if not self.interactive:
@@ -765,6 +805,7 @@ class Runner:
             self.log(unit, "update: uploading %s (%d KB)..." % (image.name, image.stat().st_size // 1024))
             status, data = upload(base_url(unit.host) + "/update?code=" + code, image, self.timing)
             if status in (200, 0):
+                unit.upload_status = status
                 after(unit)
                 return
             if status == 403:

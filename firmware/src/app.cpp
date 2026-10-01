@@ -68,7 +68,8 @@ static const char* modeName(Lang lang) {
 static miblo::S presenceCodeTitle(miblo::PresenceGate::Purpose p) {
   switch (p) {
     case miblo::PresenceGate::Purpose::Update: return miblo::S::CodeUpdate;
-    case miblo::PresenceGate::Purpose::Settings: return miblo::S::CodeSettings;
+    case miblo::PresenceGate::Purpose::Settings:
+    case miblo::PresenceGate::Purpose::Wifi: return miblo::S::CodeSettings;  // joining a network is a setting
     case miblo::PresenceGate::Purpose::Reset: break;
   }
   return miblo::S::CodeReset;
@@ -257,8 +258,7 @@ void loop() {
     ctx.configChanged = false;
     storage::saveConfig(ctx.cfg);
     applyConfig();
-    net::applyTimezone();
-    mdns::announce();
+    net::applyTimezone();  // (no new mDNS announcement: it carries only the id, never the name)
     if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
       strlcpy(shownName, deviceName(), sizeof(shownName));
       ctx.greeter.named(now);

@@ -1,3 +1,7 @@
+// The reduced /api/info of a paired gadget asked without one of its tokens: {id, paired, proto}
+// and nothing else (no name, fw, board or settings).
+export const isReducedInfo = (info) => info?.paired === true && info.fw === undefined && info.name === undefined;
+
 export class DeviceClient {
   constructor({ fetchImpl = globalThis.fetch, timeoutMs = 2500 } = {}) {
     this.fetch = fetchImpl;
@@ -26,8 +30,10 @@ export class DeviceClient {
     return data;
   }
 
-  info(addr) {
-    return this.#req(addr, '/api/info');
+  // A paired gadget answers someone without one of its tokens with only {id, paired, proto};
+  // with the token (or before pairing) it reports everything (name, fw, board, settings...).
+  info(addr, token) {
+    return this.#req(addr, '/api/info', { token });
   }
 
   async pair(addr, code, host) {

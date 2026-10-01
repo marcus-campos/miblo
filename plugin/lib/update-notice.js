@@ -85,7 +85,9 @@ export function createReleaseCache({ dataDir, fetchImpl = globalThis.fetch, now 
 async function outdatedGadgets({ store, fetchImpl, latest }) {
   const rows = await Promise.all(store.list().map(async (d) => {
     try {
-      const res = await fetchImpl(`http://${d.addr}/api/info`, { signal: AbortSignal.timeout(DEVICE_TIMEOUT_MS) });
+      // With its pairing token: without one a paired gadget reports only its id (no fw).
+      const headers = d.token ? { authorization: `Bearer ${d.token}` } : {};
+      const res = await fetchImpl(`http://${d.addr}/api/info`, { headers, signal: AbortSignal.timeout(DEVICE_TIMEOUT_MS) });
       const fw = res.ok ? String((await res.json())?.fw ?? '') : '';
       return VERSION_RE.test(fw) && compareVersions(fw, latest) < 0 ? `${String(d.name ?? d.id).slice(0, 32)} ${fw}` : null;
     } catch {

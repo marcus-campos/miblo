@@ -234,6 +234,11 @@ bool langFromCode(const char* code, Lang& out);
 // Picks the language from the Accept-Language header (highest q wins; tie → order).
 // "pt" with no region → pt-BR; "pt-XX" (other region) → pt-PT; "zh-*" → zh; nothing supported → en.
 Lang negotiateLang(const char* acceptLanguage);
+// The language a web page is drawn in (`browser` = negotiateLang of its Accept-Language). Before
+// pairing, automatic mode follows the browser and `store` says the gadget should keep it (setup:
+// the screen speaks the phone's language). A paired gadget draws the page in the browser's
+// language and never changes or saves anything because someone opened a page.
+Lang pageLanguage(bool paired, bool langSet, Lang stored, Lang browser, bool& store);
 
 // Copies the translated string into `out` (always NUL-terminated, never cutting UTF-8 mid-codepoint).
 void tr(Lang lang, S id, char* out, size_t cap);

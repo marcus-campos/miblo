@@ -166,6 +166,7 @@ void TokenStore::restore(const TokenEntry* entries, uint8_t n) {
 bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {
   lock_.update(nowMs);
   if (lock_.locked(nowMs)) return false;
+  if (active(nowMs)) return p == purpose_;  // never replace a code that is on the screen
   open_ = true;
   purpose_ = p;
   strncpy(code_, code4, sizeof(code_) - 1);
@@ -193,6 +194,8 @@ bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
   if (lock_.fail(nowMs)) open_ = false;
   return false;
 }
+
+bool wifiCodeRequired(bool hasWifiCreds, uint8_t tokenCount) { return hasWifiCreds || tokenCount != 0; }
 
 bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp) {
   return everConfigured || hasWifiCreds || tokenCount != 0 || !viaSoftAp;

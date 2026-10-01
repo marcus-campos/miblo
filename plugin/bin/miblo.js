@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion } from '../lib/constants.js';
-import { DeviceClient } from '../lib/device-client.js';
+import { DeviceClient, isReducedInfo } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
@@ -166,8 +166,9 @@ async function rotate(args, store, client) {
     for (const d of targets) {
       const label = `${cleanName(d.name)} (${cleanId(d.id)})`;
       try {
-        const info = await client.info(d.addr);
-        if (typeof info?.rotate !== 'boolean') lines.push(`${label}: rotation not supported by this firmware (update it)`);
+        const info = await client.info(d.addr, d.token);
+        if (isReducedInfo(info)) lines.push(`${label}: no longer accepts this pairing (run /miblo:pair again)`);
+        else if (typeof info?.rotate !== 'boolean') lines.push(`${label}: rotation not supported by this firmware (update it)`);
         else lines.push(`${label}: rotation ${describeRotation(info)}`);
       } catch {
         lines.push(`${label}: offline`);
@@ -268,8 +269,9 @@ async function night(args, store, client) {
     for (const d of targets) {
       const label = `${cleanName(d.name)} (${cleanId(d.id)})`;
       try {
-        const info = await client.info(d.addr);
-        if (typeof info?.night !== 'boolean') lines.push(`${label}: night mode not supported by this firmware (update it)`);
+        const info = await client.info(d.addr, d.token);
+        if (isReducedInfo(info)) lines.push(`${label}: no longer accepts this pairing (run /miblo:pair again)`);
+        else if (typeof info?.night !== 'boolean') lines.push(`${label}: night mode not supported by this firmware (update it)`);
         else lines.push(`${label}: night mode ${describeNight(info)}`);
       } catch {
         lines.push(`${label}: offline`);
@@ -374,7 +376,7 @@ async function rename(args, store, client) {
   if (!name) {
     // Back to the default: store the name the gadget now reports.
     let reported = '';
-    try { reported = cleanName((await client.info(d.addr))?.name); } catch { /* best-effort */ }
+    try { reported = cleanName((await client.info(d.addr, d.token))?.name); } catch { /* best-effort */ }
     name = reported || defaultNameFor(d.id) || d.name;
     shown = cleanName(name) || cleanId(d.id).slice(0, 20);
   }
@@ -385,7 +387,7 @@ async function rename(args, store, client) {
 // ---- owner: the owner's first name and birthday (greetings on the gadget screen) ----
 // Firmware contract (POST /api/config): owner = name like the device name (20 characters,
 // under 64 bytes), birthday = "MM-DD" (02-29 allowed); "" clears either. Neither is reported by
-// the unauthenticated /api/info, and the plugin does not store them.
+// /api/info (not even with a token), and the plugin does not store them.
 const OWNER_USAGE = 'Usage: owner <id> [--name <name...>|--name clear] [--birthday <DD/MM|MM-DD|clear>]';
 const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
@@ -523,11 +525,18 @@ export async function run(argv, deps) {
       if (!rawAddr || !code) return fail(2, USAGE);
       const addr = withPort(rawAddr);
       try {
-        const info = safe(await client.info(addr));
-        if (!info.id) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
+        // A gadget already paired to another computer reports only {id, paired, proto} until we
+        // hold a token: read it again once paired; if that fails, use its id-derived name.
+        const first = (await client.info(addr)) ?? {};
+        if (!cleanId(first.id)) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
         const token = await client.pair(addr, code, hostname);
+        let full = first;
+        if (isReducedInfo(first)) {
+          try { full = { ...((await client.info(addr, token)) ?? {}), id: first.id }; } catch { /* best-effort */ }
+        }
+        const info = safe({ ...full, name: cleanName(full.name) || defaultNameFor(first.id) });
         store.upsert({ id: info.id, name: info.name, addr, token });
-        if (info.langSet !== true) {
+        if (!isReducedInfo(full) && full.langSet !== true) {
           // Best-effort: the language was never chosen explicitly (automatic mode, or a
           // firmware before 0.2.3 that does not report it), so seed it from the host's
           // locale. A language picked on the settings page is never overwritten. Never let

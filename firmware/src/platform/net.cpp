@@ -294,6 +294,8 @@ void loop(uint32_t nowMs) {
 miblo::NetState state() { return policy.state(); }
 bool apActive() { return apOn; }
 bool connected() { return policy.state() == miblo::NetState::Connected; }
+bool hasSavedNetwork() { return savedSsid[0] != 0; }
+
 bool trialBusy() { return pendingCreds || trialCreds; }
 uint8_t scannedNetworks() { return netCount; }
 const char* scannedNetwork(uint8_t i) { return i < netCount ? nets[i].ssid : ""; }

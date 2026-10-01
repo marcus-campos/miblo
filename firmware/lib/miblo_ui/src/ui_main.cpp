@@ -802,11 +802,47 @@ void roamPosition(uint32_t ms, int& cx, int& cy) {
   cy = roamH() / 2 + bounce(ms / kRoamVyMs, Y(240) - roamH());
 }
 
+bool anticOnSign(RoamAntic a) { return a >= RoamAntic::Bat && a <= RoamAntic::Stamp; }
+
+uint32_t anticLength(RoamAntic a) {
+  return a == RoamAntic::None ? 0 : anticOnSign(a) ? kAnticMs : kAnticFloorMs;
+}
+
+// Round `round`'s order of the 30 antics: a seeded shuffle, the same on every run.
+static void anticOrder(uint32_t round, uint8_t* out) {
+  for (uint8_t i = 0; i < kAnticCount; i++) out[i] = (uint8_t)(i + 1);
+  uint32_t s = round * 2654435761u + 0x9E3779B9u;
+  for (uint8_t i = kAnticCount - 1; i > 0; i--) {
+    s = s * 1664525u + 1013904223u;
+    const uint8_t j = (uint8_t)((s >> 8) % (uint32_t)(i + 1));
+    const uint8_t t = out[i];
+    out[i] = out[j];
+    out[j] = t;
+  }
+}
+
+static RoamAntic anticOfCycle(uint32_t cycle) {  // cycle >= 1
+  const uint32_t idx = cycle - 1, round = idx / kAnticCount, pos = idx % kAnticCount;
+  uint8_t order[kAnticCount];
+  anticOrder(round, order);
+  if (round > 0) {  // never the same one twice in a row, across rounds too
+    uint8_t prev[kAnticCount];
+    anticOrder(round - 1, prev);
+    if (order[0] == prev[kAnticCount - 1]) {
+      const uint8_t t = order[0];
+      order[0] = order[1];
+      order[1] = t;
+    }
+  }
+  return (RoamAntic)order[pos];
+}
+
 RoamAntic roamAntic(uint32_t ms, uint32_t* atMs) {
   const uint32_t cycle = ms / kAnticEveryMs, at = ms % kAnticEveryMs;
   if (atMs) *atMs = at;
-  if (cycle == 0 || at >= kAnticMs) return RoamAntic::None;
-  return (RoamAntic)(1 + (cycle * 2654435761u >> 7) % 4);  // a varied order, the same on every run
+  if (cycle == 0) return RoamAntic::None;
+  const RoamAntic a = anticOfCycle(cycle);
+  return at < anticLength(a) ? a : RoamAntic::None;
 }
 
 // The pet's sign: visible (not the screen's black), with a lighter edge.
@@ -878,6 +914,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
       else k = MascotLook{0, 0, 0, -3, Eyes::Open, Paws::Down, 0};
       break;
     case RoamAntic::None: break;
+    default: break;  // the other antics are drawn later; until then it looks calm
   }
   const int bw = roamW(), bh = roamH();
   const int left = cx - bw / 2, top = cy - bh / 2;

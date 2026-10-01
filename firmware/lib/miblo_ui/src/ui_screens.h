@@ -180,12 +180,27 @@ void visit(Lang lang, const miblo::Snapshot& s, const Clock& clk, const miblo::V
 void hello(const char* line1, const char* line2, bool party, uint32_t ms);
 // Where the pet is at `ms` (centre of its box: cat + card), bouncing inside the screen.
 void roamPosition(uint32_t ms, int& cx, int& cy);
-// Pet mode antics with its sign, now and then while it is calm: batting at the sign, spilling a
-// coffee on it (then scared and ashamed), chasing the mouse cursor across it, a nap on it.
-enum class RoamAntic : uint8_t { None, Bat, Spill, Cursor, Nap };
-constexpr uint32_t kAnticEveryMs = 40000;  // one antic at the start of every 40 s (from the second)
-constexpr uint32_t kAnticMs = 9000;
-// The antic playing at `ms` into pet mode, and how far into it (*atMs).
+// Pet mode antics, now and then while it is calm. With the sign in its paws: batting at it,
+// spilling a coffee on it, chasing the mouse cursor across it, a nap on it, a sneeze, peekaboo
+// behind it, a heart, sunglasses, an "LGTM" stamp. Away from the sign (put down on the floor
+// first, picked up again after): a laptop and a bug, its tail, a stretch, licking a paw, a fly, a
+// ball of yarn, a mug pushed off the edge, a cardboard box, a little keyboard, a laser dot, soap
+// bubbles, a fish snack, a rubber duck, a coffee, a butterfly, a balloon, a paper plane, a fish
+// bowl, a deploy button and its rocket, a cucumber, a blanket.
+enum class RoamAntic : uint8_t {
+  None, Bat, Spill, Cursor, Nap, Sneeze, Peek, Heart, Glasses, Stamp,
+  Laptop, Tail, Stretch, Lick, Fly, Yarn, Mug, Box, Keys,
+  Laser, Bubbles, Fish, Duck, Coffee, Butterfly, Balloon, Plane, Bowl, Deploy, Cucumber, Blanket
+};
+constexpr uint8_t kAnticCount = 30;
+constexpr uint32_t kAnticEveryMs = 30000;  // one antic at the start of every 30 s (from the second)
+constexpr uint32_t kAnticMs = 9000;        // with the sign in its paws, or playing away from it
+constexpr uint32_t kAnticPutMs = 1500;     // putting the sign down on the floor (or picking it up)
+constexpr uint32_t kAnticFloorMs = kAnticMs + 2 * kAnticPutMs;
+// Played holding the sign (else the sign goes down on the floor first).
+bool anticOnSign(RoamAntic a);
+uint32_t anticLength(RoamAntic a);
+// The antic playing at `ms` into pet mode, and how far into its cycle (*atMs).
 RoamAntic roamAntic(uint32_t ms, uint32_t* atMs);
 // Full-screen mascot + two ring gauges (5h, week) + clock.
 void desk(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt = 0);

@@ -1035,8 +1035,46 @@ static void test_mascot_new_poses_stay_in_box() {
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 }
 
+// Pet mode antics: one every kAnticEveryMs from the second cycle, all 30 once per round in a
+// shuffled order, never the same one twice in a row (across rounds too), always the same for the
+// same time; each lasts its length (held: kAnticMs; on the floor: kAnticFloorMs).
+static void test_pet_antics_order() {
+  for (int run = 0; run < 2; run++) {  // deterministic: a second run sees the same order
+    static screens::RoamAntic first[91];
+    uint8_t seen[3][screens::kAnticCount + 1] = {};
+    screens::RoamAntic prev = screens::RoamAntic::None;
+    for (uint32_t c = 1; c <= 90; c++) {
+      uint32_t at = 1;
+      const screens::RoamAntic a = screens::roamAntic(c * screens::kAnticEveryMs, &at);
+      TEST_ASSERT_EQUAL_UINT32(0, at);
+      TEST_ASSERT_TRUE(a != screens::RoamAntic::None);
+      TEST_ASSERT_TRUE(a != prev);
+      if (run == 0) first[c] = a;
+      TEST_ASSERT_TRUE(first[c] == a);
+      seen[(c - 1) / screens::kAnticCount][(uint8_t)a]++;
+      prev = a;
+    }
+    for (int r = 0; r < 3; r++)
+      for (int a = 1; a <= screens::kAnticCount; a++) TEST_ASSERT_EQUAL_UINT8(1, seen[r][a]);
+  }
+  TEST_ASSERT_TRUE(screens::roamAntic(1000, nullptr) == screens::RoamAntic::None);  // first cycle: calm
+  for (uint32_t c = 1; c <= screens::kAnticCount; c++) {
+    const uint32_t t0 = c * screens::kAnticEveryMs;
+    const screens::RoamAntic a = screens::roamAntic(t0, nullptr);
+    const uint32_t len = screens::anticLength(a);
+    TEST_ASSERT_EQUAL_UINT32(screens::anticOnSign(a) ? screens::kAnticMs : screens::kAnticFloorMs, len);
+    TEST_ASSERT_TRUE(screens::roamAntic(t0 + len - 1, nullptr) == a);
+    TEST_ASSERT_TRUE(screens::roamAntic(t0 + len, nullptr) == screens::RoamAntic::None);
+  }
+  // The nine with the sign in its paws
+  int held = 0;
+  for (int a = 1; a <= screens::kAnticCount; a++) held += screens::anticOnSign((screens::RoamAntic)a);
+  TEST_ASSERT_EQUAL_INT(9, held);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_pet_antics_order);
   RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);
   RUN_TEST(test_overview_attention_content);

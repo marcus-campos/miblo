@@ -154,8 +154,12 @@ DeskMood deskMoodFor(const miblo::Snapshot& s, uint32_t nowEpoch, bool* focusLef
 // how long ago), so nothing stays on the same pixels. `ms`: time in the mode. `note`: a line
 // that replaces the last task for a while ("Hi, Nina!", "Napping with Nina"). `lookMs`: the
 // expression's clock when it must differ from `ms` (napping in step with a friend).
+// `computerAway`: the computer is not connected; a small crossed-out laptop sits in the sign's
+// top-right corner.
 void roam(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood,
-          const char* note = nullptr, uint32_t lookMs = UINT32_MAX);
+          const char* note = nullptr, uint32_t lookMs = UINT32_MAX, bool computerAway = false);
+// Where roam() draws the crossed-out laptop for a pet centred at (cx, cy): its box.
+void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h);
 // A visit between two Miblos in pet mode (miblo_friends.h). Visitor: our mascot walks off to the
 // right, the screen says who it is visiting, and it walks back in. Host: the friend's mascot (in
 // its own colours) walks in from the left, they play, and it leaves. The limits stay at the bottom.

@@ -458,7 +458,7 @@ void loop() {
         snprintf(note, sizeof(note), screens::t(lang, S::FriendNap), buddy);
         if (clk.valid) lookMs = (clk.epoch % 86400) * 1000;
       }
-      screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood, note, lookMs);
+      screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood, note, lookMs, away);
       break;
     }
     case ScreenId::Visit:

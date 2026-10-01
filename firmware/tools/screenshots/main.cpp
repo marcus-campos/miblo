@@ -365,6 +365,9 @@ void renderAll(Lang L) {
     Shot b;
     screens::roam(L, snap, clk, 20000, screens::DeskMood::Asleep, note);
     save(b, "43-pet-nap-together");
+    Shot d;
+    screens::roam(L, snap, clk, 20000, screens::DeskMood::Searching, nullptr, UINT32_MAX, true);
+    save(d, "43-pet-computer-away");
     usage(34, 21);
     miblo::VisitView v;
     strcpy(v.name, "Nina");

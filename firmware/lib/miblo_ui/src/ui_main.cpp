@@ -814,8 +814,19 @@ constexpr uint16_t kSignFill = 0x2125;  // #26262c
 constexpr uint16_t kSignEdge = 0x5ACC;  // #5a5a66
 constexpr uint16_t kCoffeeBrown = 0x6A20;
 
+// The crossed-out laptop (computer away), in the sign's top-right corner, beside the cat's paws.
+constexpr int kAwayIconW = 22, kAwayIconH = 15;
+
+void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h) {
+  const int top = cy - roamH() / 2;
+  const int sy = top + Y(kRoamMargin) + 2 * Sz(kRoamCatHalf) - Sz(10);  // the sign's top edge
+  w = Sz(kAwayIconW), h = Sz(kAwayIconH);
+  x = cx + roamW() / 2 - X(kRoamMargin) - Sz(8) - w;
+  y = sy + Sz(6);
+}
+
 void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
-          uint32_t lookMs) {
+          uint32_t lookMs, bool computerAway) {
   int cx, cy;
   roamPosition(ms, cx, cy);
   MascotLook k = deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs);
@@ -913,6 +924,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   h = hashInt(h, mascotAccessory());
   h = hashInt(hashInt(h, (uint32_t)(signDx + 16) | (uint32_t)blot << 8 | (uint32_t)drops << 9),
               (uint32_t)((curX + 1) * 1000 + curY));
+  h = hashInt(h, computerAway);
   if (!dirty(R_BODY, h)) return;
   static int lastX = -1000, lastY = -1000;
   if (abs(cx - lastX) > X(kRoamMargin) || abs(cy - lastY) > Y(kRoamMargin)) C().clear(color::BG);
@@ -940,6 +952,22 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
       C().fillCircle(cx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
     }
     for (int i = 0; i < drops; i++) C().fillCircle(cx + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
+    if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
+      int ix, iy, iw, ih;
+      roamAwayIcon(cx, cy, ix, iy, iw, ih);
+      ix += signDx;
+      const int t1 = Sz(1) > 0 ? Sz(1) : 1;
+      const int lw = iw - Sz(4), lh = ih - Sz(4), lx = ix + Sz(2);  // the lid, above the base
+      C().fillRect(lx, iy, lw, t1, color::DIM);
+      C().fillRect(lx, iy + lh - t1, lw, t1, color::DIM);
+      C().fillRect(lx, iy, t1, lh, color::DIM);
+      C().fillRect(lx + lw - t1, iy, t1, lh, color::DIM);
+      C().fillRect(ix, iy + lh + t1, iw, Sz(2), color::DIM);  // the base
+      // The slash, set off from the outline by a gap in the sign's colour.
+      const int inset = Sz(3);
+      C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
+      C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(2), color::AMBER, kSignFill);
+    }
     if (curX >= 0) {  // the mouse cursor: a white arrow
       const int ax = sx + Sz(10) + (sw - Sz(24)) * curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * curY / 100;
       C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);

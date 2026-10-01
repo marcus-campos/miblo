@@ -978,6 +978,27 @@ static void test_pet_mode_card_and_path() {
   TEST_ASSERT_TRUE(x0 != x1 || y0 != y1);
 }
 
+// Pet mode with the computer away: a crossed-out laptop sits on the sign, only then, and inside
+// the screen all along the path.
+static void test_pet_mode_shows_computer_away() {
+  int cx, cy, ix, iy, iw, ih;
+  screens::roamPosition(0, cx, cy);
+  screens::roamAwayIcon(cx, cy, ix, iy, iw, ih);
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Searching);
+  const int plain = fc.colorAt(ix + iw / 2, iy);  // the top of the laptop's lid
+  TEST_ASSERT_NOT_EQUAL(ui::color::DIM, plain);
+  screens::reset();
+  screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Searching, nullptr, UINT32_MAX, true);
+  TEST_ASSERT_EQUAL_INT(ui::color::DIM, fc.colorAt(ix + iw / 2, iy));
+  for (uint32_t ms = 0; ms < 400000; ms += 997)
+    screens::roam(Lang::En, snap, testClock(), ms, screens::DeskMood::Searching, nullptr, UINT32_MAX, true);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
 static void test_update_available_screen() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
@@ -1014,6 +1035,7 @@ int main() {
   RUN_TEST(test_burn_rate_lines);
   RUN_TEST(test_limit_reset_and_summary_content);
   RUN_TEST(test_pet_mode_card_and_path);
+  RUN_TEST(test_pet_mode_shows_computer_away);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

@@ -37,6 +37,21 @@ constexpr uint8_t kRows = 3;
 
 static const char* const kDot = " \xC2\xB7 ";  // " · "
 
+// Shapes at (x + Sz(dx), y + Sz(dy)) in 240-grid units, out of line: each one costs a call rather
+// than its own scaling code. (Sz is odd, Sz(-v) == -Sz(v), so x - Sz(v) is x + Sz(-v).)
+__attribute__((noinline)) static void szRect(int x, int y, int dx, int dy, int w, int h, uint16_t c) {
+  C().fillRect(x + Sz(dx), y + Sz(dy), Sz(w), Sz(h), c);
+}
+__attribute__((noinline)) static void szRound(int x, int y, int dx, int dy, int w, int h, int r, uint16_t c) {
+  C().fillRoundRect(x + Sz(dx), y + Sz(dy), Sz(w), Sz(h), Sz(r), c);
+}
+__attribute__((noinline)) static void szDisc(int x, int y, int dx, int dy, int r, uint16_t c) {
+  C().fillCircle(x + Sz(dx), y + Sz(dy), Sz(r), c);
+}
+__attribute__((noinline)) static void szTri(int x, int y, int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+  C().fillTriangle(x + Sz(x0), y + Sz(y0), x + Sz(x1), y + Sz(y1), x + Sz(x2), y + Sz(y2), c);
+}
+
 static uint16_t levelColor(uint8_t pct, uint16_t base) {
   if (pct >= 95) return color::RED;
   if (pct >= 80) return color::AMBER;
@@ -833,43 +848,43 @@ static void drawProp(const Prop& p) {
   const int x = p.x, y = p.y, u = Sz(1) < 1 ? 1 : Sz(1);
   switch (p.kind) {
     case PropKind::Duck:  // rubber duck (centre of the body)
-      C().fillCircle(x, y, Sz(6), kDuckYellow);
-      C().fillCircle(x + Sz(5), y - Sz(6), Sz(4), kDuckYellow);
-      C().fillTriangle(x + Sz(8), y - Sz(7), x + Sz(13), y - Sz(5), x + Sz(8), y - Sz(4), kOrange);
+      szDisc(x, y, 0, 0, 6, kDuckYellow);
+      szDisc(x, y, 5, -6, 4, kDuckYellow);
+      szTri(x, y, 8, -7, 13, -5, 8, -4, kOrange);
       C().fillRect(x + Sz(6), y - Sz(8), u + u, u + u, color::PUPIL);
       break;
     case PropKind::Laptop:  // (centre of the keyboard) with code scrolling on the screen
-      C().fillRect(x - Sz(15), y, Sz(30), Sz(3), kGrey);
-      C().fillRect(x - Sz(12), y - Sz(17), Sz(24), Sz(17), kGrey);
-      C().fillRect(x - Sz(11), y - Sz(16), Sz(22), Sz(15), color::BLACK);
+      szRect(x, y, -15, 0, 30, 3, kGrey);
+      szRect(x, y, -12, -17, 24, 17, kGrey);
+      szRect(x, y, -11, -16, 22, 15, color::BLACK);
       for (int i = 0; i < 4; i++) {
         const int len = 4 + (p.f * 5 + i * 7) % 13;
         C().fillRect(x - Sz(9) + (i % 2) * Sz(3), y - Sz(14) + i * Sz(3), Sz(len), u, i % 3 ? color::GREEN : color::BLUE);
       }
       break;
     case PropKind::Lgtm:  // code review sign (top-left corner)
-      C().fillRoundRect(x, y, Sz(44), Sz(16), Sz(3), color::WHITE);
+      szRound(x, y, 0, 0, 44, 16, 3, color::WHITE);
       C().text(x + Sz(22), y + Sz(12), "LGTM", Font::SmallBold, kDarkGreen, Align::Center, Sz(42));
       break;
     case PropKind::Bug:  // a little bug (centre of the body), legs going
       for (int s = -1; s <= 1; s += 2) {
         for (int l = -1; l <= 1; l++) C().fillRect(x + l * Sz(2), y + s * Sz(3) + (p.f % 2 ? s : 0), u, Sz(2), color::PUPIL);
       }
-      C().fillCircle(x, y, Sz(3), color::RED);
-      C().fillCircle(x + Sz(3), y, Sz(2), color::PUPIL);
+      szDisc(x, y, 0, 0, 3, color::RED);
+      szDisc(x, y, 3, 0, 2, color::PUPIL);
       break;
     case PropKind::Rocket:  // (tip of the nose), flame when f > 0
-      C().fillTriangle(x, y, x - Sz(4), y + Sz(6), x + Sz(4), y + Sz(6), color::RED);
-      C().fillRect(x - Sz(4), y + Sz(6), Sz(8), Sz(12), color::WHITE);
-      C().fillCircle(x, y + Sz(10), Sz(2), color::BLUE);
-      C().fillTriangle(x - Sz(4), y + Sz(12), x - Sz(8), y + Sz(19), x - Sz(4), y + Sz(18), color::RED);
-      C().fillTriangle(x + Sz(4), y + Sz(12), x + Sz(8), y + Sz(19), x + Sz(4), y + Sz(18), color::RED);
-      if (p.f) C().fillTriangle(x - Sz(3), y + Sz(18), x + Sz(3), y + Sz(18), x, y + Sz(21 + (p.f % 2) * 3), color::AMBER);
+      szTri(x, y, 0, 0, -4, 6, 4, 6, color::RED);
+      szRect(x, y, -4, 6, 8, 12, color::WHITE);
+      szDisc(x, y, 0, 10, 2, color::BLUE);
+      szTri(x, y, -4, 12, -8, 19, -4, 18, color::RED);
+      szTri(x, y, 4, 12, 8, 19, 4, 18, color::RED);
+      if (p.f) szTri(x, y, -3, 18, 3, 18, 0, (21 + (p.f % 2) * 3), color::AMBER);
       break;
     case PropKind::Burst:  // the bug is fixed: a spark
       C().fillRect(x - Sz(6), y - u, Sz(12), u + u, color::AMBER);
       C().fillRect(x - u, y - Sz(6), u + u, Sz(12), color::AMBER);
-      C().fillCircle(x, y, Sz(2), color::WHITE);
+      szDisc(x, y, 0, 0, 2, color::WHITE);
       break;
     case PropKind::Tail: {  // (its base) a curl in the cat's colour, swinging with f
       const int sw = (int)(p.f % 8 < 4 ? p.f % 8 : 8 - p.f % 8) - 2;  // -2..2
@@ -878,10 +893,10 @@ static void drawProp(const Prop& p) {
       break;
     }
     case PropKind::Fly:  // (body) wings flicker with f; grey, so it shows on the black background
-      C().fillCircle(x, y, Sz(2), color::DIM);
+      szDisc(x, y, 0, 0, 2, color::DIM);
       if (p.f % 2) {
-        C().fillCircle(x - Sz(2), y - Sz(3), Sz(2), color::TEXT);
-        C().fillCircle(x + Sz(2), y - Sz(3), Sz(2), color::TEXT);
+        szDisc(x, y, -2, -3, 2, color::TEXT);
+        szDisc(x, y, 2, -3, 2, color::TEXT);
       }
       break;
     case PropKind::Yarn:  // (centre of the ball) rolling lines; x2: where its thread starts
@@ -889,28 +904,28 @@ static void drawProp(const Prop& p) {
         const int a = p.x2 < x ? p.x2 : x, b = p.x2 < x ? x : p.x2;
         C().fillRect(a, y + Sz(6), b - a, u, kYarnDark);
       }
-      C().fillCircle(x, y, Sz(8), color::VIOLET);
+      szDisc(x, y, 0, 0, 8, color::VIOLET);
       for (int i = -1; i <= 1; i++) C().fillRect(x - Sz(6), y + i * Sz(3) + (int)(p.f % 3) - 1, Sz(12), u, kYarnDark);
       break;
     case PropKind::Mug:  // (centre) a blue mug of coffee
-      C().fillRect(x - Sz(6), y - Sz(7), Sz(12), Sz(14), color::BLUE);
-      C().fillCircle(x + Sz(8), y, Sz(4), color::BLUE);
-      C().fillCircle(x + Sz(8), y, Sz(2), color::BG);
-      C().fillRect(x - Sz(5), y - Sz(6), Sz(10), Sz(2), kCoffeeBrown);
+      szRect(x, y, -6, -7, 12, 14, color::BLUE);
+      szDisc(x, y, 8, 0, 4, color::BLUE);
+      szDisc(x, y, 8, 0, 2, color::BG);
+      szRect(x, y, -5, -6, 10, 2, kCoffeeBrown);
       break;
     case PropKind::Box:  // (centre of the front) open cardboard box, flaps out
-      C().fillRect(x - Sz(32), y - Sz(14), Sz(64), Sz(28), kBoxBrown);
-      C().fillTriangle(x - Sz(32), y - Sz(14), x - Sz(40), y - Sz(22), x - Sz(14), y - Sz(14), kBoxDark);
-      C().fillTriangle(x + Sz(32), y - Sz(14), x + Sz(40), y - Sz(22), x + Sz(14), y - Sz(14), kBoxDark);
+      szRect(x, y, -32, -14, 64, 28, kBoxBrown);
+      szTri(x, y, -32, -14, -40, -22, -14, -14, kBoxDark);
+      szTri(x, y, 32, -14, 40, -22, 14, -14, kBoxDark);
       C().fillRect(x - Sz(32), y - Sz(14), Sz(64), u + u, kBoxDark);
       break;
     case PropKind::Keys:  // (centre) a little piano keyboard
-      C().fillRect(x - Sz(30), y - Sz(7), Sz(60), Sz(14), color::WHITE);
+      szRect(x, y, -30, -7, 60, 14, color::WHITE);
       for (int i = 0; i < 9; i++)
         if (i % 3 != 2) C().fillRect(x - Sz(26) + i * Sz(6), y - Sz(7), Sz(4), Sz(8), color::BLACK);
       break;
     case PropKind::Note:  // (the note's head) an eighth note
-      C().fillCircle(x, y, Sz(3), color::AMBER);
+      szDisc(x, y, 0, 0, 3, color::AMBER);
       C().fillRect(x + Sz(2), y - Sz(10), u + u, Sz(10), color::AMBER);
       C().fillRect(x + Sz(2), y - Sz(10), Sz(5), u + u, color::AMBER);
       break;
@@ -925,8 +940,8 @@ static void drawProp(const Prop& p) {
       for (int i = 0; i < 2; i++)  // a faint rim: they show on the black background too
         C().fillRoundRect(x + Sz(i ? 3 : -19) - u, y - Sz(5) - u, Sz(16) + u + u, Sz(10) + u + u, Sz(3) + u,
                           color::FAINT);
-      C().fillRoundRect(x - Sz(19), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
-      C().fillRoundRect(x + Sz(3), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
+      szRound(x, y, -19, -5, 16, 10, 3, color::BLACK);
+      szRound(x, y, 3, -5, 16, 10, 3, color::BLACK);
       C().fillRect(x - Sz(3), y - Sz(3), Sz(6), u + u, color::BLACK);
       C().fillRect(x - Sz(16), y - Sz(3), Sz(4), u + u, color::WHITE);
       break;
@@ -936,8 +951,8 @@ static void drawProp(const Prop& p) {
       break;
     case PropKind::Fish: {  // (centre) a fish snack; f = bites taken (3: only the tail is left)
       const uint8_t bites = p.f > 3 ? 3 : p.f;
-      C().fillTriangle(x + Sz(8), y, x + Sz(14), y - Sz(5), x + Sz(14), y + Sz(5), kFishBlue);
-      if (bites < 3) C().fillCircle(x, y, Sz(7 - 2 * bites), kFishBlue);
+      szTri(x, y, 8, 0, 14, -5, 14, 5, kFishBlue);
+      if (bites < 3) szDisc(x, y, 0, 0, 7 - 2 * bites, kFishBlue);
       if (bites == 0) C().fillCircle(x - Sz(4), y - Sz(1), u, color::PUPIL);
       break;
     }
@@ -952,48 +967,48 @@ static void drawProp(const Prop& p) {
     }
     case PropKind::Balloon:  // (centre) a red balloon on a string
       C().fillRect(x, y + Sz(12), u, Sz(16), color::MUTED);
-      C().fillCircle(x, y, Sz(11), color::RED);
-      C().fillTriangle(x - Sz(2), y + Sz(13), x + Sz(2), y + Sz(13), x, y + Sz(10), color::RED);
-      C().fillCircle(x - Sz(4), y - Sz(4), Sz(2), color::WHITE);
+      szDisc(x, y, 0, 0, 11, color::RED);
+      szTri(x, y, -2, 13, 2, 13, 0, 10, color::RED);
+      szDisc(x, y, -4, -4, 2, color::WHITE);
       break;
     case PropKind::Plane: {  // (nose) a paper plane; f 0: flying right, 1: flying left
       const int d = p.f ? 1 : -1;  // the tail is behind the nose
-      C().fillTriangle(x, y, x + d * Sz(18), y - Sz(7), x + d * Sz(12), y, color::WHITE);
-      C().fillTriangle(x, y, x + d * Sz(18), y + Sz(3), x + d * Sz(12), y, color::MUTED);
+      szTri(x, y, 0, 0, d * 18, -7, d * 12, 0, color::WHITE);
+      szTri(x, y, 0, 0, d * 18, 3, d * 12, 0, color::MUTED);
       break;
     }
     case PropKind::Bowl: {  // (centre of the water) a fish bowl; f moves the fish
-      C().fillCircle(x, y, Sz(14), kWater);
-      C().fillRect(x - Sz(14), y - Sz(14), Sz(28), Sz(6), color::BG);
+      szDisc(x, y, 0, 0, 14, kWater);
+      szRect(x, y, -14, -14, 28, 6, color::BG);
       C().fillRect(x - Sz(10), y - Sz(9), Sz(20), u, color::WHITE);
       const int fx = x - Sz(8) + (int)(p.f % 20 < 10 ? p.f % 20 : 20 - p.f % 20) * Sz(16) / 10;
-      C().fillCircle(fx, y + Sz(3), Sz(3), kOrange);
-      C().fillTriangle(fx - Sz(3), y + Sz(3), fx - Sz(6), y, fx - Sz(6), y + Sz(6), kOrange);
+      szDisc(fx, y, 0, 3, 3, kOrange);
+      szTri(fx, y, -3, 3, -6, 0, -6, 6, kOrange);
       break;
     }
     case PropKind::Button:  // (centre of the top) a big red button; f 1: pressed
-      C().fillRect(x - Sz(10), y + Sz(2), Sz(20), Sz(6), kGrey);
+      szRect(x, y, -10, 2, 20, 6, kGrey);
       C().fillRoundRect(x - Sz(7), y - (p.f ? 0 : Sz(3)), Sz(14), Sz(5) + (p.f ? 0 : Sz(3)), Sz(2), color::RED);
       break;
     case PropKind::Cucumber:  // (centre) standing up
-      C().fillRoundRect(x - Sz(6), y - Sz(16), Sz(12), Sz(32), Sz(6), kCucumber);
+      szRound(x, y, -6, -16, 12, 32, 6, kCucumber);
       for (int i = 0; i < 3; i++)
         C().fillRect(x - Sz(2) + (i % 2) * Sz(3), y - Sz(10) + i * Sz(8), u + u, u + u, kCucumberDark);
       break;
     case PropKind::Blanket:  // (centre of its top edge) a striped blanket
-      C().fillRoundRect(x - Sz(36), y, Sz(72), Sz(24), Sz(6), color::VIOLET);
+      szRound(x, y, -36, 0, 72, 24, 6, color::VIOLET);
       for (int i = 0; i < 3; i++) C().fillRect(x - Sz(36), y + Sz(5) + i * Sz(7), Sz(72), u + u, kYarnDark);
       break;
     case PropKind::Laser:  // (centre) a laser dot with its glow
-      C().fillCircle(x, y, Sz(4), kLaserGlow);
-      C().fillCircle(x, y, Sz(2), color::RED);
+      szDisc(x, y, 0, 0, 4, kLaserGlow);
+      szDisc(x, y, 0, 0, 2, color::RED);
       break;
     case PropKind::Dots:  // (left dot) "..." while talking; f = how many (1..3)
       for (int i = 0; i < p.f && i < 3; i++) C().fillCircle(x + i * Sz(6), y, Sz(2), color::WHITE);
       break;
     case PropKind::Drop:  // (centre) a splash of water
-      C().fillCircle(x, y, Sz(2), kWater);
-      C().fillTriangle(x - Sz(2), y, x + Sz(2), y, x, y - Sz(4), kWater);
+      szDisc(x, y, 0, 0, 2, kWater);
+      szTri(x, y, -2, 0, 2, 0, 0, -4, kWater);
       break;
     case PropKind::None:
     case PropKind::Count: break;
@@ -1546,10 +1561,10 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
   if (lastName[0]) C().text(tx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
   if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
   if (sc.blot) {  // a coffee stain across the top of the sign
-    C().fillCircle(tx - Sz(14), sy + Sz(9), Sz(6), kCoffeeBrown);
-    C().fillCircle(tx - Sz(3), sy + Sz(12), Sz(8), kCoffeeBrown);
-    C().fillCircle(tx + Sz(11), sy + Sz(8), Sz(5), kCoffeeBrown);
-    C().fillCircle(tx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
+    szDisc(tx, sy, -14, 9, 6, kCoffeeBrown);
+    szDisc(tx, sy, -3, 12, 8, kCoffeeBrown);
+    szDisc(tx, sy, 11, 8, 5, kCoffeeBrown);
+    szDisc(tx, sy, 22, 14, 2, kCoffeeBrown);
   }
   for (int i = 0; i < sc.drops; i++) C().fillCircle(sc.catX + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
   if (sc.stamp) drawProp(Prop{PropKind::Lgtm, sx + sw - Sz(50), sy + sh - Sz(22), 0, 0});
@@ -1570,8 +1585,8 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
   }
   if (sc.curX >= 0) {  // the mouse cursor: a white arrow, over the away icon
     const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
-    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
-    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
+    szTri(ax, ay, 0, 0, 0, 11, 8, 8, color::WHITE);
+    szRect(ax, ay, 3, 8, 2, 5, color::WHITE);
   }
 }
 

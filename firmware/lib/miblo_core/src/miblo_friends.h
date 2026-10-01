@@ -1,6 +1,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 // Miblos on the same network find each other and play while in pet mode (an easter egg): a
 // "hi" when another one shows up, visits (the mascot walks off one screen and into the other's),
@@ -38,6 +39,17 @@ constexpr uint32_t kVisitStayMs = 18000;
 constexpr uint32_t kVisitArriveMs = 2 * kVisitWalkMs;              // guest fully in on the host
 constexpr uint32_t kVisitPartMs = kVisitArriveMs + kVisitStayMs;   // guest starts to leave
 constexpr uint32_t kVisitMs = kVisitPartMs + 2 * kVisitWalkMs;      // visitor back home
+// Hardening against impostors and noisy senders on the network (any Miblo still plays with any
+// other; these only keep a misbehaving one from taking over).
+constexpr uint8_t kFriendRateMax = 8;             // packets per sender per kFriendRateWindowMs, the rest dropped
+constexpr uint32_t kFriendRateWindowMs = 1000;
+constexpr uint32_t kVisitStartGapMs = 3UL * 60000;  // one visit started per sender this often (demo: kVisitMs)
+constexpr uint32_t kWhoGapMs = kDemoNextVisitMs;  // a sender's "who is free?" answered at most this often
+constexpr uint8_t kGreetMax = 3;                  // "Hi, X!" at most this many times per window
+constexpr uint32_t kGreetWindowMs = 10UL * 60000;
+constexpr uint32_t kFriendProvenMs = kBeaconEveryMs / 2;  // heard over this long: a known friend
+constexpr uint32_t kEvictGapMs = 10000;           // a known friend makes room for a newcomer at most this often
+constexpr uint8_t kFriendOutMax = 6;  // outgoing packets queued (see FriendPlay::queue)
 
 enum : uint8_t { kFriendRoaming = 1, kFriendNapping = 2, kFriendTired = 4, kFriendBusy = 8 };
 // What a visit is about (chosen by the visitor at random, a coffee more likely for a tired friend):
@@ -132,7 +144,9 @@ class FriendPlay {
   // forgotten and nothing is sent). `flags`: kFriendRoaming | kFriendNapping | kFriendTired.
   // `rnd`: any random number (timing and choice of friend).
   void update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rnd);
-  void receive(const FriendPacket& p, uint32_t nowMs);
+  // `fromIp`: the sender's address. An id stays bound to the first address it was heard from
+  // until that friend is forgotten (0: unknown, only in tests).
+  void receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp = 0);
   // The next packet to send, if any.
   bool nextPacket(FriendPacket& out);
   // Demo (/miblo:demo) until `untilMs`: friends are greeted again, the first visit comes within
@@ -148,6 +162,12 @@ class FriendPlay {
   uint8_t count() const;
 #ifdef PIO_UNIT_TESTING
   Gift chooseGiftForTest(bool tired, uint32_t rnd) const { return chooseGift(tired, rnd); }
+  bool knows(const char* id) const {
+    for (const Friend& f : friends_) {
+      if (f.used && strcmp(f.id, id) == 0) return true;
+    }
+    return false;
+  }
 #endif
 
  private:
@@ -161,10 +181,38 @@ class FriendPlay {
     bool greeted = false;
     uint32_t greetedMs = 0;
     uint8_t lastRole = 0;  // our role in the last visit with this friend: 0 none, 1 visitor, 2 host
+    // Hardening (see kFriendRateMax and below).
+    uint8_t marks = 0;     // kMark*
+    uint8_t rateN = 0;     // packets in the current rate window
+    uint32_t ip = 0;       // the address this id is bound to
+    uint32_t firstMs = 0;  // first heard
+    uint32_t rateMs = 0;   // the current rate window began
+    uint32_t startedMs = 0;  // the last visit it started with us (kMarkStarted)
+    uint32_t whoMs = 0;      // its last "who is free?" we answered (kMarkAnswered)
   };
+  // kMarkHeard: counted in heard_ this beacon period. kMarkHomed: sent a refusal this rate window.
+  enum : uint8_t { kMarkStarted = 1, kMarkAnswered = 2, kMarkHeard = 4, kMarkHomed = 8 };
   Friend* find(const char* id);
-  Friend* remember(const FriendPacket& p, uint32_t nowMs);
-  void queue(FriendPacket::Type type, const char* to, Gift gift);
+  // A new friend gets a free slot, or one a newcomer can take; nullptr when none can be spared.
+  Friend* admit(const char* id, uint32_t ip, uint32_t nowMs);
+  bool inUse(const char* id) const;  // the visit, the group or a reservation needs this friend
+  bool mayStart(const Friend& f, uint32_t nowMs);
+  static void noteStart(Friend& f, uint32_t nowMs) {
+    f.marks |= kMarkStarted;
+    f.startedMs = nowMs;
+  }
+  bool invited(const char* id) const;
+  // An outgoing packet, without what nextPacket() fills in (our id, name and mascot).
+  struct Out {
+    FriendPacket::Type type;
+    uint8_t flags;
+    Gift gift;
+    uint8_t chance;
+    char to[16];
+    char host[16];
+  };
+  // Queues a packet; nullptr when the queue is full (the packet is lost: never write to the last one).
+  Out* queue(FriendPacket::Type type, const char* to, Gift gift);
   void startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs);
   void endVisit(uint32_t nowMs);
   void scheduleVisit(uint32_t nowMs, uint32_t minMs, uint32_t spanMs);
@@ -189,7 +237,9 @@ class FriendPlay {
   bool enabled_ = false;
   uint32_t rnd_ = 0;
   // outgoing
-  FriendPacket out_[3];
+  // Room for the most queued between two sends: a beacon plus a group of 4 organised with another
+  // host (Host, VisitOk and 2 Invites) is 5; the 6th slot is never taken by a reply to a stranger.
+  Out out_[kFriendOutMax];
   uint8_t outN_ = 0;
   bool announce_ = true;
   bool beaconed_ = false;
@@ -215,6 +265,11 @@ class FriendPlay {
   uint8_t groupSize_ = 0;
   char members_[kMaxGuests][16] = {};
   uint8_t membersN_ = 0;
+  // Hosting: the first invitedN_ of members_ are this visit's guests, the only ones let in. When
+  // the organiser is someone else (invitesFrom_), it is members_[0] and its Invites to others,
+  // overheard, add them.
+  uint8_t invitedN_ = 0;
+  bool invitesFrom_ = false;
   // Chosen as host: waiting for the guests' VisitOk (the visit starts on the first).
   bool awaiting_ = false;
   uint32_t anchorMs_ = 0;
@@ -232,7 +287,11 @@ class FriendPlay {
   uint16_t heard_ = 0;
   uint16_t heardLast_ = 0;
   uint32_t heardAtMs_ = 0;
+  uint32_t evictMs_ = 0;  // a known friend last made room for a newcomer
+  bool evicted_ = false;
   // greeting
+  uint32_t greetWinMs_ = 0;  // greetings in the current kGreetWindowMs window
+  uint8_t greetWinN_ = 0;
   char greetName_[64] = "";
   uint32_t greetMs_ = 0;
   bool greetOn_ = false;

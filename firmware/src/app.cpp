@@ -346,20 +346,8 @@ void loop() {
                               screen == ScreenId::UpdateAvailable;
   const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0));
   const bool petOn = petLatch.update(activity, idleMs, sinceSeen, ctx.cfg.petMin, now);
-  // TEMP diagnostics: what restarted the idle count last (removed before release).
-  static uint32_t prevIdleMs = 0;
-  if (prevIdleMs > 5000 && idleMs < prevIdleMs) {
-    ctx.diagResetScreen = (uint8_t)screen;
-    ctx.diagResetPrevSec = prevIdleMs / 1000;
-    ctx.diagResetAtMs = now;
-  }
-  prevIdleMs = idleMs;
   const bool pet = petOn || demo;
   if (pet) screen = ScreenId::Roam;
-  ctx.diagScreen = (uint8_t)screen;
-  ctx.diagIdleMs = idleMs;
-  ctx.diagRunning = (uint8_t)counts.running;
-  ctx.diagPending = (uint8_t)counts.pending;
   if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
 
   // Other Miblos on the network: what we tell them (in pet mode, napping, limits past 80%), and

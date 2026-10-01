@@ -846,11 +846,11 @@ static void drawProp(const Prop& p) {
       C().fillCircle(x + sw * Sz(6) + (sw >= 0 ? Sz(3) : -Sz(3)), y - Sz(22), Sz(3), mascotSkin());
       break;
     }
-    case PropKind::Fly:  // (body) wings flicker with f
-      C().fillCircle(x, y, Sz(2), color::PUPIL);
+    case PropKind::Fly:  // (body) wings flicker with f; grey, so it shows on the black background
+      C().fillCircle(x, y, Sz(2), color::DIM);
       if (p.f % 2) {
-        C().fillCircle(x - Sz(2), y - Sz(3), Sz(2), color::MUTED);
-        C().fillCircle(x + Sz(2), y - Sz(3), Sz(2), color::MUTED);
+        C().fillCircle(x - Sz(2), y - Sz(3), Sz(2), color::TEXT);
+        C().fillCircle(x + Sz(2), y - Sz(3), Sz(2), color::TEXT);
       }
       break;
     case PropKind::Yarn:  // (centre of the ball) rolling lines; x2: where its thread starts
@@ -891,14 +891,16 @@ static void drawProp(const Prop& p) {
       break;
     }
     case PropKind::Glasses:  // (between the lenses) sunglasses with a glint
+      for (int i = 0; i < 2; i++)  // a faint rim: they show on the black background too
+        C().fillRoundRect(x + Sz(i ? 3 : -19) - u, y - Sz(5) - u, Sz(16) + u + u, Sz(10) + u + u, Sz(3) + u,
+                          color::FAINT);
       C().fillRoundRect(x - Sz(19), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
       C().fillRoundRect(x + Sz(3), y - Sz(5), Sz(16), Sz(10), Sz(3), color::BLACK);
       C().fillRect(x - Sz(3), y - Sz(3), Sz(6), u + u, color::BLACK);
       C().fillRect(x - Sz(16), y - Sz(3), Sz(4), u + u, color::WHITE);
       break;
     case PropKind::Bubble:  // (centre) a soap bubble
-      C().fillCircle(x, y, Sz(6), kBubble);
-      C().fillCircle(x, y, Sz(5), color::BG);
+      C().arc(x, y, Sz(6), Sz(5), 0, 360, kBubble, color::BG);  // a ring: the face shows through
       C().fillCircle(x - Sz(2), y - Sz(2), u, color::WHITE);
       break;
     case PropKind::Fish: {  // (centre) a fish snack; f = bites taken (3: only the tail is left)
@@ -1202,10 +1204,17 @@ static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc) {
       sc.catBehind = true;
       int dy = 56, dx = 0;
       Eyes e = Eyes::Open;
+      // Slides up to peek out (16 px down) at 3000 on the left and at 6000 on the right, and back.
+      auto peek = [&](uint32_t t0, int side) {
+        if (at < t0 || at >= t0 + 1500) return;
+        const uint32_t t = at - t0;
+        dy = t < 400 ? 56 - (int)(t * 40 / 400) : t >= 1100 ? 16 + (int)((t - 1100) * 40 / 400) : 16;
+        dx = side * 30, e = Eyes::Wide;
+      };
       if (at < 1500) dy = (int)(at * 56 / 1500);
-      else if (at >= 3000 && at < 4500) dy = 16, dx = -14, e = Eyes::Wide;
-      else if (at >= 6000 && at < 7500) dy = 16, dx = 14, e = Eyes::Wide;
-      else if (at >= 7500) dy = (int)((kAnticMs - at) * 56 / 1500), e = Eyes::Happy;
+      peek(3000, -1);
+      peek(6000, 1);
+      if (at >= 7500) dy = (int)((kAnticMs - at) * 56 / 1500), e = Eyes::Happy;
       k = MascotLook{(int8_t)dx, (int8_t)dy, 0, 0, e, Paws::Down, 0};
       break;
     }
@@ -1314,7 +1323,7 @@ static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
         addProp(sc, PropKind::Mug, lerp(mx0, edge, p - 2000, 2000), my0);
         k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::ReachRight, 0};
       } else if (p < 5500) {
-        addProp(sc, PropKind::Mug, edge, lerp(my0, Y(240) - Sz(10), p - 4000, 1500));
+        addProp(sc, PropKind::Mug, edge, lerp(my0, Y(240) - Sz(12), p - 4000, 1500));
         k = MascotLook{0, 0, 3, 3, Eyes::Wide, Paws::Down, kMouthO};
       } else {
         k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
@@ -1334,7 +1343,8 @@ static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
       addProp(sc, PropKind::Keys, cx, cy + Sz(36));
       for (int i = 0; i < 3; i++) {
         const uint32_t ph = (p + (uint32_t)i * 700) % 2100;
-        addProp(sc, PropKind::Note, cx - Sz(40) + i * Sz(40), cy - Sz(8) - (int)(ph * (uint32_t)Sz(30) / 2100));
+        const int nx = i == 1 ? 44 : i ? -56 : -44;  // beside the head, never over its face
+        addProp(sc, PropKind::Note, cx + Sz(nx), cy + Sz(26) - (int)(ph * (uint32_t)Sz(56) / 2100));
       }
       k = MascotLook{0, 0, 0, 3, Eyes::Happy, (p / 250) % 2 ? Paws::TapLeft : Paws::TapRight, 0};
       break;

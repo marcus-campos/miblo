@@ -262,8 +262,8 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       paw(-46, -34, 16, 11, 5);
       paw(30, -34, 16, 11, 5);
       break;
-    case Paws::Lick:  // the left paw at the mouth
-      paw(-12, 16, 16, 11, 5);
+    case Paws::Lick:  // the left paw raised under the mouth, beside the tongue (over the mouth it read as a snout)
+      paw(-17, 20, 14, 17, 5);
       paw(10, 28, 16, 11, 5);
       break;
     case Paws::TapLeft:  // the left paw lifted (typing, playing keys)

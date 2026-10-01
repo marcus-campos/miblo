@@ -136,9 +136,9 @@ static const char kEn[] MIBLO_ROM =
     "Starts at\0"  // WebBlueFrom
     "Ends at\0"  // WebBlueTo
     "Strength\0"  // WebBlueLevel
-    "Light\0"  // WebBlueLight
+    "Low\0"  // WebBlueLight
     "Medium\0"  // WebBlueMedium
-    "Strong\0"  // WebBlueStrong
+    "High\0"  // WebBlueStrong
     "LIMIT FREED\0"  // LimitFreed
     "runs out in %s\0"  // RunsOutIn
     "TODAY\0"  // TodayTitle
@@ -1470,7 +1470,7 @@ static const char kDe[] MIBLO_ROM =
     "Blaulichtfilter\0"  // WebBlue
     "Aus\0"  // WebBlueOff
     "Immer\0"  // WebBlueAlways
-    "Zeitplan\0"  // WebBlueScheduled
+    "Nach Zeitplan\0"  // WebBlueScheduled
     "Beginnt um\0"  // WebBlueFrom
     "Endet um\0"  // WebBlueTo
     "Stärke\0"  // WebBlueLevel
@@ -1696,7 +1696,7 @@ static const char kRu[] MIBLO_ROM =
     "По расписанию\0"  // WebBlueScheduled
     "Начало\0"  // WebBlueFrom
     "Конец\0"  // WebBlueTo
-    "Сила\0"  // WebBlueLevel
+    "Интенсивность\0"  // WebBlueLevel
     "Слабая\0"  // WebBlueLight
     "Средняя\0"  // WebBlueMedium
     "Сильная\0"  // WebBlueStrong
@@ -1920,7 +1920,7 @@ static const char kZh[] MIBLO_ROM =
     "开始时间\0"  // WebBlueFrom
     "结束时间\0"  // WebBlueTo
     "强度\0"  // WebBlueLevel
-    "轻\0"  // WebBlueLight
+    "弱\0"  // WebBlueLight
     "中\0"  // WebBlueMedium
     "强\0"  // WebBlueStrong
     "额度已恢复\0"  // LimitFreed

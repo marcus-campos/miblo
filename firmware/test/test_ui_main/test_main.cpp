@@ -1073,7 +1073,8 @@ static void test_pet_antics_order() {
 }
 
 // Off the sign: the sign goes down on the floor with all its lines (and the away icon), the
-// whole screen is redrawn; back to a held sign, the screen is cleared first (no floor leftovers).
+// whole screen is redrawn; back to a held sign, the whole screen once more (no floor leftovers,
+// no blink). The computer away and Calm: what pet mode shows while nobody's computer is there.
 static void test_floor_sign_keeps_lines_and_icon() {
   uint32_t c = 1;
   while (screens::anticOnSign(screens::roamAntic(c * screens::kAnticEveryMs, nullptr))) c++;
@@ -1092,12 +1093,19 @@ static void test_floor_sign_keeps_lines_and_icon() {
     for (int x = 0; x < 240; x++) dimLid += fc.colorAt(x, y) == ui::color::DIM;
   TEST_ASSERT_TRUE(dimLid > 0);
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
-  const int fills = fc.panelFills;
+  // The held sign comes back without blinking: no clear straight on the panel, the whole screen
+  // recomposed in strips with the sign in its paws again.
+  fc.clearLog();
   screens::roam(Lang::En, snap, testClock(), (c + 1) * screens::kAnticEveryMs - 1, screens::DeskMood::Calm);
-  TEST_ASSERT_TRUE(fc.panelFills > fills);  // a full clear when the held sign comes back
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+  TEST_ASSERT_TRUE(fc.drew("14:32"));
+  // Nor on the held frames around it, the box moving a pixel at a time.
+  for (uint32_t step = 1; step <= 3; step++)
+    screens::roam(Lang::En, snap, testClock(), (c + 1) * screens::kAnticEveryMs - 1 - step * 420,
+                  screens::DeskMood::Calm);
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
 }
 
-// Not playful (a friend's note, or not calm): no antic, the sign stays in its paws.
 // Every prop stays within 70 px of its anchor at the 240 grid (the antics lay them out with that
 // much room from the screen edges).
 static void test_props_stay_near_their_anchor() {
@@ -1113,6 +1121,7 @@ static void test_props_stay_near_their_anchor() {
   TEST_ASSERT_EQUAL_INT(0, small.outOfBounds);
 }
 
+// Not playful (a friend's note, or not calm): no antic, the sign stays in its paws.
 static void test_pet_scene_quiet_when_not_playful() {
   uint32_t c = 1;
   while (screens::anticOnSign(screens::roamAntic(c * screens::kAnticEveryMs, nullptr))) c++;

@@ -592,7 +592,7 @@ struct Step {
   Gaze gaze;
   Eyes eyes;
   uint8_t paws;
-  uint8_t extras;
+  uint16_t extras;  // MascotLook::extras' flags (some past 8 bits)
 };
 constexpr Gaze F = Gaze::Front, FO = Gaze::Focus, OT = Gaze::Other, UP = Gaze::Up;
 constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy, HA = Eyes::Happy;
@@ -1549,11 +1549,6 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
     C().fillCircle(tx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
   }
   for (int i = 0; i < sc.drops; i++) C().fillCircle(sc.catX + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
-  if (sc.curX >= 0) {  // the mouse cursor: a white arrow
-    const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
-    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
-    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
-  }
   if (sc.stamp) drawProp(Prop{PropKind::Lgtm, sx + sw - Sz(50), sy + sh - Sz(22), 0, 0});
   if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
     int ix, iy, iw, ih;
@@ -1569,6 +1564,11 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
     const int inset = Sz(3);
     C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
     C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(2), color::AMBER, kSignFill);
+  }
+  if (sc.curX >= 0) {  // the mouse cursor: a white arrow, over the away icon
+    const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
+    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
+    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
   }
 }
 
@@ -1627,16 +1627,17 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     h = hashInt(hashInt(h, (uint32_t)p.kind | (uint32_t)p.f << 8), (uint32_t)(p.x * 1000 + p.y) ^ ((uint32_t)p.x2 << 20));
   }
   if (!dirty(R_BODY, h)) return;
-  // The held sign travels in a box around the cat (cleared as it moves); away from the sign the
-  // whole screen is redrawn. Switching between the two clears the screen.
-  const int bw = sc.floor ? X(240) : roamW(), bh = sc.floor ? Y(240) : roamH();
-  const int left = sc.floor ? 0 : sc.catX - bw / 2;
-  const int top = sc.floor ? 0 : sc.catY - Sz(kRoamCatHalf) - Y(kRoamMargin);
+  // The held sign travels in a box around the cat (cleared as it moves); away from the sign, and on
+  // the first held frame after it (the hash has the floor bit, so that frame is dirty), the whole
+  // screen is recomposed in strips: no clear straight on the panel, no blink.
   static int lastX = -1000, lastY = -1000;
   static bool wasFloor = false;
-  if (sc.floor != wasFloor || (!sc.floor && (abs(left - lastX) > X(kRoamMargin) || abs(top - lastY) > Y(kRoamMargin))))
-    C().clear(color::BG);
-  lastX = left, lastY = top, wasFloor = sc.floor;
+  const bool full = sc.floor || wasFloor;
+  const int heldLeft = sc.catX - roamW() / 2, heldTop = sc.catY - Sz(kRoamCatHalf) - Y(kRoamMargin);
+  const int bw = full ? X(240) : roamW(), bh = full ? Y(240) : roamH();
+  const int left = full ? 0 : heldLeft, top = full ? 0 : heldTop;
+  if (!full && (abs(left - lastX) > X(kRoamMargin) || abs(top - lastY) > Y(kRoamMargin))) C().clear(color::BG);
+  lastX = heldLeft, lastY = heldTop, wasFloor = sc.floor;  // the held box's spot, even on a full frame
   auto draw = [&] {
     C().fillRect(left, top, bw, bh, color::BG);
     if (sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);

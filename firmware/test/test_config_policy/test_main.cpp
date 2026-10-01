@@ -621,6 +621,48 @@ static void test_mascot_style_config() {
 // Screen care: the pixel shift goes round 9 distinct positions within 2 px; after a long idle the
 // mascot wanders (pet mode, after petMin minutes) and after sleepMin minutes the panel sleeps
 // (0 = never); a page view or a code request keeps the normal screens up.
+// Pet mode latches after petMin idle minutes and holds until real activity; the panel turns off
+// (afterMin - petMin) minutes into it, afterMin being sleepMin, or petMin + 15 when sleepMin is
+// not later than petMin.
+static void test_pet_latch() {
+  const uint32_t never = UINT32_MAX, min = 60000, t0 = 1000;
+  PetLatch p;
+  TEST_ASSERT_FALSE(p.update(false, 15 * min - 1, never, 15, t0));
+  TEST_ASSERT_FALSE(p.asleep(60, 15, t0 + 120 * min));
+  TEST_ASSERT_TRUE(p.update(false, 15 * min, never, 15, t0));
+  // a LimitReset celebration, an update notice, the computer flapping: the idle count restarts,
+  // pet mode stays and so does its sleep count
+  TEST_ASSERT_TRUE(p.update(false, 0, never, 15, t0 + 10 * min));
+  TEST_ASSERT_TRUE(p.update(false, 1000, never, 15, t0 + 20 * min));
+  TEST_ASSERT_FALSE(p.asleep(60, 15, t0 + 45 * min - 1));
+  TEST_ASSERT_TRUE(p.asleep(60, 15, t0 + 45 * min));
+  TEST_ASSERT_FALSE(p.asleep(0, 15, t0 + 1000 * min));  // 0 = never
+  // never before pet mode has had its turn: 15 more minutes when sleepMin <= petMin
+  TEST_ASSERT_FALSE(p.asleep(15, 15, t0 + 15 * min - 1));
+  TEST_ASSERT_TRUE(p.asleep(15, 15, t0 + 15 * min));
+  TEST_ASSERT_FALSE(p.asleep(30, 60, t0 + 15 * min - 1));
+  TEST_ASSERT_TRUE(p.asleep(30, 60, t0 + 15 * min));
+  // real activity (a session, an alert, setup) ends it and wakes the panel
+  TEST_ASSERT_FALSE(p.update(true, 0, never, 15, t0 + 50 * min));
+  TEST_ASSERT_FALSE(p.asleep(60, 15, t0 + 50 * min));
+  TEST_ASSERT_FALSE(p.update(false, 0, never, 15, t0 + 51 * min));  // quiet again: counts afresh
+  // latched again later: the sleep count starts from then
+  TEST_ASSERT_TRUE(p.update(false, 15 * min, never, 15, t0 + 66 * min));
+  TEST_ASSERT_FALSE(p.asleep(60, 15, t0 + 111 * min - 1));
+  TEST_ASSERT_TRUE(p.asleep(60, 15, t0 + 111 * min));
+  // someone at the gadget ends it too, even on an idle screen
+  TEST_ASSERT_FALSE(p.update(false, 200 * min, kInteractionAwakeMs - 1, 15, t0 + 120 * min));
+  TEST_ASSERT_FALSE(p.asleep(60, 15, t0 + 500 * min));
+
+  // safe across millis() wrap
+  PetLatch w;
+  const uint32_t late = UINT32_MAX - 10 * min;
+  TEST_ASSERT_TRUE(w.update(false, 15 * min, never, 15, late));
+  TEST_ASSERT_TRUE(w.update(false, 0, never, 15, late + 20 * min));
+  TEST_ASSERT_FALSE(w.asleep(60, 15, late + 45 * min - 1));
+  TEST_ASSERT_TRUE(w.asleep(60, 15, late + 45 * min));
+}
+
 static void test_screen_care() {
   bool seen[5][5] = {};
   for (uint8_t i = 0; i < kShiftSteps; i++) {
@@ -643,18 +685,6 @@ static void test_screen_care() {
   TEST_ASSERT_TRUE(petMode(60000, never, 1));
   TEST_ASSERT_FALSE(petMode(5 * 60000, kInteractionAwakeMs - 1, 5));
   TEST_ASSERT_FALSE(petMode(0, never, 1));  // in use
-  // panel off after sleepMin minutes of idle; 0 = never
-  TEST_ASSERT_FALSE(screenAsleep(60 * 60000 - 1, never, 60, 15));
-  TEST_ASSERT_TRUE(screenAsleep(60 * 60000, never, 60, 15));
-  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, kInteractionAwakeMs - 1, 60, 15));
-  TEST_ASSERT_FALSE(screenAsleep(never, never, 0, 15));
-  TEST_ASSERT_FALSE(screenAsleep(0, never, 15, 1));
-  // never before pet mode: a screen-off delay not later than the pet delay waits petMin + 15 min
-  TEST_ASSERT_FALSE(screenAsleep(15 * 60000, never, 15, 15));
-  TEST_ASSERT_FALSE(screenAsleep(30 * 60000 - 1, never, 15, 15));
-  TEST_ASSERT_TRUE(screenAsleep(30 * 60000, never, 15, 15));
-  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, never, 30, 60));
-  TEST_ASSERT_TRUE(screenAsleep(75 * 60000, never, 30, 60));
 
   QuietClock q;
   TEST_ASSERT_EQUAL_UINT32(0, q.quietMs(5000));
@@ -787,6 +817,7 @@ int main() {
   RUN_TEST(test_night_mode_config_and_brightness);
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
+  RUN_TEST(test_pet_latch);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);
   RUN_TEST(test_flash_blinks);

@@ -383,6 +383,11 @@ static const char kSetJs[] PROGMEM =
     "const p2=n=>String(n).padStart(2,'0');"
     "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
     "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
+    // A delay set through the API that the page doesn't offer (sleepMin 45, petMin 3) shows as the
+    // nearest option (the longer one on a tie; "never" only for 0), never as a blank select.
+    "for(const k of['petMin','sleepMin']){if(!(k in C))continue;const e=$(k),v=Number(C[k]);let b=null;"
+    "for(const o of e.options){const n=Number(o.value);if((n===0)!==(v===0))continue;"
+    "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}"
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
@@ -405,7 +410,8 @@ static const char kSetJs[] PROGMEM =
     // delay are offered (a stale choice moves to the next longer one).
     "function pd(){const p=Number($('petMin').value),s=$('sleepMin');"
     "for(const o of s.options)o.disabled=o.value!=='0'&&Number(o.value)<=p;"
-    "if(s.selectedOptions[0].disabled)s.value=[...s.options].find(o=>!o.disabled&&o.value!=='0')?.value||'0';}"
+    "const c=s.selectedOptions[0];"
+    "if(!c||c.disabled)s.value=[...s.options].find(o=>!o.disabled&&o.value!=='0')?.value||'0';}"
     "$('petMin').addEventListener('change',pd);"
     "dep();rv();pd();"
     "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"

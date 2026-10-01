@@ -53,21 +53,13 @@ struct Context {
   char pairedHost[33] = "";
   bool showPairCode = false;
   uint32_t pairCodeAtMs = 0;
-  uint32_t lastInteractionMs = 0;
+  uint32_t lastInteractionMs = 0;  // someone opened one of the gadget's pages (keeps the screen on)
   // /miblo:demo: pet mode right away (and quick visits) until demoUntilMs; demoKick = just asked.
   bool demo = false;
   bool demoKick = false;
-  uint32_t demoUntilMs = 0;  // someone opened one of the gadget's pages (keeps the screen on)
+  uint32_t demoUntilMs = 0;
   bool updating = false;
   uint8_t updatePct = 0;
-  // What the last frame decided (GET /api/info, for field reports like "pet mode never starts").
-  uint8_t diagScreen = 0;    // miblo::ScreenId
-  uint32_t diagIdleMs = 0;   // how long nobody has been using it (0 = in use)
-  uint8_t diagRunning = 0;   // sessions running in the last snapshot
-  uint8_t diagPending = 0;   // sessions waiting on the user
-  uint8_t diagResetScreen = 255;  // TEMP: the screen when the idle count last restarted
-  uint32_t diagResetPrevSec = 0;  // TEMP: how long it had been idle then
-  uint32_t diagResetAtMs = 0;     // TEMP: when
 };
 
 extern Context ctx;

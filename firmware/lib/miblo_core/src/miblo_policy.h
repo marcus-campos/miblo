@@ -184,9 +184,26 @@ void pixelShift(uint8_t i, int8_t& dx, int8_t& dy);
 // the normal screens up for kInteractionAwakeMs (the address and pairing code are on them).
 constexpr uint32_t kInteractionAwakeMs = 120000;
 bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin);
-// The panel never turns off before pet mode has had its turn: a sleepMin not later than petMin
-// (an older setting) waits until petMin + 15 minutes.
-bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin, uint8_t petMin);
+
+// Once pet mode starts it stays until real activity (a session running or waiting, an alert,
+// setup, someone at the gadget): screens that come and go while nobody is there (the Desk cycle,
+// a limit reset, an update notice, a greeting, the computer dropping out for a moment) restart the
+// idle count but never bring the pet back to its desk, nor the panel back on.
+class PetLatch {
+ public:
+  // Call on every frame. `activity`: real activity this frame; `idleMs`: as for petMode (0 on a
+  // screen that isn't idle). Returns whether pet mode is on. Safe across millis() wrap.
+  bool update(bool activity, uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin, uint32_t nowMs);
+  bool on() const { return on_; }
+  // The panel turns off sleepMin minutes (0 = never) after the user left, counted from pet mode
+  // starting (sleepMin - petMin minutes into it). It never turns off before pet mode has had its
+  // turn: a sleepMin not later than petMin (an older setting) waits until petMin + 15 minutes.
+  bool asleep(uint16_t sleepMin, uint8_t petMin, uint32_t nowMs) const;
+
+ private:
+  bool on_ = false;
+  uint32_t sinceMs_ = 0;  // when pet mode started
+};
 
 // Once per boot, when the first snapshot that names the latest release shows a newer version
 // than this firmware, the screen says so for kShowMs, then carries on.

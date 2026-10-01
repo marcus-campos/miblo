@@ -34,7 +34,8 @@ constexpr uint16_t kGlass = 0xB71F;      // #b0e0ff the magnifier's lens
 constexpr uint16_t kBrown = 0x8AC6;      // #8a5a34 its handle
 constexpr uint16_t kDarkGreen = 0x0400;  // #008000 grass on the cinema screen
 // Small tables live in flash (MIBLO_ROM: on the ESP8266 plain const data would take RAM).
-const uint16_t kBlockColors[] MIBLO_ROM = {color::RED, color::AMBER, color::GREEN, color::BLUE, color::VIOLET, color::CORAL};
+const uint16_t kBlockColors[] MIBLO_ROM = {color::RED,  color::AMBER,  color::GREEN,
+                                           color::BLUE, color::VIOLET, color::CORAL};
 // A signed byte of a table in flash.
 int romI8(const int8_t* p) { return (int8_t)mibloRomByte((const char*)p); }
 
@@ -43,7 +44,9 @@ int romI8(const int8_t* p) { return (int8_t)mibloRomByte((const char*)p); }
 int classHalf(uint8_t size) { return size == 0 ? kVisitHalfPair : size == 1 ? kVisitHalf3 : kVisitHalf4; }
 
 // The ui_main.cpp props a script may use (Scene::prop), in kSmallProp's numbering 0..3.
-uint8_t smallKind(uint8_t w) { return w == 0 ? vprop::Mug : w == 1 ? vprop::Burst : w == 2 ? vprop::Dots : vprop::Drop; }
+uint8_t smallKind(uint8_t w) {
+  return w == 0 ? vprop::Mug : w == 1 ? vprop::Burst : w == 2 ? vprop::Dots : vprop::Drop;
+}
 
 // ---- scripts ----
 
@@ -506,7 +509,8 @@ __attribute__((noinline)) void rrect(const Pen& p, int x, int y, int dx, int dy,
 __attribute__((noinline)) void disc(const Pen& p, int x, int y, int dx, int dy, int r, uint16_t c) {
   C().fillCircle(x + p(dx), y + p(dy), p(r), c);
 }
-__attribute__((noinline)) void tri(const Pen& p, int x, int y, int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+__attribute__((noinline)) void tri(const Pen& p, int x, int y, int x0, int y0, int x1, int y1, int x2, int y2,
+                                   uint16_t c) {
   C().fillTriangle(x + p(x0), y + p(y0), x + p(x1), y + p(y1), x + p(x2), y + p(y2), c);
 }
 
@@ -628,8 +632,8 @@ void drawTomato(const Pen& p, int x, int y, uint8_t f) {  // (centre) f & 7: the
   disc(p, cx, y, 0, 1, 5, color::WHITE);
   static const int8_t kHand[8][2] MIBLO_ROM = {{0, -4}, {3, -3}, {4, 0}, {3, 3}, {0, 4}, {-3, 3}, {-4, 0}, {-3, -3}};
   const int h = f & 7, w = p(2) < 2 ? 2 : p(2);
-  C().wideLine(cx, y + p(1), cx + p(romI8(&kHand[h][0])), y + p(1) + p(romI8(&kHand[h][1])), w, ring ? color::RED : color::PUPIL,
-               color::WHITE);
+  C().wideLine(cx, y + p(1), cx + p(romI8(&kHand[h][0])), y + p(1) + p(romI8(&kHand[h][1])), w,
+               ring ? color::RED : color::PUPIL, color::WHITE);
 }
 
 void drawKeyboard(const Pen& p, int x, int y, uint8_t f) {  // (centre) f 1: a key pressed on the left, 0 on the right

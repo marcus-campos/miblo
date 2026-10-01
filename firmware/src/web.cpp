@@ -102,7 +102,8 @@ void sendJson(WebServerT& server, int code, const char* json) {
 
 void sendLocked(WebServerT& server, uint32_t remainingMs) {
   char out[48];
-  snprintf_P(out, sizeof(out), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"), (unsigned)((remainingMs + 999) / 1000));
+  snprintf_P(out, sizeof(out), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
+             (unsigned)((remainingMs + 999) / 1000));
   sendJson(server, 429, out);
 }
 

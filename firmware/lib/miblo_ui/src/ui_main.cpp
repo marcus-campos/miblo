@@ -2009,7 +2009,8 @@ void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
   deskCat(R_BODY, X(120), Y(90), 56, deskLook(DeskMood::Celebrate, true, ms));
   if (party) {
     // Confetti along the top and the bottom, reshuffled a few times a second.
-    static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN, color::BLUE, color::CORAL, color::VIOLET, color::RED};
+    static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
+                                                 color::CORAL, color::VIOLET, color::RED};
     const uint32_t frame = ms / 250;
     for (uint8_t band = 0; band < 2; band++) {
       const int y0 = band ? Y(216) : Y(4), bandH = Y(20);

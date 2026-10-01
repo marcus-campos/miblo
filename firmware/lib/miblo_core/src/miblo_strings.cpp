@@ -631,7 +631,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Ship it com %s!\0"  // FriendShipIt
     "Sprint com %s\0"  // FriendSprint
     "Origami com %s\0"  // FriendOrigami
-    "Velho Stack Underflow, %s\0"  // FriendNostalgia
+    "Stack Underflow com %s\0"  // FriendNostalgia
     "Kernel panic com %s!\0"  // FriendPanic
     "Piquenique com %s\0"  // FriendPicnic
     "À pesca com %s\0"  // FriendFishing
@@ -844,7 +844,7 @@ static const char kEs[] MIBLO_ROM =
     "¡Ship it con %s!\0"  // FriendShipIt
     "Sprint con %s\0"  // FriendSprint
     "Origami con %s\0"  // FriendOrigami
-    "Viejo Stack Underflow, %s\0"  // FriendNostalgia
+    "Stack Underflow con %s\0"  // FriendNostalgia
     "¡Kernel panic con %s!\0"  // FriendPanic
     "Pícnic con %s\0"  // FriendPicnic
     "Pescando con %s\0"  // FriendFishing
@@ -1057,7 +1057,7 @@ static const char kFr[] MIBLO_ROM =
     "Ship it avec %s !\0"  // FriendShipIt
     "Sprint avec %s\0"  // FriendSprint
     "Origami avec %s\0"  // FriendOrigami
-    "Vieux Stack Underflow, %s\0"  // FriendNostalgia
+    "Stack Underflow avec %s\0"  // FriendNostalgia
     "Kernel panic avec %s !\0"  // FriendPanic
     "Pique-nique avec %s\0"  // FriendPicnic
     "Pêche avec %s\0"  // FriendFishing

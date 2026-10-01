@@ -43,7 +43,13 @@ __attribute__((noinline)) int K(const VisitStage& s, int v) { return s.half * v 
 // A look packed in one number, its directions relative to the other cat: gx > 0 and dx > 0 point
 // at it, and the paws are named by side (kIn: reaching out on its side). A gx field of 0 (DEF)
 // keeps the look visit() passed in (happy hops) and only adds the extras.
+// Fields (bits): gx + 4 (0-2), gy + 4 (3-5), eyes (6-8), paws (9-11), dy + 4 (12-14), dx + 4
+// (15-17), extras (18-31). So gx, gy, dx and dy are -4..3 (gx -4 would read as DEF), eyes and
+// paws below 8, extras 14 bits. onBeat relies on this: a hop subtracts 4 from dy (so dy must be
+// 0..3 there), mAltG/H flip bit 9 (paws in pairs), mSway mirrors gx and dx about 4.
 enum : uint8_t { kDown, kUp, kIn, kTapIn, kTapOut, kLick };  // pairs (Down, Up), (In, TapIn) alternate
+static_assert((int)Eyes::Dizzy < 8 && kLick < 8, "eyes and paws fit their 3 bits (Dizzy: the last Eyes)");
+static_assert(kStars < (1u << 14), "the extras fit their 14 bits (kStars: the highest extra)");
 constexpr uint32_t L(int gx, int gy, Eyes e, uint8_t paws = kDown, uint32_t extras = 0, int dy = 0, int dx = 0) {
   return (uint32_t)(gx + 4) | (uint32_t)(gy + 4) << 3 | (uint32_t)e << 6 | (uint32_t)paws << 9 | (uint32_t)(dy + 4) << 12 |
          (uint32_t)(dx + 4) << 15 | extras << 18;
@@ -197,7 +203,7 @@ void slice(const VisitStage& s, VisitFrame& f, MascotLook& k, int cx, int dir, u
   if (t < grab || t >= 15000) return;
   if (t < grab + 500) addItem(f, kSlice, cx + dir * K(s, 38), s.cy + K(s, 32), 0);
   else if (t < grab + 500 + 3 * 3200) addItem(f, kSlice, cx - K(s, 10), s.cy + K(s, 32), (uint8_t)((t - grab - 500) / 3200));
-  else k.extras = kTongue;
+  else k.extras |= kTongue;
 }
 void pizza(const VisitStage& s, VisitFrame& f) {
   uint32_t since;
@@ -263,16 +269,17 @@ void merge(const VisitStage& s, VisitFrame& f) {
 }
 
 // Daily standup: a little board; each one talks in turn ("...", paws gesturing) and puts up a
-// sticky note; one turn drags on (the other gets sleepy).
+// sticky note; the fourth turn drags on (the other gets sleepy).
 constexpr uint32_t kTalk = L(3, 0, Eyes::Open, kIn), kListen = L(3, 0, Eyes::Open), kPosted = L(2, -3, Eyes::Happy),
                    kGlance = L(2, -3, Eyes::Open);
-#define TURN(at, guestTalks, listen)                                                                   \
-  PH(at + 15, 6, guestTalks ? mAltG : mAltH, guestTalks ? kTalk : listen, guestTalks ? listen : kTalk), \
-      PH(at + 20, 0, 0, guestTalks ? kPosted : kGlance, guestTalks ? kGlance : kPosted)
+// A turn from `at` to `end` (100 ms steps): talking, then half a second to put the note up.
+#define TURN(at, end, guestTalks, listen)                                                                \
+  PH(end - 5, 6, guestTalks ? mAltG : mAltH, guestTalks ? kTalk : listen, guestTalks ? listen : kTalk), \
+      PH(end, 0, 0, guestTalks ? kPosted : kGlance, guestTalks ? kGlance : kPosted)
 const uint8_t kStandup[] MIBLO_ROM = {
     PH(20, 0, 0, kGlance, kGlance),  // the board, empty
-    TURN(20, true, kListen), TURN(40, false, kListen), TURN(60, true, kListen),
-    TURN(80, false, L(3, 0, Eyes::Sleepy)), TURN(100, true, kListen), TURN(120, false, kListen),
+    TURN(20, 38, true, kListen), TURN(38, 56, false, kListen), TURN(56, 74, true, kListen),
+    TURN(74, 104, false, L(3, 0, Eyes::Sleepy)), TURN(104, 122, true, kListen), TURN(122, 140, false, kListen),
     PH(155, 0, 0, L(2, -3, Eyes::Wide), L(2, -3, Eyes::Wide)),  // the whole board
     PH(180, 0, mHeart, DEF(), DEF())};
 void standup(const VisitStage& s, VisitFrame& f) {
@@ -408,11 +415,10 @@ __attribute__((noinline)) void tri(int x, int y, int x0, int y0, int x1, int y1,
 // Fixed shapes in flash, drawn in order from an anchor: an op and a colour (an index into kInk),
 // then its numbers in 240-grid units: a rect (dx, dy, w, h), a dot (dx, dy, r) or a triangle
 // (three corners).
-const uint16_t kInk[] MIBLO_ROM = {color::BG,    color::WHITE, color::AMBER, color::GREEN, color::BLUE,
-                                   color::CORAL, color::RED,   color::MUTED, color::BLACK, color::SKIN,
-                                   kCheese,      kCrust,       kSteel,       kWood,        color::VIOLET};
+const uint16_t kInk[] MIBLO_ROM = {color::WHITE, color::AMBER, color::GREEN, color::BLUE,  color::CORAL, color::RED,
+                                   color::MUTED, color::BLACK, color::SKIN,  kCheese,      kCrust,       kSteel};
 // Confetti takes five in a row from iAmber.
-enum : int8_t { iBg, iWhite, iAmber, iGreen, iBlue, iCoral, iRed, iMuted, iBlack, iSkin, iCheese, iCrust, iSteel, iWood, iViolet };
+enum : int8_t { iWhite, iAmber, iGreen, iBlue, iCoral, iRed, iMuted, iBlack, iSkin, iCheese, iCrust, iSteel };
 #define RECT(c, dx, dy, w, h) (int8_t)(c), dx, dy, w, h
 #define DOT(c, dx, dy, r) (int8_t)(64 | (c)), dx, dy, r
 #define TRI(c, x0, y0, x1, y1, x2, y2) (int8_t)(128 | (c)), x0, y0, x1, y1, x2, y2
@@ -443,12 +449,17 @@ const int8_t kPizzaShape[] MIBLO_ROM = {DOT(iCrust, 0, 0, 11), DOT(iCheese, 0, 0
 const int8_t kCakeShape[] MIBLO_ROM = {RECT(iMuted, -14, -2, 28, 2), RECT(iCoral, -11, -12, 22, 10), RECT(iWhite, -11, -12, 22, 3),
                                        DOT(iWhite, -7, -9, 2),       DOT(iWhite, 0, -9, 2),           DOT(iWhite, 7, -9, 2),
                                        RECT(iBlue, -1, -19, 2, 7),   END};
-const int8_t kBoardShape[] MIBLO_ROM = {RECT(iWhite, -24, 0, 48, 28), END};
+const int8_t kBoardShape[] MIBLO_ROM = {RECT(iMuted, -25, -1, 50, 30), RECT(iWhite, -24, 0, 48, 28), END};
 const int8_t kLaptopShape[] MIBLO_ROM = {RECT(iSteel, -10, 0, 20, 2), RECT(iSteel, -8, -13, 16, 13), RECT(iBlack, -7, -12, 14, 11), END};
 const int8_t kPhoneBack[] MIBLO_ROM = {RECT(iSteel, -5, -8, 10, 16), DOT(iBlack, -2, -5, 2), DOT(iWhite, -2, -5, 1), END};
-const int8_t kPhonePhoto[] MIBLO_ROM = {RECT(iSteel, -5, -8, 10, 16),     RECT(iBlue, -4, -6, 8, 12), TRI(iSkin, -4, -3, -3, 0, -1, -1),
-                                        TRI(iSkin, 0, -3, -1, 0, -3, -1), DOT(iSkin, -2, 1, 2),       TRI(iSkin, 0, -3, 1, 0, 3, -1),
-                                        TRI(iSkin, 4, -3, 3, 0, 1, -1),   DOT(iSkin, 2, 1, 2),        END};
+// The photo: the phone turned sideways, two cat heads (ears, a round face, eyes) side by side.
+const int8_t kPhonePhoto[] MIBLO_ROM = {RECT(iSteel, -10, -7, 20, 14),     RECT(iBlue, -9, -6, 18, 12),
+                                        TRI(iSkin, -8, -1, -7, -6, -5, -2), TRI(iSkin, -1, -1, -2, -6, -4, -2),
+                                        DOT(iSkin, -4, 1, 3),               TRI(iSkin, 1, -1, 2, -6, 4, -2),
+                                        TRI(iSkin, 8, -1, 7, -6, 5, -2),    DOT(iSkin, 4, 1, 3),
+                                        DOT(iBlack, -5, 0, 0),              DOT(iBlack, -3, 0, 0),
+                                        DOT(iBlack, 3, 0, 0),               DOT(iBlack, 5, 0, 0),
+                                        END};
 const int8_t kFlashShape[] MIBLO_ROM = {DOT(iWhite, 0, 0, 6),              RECT(iWhite, -13, -1, 26, 2),     RECT(iWhite, -1, -13, 2, 26),
                                         TRI(iWhite, -9, -9, 0, -3, -3, 0), TRI(iWhite, 9, -9, 0, -3, 3, 0),  TRI(iWhite, -9, 9, 0, 3, -3, 0),
                                         TRI(iWhite, 9, 9, 0, 3, 3, 0),     END};
@@ -498,8 +509,8 @@ void drawVisitItemA(const VisitItem& it) {
     case kPizza:  // (centre) radius 11, pepperoni; f = slices taken from the top (0..2): 60-degree
       // wedges cut out, kept inside the pizza (a paw may be under its edge)
       shapes(x, y, kPizzaShape);
-      if (it.f >= 1) tri(x, y, 0, 0, -10, -6, 0, -12, color::BG);
-      if (it.f >= 2) tri(x, y, 0, 0, 10, -6, 0, -12, color::BG);
+      if (it.f >= 1) tri(x, y, 0, 0, -9, -5, 0, -11, color::BG);
+      if (it.f >= 2) tri(x, y, 0, 0, 9, -5, 0, -11, color::BG);
       break;
     case kSlice: {  // (middle of the crust) tip up; f = bites (0..2), shorter each time
       const int b = it.f > 2 ? 2 : it.f;
@@ -537,8 +548,7 @@ void drawVisitItemA(const VisitItem& it) {
       }
       break;
     }
-    case kBoard:  // (centre of the top) 48 x 28; f = sticky notes on it (0..6). Few colours: with
-      // four cats in the strip the layer's palette is nearly full.
+    case kBoard:  // (centre of the top) 48 x 28 in a grey frame; f = sticky notes on it (0..6)
       shapes(x, y, kBoardShape);
       for (int i = 0; i < it.f && i < 6; i++) {
         const int k = (i + i / 3) % 3;
@@ -550,11 +560,12 @@ void drawVisitItemA(const VisitItem& it) {
       if (it.f & 128) {
         check(x, y - Sz(7), Sz(9), color::GREEN);
       } else {
-        for (int i = 0; i < 3; i++)
-          box(x, y, -5 + (i % 2) * 2, -10 + i * 3, 3 + ((it.f & 127) * 5 + i * 7) % 9, 1, i % 2 ? color::BLUE : color::GREEN);
+        for (int i = 0; i < 3; i++)  // inside the screen (x -7..6): indented lines are shorter
+          box(x, y, -5 + (i % 2) * 2, -10 + i * 3, 3 + ((it.f & 127) * 5 + i * 7) % (i % 2 ? 7 : 9), 1,
+              i % 2 ? color::BLUE : color::GREEN);
       }
       break;
-    case kPhone:  // (centre) 10 x 16; f 0: its back with the camera, 1: the photo (two cat heads)
+    case kPhone:  // (centre) f 0: its back with the camera (10 x 16), 1: the photo (20 x 14, two cat heads)
       shapes(x, y, it.f ? kPhonePhoto : kPhoneBack);
       break;
     case kFlash:  // (centre) a white burst, 13 out
@@ -577,5 +588,14 @@ void drawVisitItemA(const VisitItem& it) {
     default: break;
   }
 }
+
+#undef B4
+#undef PH
+#undef HIGH_FIVE
+#undef TURN
+#undef RECT
+#undef DOT
+#undef TRI
+#undef END
 
 }  // namespace screens

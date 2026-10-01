@@ -465,9 +465,9 @@ void loop() {
       screens::updateAvailable(lang, MIBLO_FW_VERSION, ctx.snap.latest, (uint8_t)(now / 400));
       break;
     case ScreenId::Roam: {
+      // The computer away: calm, so the antics play (the crossed-out laptop on the sign says it).
       screens::DeskMood mood =
-          away ? (now - awaySinceMs >= miblo::kAwayNapMs ? screens::DeskMood::Asleep : screens::DeskMood::Searching)
-               : screens::deskMoodFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now);
+          away ? screens::DeskMood::Calm : screens::deskMoodFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now);
       char note[96] = "";
       uint32_t lookMs = UINT32_MAX;
       if (const char* hi = ctx.friends.greeting(now)) {
@@ -476,6 +476,7 @@ void loop() {
       } else if (const char* buddy = ctx.friends.napBuddy()) {
         // Napping together: the same wall-clock phase on both screens, so the zzz go in step.
         snprintf(note, sizeof(note), screens::t(lang, S::FriendNap), buddy);
+        mood = screens::DeskMood::Asleep;
         if (clk.valid) lookMs = (clk.epoch % 86400) * 1000;
       }
       screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood, note, lookMs, away);

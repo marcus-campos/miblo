@@ -111,6 +111,11 @@ notes.
 16. **Mascot colours and settings command:** `/miblo:settings` opens the settings page; each
     mascot colour saves and applies at once (boot, desk and disconnected mascots), and survives a
     reboot. Night mode dims and restores the backlight at the configured times.
+    Blue light filter: set "Always" at each strength and check that the whole screen (text,
+    mascot, rings, pet mode) warms at once and stays readable. Set "Scheduled" with a start a
+    minute or two ahead and watch the boundary: the whole screen redraws warm at that minute (and
+    back at the end time). Reboot inside the window: it comes back warm once the clock is set.
+    Set "Off": the original colours return everywhere.
 17. **Screen care:** leave the gadget with Claude Code closed: after ~30 s "Disconnected", after
     20 min the mascot wanders around the whole screen (no trail, clock under it), and with the
     default "1 h" the panel goes dark (backlight off) at the one-hour mark. Opening the settings

@@ -1236,8 +1236,100 @@ static void test_visit_add_item_drops_bad_kinds() {
   TEST_ASSERT_EQUAL_UINT8(screens::kItemsEnd - 1, f.items[3].kind);
 }
 
+// Blue light filter: the colour under a warmer white point. Off changes nothing, black stays
+// black, red is kept, and each level is warmer than the last (blue drops faster than green).
+// ShiftCanvas applies it to every colour it forwards, and switching it off restores the colours.
+static void test_warm_color() {
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ui::warmColor(0xFFFF, 0));
+  TEST_ASSERT_EQUAL_HEX16(0x1234, ui::warmColor(0x1234, 0));
+  TEST_ASSERT_EQUAL_HEX16(0x0000, ui::warmColor(0x0000, 3));
+  TEST_ASSERT_EQUAL_HEX16(0xF800, ui::warmColor(0xF800, 3));  // pure red is untouched
+  int prevG = 63, prevB = 31;
+  for (uint8_t level = 1; level <= 3; level++) {
+    const uint16_t w = ui::warmColor(0xFFFF, level);
+    const int r = w >> 11, g = (w >> 5) & 63, b = w & 31;
+    TEST_ASSERT_EQUAL_INT(31, r);
+    TEST_ASSERT_TRUE(g < prevG && b < prevB);
+    TEST_ASSERT_TRUE(b * 63 < g * 31);  // relative to its range, blue is lower than green
+    prevG = g, prevB = b;
+  }
+  TEST_ASSERT_EQUAL_HEX16(ui::warmColor(0xFFFF, 3), ui::warmColor(0xFFFF, 9));  // clamped
+
+  // Every colour at every level is exactly round(v * m / 255) per channel (warmColor computes it
+  // with a multiply and a shift): green and blue scaled by the level's multipliers, red kept.
+  static const uint32_t kGain[3][2] = {{222, 188}, {199, 139}, {173, 89}};  // green, blue (of 255)
+  for (uint8_t level = 1; level <= 3; level++) {
+    const uint32_t gm = kGain[level - 1][0], bm = kGain[level - 1][1];
+    for (uint32_t c = 0; c <= 0xFFFF; c++) {
+      const uint32_t g = (((c >> 5) & 63) * gm + 127) / 255, b = ((c & 31) * bm + 127) / 255;
+      const uint16_t want = (uint16_t)((c & 0xF800) | g << 5 | b);
+      if (ui::warmColor((uint16_t)c, level) != want) TEST_ASSERT_EQUAL_HEX16(want, ui::warmColor((uint16_t)c, level));
+    }
+  }
+
+  FakeCanvas fc({240, 240});
+  ui::ShiftCanvas sc(fc);
+  sc.setWarmth(2);
+  TEST_ASSERT_EQUAL_UINT8(2, sc.warmth());
+  sc.fillRect(0, 0, 10, 10, 0xFFFF);
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(0xFFFF, 2), fc.colorAt(5, 5));
+  sc.fillRoundRect(20, 0, 10, 10, 2, ui::color::BLUE);
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(ui::color::BLUE, 2), fc.colorAt(25, 5));
+  sc.setWarmth(0);
+  sc.fillRect(40, 0, 10, 10, 0xFFFF);
+  TEST_ASSERT_EQUAL_INT(0xFFFF, fc.colorAt(45, 5));
+}
+
+// Every colour ShiftCanvas forwards is filtered (foregrounds and backgrounds of every primitive,
+// and the whole-panel clear), so nothing on the screen keeps its cold colour.
+struct ColorLog : ui::Canvas {
+  std::vector<uint16_t> colors;
+  ui::ScreenSpec spec() const override { return {240, 240}; }
+  void fillRect(int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillRoundRect(int, int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void drawRect(int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillCircle(int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillTriangle(int, int, int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void wideLine(int, int, int, int, int, uint16_t c, uint16_t bg) override { colors.push_back(c), colors.push_back(bg); }
+  void arc(int, int, int, int, int, int, uint16_t fg, uint16_t bg) override { colors.push_back(fg), colors.push_back(bg); }
+  int text(int, int, const char*, ui::Font, uint16_t fg, ui::Align, int) override { return colors.push_back(fg), 7; }
+  int textWidth(const char*, ui::Font) override { return 7; }
+  int textBox(int, int, const char*, ui::Font, uint16_t fg, uint16_t bg, ui::Align, int) override {
+    return colors.push_back(fg), colors.push_back(bg), 7;
+  }
+  void clear(uint16_t c) override { colors.push_back(c); }
+};
+
+static void test_shift_canvas_warms_every_color() {
+  for (uint8_t level = 0; level <= 3; level++) {
+    ColorLog log;
+    ui::ShiftCanvas sc(log);
+    sc.setShift(2, -1);
+    sc.setWarmth(level);
+    uint16_t c = 0x1111;  // a different colour for each argument
+    const uint16_t first = c;
+    sc.fillRect(0, 0, 1, 1, c++);
+    sc.fillRoundRect(0, 0, 1, 1, 1, c++);
+    sc.drawRect(0, 0, 1, 1, c++);
+    sc.fillCircle(0, 0, 1, c++);
+    sc.fillTriangle(0, 0, 1, 1, 2, 0, c++);
+    sc.wideLine(0, 0, 9, 9, 3, c, (uint16_t)(c + 1)), c += 2;
+    sc.arc(50, 50, 20, 15, 0, 90, c, (uint16_t)(c + 1)), c += 2;
+    TEST_ASSERT_EQUAL_INT(7, sc.text(0, 0, "a", ui::Font::Small, c++, ui::Align::Left, 99));
+    TEST_ASSERT_EQUAL_INT(7, sc.textBox(0, 0, "a", ui::Font::Small, c, (uint16_t)(c + 1), ui::Align::Left, 99));
+    c += 2;
+    sc.clear(c++);
+    TEST_ASSERT_EQUAL_INT(c - first, (int)log.colors.size());
+    for (size_t i = 0; i < log.colors.size(); i++) {
+      TEST_ASSERT_EQUAL_HEX16(ui::warmColor((uint16_t)(first + i), level), log.colors[i]);
+    }
+  }
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_warm_color);
+  RUN_TEST(test_shift_canvas_warms_every_color);
   RUN_TEST(test_pet_antics_order);
   RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);

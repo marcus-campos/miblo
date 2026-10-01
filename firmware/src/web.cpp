@@ -513,9 +513,10 @@ static const char kSetJs[] PROGMEM =
     "$('owner').value=s.owner||'';"
     "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
     "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
-    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
+    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it
+    // (or one of "a|b").
     "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
-    "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
+    "x=$(k);e.hidden=v?!v.split('|').includes(x.value):!x.checked;}}"
     // Sliders show their value (#<id>V).
     "function rv(){for(const e of document.querySelectorAll('input[type=range]'))$(e.id+'V').textContent=e.value+'%';}"
     "function st(t,c){const e=$('st');e.textContent=t;e.className=c||'';}"
@@ -534,8 +535,8 @@ static const char kSetJs[] PROGMEM =
     "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-    "if(k==='mascot'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
+    "'nightBrightness','blueFilter','blueFrom','blueTo','blueLevel','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "if(k==='mascot'||k==='blueFilter'||k==='blueLevel'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -731,6 +732,27 @@ static void settingsPage() {
   out += F("</div></div>");
   pageFlush(out);
 
+  // Blue light filter: off, always, or on its own schedule (not night dimming's hours); its
+  // details only while it is on, like night mode's.
+  out += F("<div class=\"c\">");
+  label(out, lang, S::WebBlue, F("blueFilter"));
+  out += F("<select id=\"blueFilter\">");
+  option(out, lang, F("0"), S::WebBlueOff);
+  option(out, lang, F("1"), S::WebBlueAlways);
+  option(out, lang, F("2"), S::WebBlueScheduled);
+  out += F("</select><div data-if=\"blueFilter:1|2\"><div data-if=\"blueFilter:2\"><div class=\"g\"><div>");
+  label(out, lang, S::WebBlueFrom, F("blueFrom"));
+  out += F("<input id=\"blueFrom\" type=\"time\" required></div><div>");
+  label(out, lang, S::WebBlueTo, F("blueTo"));
+  out += F("<input id=\"blueTo\" type=\"time\" required></div></div></div>");
+  label(out, lang, S::WebBlueLevel, F("blueLevel"));
+  out += F("<select id=\"blueLevel\">");
+  option(out, lang, F("1"), S::WebBlueLight);
+  option(out, lang, F("2"), S::WebBlueMedium);
+  option(out, lang, F("3"), S::WebBlueStrong);
+  out += F("</select></div></div>");
+  pageFlush(out);
+
   // About you.
   out += F("<div class=\"c\"><h2>");
   text(out, lang, S::WebSecYou);
@@ -799,7 +821,7 @@ static void settingsPage() {
   out += F("</button></div></div></div><script>const C=");
   pageFlush(out);
 
-  DynamicJsonDocument cfg(1024);
+  DynamicJsonDocument cfg(miblo::kConfigJsonCapacity);
   if (open) miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday here
   else cfg.to<JsonObject>();                                             // locked: nothing
   appendJsonForScript(out, cfg);
@@ -902,7 +924,7 @@ static void handleSettingsSecret() {
     sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1536);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);  // the config (page view) and a few fields
   doc["owner"] = ctx.cfg.owner;
   doc["birthday"] = ctx.cfg.birthday;
   miblo::configToJson(ctx.cfg, doc.createNestedObject("cfg"), false);
@@ -925,11 +947,11 @@ static void handleSettings() {
     sendJson(*srv, 413, "{\"error\":\"too large\"}");
     return;
   }
-  if (heapLowForRequest(1024)) {
+  if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
     sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
     sendJson(*srv, 400, "{\"error\":\"bad json\"}");
     return;

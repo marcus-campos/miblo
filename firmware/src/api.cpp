@@ -45,7 +45,7 @@ static void handleInfo() {
     json(200, out.c_str());
     return;
   }
-  // 33 top-level members + screen{2} + caps + copied strings (flash, reset): ~600 B on the
+  // 37 top-level members + screen{2} + caps + copied strings (flash, reset): ~660 B on the
   // ESP8266; 1024 leaves room for future caps.
   StaticJsonDocument<1536> doc;  // + "crash" (~300 B) after a crash
   doc["id"] = ctx.ident.id;
@@ -86,6 +86,11 @@ static void handleInfo() {
   doc["nightFrom"] = ctx.cfg.nightFrom;
   doc["nightTo"] = ctx.cfg.nightTo;
   doc["nightBrightness"] = ctx.cfg.nightBrightness;
+  // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..3; its own window).
+  doc["blueFilter"] = ctx.cfg.blueFilter;
+  doc["blueLevel"] = ctx.cfg.blueLevel;
+  doc["blueFrom"] = ctx.cfg.blueFrom;
+  doc["blueTo"] = ctx.cfg.blueTo;
   doc["mascot"] = ctx.cfg.mascot;
   doc["sleepMin"] = ctx.cfg.sleepMin;
   doc["petMin"] = ctx.cfg.petMin;
@@ -185,11 +190,11 @@ static void handleConfig() {
     json(401, "{\"error\":\"unauthorized\"}");
     return;
   }
-  if (heapLowForRequest(srv->arg(F("plain")).length())) {
+  if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
     json(503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
     json(400, "{\"error\":\"bad json\"}");
     return;

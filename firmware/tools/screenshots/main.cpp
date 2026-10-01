@@ -170,12 +170,16 @@ screens::Clock clock() {
 
 // ---------------- rendering ----------------
 
+// Drawn like on the gadget: through a ShiftCanvas (no shift here), which applies the blue light
+// filter when `warmth` > 0.
 struct Shot {
   TFT_eSPI tft{240, 240};
   TftCanvas canvas{tft, {240, 240}, board::fonts::kStacks};
-  Shot() {
+  ui::ShiftCanvas shifted{canvas};
+  explicit Shot(uint8_t warmth = 0) {
     canvas.begin();
-    screens::bind(canvas);
+    shifted.setWarmth(warmth);
+    screens::bind(shifted);
     screens::reset();
   }
 };
@@ -189,8 +193,8 @@ int gCount = 0;
 constexpr int kMinMargin = 3;
 std::vector<std::string> gMarginErrors;
 
-void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::string& name) {
-  const uint16_t bg = ui::color::BG;
+void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::string& name, uint8_t warmth) {
+  const uint16_t bg = ui::warmColor(ui::color::BG, warmth);
   std::vector<int> rowFill(h, 0), colFill(w, 0);
   for (int y = 0; y < h; y++)
     for (int x = 0; x < w; x++)
@@ -210,7 +214,7 @@ void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::stri
 }
 
 void save(Shot& s, const std::string& name) {
-  checkMargins(s.tft.pixels(), 240, 240, gDir + "/" + name);
+  checkMargins(s.tft.pixels(), 240, 240, gDir + "/" + name, s.shifted.warmth());
   const std::string base = gDir + "/" + name;
   if (!writePng(base + ".png", s.tft.pixels(), 240, 240, 1) ||
       !writePng(base + "@4x.png", s.tft.pixels(), 240, 240, 4)) {
@@ -493,6 +497,19 @@ void renderAll(Lang L) {
     Shot s;
     screens::roam(L, snap, clk, ms, screens::DeskMood::Calm);
     save(s, "42-pet-mode-" + std::to_string(ms / 1000));
+  }
+  // The blue light filter at each strength (0: off, for comparison), on the Overview and in pet mode.
+  for (uint8_t level = 0; level <= 3; level++) {
+    {
+      Shot s(level);
+      screens::overview(L, snap, pager, 0, clk, false);
+      save(s, "60-blue-filter-overview-" + std::to_string(level));
+    }
+    {
+      Shot s(level);
+      screens::roam(L, snap, clk, 20000, screens::DeskMood::Calm);
+      save(s, "60-blue-filter-pet-" + std::to_string(level));
+    }
   }
 
   for (const Mood& m : kMoods) {

@@ -1,5 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "miblo_alerts.h"
@@ -32,6 +33,12 @@ struct Config {
   uint16_t nightFrom = 22 * 60;  // local minute of the day, 0..1439
   uint16_t nightTo = 7 * 60;     // 0..1439, != nightFrom; may be earlier than nightFrom (overnight)
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
+  // Blue light filter (warmer colours), on its own schedule, separate from night dimming:
+  // 0 off, 1 always, 2 between blueFrom and blueTo. Strength 1..3 (ui::warmColor).
+  uint8_t blueFilter = 0;
+  uint8_t blueLevel = 2;
+  uint16_t blueFrom = 21 * 60;   // local minute of the day, 0..1439
+  uint16_t blueTo = 7 * 60;      // 0..1439, != blueFrom; may be earlier than blueFrom (overnight)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
   uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
   uint8_t petMin = 15;           // pet mode after this many idle minutes, 1..60 (the page keeps sleepMin later)
@@ -44,6 +51,12 @@ struct Config {
 };
 
 constexpr uint8_t kMascotStyles = 4;
+
+// Capacity of every JSON document that holds the whole config: the saved file (storage.cpp), a
+// settings POST from the page or the plugin, and the page's copy. Too small and the saved config
+// fails to load, which resets every setting: the worst case (every string at its byte limit)
+// must stay within 2/3 of it (test_stored_config_fits_on_the_gadget). A transient allocation.
+constexpr size_t kConfigJsonCapacity = 1536;
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.
@@ -68,6 +81,9 @@ RotationTiming rotationTiming(const Config& cfg);
 // night mode then). In the night window it is min(nightBrightness, brightness).
 bool nightActive(const Config& cfg, int minuteOfDay);
 uint8_t brightnessAt(const Config& cfg, int minuteOfDay);
+// Blue light filter strength for the local time (0 = none): blueLevel when the filter is always
+// on, or scheduled and inside [blueFrom, blueTo). An unknown time (-1) is never inside a schedule.
+uint8_t warmthAt(const Config& cfg, int minuteOfDay);
 
 // ---- Hard reset by quick power cycles ----
 // Each power-on with less than 10 s of uptime counts; the 6th in a row erases everything.

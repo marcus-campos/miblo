@@ -129,6 +129,16 @@ static const char kEn[] MIBLO_ROM =
     "Night starts at\0"  // WebNightFrom
     "Night ends at\0"  // WebNightTo
     "Night brightness\0"  // WebNightBrightness
+    "Blue light filter\0"  // WebBlue
+    "Off\0"  // WebBlueOff
+    "Always\0"  // WebBlueAlways
+    "Scheduled\0"  // WebBlueScheduled
+    "Starts at\0"  // WebBlueFrom
+    "Ends at\0"  // WebBlueTo
+    "Strength\0"  // WebBlueLevel
+    "Low\0"  // WebBlueLight
+    "Medium\0"  // WebBlueMedium
+    "High\0"  // WebBlueStrong
     "LIMIT FREED\0"  // LimitFreed
     "runs out in %s\0"  // RunsOutIn
     "TODAY\0"  // TodayTitle
@@ -342,6 +352,16 @@ static const char kPtBR[] MIBLO_ROM =
     "Início da noite\0"  // WebNightFrom
     "Fim da noite\0"  // WebNightTo
     "Brilho à noite\0"  // WebNightBrightness
+    "Filtro de luz azul\0"  // WebBlue
+    "Desligado\0"  // WebBlueOff
+    "Sempre\0"  // WebBlueAlways
+    "Programado\0"  // WebBlueScheduled
+    "Começa às\0"  // WebBlueFrom
+    "Termina às\0"  // WebBlueTo
+    "Intensidade\0"  // WebBlueLevel
+    "Leve\0"  // WebBlueLight
+    "Média\0"  // WebBlueMedium
+    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERADO\0"  // LimitFreed
     "acaba em %s\0"  // RunsOutIn
     "HOJE\0"  // TodayTitle
@@ -555,6 +575,16 @@ static const char kPtPT[] MIBLO_ROM =
     "Início da noite\0"  // WebNightFrom
     "Fim da noite\0"  // WebNightTo
     "Brilho à noite\0"  // WebNightBrightness
+    "Filtro de luz azul\0"  // WebBlue
+    "Desligado\0"  // WebBlueOff
+    "Sempre\0"  // WebBlueAlways
+    "Programado\0"  // WebBlueScheduled
+    "Começa às\0"  // WebBlueFrom
+    "Termina às\0"  // WebBlueTo
+    "Intensidade\0"  // WebBlueLevel
+    "Leve\0"  // WebBlueLight
+    "Média\0"  // WebBlueMedium
+    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERTADO\0"  // LimitFreed
     "acaba em %s\0"  // RunsOutIn
     "HOJE\0"  // TodayTitle
@@ -768,6 +798,16 @@ static const char kEs[] MIBLO_ROM =
     "Empieza a las\0"  // WebNightFrom
     "Termina a las\0"  // WebNightTo
     "Brillo nocturno\0"  // WebNightBrightness
+    "Filtro de luz azul\0"  // WebBlue
+    "Desactivado\0"  // WebBlueOff
+    "Siempre\0"  // WebBlueAlways
+    "Programado\0"  // WebBlueScheduled
+    "Empieza a las\0"  // WebBlueFrom
+    "Termina a las\0"  // WebBlueTo
+    "Intensidad\0"  // WebBlueLevel
+    "Suave\0"  // WebBlueLight
+    "Media\0"  // WebBlueMedium
+    "Fuerte\0"  // WebBlueStrong
     "LÍMITE LIBERADO\0"  // LimitFreed
     "se agota en %s\0"  // RunsOutIn
     "HOY\0"  // TodayTitle
@@ -981,6 +1021,16 @@ static const char kFr[] MIBLO_ROM =
     "Début de la nuit\0"  // WebNightFrom
     "Fin de la nuit\0"  // WebNightTo
     "Luminosité la nuit\0"  // WebNightBrightness
+    "Filtre de lumière bleue\0"  // WebBlue
+    "Désactivé\0"  // WebBlueOff
+    "Toujours\0"  // WebBlueAlways
+    "Programmé\0"  // WebBlueScheduled
+    "Début\0"  // WebBlueFrom
+    "Fin\0"  // WebBlueTo
+    "Intensité\0"  // WebBlueLevel
+    "Légère\0"  // WebBlueLight
+    "Moyenne\0"  // WebBlueMedium
+    "Forte\0"  // WebBlueStrong
     "LIMITE LIBÉRÉE\0"  // LimitFreed
     "épuisée dans %s\0"  // RunsOutIn
     "AUJOURD'HUI\0"  // TodayTitle
@@ -1194,6 +1244,16 @@ static const char kIt[] MIBLO_ROM =
     "Inizio della notte\0"  // WebNightFrom
     "Fine della notte\0"  // WebNightTo
     "Luminosità notturna\0"  // WebNightBrightness
+    "Filtro luce blu\0"  // WebBlue
+    "Disattivato\0"  // WebBlueOff
+    "Sempre\0"  // WebBlueAlways
+    "Programmato\0"  // WebBlueScheduled
+    "Inizia alle\0"  // WebBlueFrom
+    "Finisce alle\0"  // WebBlueTo
+    "Intensità\0"  // WebBlueLevel
+    "Leggera\0"  // WebBlueLight
+    "Media\0"  // WebBlueMedium
+    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERATO\0"  // LimitFreed
     "finisce tra %s\0"  // RunsOutIn
     "OGGI\0"  // TodayTitle
@@ -1407,6 +1467,16 @@ static const char kDe[] MIBLO_ROM =
     "Nacht beginnt um\0"  // WebNightFrom
     "Nacht endet um\0"  // WebNightTo
     "Helligkeit nachts\0"  // WebNightBrightness
+    "Blaulichtfilter\0"  // WebBlue
+    "Aus\0"  // WebBlueOff
+    "Immer\0"  // WebBlueAlways
+    "Nach Zeitplan\0"  // WebBlueScheduled
+    "Beginnt um\0"  // WebBlueFrom
+    "Endet um\0"  // WebBlueTo
+    "Stärke\0"  // WebBlueLevel
+    "Leicht\0"  // WebBlueLight
+    "Mittel\0"  // WebBlueMedium
+    "Stark\0"  // WebBlueStrong
     "LIMIT FREI\0"  // LimitFreed
     "reicht noch %s\0"  // RunsOutIn
     "HEUTE\0"  // TodayTitle
@@ -1620,6 +1690,16 @@ static const char kRu[] MIBLO_ROM =
     "Начало ночи\0"  // WebNightFrom
     "Конец ночи\0"  // WebNightTo
     "Яркость ночью\0"  // WebNightBrightness
+    "Фильтр синего света\0"  // WebBlue
+    "Выключен\0"  // WebBlueOff
+    "Всегда\0"  // WebBlueAlways
+    "По расписанию\0"  // WebBlueScheduled
+    "Начало\0"  // WebBlueFrom
+    "Конец\0"  // WebBlueTo
+    "Интенсивность\0"  // WebBlueLevel
+    "Слабая\0"  // WebBlueLight
+    "Средняя\0"  // WebBlueMedium
+    "Сильная\0"  // WebBlueStrong
     "ЛИМИТ ОБНОВЛЁН\0"  // LimitFreed
     "закончится через %s\0"  // RunsOutIn
     "СЕГОДНЯ\0"  // TodayTitle
@@ -1833,6 +1913,16 @@ static const char kZh[] MIBLO_ROM =
     "夜间开始\0"  // WebNightFrom
     "夜间结束\0"  // WebNightTo
     "夜间亮度\0"  // WebNightBrightness
+    "蓝光过滤\0"  // WebBlue
+    "关闭\0"  // WebBlueOff
+    "始终开启\0"  // WebBlueAlways
+    "定时\0"  // WebBlueScheduled
+    "开始时间\0"  // WebBlueFrom
+    "结束时间\0"  // WebBlueTo
+    "强度\0"  // WebBlueLevel
+    "弱\0"  // WebBlueLight
+    "中\0"  // WebBlueMedium
+    "强\0"  // WebBlueStrong
     "额度已恢复\0"  // LimitFreed
     "%s 后用完\0"  // RunsOutIn
     "今天\0"  // TodayTitle

@@ -50,13 +50,13 @@ void report(JsonObject info) {
   char hex[12];
   c["reason"] = r.reason;
   c["exccause"] = r.exccause;
-  snprintf(hex, sizeof(hex), "0x%08x", (unsigned)r.epc1);
+  snprintf_P(hex, sizeof(hex), PSTR("0x%08x"), (unsigned)r.epc1);
   c["epc1"] = hex;  // copied (a char array)
-  snprintf(hex, sizeof(hex), "0x%08x", (unsigned)r.excvaddr);
+  snprintf_P(hex, sizeof(hex), PSTR("0x%08x"), (unsigned)r.excvaddr);
   c["excvaddr"] = hex;
   JsonArray a = c.createNestedArray("addrs");
   for (uint8_t i = 0; i < kAddrs && r.addrs[i]; i++) {
-    snprintf(hex, sizeof(hex), "0x%08x", (unsigned)r.addrs[i]);
+    snprintf_P(hex, sizeof(hex), PSTR("0x%08x"), (unsigned)r.addrs[i]);
     a.add(hex);
   }
 }

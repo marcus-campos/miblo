@@ -102,7 +102,7 @@ void sendJson(WebServerT& server, int code, const char* json) {
 
 void sendLocked(WebServerT& server, uint32_t remainingMs) {
   char out[48];
-  snprintf(out, sizeof(out), "{\"error\":\"locked\",\"retryAfter\":%u}", (unsigned)((remainingMs + 999) / 1000));
+  snprintf_P(out, sizeof(out), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"), (unsigned)((remainingMs + 999) / 1000));
   sendJson(server, 429, out);
 }
 
@@ -114,7 +114,7 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
     sendLocked(server, ctx.presence.lockRemainingMs(nowMs));
   } else {  // another purpose's code is on the screen: never replaced, retry once it is gone
     char out[48];
-    snprintf(out, sizeof(out), "{\"error\":\"busy\",\"retryAfter\":%u}",
+    snprintf_P(out, sizeof(out), PSTR("{\"error\":\"busy\",\"retryAfter\":%u}"),
              (unsigned)((ctx.presence.remainingMs(nowMs) + 999) / 1000));
     sendJson(server, 429, out);
   }
@@ -423,7 +423,7 @@ static void handleWifi() {
     const uint32_t now = millis();
     if (ctx.presence.locked(now)) {
       char b[16];
-      snprintf(b, sizeof(b), " (%u s)", (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      snprintf_P(b, sizeof(b), PSTR(" (%u s)"), (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
       messagePage(lang, tr(lang, S::WebFailed) + b);
       return;
     }
@@ -869,7 +869,7 @@ static void handleSettingsUnlock() {
   if (!deserializeJson(doc, srv->arg(F("plain")))) {
     JsonVariantConst c = doc["code"];
     if (c.is<const char*>()) strlcpy(code, c.as<const char*>(), sizeof(code));
-    else if (c.is<int>()) snprintf(code, sizeof(code), "%04d", c.as<int>());
+    else if (c.is<int>()) snprintf_P(code, sizeof(code), PSTR("%04d"), c.as<int>());
   }
   if (!code[0]) strlcpy(code, srv->arg(F("code")).c_str(), sizeof(code));
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, code, now)) {

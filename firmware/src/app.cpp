@@ -134,7 +134,7 @@ static void updateOccasion(uint32_t now) {
   if (today(d, minute)) {
     want = (uint8_t)miblo::accessoryFor(miblo::occasionOn(ctx.cfg, d));
     if (!ctx.cfg.born[0] && ctx.tokens.count() > 0) {
-      snprintf(ctx.cfg.born, sizeof(ctx.cfg.born), "%04u-%02u-%02u", (unsigned)d.year, (unsigned)d.month,
+      snprintf_P(ctx.cfg.born, sizeof(ctx.cfg.born), PSTR("%04u-%02u-%02u"), (unsigned)d.year, (unsigned)d.month,
                (unsigned)d.day);
       ctx.configChanged = true;
     }
@@ -230,7 +230,7 @@ void setup() {
   storage::loadTokens(ctx.tokens);
   applyConfig();
   strlcpy(shownName, deviceName(), sizeof(shownName));
-  snprintf(knownOwner, sizeof(knownOwner), "%s|%s", ctx.cfg.owner, ctx.cfg.birthday);
+  snprintf_P(knownOwner, sizeof(knownOwner), PSTR("%s|%s"), ctx.cfg.owner, ctx.cfg.birthday);
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
@@ -264,7 +264,7 @@ void loop() {
       ctx.greeter.named(now);
     }
     char owner[sizeof(knownOwner)];
-    snprintf(owner, sizeof(owner), "%s|%s", ctx.cfg.owner, ctx.cfg.birthday);
+    snprintf_P(owner, sizeof(owner), PSTR("%s|%s"), ctx.cfg.owner, ctx.cfg.birthday);
     if (strcmp(owner, knownOwner) != 0) {  // told who we are: greet (again) today
       strlcpy(knownOwner, owner, sizeof(knownOwner));
       ctx.greeter.rearm();

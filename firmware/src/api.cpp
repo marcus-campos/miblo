@@ -63,7 +63,7 @@ static void handleInfo() {
   JsonArray caps = doc.createNestedArray("caps");  // future: "buttons", "touch", "buzzer", "led"
   for (uint8_t i = 0; i < board::kCapCount; i++) caps.add(board::cap(i));
   char flash[12];
-  snprintf(flash, sizeof(flash), "%06x", (unsigned)flashChipId());
+  snprintf_P(flash, sizeof(flash), PSTR("%06x"), (unsigned)flashChipId());
   doc["flash"] = flash;
   // Diagnostics (field reports): free heap, largest allocatable block, last reset, uptime (s).
   doc["heap"] = freeHeap();
@@ -106,7 +106,7 @@ static void handlePair() {
   char code[8];
   JsonVariantConst c = doc["code"];
   if (c.is<const char*>()) strlcpy(code, c.as<const char*>(), sizeof(code));
-  else if (c.is<int>()) snprintf(code, sizeof(code), "%04d", c.as<int>());
+  else if (c.is<int>()) snprintf_P(code, sizeof(code), PSTR("%04d"), c.as<int>());
   else code[0] = 0;
   uint32_t now = millis();
   switch (ctx.pairing.check(code, now)) {

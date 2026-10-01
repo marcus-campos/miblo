@@ -133,9 +133,9 @@ void applyTimezone() {
 
 void begin(uint32_t nowMs) {
   uint32_t chip = chipId() & 0xFFFF;
-  snprintf(ctx.ident.id, sizeof(ctx.ident.id), "miblo-%04x", (unsigned)chip);
-  snprintf(ctx.ident.defaultName, sizeof(ctx.ident.defaultName), "Miblo-%04X", (unsigned)chip);
-  snprintf(ctx.ident.apSsid, sizeof(ctx.ident.apSsid), "Miblo-Setup-%04X", (unsigned)chip);
+  snprintf_P(ctx.ident.id, sizeof(ctx.ident.id), PSTR("miblo-%04x"), (unsigned)chip);
+  snprintf_P(ctx.ident.defaultName, sizeof(ctx.ident.defaultName), PSTR("Miblo-%04X"), (unsigned)chip);
+  snprintf_P(ctx.ident.apSsid, sizeof(ctx.ident.apSsid), PSTR("Miblo-Setup-%04X"), (unsigned)chip);
 
   WiFi.persistent(false);
   WiFi.mode(WIFI_STA);

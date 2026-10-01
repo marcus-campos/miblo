@@ -6,6 +6,9 @@ const PRIORITY = { perm: 0, question: 1, running: 2, done: 3, idle: 4 };
 const ALERTING = new Set(['perm', 'question', 'done']);
 // background_tasks entries are documented as in flight; drop any finished one defensively.
 const FINISHED = new Set(['completed', 'failed', 'killed', 'stopped', 'cancelled']);
+// Watchers that live on after the turn without the session doing anything (Claude Code's monitor
+// of a published artifact, for one, runs for hours): never counted as work in flight.
+const PASSIVE = new Set(['monitor']);
 
 // Reserved activity tools for a Stop that waits on background work (det = the count).
 export const WAIT_AGENTS = '_wait_agents';
@@ -213,7 +216,7 @@ export class SessionTracker {
   // older Claude Code versions lack it, so fall back to the tracked subagents.
   #pending(sid, evt) {
     if (Array.isArray(evt.background_tasks)) {
-      const tasks = evt.background_tasks.filter((t) => !FINISHED.has(t?.status));
+      const tasks = evt.background_tasks.filter((t) => !FINISHED.has(t?.status) && !PASSIVE.has(t?.type));
       if (tasks.length === 0) return null;
       const agentsOnly = tasks.every((t) => t?.type === 'subagent');
       return { tool: agentsOnly ? WAIT_AGENTS : WAIT_TASKS, det: String(tasks.length) };

@@ -215,6 +215,29 @@ test('Stop while background work is in flight keeps the session running, no aler
   }
 });
 
+// A monitor (e.g. Claude Code watching a published artifact for comments) can stay "running" for
+// hours without the session doing anything: it never counts as work in flight. Payload as sent by
+// Claude Code at the end of a turn.
+test('Stop with only a long-lived monitor in background_tasks is done', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'Stop', {
+    background_tasks: [{ id: 'szvmna6nl', type: 'monitor', status: 'running', description: 'live updates for artifact' }],
+  });
+  assert.equal(tracker.sessions()[0].st, 'done');
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['done']);
+});
+
+test('a monitor next to real background work is not counted', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'Stop', { background_tasks: [{ type: 'monitor', status: 'running' }, { type: 'shell', status: 'running' }] });
+  const [s] = tracker.sessions();
+  assert.equal(s.st, 'running');
+  assert.equal(s.tool, '_wait_tasks');
+  assert.equal(s.det, '1');
+});
+
 test('Stop with an empty or all-finished background_tasks is done, even with tracked agents', () => {
   for (const stop of [{ background_tasks: [] }, { background_tasks: [{ type: 'subagent', status: 'completed' }] }]) {
     const { tracker, ev } = setup();

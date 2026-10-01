@@ -377,8 +377,10 @@ void loop() {
   const bool tired = ctx.usageEverSeen &&
                      (limitsMood == screens::DeskMood::Worried || limitsMood == screens::DeskMood::Scared);
   ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot);
+  // Not roaming while the panel sleeps (displayOff is still last frame's): nobody visits a dark
+  // screen, and a visit in progress ends the way it does when our human comes back.
   ctx.friends.update(now, ctx.cfg.friends && net::connected(),
-                     (pet ? miblo::kFriendRoaming : 0) | (napping ? miblo::kFriendNapping : 0) |
+                     ((pet && !displayOff) ? miblo::kFriendRoaming : 0) | (napping ? miblo::kFriendNapping : 0) |
                          (tired ? miblo::kFriendTired : 0),
                      hwRandom());
   if (ctx.demoKick) {  // after update(): it has seen pet mode start

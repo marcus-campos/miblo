@@ -24,7 +24,7 @@ Run `MIBLO update check [id] [--file path]`. It prints JSON:
 ## 2. Plugin (before the firmware)
 
 If `plugin.needsUpdate` is true, ask with AskUserQuestion: "Update the Miblo plugin too? (<current> → <latest>)" Yes/No.
-- Yes: run `claude plugin marketplace update miblo`, then `claude plugin update miblo@miblo`. If either fails (or `claude` is not on PATH), tell the user to type these themselves: `/plugin marketplace update miblo`, `/plugin update miblo@miblo`, `/reload-plugins`. On success, tell the user to type `/reload-plugins` (you cannot run slash commands). The local bridge restarts on its own with the new version at the next Claude Code activity.
+- Yes: run `claude plugin marketplace update miblo`, then `claude plugin update miblo@miblo`. If either fails (or `claude` is not on PATH), tell the user to type these themselves: `/plugin marketplace update miblo`, `/plugin update miblo@miblo`, `/reload-plugins`. On success, tell the user to type `/reload-plugins` (you cannot run slash commands). After `/reload-plugins`, the first Claude Code activity replaces the running local bridge with the new version on its own: nothing else to restart.
 
 ## 3. Firmware
 

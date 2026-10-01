@@ -172,13 +172,15 @@ test('rejects foreign Host, any Origin, and non-JSON POST bodies', async () => {
   }
 });
 
-test('/health reports the version; POST /shutdown invokes the shutdown callback', async () => {
+test('/health and every /event reply report the version; POST /shutdown invokes the shutdown callback', async () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
   let shutdowns = 0;
   const bridge = createBridge({ dataDir, discoverFn: async () => [], version: '9.9.9', onShutdown: () => { shutdowns++; } });
   const http = await started(bridge);
   try {
     assert.deepEqual(await (await fetch(http.base + '/health')).json(), { ok: true, app: 'miblo-bridge', version: '9.9.9' });
+    const ev = await http.post('/event', { session_id: 's1', hook_event_name: 'SessionStart' });
+    assert.deepEqual(await ev.json(), { ok: true, app: 'miblo-bridge', version: '9.9.9' });
     assert.equal((await fetch(http.base + '/shutdown', { method: 'POST' })).status, 415);
     assert.equal(shutdowns, 0);
     const r = await http.post('/shutdown', {});

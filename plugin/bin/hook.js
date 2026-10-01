@@ -28,11 +28,16 @@ async function postJson(p, body, timeoutMs = 800) {
     body,
     signal: AbortSignal.timeout(timeoutMs),
   });
-  await res.arrayBuffer().catch(() => {});
+  const text = await res.text().catch(() => '');
   if (!res.ok) {
     const err = new Error(`bridge ${res.status}`);
     err.status = res.status;
     throw err;
+  }
+  try {
+    return JSON.parse(text) ?? {};
+  } catch {
+    return {};
   }
 }
 
@@ -77,7 +82,7 @@ async function main() {
     },
     {
       allowSpawn: process.env.MIBLO_NO_SPAWN !== '1',
-      checkVersion: evt.hook_event_name === 'SessionStart',
+      checkVersion: evt.hook_event_name === 'SessionStart',  // spare the old bridge a session it would drop
       version: pluginVersion(),
     },
   );

@@ -53,7 +53,7 @@ export function createBridgeServer({ onEvent, onStatusline, getStatus, version =
       if (req.method === 'GET' && req.url === '/status') return send(200, await getStatus());
       if (req.method === 'POST' && req.url === '/event') {
         onEvent(await readJson(req));
-        return send(200, { ok: true });
+        return send(200, { ok: true, app: 'miblo-bridge', version });
       }
       if (req.method === 'POST' && req.url === '/statusline') {
         onStatusline(await readJson(req));

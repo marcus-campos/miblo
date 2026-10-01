@@ -50,11 +50,19 @@ async function poll(check, { sleep, maxMs, everyMs = POLL_EVERY_MS }) {
 }
 
 /**
- * io: { post(body), health() -> object|null, shutdown(), startBridge(), sleep(ms) }
+ * io: { post(body) -> reply object, health() -> object|null, shutdown(), startBridge(), sleep(ms) }
  * health() resolves null when nothing answers, and an object otherwise.
+ * A bridge of another version (after /reload-plugins the hooks are new, the running bridge is not;
+ * a bridge from before replies carried a version counts too) is shut down and replaced by this
+ * plugin's: checked on SessionStart before posting, and on every event from the reply.
  */
 export async function deliver(body, io, { allowSpawn = true, checkVersion = false, version = '' } = {}) {
   const ours = (h) => h?.app === 'miblo-bridge';
+  const replace = async () => {
+    await io.shutdown().catch(() => {});
+    await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
+    return spawnAndPost();
+  };
   const spawnAndPost = async () => {
     io.startBridge();
     const up = await poll(async () => ours(await io.health()), { sleep: io.sleep, maxMs: POLL_MAX_MS });
@@ -65,16 +73,12 @@ export async function deliver(body, io, { allowSpawn = true, checkVersion = fals
 
   if (allowSpawn && checkVersion && version) {
     const h = await io.health();
-    if (ours(h) && h.version !== version) {
-      await io.shutdown().catch(() => {});
-      await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
-      return spawnAndPost();
-    }
+    if (ours(h) && h.version !== version) return replace();
   }
 
+  let reply;
   try {
-    await io.post(body);
-    return 'sent';
+    reply = await io.post(body);
   } catch (e) {
     if (!allowSpawn || !isConnError(e)) return 'dropped';
     const h = await io.health();
@@ -85,4 +89,10 @@ export async function deliver(body, io, { allowSpawn = true, checkVersion = fals
     }
     return spawnAndPost();
   }
+  if (allowSpawn && version && reply?.version !== version) {
+    // Confirm on /health before asking anything to shut down: the port could be another app's.
+    const h = await io.health();
+    if (ours(h) && h.version !== version) return replace();
+  }
+  return 'sent';
 }

@@ -592,7 +592,7 @@ struct Step {
   Gaze gaze;
   Eyes eyes;
   uint8_t paws;
-  uint8_t extras;
+  uint16_t extras;  // MascotLook::extras' flags (some past 8 bits)
 };
 constexpr Gaze F = Gaze::Front, FO = Gaze::Focus, OT = Gaze::Other, UP = Gaze::Up;
 constexpr Eyes O = Eyes::Open, CL = Eyes::Closed, W = Eyes::Wide, SL = Eyes::Sleepy, HA = Eyes::Happy;
@@ -1519,11 +1519,6 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
     C().fillCircle(tx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
   }
   for (int i = 0; i < sc.drops; i++) C().fillCircle(sc.catX + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
-  if (sc.curX >= 0) {  // the mouse cursor: a white arrow
-    const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
-    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
-    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
-  }
   if (sc.stamp) drawProp(Prop{PropKind::Lgtm, sx + sw - Sz(50), sy + sh - Sz(22), 0, 0});
   if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
     int ix, iy, iw, ih;
@@ -1539,6 +1534,11 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
     const int inset = Sz(3);
     C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
     C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(2), color::AMBER, kSignFill);
+  }
+  if (sc.curX >= 0) {  // the mouse cursor: a white arrow, over the away icon
+    const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
+    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
+    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
   }
 }
 

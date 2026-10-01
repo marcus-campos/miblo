@@ -150,7 +150,7 @@ static const char kEn[] MIBLO_ROM =
     "Download the firmware\0"  // WebDownloadBin
     "Turn the screen off when idle\0"  // WebSleep
     "Never (the mascot keeps wandering)\0"  // WebSleepNever
-    "Pet mode after this long idle\0"  // WebPetAfter
+    "The mascot starts wandering after\0"  // WebPetAfter
     "Alert blinks\0"  // WebFlashBlinks
     "Hi! I'm\0"  // HelloIAm
     "Good morning\0"  // GoodMorning
@@ -333,7 +333,7 @@ static const char kPtBR[] MIBLO_ROM =
     "Baixar o firmware\0"  // WebDownloadBin
     "Desligar a tela quando ninguém estiver usando\0"  // WebSleep
     "Nunca (o mascote fica passeando)\0"  // WebSleepNever
-    "Modo bichinho após ficar parado por\0"  // WebPetAfter
+    "O mascote começa a passear após\0"  // WebPetAfter
     "Piscadas do alerta\0"  // WebFlashBlinks
     "Oi! Meu nome é\0"  // HelloIAm
     "Bom dia\0"  // GoodMorning
@@ -516,7 +516,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Descarregar o firmware\0"  // WebDownloadBin
     "Desligar o ecrã quando ninguém estiver a usar\0"  // WebSleep
     "Nunca (a mascote fica a passear)\0"  // WebSleepNever
-    "Modo animal de estimação após estar parado\0"  // WebPetAfter
+    "A mascote começa a passear após\0"  // WebPetAfter
     "Piscadelas do alerta\0"  // WebFlashBlinks
     "Olá! Chamo-me\0"  // HelloIAm
     "Bom dia\0"  // GoodMorning
@@ -699,7 +699,7 @@ static const char kEs[] MIBLO_ROM =
     "Descargar el firmware\0"  // WebDownloadBin
     "Apagar la pantalla cuando nadie la use\0"  // WebSleep
     "Nunca (la mascota sigue paseando)\0"  // WebSleepNever
-    "Modo mascota tras estar inactivo\0"  // WebPetAfter
+    "La mascota empieza a pasear tras\0"  // WebPetAfter
     "Parpadeos de la alerta\0"  // WebFlashBlinks
     "¡Hola! Me llamo\0"  // HelloIAm
     "Buenos días\0"  // GoodMorning
@@ -882,7 +882,7 @@ static const char kFr[] MIBLO_ROM =
     "Télécharger le firmware\0"  // WebDownloadBin
     "Éteindre l'écran quand personne ne l'utilise\0"  // WebSleep
     "Jamais (la mascotte continue de se promener)\0"  // WebSleepNever
-    "Mode compagnon après une inactivité de\0"  // WebPetAfter
+    "La mascotte commence à se promener après\0"  // WebPetAfter
     "Clignotements de l'alerte\0"  // WebFlashBlinks
     "Salut ! Je m'appelle\0"  // HelloIAm
     "Bonjour\0"  // GoodMorning
@@ -1065,7 +1065,7 @@ static const char kIt[] MIBLO_ROM =
     "Scarica il firmware\0"  // WebDownloadBin
     "Spegni lo schermo quando nessuno lo usa\0"  // WebSleep
     "Mai (la mascotte continua a passeggiare)\0"  // WebSleepNever
-    "Modalità animaletto dopo un'inattività di\0"  // WebPetAfter
+    "La mascotte inizia a passeggiare dopo\0"  // WebPetAfter
     "Lampeggi dell'avviso\0"  // WebFlashBlinks
     "Ciao! Mi chiamo\0"  // HelloIAm
     "Buongiorno\0"  // GoodMorning
@@ -1248,7 +1248,7 @@ static const char kDe[] MIBLO_ROM =
     "Firmware herunterladen\0"  // WebDownloadBin
     "Bildschirm ausschalten, wenn niemand ihn nutzt\0"  // WebSleep
     "Nie (das Maskottchen läuft weiter herum)\0"  // WebSleepNever
-    "Haustiermodus nach Leerlauf von\0"  // WebPetAfter
+    "Das Maskottchen läuft los nach\0"  // WebPetAfter
     "Blinken bei Hinweisen\0"  // WebFlashBlinks
     "Hallo! Ich bin\0"  // HelloIAm
     "Guten Morgen\0"  // GoodMorning
@@ -1431,7 +1431,7 @@ static const char kRu[] MIBLO_ROM =
     "Скачать прошивку\0"  // WebDownloadBin
     "Выключать экран, когда им никто не пользуется\0"  // WebSleep
     "Никогда (талисман продолжает гулять)\0"  // WebSleepNever
-    "Режим питомца после простоя\0"  // WebPetAfter
+    "Талисман начинает гулять через\0"  // WebPetAfter
     "Мигания при оповещении\0"  // WebFlashBlinks
     "Привет! Меня зовут\0"  // HelloIAm
     "Доброе утро\0"  // GoodMorning
@@ -1614,7 +1614,7 @@ static const char kZh[] MIBLO_ROM =
     "下载固件\0"  // WebDownloadBin
     "无人使用时关闭屏幕\0"  // WebSleep
     "从不（吉祥物继续四处走动）\0"  // WebSleepNever
-    "空闲多久后进入宠物模式\0"  // WebPetAfter
+    "吉祥物开始走动前等待\0"  // WebPetAfter
     "提醒闪烁次数\0"  // WebFlashBlinks
     "你好! 我是\0"  // HelloIAm
     "早上好\0"  // GoodMorning

@@ -151,6 +151,7 @@ enum class S : uint8_t {
   WebDownloadBin,       // settings: link to the release's .bin for this board
   WebSleep,             // settings: screen-off delay (a select: never / 15 min ... 4 h)
   WebSleepNever,        // settings: the "never" option (pet mode keeps going)
+  WebPetAfter,          // settings: pet mode delay (a select: 1 min ... 1 h)
   WebFlashBlinks,       // settings: how many times the alert flash blinks (2..5)
   HelloIAm,             // greeting after (re)naming, over the gadget's name: "Hi! I'm" / "Tofu"
   GoodMorning,          // first activity of the day, over the owner's name (no punctuation)

@@ -234,12 +234,13 @@ void UpdateNotice::observe(const char* latest, const char* current, uint32_t now
   }
 }
 
-bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs) {
-  return sinceInteractionMs >= kInteractionAwakeMs && idleMs >= kRoamAfterMs;
+bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin) {
+  return sinceInteractionMs >= kInteractionAwakeMs && idleMs >= (uint32_t)petMin * 60000;
 }
 
-bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin) {
-  return sleepMin && sinceInteractionMs >= kInteractionAwakeMs && idleMs >= (uint32_t)sleepMin * 60000;
+bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin, uint8_t petMin) {
+  const uint32_t afterMin = sleepMin > petMin ? sleepMin : (uint32_t)petMin + 15;
+  return sleepMin && sinceInteractionMs >= kInteractionAwakeMs && idleMs >= afterMin * 60000;
 }
 
 }  // namespace miblo

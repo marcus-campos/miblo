@@ -178,14 +178,15 @@ constexpr uint8_t kShiftSteps = 9;
 void pixelShift(uint8_t i, int8_t& dx, int8_t& dy);
 
 // Nobody using it: `idleMs` is how long the computer has been away (Disconnected) or everything
-// has been quiet (the Desk cycle); 0 on any other screen. After kRoamAfterMs the mascot wanders
+// has been quiet (the Desk cycle); 0 on any other screen. After petMin minutes the mascot wanders
 // around the screen (pet mode: nothing stays still); after sleepMin minutes (0 = never) the
 // panel turns off. Someone opening the gadget's pages, or the plugin asking it for a code, keeps
 // the normal screens up for kInteractionAwakeMs (the address and pairing code are on them).
-constexpr uint32_t kRoamAfterMs = 20UL * 60000;
 constexpr uint32_t kInteractionAwakeMs = 120000;
-bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs);
-bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin);
+bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin);
+// The panel never turns off before pet mode has had its turn: a sleepMin not later than petMin
+// (an older setting) waits until petMin + 15 minutes.
+bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin, uint8_t petMin);
 
 // Once per boot, when the first snapshot that names the latest release shows a newer version
 // than this firmware, the screen says so for kShowMs, then carries on.

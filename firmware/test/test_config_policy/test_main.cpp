@@ -619,8 +619,8 @@ static void test_mascot_style_config() {
 }
 
 // Screen care: the pixel shift goes round 9 distinct positions within 2 px; after a long idle the
-// mascot wanders (pet mode) and after sleepMin minutes the panel sleeps (0 = never); a page view
-// or the plugin looking for the gadget keeps the normal screens up.
+// mascot wanders (pet mode, after petMin minutes) and after sleepMin minutes the panel sleeps
+// (0 = never); a page view or a code request keeps the normal screens up.
 static void test_screen_care() {
   bool seen[5][5] = {};
   for (uint8_t i = 0; i < kShiftSteps; i++) {
@@ -637,17 +637,24 @@ static void test_screen_care() {
   TEST_ASSERT_TRUE(dx == 0 && dy == 0);
 
   const uint32_t never = UINT32_MAX;
-  // pet mode after kRoamAfterMs of idle, unless someone just looked at the gadget
-  TEST_ASSERT_FALSE(petMode(kRoamAfterMs - 1, never));
-  TEST_ASSERT_TRUE(petMode(kRoamAfterMs, never));
-  TEST_ASSERT_FALSE(petMode(kRoamAfterMs, kInteractionAwakeMs - 1));
-  TEST_ASSERT_FALSE(petMode(0, never));  // in use
+  // pet mode after petMin minutes of idle, unless someone just looked at the gadget
+  TEST_ASSERT_FALSE(petMode(5 * 60000 - 1, never, 5));
+  TEST_ASSERT_TRUE(petMode(5 * 60000, never, 5));
+  TEST_ASSERT_TRUE(petMode(60000, never, 1));
+  TEST_ASSERT_FALSE(petMode(5 * 60000, kInteractionAwakeMs - 1, 5));
+  TEST_ASSERT_FALSE(petMode(0, never, 1));  // in use
   // panel off after sleepMin minutes of idle; 0 = never
-  TEST_ASSERT_FALSE(screenAsleep(60 * 60000 - 1, never, 60));
-  TEST_ASSERT_TRUE(screenAsleep(60 * 60000, never, 60));
-  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, kInteractionAwakeMs - 1, 60));
-  TEST_ASSERT_FALSE(screenAsleep(never, never, 0));
-  TEST_ASSERT_FALSE(screenAsleep(0, never, 1));
+  TEST_ASSERT_FALSE(screenAsleep(60 * 60000 - 1, never, 60, 15));
+  TEST_ASSERT_TRUE(screenAsleep(60 * 60000, never, 60, 15));
+  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, kInteractionAwakeMs - 1, 60, 15));
+  TEST_ASSERT_FALSE(screenAsleep(never, never, 0, 15));
+  TEST_ASSERT_FALSE(screenAsleep(0, never, 15, 1));
+  // never before pet mode: a screen-off delay not later than the pet delay waits petMin + 15 min
+  TEST_ASSERT_FALSE(screenAsleep(15 * 60000, never, 15, 15));
+  TEST_ASSERT_FALSE(screenAsleep(30 * 60000 - 1, never, 15, 15));
+  TEST_ASSERT_TRUE(screenAsleep(30 * 60000, never, 15, 15));
+  TEST_ASSERT_FALSE(screenAsleep(60 * 60000, never, 30, 60));
+  TEST_ASSERT_TRUE(screenAsleep(75 * 60000, never, 30, 60));
 
   QuietClock q;
   TEST_ASSERT_EQUAL_UINT32(0, q.quietMs(5000));
@@ -663,6 +670,20 @@ static void test_screen_care() {
   TEST_ASSERT_EQUAL_UINT16(0, c.sleepMin);
   TEST_ASSERT_FALSE(patch(c, "{\"sleepMin\":241}", &bad));
   TEST_ASSERT_EQUAL_STRING("sleepMin", bad);
+  // pet mode delay: 15 min by default, 1..60
+  TEST_ASSERT_EQUAL_UINT8(15, c.petMin);
+  TEST_ASSERT_TRUE(patch(c, "{\"petMin\":1}"));
+  TEST_ASSERT_EQUAL_UINT8(1, c.petMin);
+  TEST_ASSERT_TRUE(patch(c, "{\"petMin\":60}"));
+  TEST_ASSERT_EQUAL_UINT8(60, c.petMin);
+  TEST_ASSERT_TRUE(patch(c, "{\"petMin\":5}"));
+  TEST_ASSERT_EQUAL_UINT8(5, c.petMin);
+  TEST_ASSERT_FALSE(patch(c, "{\"petMin\":0}", &bad));
+  TEST_ASSERT_EQUAL_STRING("petMin", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"petMin\":61}", &bad));
+  TEST_ASSERT_EQUAL_STRING("petMin", bad);
+  TEST_ASSERT_EQUAL_UINT8(5, c.petMin);
+  TEST_ASSERT_EQUAL_UINT8(5, storedRoundTrip(c).petMin);  // survives a reboot
 }
 
 // Version order and the once-per-boot "update available" notice.

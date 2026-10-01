@@ -338,8 +338,26 @@ void loop() {
   }
   const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
                                  screen == ScreenId::Summary || screen == ScreenId::Disconnected);
-  const bool pet = miblo::petMode(idleMs, sinceSeen) || demo;
+  // Once pet mode starts it stays until real activity (a session at work, an alert, someone at the
+  // gadget): screens that come and go while it is quiet (the Desk cycle, the computer dropping out
+  // for a moment) restart the idle count but never bring the pet back to its desk.
+  static bool petOn = false;
+  if (!idleScreen || sinceSeen < miblo::kInteractionAwakeMs) petOn = false;
+  else if (miblo::petMode(idleMs, sinceSeen, ctx.cfg.petMin)) petOn = true;
+  // TEMP diagnostics: what restarted the idle count last (removed before release).
+  static uint32_t prevIdleMs = 0;
+  if (prevIdleMs > 5000 && idleMs < prevIdleMs) {
+    ctx.diagResetScreen = (uint8_t)screen;
+    ctx.diagResetPrevSec = prevIdleMs / 1000;
+    ctx.diagResetAtMs = now;
+  }
+  prevIdleMs = idleMs;
+  const bool pet = petOn || demo;
   if (pet) screen = ScreenId::Roam;
+  ctx.diagScreen = (uint8_t)screen;
+  ctx.diagIdleMs = idleMs;
+  ctx.diagRunning = (uint8_t)counts.running;
+  ctx.diagPending = (uint8_t)counts.pending;
   if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
 
   // Other Miblos on the network: what we tell them (in pet mode, napping, limits past 80%), and
@@ -374,7 +392,7 @@ void loop() {
        screen == ScreenId::Paired)) {
     screen = ScreenId::Hello;
   }
-  const bool asleep = !ctx.demo && miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin);
+  const bool asleep = !ctx.demo && miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin, ctx.cfg.petMin);
   if (asleep != displayOff) {
     displayOff = asleep;
     board::setDisplay(!asleep);

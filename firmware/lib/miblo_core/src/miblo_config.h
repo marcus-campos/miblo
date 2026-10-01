@@ -34,6 +34,7 @@ struct Config {
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
   uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
+  uint8_t petMin = 15;           // pet mode after this many idle minutes, 1..60 (the page keeps sleepMin later)
   char owner[64] = "";           // the owner's name, <= 20 characters (greetings); empty = unknown
   char birthday[6] = "";         // the owner's birthday, "MM-DD"; empty = unknown
   char born[11] = "";            // the gadget's own birthday, "YYYY-MM-DD" (set on the first day it is used)

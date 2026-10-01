@@ -401,14 +401,20 @@ static const char kSetJs[] PROGMEM =
     "function st(t,c){const e=$('st');e.textContent=t;e.className=c||'';}"
     "document.addEventListener('input',rv);document.addEventListener('change',()=>{dep();st('');});"
     "document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.tagName==='INPUT')save();});"
-    "dep();rv();"
+    // The screen never turns off before pet mode starts: only screen-off delays longer than the pet
+    // delay are offered (a stale choice moves to the next longer one).
+    "function pd(){const p=Number($('petMin').value),s=$('sleepMin');"
+    "for(const o of s.options)o.disabled=o.value!=='0'&&Number(o.value)<=p;"
+    "if(s.selectedOptions[0].disabled)s.value=[...s.options].find(o=>!o.disabled&&o.value!=='0')?.value||'0';}"
+    "$('petMin').addEventListener('change',pd);"
+    "dep();rv();pd();"
     "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
     "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
     "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','mascot','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-    "if(k==='mascot'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
+    "'nightBrightness','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "if(k==='mascot'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -546,6 +552,13 @@ static void settingsPage() {
     out += F("</option>");
   }
   out += F("</select>");
+  label(out, lang, S::WebPetAfter, F("petMin"));
+  out += F("<select id=\"petMin\"><option value=\"1\">1 min</option><option value=\"2\">2 min</option>"
+           "<option value=\"5\">5 min</option><option value=\"10\">10 min</option>"
+           "<option value=\"15\">15 min</option><option value=\"20\">20 min</option>"
+           "<option value=\"25\">25 min</option><option value=\"30\">30 min</option>"
+           "<option value=\"40\">40 min</option><option value=\"50\">50 min</option>"
+           "<option value=\"60\">1 h</option></select>");
   label(out, lang, S::WebSleep, F("sleepMin"));
   out += F("<select id=\"sleepMin\">");
   option(out, lang, F("0"), S::WebSleepNever);

@@ -61,6 +61,17 @@ static void handleInfo() {
   doc["minHeapParse"] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
   doc["maxSessions"] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
   doc["maxBytes"] = miblo::kSnapshotMaxBytes;
+  // Why the screen shows what it shows: the screen (miblo::ScreenId), how long nobody has been
+  // using it and since someone last opened a page or asked for a code (s), and the sessions
+  // running or waiting. Pet mode needs idleSec >= petMin * 60 and seenSec >= 120.
+  doc["screenId"] = ctx.diagScreen;
+  doc["idleSec"] = ctx.diagIdleMs / 1000;
+  doc["seenSec"] = (millis() - ctx.lastInteractionMs) / 1000;
+  doc["running"] = ctx.diagRunning;
+  doc["pending"] = ctx.diagPending;
+  doc["resetScreen"] = ctx.diagResetScreen;  // TEMP
+  doc["resetPrevSec"] = ctx.diagResetPrevSec;
+  doc["resetAgoSec"] = (millis() - ctx.diagResetAtMs) / 1000;
   // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
   // and the current WiFi.status() (wl_status_t).
   doc["wifiReason"] = net::lastDisconnectReason();
@@ -76,6 +87,7 @@ static void handleInfo() {
   doc["nightBrightness"] = ctx.cfg.nightBrightness;
   doc["mascot"] = ctx.cfg.mascot;
   doc["sleepMin"] = ctx.cfg.sleepMin;
+  doc["petMin"] = ctx.cfg.petMin;
   doc["flashBlinks"] = ctx.cfg.flashBlinks;
   doc["friends"] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened

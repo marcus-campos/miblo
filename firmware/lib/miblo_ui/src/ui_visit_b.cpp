@@ -9,22 +9,23 @@ namespace {
 // Our props (VisitItem::kind). The anchor of each is written next to its drawing below. An
 // item's top two bits of `f` carry the cats' size (see put()), so a prop shrinks with the cats
 // in a group; the lower six are its frame / state.
-constexpr uint8_t kGameTv = kItemsB;        // a tiny TV with two pixel players
-constexpr uint8_t kPad = 97;            // a game controller
-constexpr uint8_t kMovieScreen = 98;    // a cinema screen
-constexpr uint8_t kPopcorn = 99;        // a bucket of popcorn
-constexpr uint8_t kTower = 100;         // a tower of blocks (standing, wobbling or fallen)
-constexpr uint8_t kBlock = 101;         // one block on its way to the tower
-constexpr uint8_t kBulb = 102;          // a light bulb, off or lit
-constexpr uint8_t kTomato = 103;        // a tomato kitchen timer
-constexpr uint8_t kKeyboard = 104;      // a flat little keyboard
-constexpr uint8_t kServer = 105;        // a server rack: fine, smoking, burning or foamed
-constexpr uint8_t kExtinguisher = 106;  // a fire extinguisher, spraying or not
-constexpr uint8_t kChecks = 107;        // eight test results: green checks and pending dots
-constexpr uint8_t kLens = 108;          // a magnifying glass
-constexpr uint8_t kQuestion = 109;      // a big "?"
-constexpr uint8_t kSign404 = 110;       // a white card saying "404"
-static_assert(kSign404 < kItemsC, "kinds 96..127 are ours");
+constexpr uint8_t kGameTv = kItemsB + 0;         // a tiny TV with two pixel players
+constexpr uint8_t kPad = kItemsB + 1;            // a game controller
+constexpr uint8_t kMovieScreen = kItemsB + 2;    // a cinema screen
+constexpr uint8_t kPopcorn = kItemsB + 3;        // a bucket of popcorn
+constexpr uint8_t kTower = kItemsB + 4;          // a tower of blocks (standing, wobbling, falling or fallen)
+constexpr uint8_t kBlock = kItemsB + 5;          // one block on its way to the tower
+constexpr uint8_t kBulb = kItemsB + 6;           // a light bulb, off or lit
+constexpr uint8_t kTomato = kItemsB + 7;         // a tomato kitchen timer
+constexpr uint8_t kKeyboard = kItemsB + 8;       // a flat little keyboard
+constexpr uint8_t kServer = kItemsB + 9;         // a server rack: fine, smoking, burning or foamed
+constexpr uint8_t kExtinguisher = kItemsB + 10;  // a fire extinguisher, spraying or not
+constexpr uint8_t kChecks = kItemsB + 11;        // eight test results: green checks and pending dots
+constexpr uint8_t kLens = kItemsB + 12;          // a magnifying glass
+constexpr uint8_t kQuestion = kItemsB + 13;      // a big "?"
+constexpr uint8_t kSign404 = kItemsB + 14;       // a white card saying "404"
+constexpr uint8_t kSmallProp = kItemsB + 15;     // a ui_main.cpp prop (see Scene::prop) drawn smaller for a group
+static_assert(kSmallProp < kItemsC, "kinds 96..127 are ours");
 
 constexpr uint16_t kYellow = 0xFFE0;     // #ffff00 a lit bulb
 constexpr uint16_t kCream = 0xFF9A;      // #fff0d0 popcorn
@@ -32,6 +33,13 @@ constexpr uint16_t kGlass = 0xB71F;      // #b0e0ff the magnifier's lens
 constexpr uint16_t kBrown = 0x8AC6;      // #8a5a34 its handle
 constexpr uint16_t kDarkGreen = 0x0400;  // #008000 grass on the cinema screen
 constexpr uint16_t kBlockColors[] = {color::RED, color::AMBER, color::GREEN, color::BLUE, color::VIOLET, color::CORAL};
+
+// The size class of a group (the top two bits of our items' `f`): 0 a pair, 1 three cats, 2 four.
+// Its cats' half size: what Pen draws 40 units as, and what Scene::z scales by (they must agree).
+int classHalf(uint8_t size) { return size == 0 ? kVisitHalfPair : size == 1 ? kVisitHalf3 : kVisitHalf4; }
+
+// The ui_main.cpp props a script may use (Scene::prop), in kSmallProp's numbering 0..3.
+uint8_t smallKind(uint8_t w) { return w == 0 ? vprop::Mug : w == 1 ? vprop::Burst : w == 2 ? vprop::Dots : vprop::Drop; }
 
 // ---- scripts ----
 
@@ -42,22 +50,38 @@ struct Scene {
   int d;  // from the guest towards the host: +1 or -1
   // The cats' design units (their 96-unit box, 2 * half px wide).
   int u(int v) const { return v * s.half / 48; }
-  // Prop units: what drawVisitItemB draws as 1 for these cats (1 px for a pair on 240x240).
-  int z(int v) const { return v * s.half / 40; }
+  // These cats' size class (see classHalf). `big`: never smaller than three cats' (for a prop
+  // that has to stay readable in a group of four: the timer, controllers, the server...).
+  uint8_t size(bool big = false) const {
+    const uint8_t k = s.half >= Sz(kVisitHalfPair) ? 0 : s.half >= Sz(kVisitHalf3) ? 1 : 2;
+    return big && k > 1 ? 1 : k;
+  }
+  // Prop units: what drawVisitItemB draws as 1 for a prop put() with the same `big` (1 px for a
+  // pair on 240x240).
+  int z(int v, bool big = false) const { return v * Sz(classHalf(size(big))) / 40; }
   // Centre y of the free space over the cats' ears.
   int above() const { return (s.top + s.cy - u(44)) / 2; }
-  // One of our props, sized like the cats: 0 a pair (half 40), 1 three cats (33), 2 four (27).
-  void put(uint8_t kind, int x, int y, uint8_t fr = 0) {
-    const uint8_t size = s.half >= Sz(40) ? 0 : s.half >= Sz(33) ? 1 : 2;
-    addItem(f, kind, x, y, (uint8_t)((fr & 63) | size << 6));
+  // One of our props, sized like the cats (see size()).
+  void put(uint8_t kind, int x, int y, uint8_t fr = 0, bool big = false) {
+    addItem(f, kind, x, y, (uint8_t)((fr & 63) | size(big) << 6));
   }
   // One of ours over the heads, at full size: in a group the cats are smaller, so there is more
   // room up there, not less.
   void putTop(uint8_t kind, int x, int y, uint8_t fr = 0) { addItem(f, kind, x, y, (uint8_t)(fr & 63)); }
-  // A prop from ui_main.cpp (drawn at the screen's scale).
-  void prop(uint8_t kind, int x, int y, uint8_t fr = 0) { addItem(f, kind, x, y, fr); }
+  // A prop from ui_main.cpp (one of smallKind()'s; fr < 16), as big as the cats: at the screen's
+  // scale for a pair, smaller in a group.
+  void prop(uint8_t kind, int x, int y, uint8_t fr = 0) {
+    const uint8_t k = size();
+    if (!k) {
+      addItem(f, kind, x, y, fr);
+      return;
+    }
+    uint8_t w = 0;
+    while (w < 3 && smallKind(w) != kind) w++;
+    addItem(f, kSmallProp, x, y, (uint8_t)(k << 6 | w << 4 | (fr & 15)));
+  }
   // The "..." of someone talking, from `x` out towards side `dir`.
-  void dots(int x, int dir, int y, uint8_t n) { prop(vprop::Dots, dir > 0 ? x : x - Sz(12), y, n); }
+  void dots(int x, int dir, int y, uint8_t n) { prop(vprop::Dots, dir > 0 ? x : x - z(12), y, n); }
 };
 
 MascotLook look(int gx, int gy, Eyes e, Paws p = Paws::Down, uint16_t extras = 0, int dy = 0) {
@@ -98,8 +122,8 @@ void game(Scene& c) {
   }
   c.putTop(kGameTv, s.mid, c.above(), tv);
   const int py = s.cy + c.u(30);
-  c.put(kPad, s.guestX, py, playing && (t / 180) % 2);
-  c.put(kPad, s.hostX, py, playing && ((t + 90) / 180) % 2);
+  c.put(kPad, s.guestX, py, playing && (t / 180) % 2, true);
+  c.put(kPad, s.hostX, py, playing && ((t + 90) / 180) % 2, true);
 }
 
 // #12 Gossip: the guest leans over and whispers ("..."), the host's eyes go wide and its mouth
@@ -139,7 +163,7 @@ void toast(Scene& c) {
   const int holdY = s.cy + c.u(18), upY = s.cy - c.u(28);
   const int gHold = s.guestX + d * c.u(38), hHold = s.hostX - d * c.u(38);
   // Clinking: the mugs (a body with the handle on its right) meet over the middle.
-  const int left = s.mid - Sz(13), right = s.mid + Sz(7);
+  const int left = s.mid - c.z(13), right = s.mid + c.z(7);
   const int gClink = d > 0 ? left : right, hClink = d > 0 ? right : left;
   int gx = gHold, hx = hHold, gy = holdY, hy = holdY;
   bool spark = false;
@@ -182,7 +206,7 @@ void toast(Scene& c) {
   }
   c.prop(vprop::Mug, gx, gy);
   c.prop(vprop::Mug, hx, hy);
-  if (spark) c.prop(vprop::Burst, s.mid, upY - Sz(12));
+  if (spark) c.prop(vprop::Burst, s.mid, upY - c.z(12));
 }
 
 // #14 Movie time: a screen above flickering, a bucket of popcorn between them; they take turns
@@ -229,21 +253,21 @@ void blocks(Scene& c) {
   const VisitStage& s = c.s;
   const uint32_t t = s.t;
   const int d = c.d;
-  const int base = s.cy + c.u(46), bh = c.z(8);
-  constexpr uint32_t kTurn = 1800, kBuilt = 6 * kTurn, kFall = 13500, kLaugh = 15500;
+  const int base = s.cy + c.u(46), bh = c.z(8, true);
+  constexpr uint32_t kTurn = 1800, kBuilt = 6 * kTurn, kFall = 13500, kTumble = 150, kLaugh = 15500;
   if (t < kBuilt) {
     const uint32_t k = t / kTurn, p = t % kTurn;
     const bool guestTurn = k % 2 == 0;
     const int catX = guestTurn ? s.guestX : s.hostX, toMid = guestTurn ? d : -d;
     const uint8_t n = (uint8_t)(k + (p >= 1000 ? 1 : 0));
-    c.put(kTower, s.mid, base, n);
+    c.put(kTower, s.mid, base, n, true);
     MascotLook placer = look(2 * toMid, 1, Eyes::Open, Paws::Down);
     MascotLook other = look(-2 * toMid, 1, Eyes::Open, Paws::Down);
     if (p < 1000) {  // carrying the next block from the paw to the top of the tower
       placer.paws = reach(toMid);
       const int x = lerpTo(catX + toMid * c.u(38), s.mid, p, 1000);
       const int y = lerpTo(s.cy + c.u(26), base - (int)k * bh - bh / 2, p, 1000);
-      c.put(kBlock, x, y, (uint8_t)k);
+      c.put(kBlock, x, y, (uint8_t)k, true);
     } else if (p < 1400) {
       placer.eyes = other.eyes = Eyes::Happy;
     }
@@ -251,11 +275,13 @@ void blocks(Scene& c) {
     c.f.me = guestTurn ? other : placer;
   } else if (t < kFall) {
     const uint8_t lean = (t / 220) % 2 ? 1 : 2;  // swaying left and right
-    c.put(kTower, s.mid, base, (uint8_t)(6 | lean << 3));
+    c.put(kTower, s.mid, base, (uint8_t)(6 | lean << 3), true);
     c.f.them = look(2 * d, -2, Eyes::Wide, Paws::Down, kSweat);
     c.f.me = look(-2 * d, -2, Eyes::Wide, Paws::Down, kSweat);
   } else {
-    c.put(kTower, s.mid, base, 6 | 32);  // fallen
+    // Falling: two in-between frames, then on the floor.
+    const uint32_t fall = (t - kFall) / kTumble;
+    c.put(kTower, s.mid, base, (uint8_t)(6 | 32 | (fall < 2 ? 1 + fall : 0) << 3), true);
     if (t < kLaugh) {
       const int jump = t < kFall + 700 ? -5 : 0;
       c.f.them = look(2 * d, 2, Eyes::Wide, Paws::Up, kFluffed, jump);
@@ -290,9 +316,9 @@ void brainstorm(Scene& c) {
     c.f.me = hIdea ? idea(t - 10000, -3 * d) : thinking(t + 550);
   }
   if (gIdea) c.putTop(kBulb, s.guestX, y, 1);
-  else c.prop(vprop::Dots, s.guestX - Sz(6), y, (uint8_t)(1 + (t / 400) % 3));
+  else c.prop(vprop::Dots, s.guestX - c.z(6), y, (uint8_t)(1 + (t / 400) % 3));
   if (hIdea) c.putTop(kBulb, s.hostX, y, 1);
-  else c.prop(vprop::Dots, s.hostX - Sz(6), y, (uint8_t)(1 + (t / 400 + 1) % 3));
+  else c.prop(vprop::Dots, s.hostX - c.z(6), y, (uint8_t)(1 + (t / 400 + 1) % 3));
 }
 
 // #17 Pomodoro: the host winds a tomato timer, both type while its hand goes round, it rings
@@ -320,11 +346,11 @@ void pomodoro(Scene& c) {
   } else {
     cheer(c, Paws::Up);
   }
-  c.put(kTomato, s.mid, s.cy + c.u(30), timer);
+  c.put(kTomato, s.mid, s.cy + c.u(30), timer, true);
   const int ky = s.cy + c.u(34);
   const bool working = t >= kWound && t < kRing;
-  c.put(kKeyboard, s.guestX, ky, working && (t / 200) % 2);
-  c.put(kKeyboard, s.hostX, ky, working && ((t + 100) / 200) % 2);
+  c.put(kKeyboard, s.guestX, ky, working && (t / 200) % 2, true);
+  c.put(kKeyboard, s.hostX, ky, working && ((t + 100) / 200) % 2, true);
 }
 
 // #18 Hotfix: the server between them starts smoking, then burns; the host grabs an extinguisher
@@ -336,11 +362,14 @@ void hotfix(Scene& c) {
   constexpr uint32_t kSmoke = 2500, kFire = 5000, kGrab = 7500, kSpray = 8500, kOut = 10000, kCalm = 11500,
                      kRelief = 15000;
   const uint8_t state = t < kSmoke ? 0 : t < kFire ? 1 : t < kOut ? 2 : 3;
-  c.put(kServer, s.mid, s.cy + c.u(46), (uint8_t)((t / 200) % 8 | state << 3));
+  c.put(kServer, s.mid, s.cy + c.u(46), (uint8_t)((t / 200) % 8 | state << 3), true);
   if (t >= kGrab) {
     const bool spraying = t >= kSpray && t < kCalm;
     const uint8_t e = (uint8_t)((-d > 0 ? 0 : 1) | (spraying ? 2 : 0) | ((t / 100) % 2 ? 4 : 0));
-    c.put(kExtinguisher, s.hostX - d * c.u(30), s.cy + c.u(22), e);
+    // In the host's paw; in a group (cats close together) kept clear of the server, its nozzle
+    // (12 units out) just short of the server's side (9), so the spray lands on the server.
+    const int ex = c.size() ? s.mid + d * c.z(24, true) : s.hostX - d * c.u(30);
+    c.put(kExtinguisher, ex, s.cy + c.u(22), e, true);
   }
   const int shiver = (t / 100) % 2 ? 2 : -2;
   if (t < 1500) {
@@ -453,8 +482,8 @@ bool visitActivityB(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
 
 namespace {
 
-// Prop units for an item: 1 is 1 px for a pair of cats on 240x240, less in a group (the size in
-// the top two bits of `f`), and never 0 for a non-zero length.
+// Prop units for an item: 1 is 1 px for a pair of cats on 240x240, less in a group (the size
+// class in the top two bits of `f`, see classHalf), and never 0 for a non-zero length.
 struct Pen {
   int n;  // the cats' half size in px
   int operator()(int v) const {
@@ -532,14 +561,20 @@ void drawBlock(const Pen& p, int cx, int bottom, int i) {  // (bottom centre) on
   C().fillRect(cx - p(6), bottom - h, p(12), h > 4 ? h - 1 : h, kBlockColors[i % 6]);
 }
 
-void drawTower(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) f & 7 blocks; (f >> 3) & 3 lean; f & 32 fallen
-  const int n = f & 7;
-  if (f & 32) {  // scattered on the floor
+// (bottom centre) f & 7 blocks; (f >> 3) & 3 the lean (1 left, 2 right); f & 32 fallen, with
+// (f >> 3) & 3 then 1 or 2 for a third / two thirds of the way down, 0 on the floor.
+void drawTower(const Pen& p, int x, int y, uint8_t f) {
+  const int n = f & 7, k = (f >> 3) & 3;
+  if (f & 32) {  // scattered on the floor (each block from its place in the tower)
     static const int8_t kFloor[7][2] = {{-18, 0}, {-6, 0}, {6, 0}, {18, 0}, {-12, -8}, {12, -8}, {0, -16}};
-    for (int i = 0; i < n; i++) drawBlock(p, x + p(kFloor[i][0]), y + p(kFloor[i][1]), i);
+    for (int i = 0; i < n; i++) {
+      const int fx = kFloor[i][0], fy = kFloor[i][1], tx = 0, ty = -8 * i;
+      const int bx = k ? tx + (fx - tx) * k / 3 : fx, by = k ? ty + (fy - ty) * k / 3 : fy;
+      drawBlock(p, x + p(bx), y + p(by), i);
+    }
     return;
   }
-  const int lean = ((f >> 3) & 3) == 1 ? -1 : ((f >> 3) & 3) == 2 ? 1 : 0;
+  const int lean = k == 1 ? -1 : k == 2 ? 1 : 0;
   for (int i = 0; i < n; i++) drawBlock(p, x + lean * i * p(1), y - i * p(8), i);
 }
 
@@ -674,8 +709,7 @@ void drawSign404(int x, int y) {  // (centre) a white card, "404" in red (screen
 }  // namespace
 
 void drawVisitItemB(const VisitItem& it) {
-  static const uint8_t kHalf[] = {40, 33, 27, 27};
-  const Pen p{Sz(kHalf[it.f >> 6])};
+  const Pen p{Sz(classHalf((uint8_t)(it.f >> 6)))};
   const uint8_t f = it.f & 63;
   const int x = it.x, y = it.y;
   switch (it.kind) {
@@ -694,6 +728,11 @@ void drawVisitItemB(const VisitItem& it) {
     case kLens: drawLens(p, x, y, f); break;
     case kQuestion: drawQuestion(p, x, y); break;
     case kSign404: drawSign404(x, y); break;
+    case kSmallProp:  // (as the prop's own anchor) f & 15: its frame; (f >> 4) & 3: which
+      scaleSz(classHalf((uint8_t)(it.f >> 6)), kVisitHalfPair);
+      drawPropKind(smallKind((it.f >> 4) & 3), x, y, it.f & 15);
+      scaleSz(1, 1);
+      break;
     default: break;
   }
 }

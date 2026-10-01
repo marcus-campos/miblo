@@ -63,6 +63,16 @@ struct VisitItem {
   uint8_t f;  // animation frame / variant
 };
 
+// The cats' half size (240 grid) during a visit: a pair, three cats, four cats. Props that scale
+// with the cats (ui_visit_b.cpp's Pen) are drawn for one of these exactly.
+constexpr int kVisitHalfPair = 40;
+constexpr int kVisitHalf3 = 33;
+constexpr int kVisitHalf4 = 27;
+
+// Sz() scaled by num / den until scaleSz(1, 1): to draw a ui_main.cpp prop the size of a group's
+// smaller cats. Positions passed in stay as they are; only the prop's own sizes shrink.
+void scaleSz(int num, int den);
+
 // Where everyone is while together, and how far into the stay.
 struct VisitStage {
   uint32_t t;      // ms into the stay, 0..miblo::kVisitStayMs

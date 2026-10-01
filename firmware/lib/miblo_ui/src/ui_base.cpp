@@ -10,12 +10,14 @@ namespace color = ui::color;
 static ui::Canvas* g_canvas = nullptr;
 static int16_t g_w = 240;
 static int16_t g_h = 240;
+static int16_t g_sz = 240;  // what Sz() scales by: the smaller side (less while scaleSz() is on)
 static miblo::RegionCache g_cache;
 
 void bind(ui::Canvas& c) {
   g_canvas = &c;
   g_w = c.spec().w;
   g_h = c.spec().h;
+  g_sz = g_w < g_h ? g_w : g_h;
   g_cache.invalidate();
 }
 
@@ -23,7 +25,8 @@ ui::Canvas& canvas() { return *g_canvas; }
 
 int X(int v) { return v * g_w / 240; }
 int Y(int v) { return v * g_h / 240; }
-int Sz(int v) { return v * (g_w < g_h ? g_w : g_h) / 240; }
+int Sz(int v) { return v * g_sz / 240; }
+void scaleSz(int num, int den) { g_sz = (int16_t)((g_w < g_h ? g_w : g_h) * num / den); }
 
 void reset() {
   g_canvas->releaseLayer();

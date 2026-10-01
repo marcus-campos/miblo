@@ -1693,7 +1693,6 @@ static void drawVisitItem(const VisitItem& it) {
 }
 
 // Both cats walk on one horizontal band, recomposed in strips on every change (no trail, no flash).
-constexpr int kVisitCatHalf = 40;
 constexpr int kVisitCatY = 104;
 
 // Position along a walk: from `a` to `b` over [t0, t0 + kVisitWalkMs).
@@ -1715,7 +1714,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   // A host may have a group (1:2, 1:3): up to four cats side by side, smaller the more there are.
   const uint8_t guests = v.role == VisitRole::Host ? (uint8_t)(1 + v.extra) : 1;
   const uint8_t cats = (uint8_t)(1 + guests);
-  const int catHalf = cats <= 2 ? kVisitCatHalf : cats == 3 ? 33 : 27;
+  const int catHalf = cats <= 2 ? kVisitHalfPair : cats == 3 ? kVisitHalf3 : kVisitHalf4;
   const int half = Sz(catHalf);
   const int cy = Y(kVisitCatY);
   const bool coffee = v.gift == miblo::Gift::Coffee;

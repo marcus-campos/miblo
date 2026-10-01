@@ -1092,9 +1092,17 @@ static void test_floor_sign_keeps_lines_and_icon() {
     for (int x = 0; x < 240; x++) dimLid += fc.colorAt(x, y) == ui::color::DIM;
   TEST_ASSERT_TRUE(dimLid > 0);
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
-  const int fills = fc.panelFills;
+  // The held sign comes back without blinking: no clear straight on the panel, the whole screen
+  // recomposed in strips with the sign in its paws again.
+  fc.clearLog();
   screens::roam(Lang::En, snap, testClock(), (c + 1) * screens::kAnticEveryMs - 1, screens::DeskMood::Calm);
-  TEST_ASSERT_TRUE(fc.panelFills > fills);  // a full clear when the held sign comes back
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+  TEST_ASSERT_TRUE(fc.drew("14:32"));
+  // Nor on the held frames around it, the box moving a pixel at a time.
+  for (uint32_t step = 1; step <= 3; step++)
+    screens::roam(Lang::En, snap, testClock(), (c + 1) * screens::kAnticEveryMs - 1 - step * 420,
+                  screens::DeskMood::Calm);
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
 }
 
 // Not playful (a friend's note, or not calm): no antic, the sign stays in its paws.

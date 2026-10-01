@@ -1597,16 +1597,17 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     h = hashInt(hashInt(h, (uint32_t)p.kind | (uint32_t)p.f << 8), (uint32_t)(p.x * 1000 + p.y) ^ ((uint32_t)p.x2 << 20));
   }
   if (!dirty(R_BODY, h)) return;
-  // The held sign travels in a box around the cat (cleared as it moves); away from the sign the
-  // whole screen is redrawn. Switching between the two clears the screen.
-  const int bw = sc.floor ? X(240) : roamW(), bh = sc.floor ? Y(240) : roamH();
-  const int left = sc.floor ? 0 : sc.catX - bw / 2;
-  const int top = sc.floor ? 0 : sc.catY - Sz(kRoamCatHalf) - Y(kRoamMargin);
+  // The held sign travels in a box around the cat (cleared as it moves); away from the sign, and on
+  // the first held frame after it (the hash has the floor bit, so that frame is dirty), the whole
+  // screen is recomposed in strips: no clear straight on the panel, no blink.
   static int lastX = -1000, lastY = -1000;
   static bool wasFloor = false;
-  if (sc.floor != wasFloor || (!sc.floor && (abs(left - lastX) > X(kRoamMargin) || abs(top - lastY) > Y(kRoamMargin))))
-    C().clear(color::BG);
-  lastX = left, lastY = top, wasFloor = sc.floor;
+  const bool full = sc.floor || wasFloor;
+  const int heldLeft = sc.catX - roamW() / 2, heldTop = sc.catY - Sz(kRoamCatHalf) - Y(kRoamMargin);
+  const int bw = full ? X(240) : roamW(), bh = full ? Y(240) : roamH();
+  const int left = full ? 0 : heldLeft, top = full ? 0 : heldTop;
+  if (!full && (abs(left - lastX) > X(kRoamMargin) || abs(top - lastY) > Y(kRoamMargin))) C().clear(color::BG);
+  lastX = heldLeft, lastY = heldTop, wasFloor = sc.floor;  // the held box's spot, even on a full frame
   auto draw = [&] {
     C().fillRect(left, top, bw, bh, color::BG);
     if (sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);

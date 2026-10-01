@@ -1129,6 +1129,22 @@ static void test_pet_scene_quiet_when_not_playful() {
   TEST_ASSERT_EQUAL_INT(0x2125, fc.colorAt(x - 4, y + h));  // the held sign's fill at the pet's spot
 }
 
+// Every antic, all along it (putting the sign down, playing, picking it up), stays on screen at
+// every supported resolution.
+static void test_pet_antics_stay_on_screen() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    idle();
+    screens::reset();
+    for (uint32_t c = 1; c <= screens::kAnticCount; c++)
+      for (uint32_t at = 0; at < screens::kAnticFloorMs; at += 100)
+        screens::roam(Lang::En, snap, testClock(), c * screens::kAnticEveryMs + at, screens::DeskMood::Calm);
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_pet_antics_order);
@@ -1159,6 +1175,7 @@ int main() {
   RUN_TEST(test_floor_sign_keeps_lines_and_icon);
   RUN_TEST(test_pet_scene_quiet_when_not_playful);
   RUN_TEST(test_props_stay_near_their_anchor);
+  RUN_TEST(test_pet_antics_stay_on_screen);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

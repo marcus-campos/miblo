@@ -424,24 +424,32 @@ void renderAll(Lang L) {
       save(sh, g.name);
     }
   }
-  // Pet mode antics with the sign: the first cycle of each antic, at a telling moment.
+  // Pet mode antics: two moments of each, and the sign going down on the floor.
   {
     idle();
-    const struct {
-      screens::RoamAntic a;
-      uint32_t at;
-      const char* name;
-    } antics[] = {{screens::RoamAntic::Bat, 1000, "bat"},     {screens::RoamAntic::Spill, 2500, "spill-drops"},
-                  {screens::RoamAntic::Spill, 4000, "spill-scared"}, {screens::RoamAntic::Spill, 7000, "spill-ashamed"},
-                  {screens::RoamAntic::Cursor, 2000, "cursor"}, {screens::RoamAntic::Nap, 4000, "nap"}};
-    for (const auto& x : antics) {
-      for (uint32_t c = 1; c < 64; c++) {
-        uint32_t at;
-        if (screens::roamAntic(c * screens::kAnticEveryMs + x.at, &at) != x.a) continue;
+    static const char* const kAnticNames[] = {"",        "bat",      "spill",   "cursor",  "nap",     "sneeze",
+                                              "peek",    "heart",    "glasses", "stamp",   "laptop",  "tail",
+                                              "stretch", "lick",     "fly",     "yarn",    "mug",     "box",
+                                              "keys",    "laser",    "bubbles", "fish",    "duck",    "coffee",
+                                              "butterfly", "balloon", "plane",  "bowl",    "deploy",  "cucumber",
+                                              "blanket"};
+    static_assert(sizeof(kAnticNames) / sizeof(kAnticNames[0]) == screens::kAnticCount + 1, "one name per antic");
+    bool putDown = false;
+    for (uint32_t c = 1; c <= screens::kAnticCount; c++) {
+      const uint32_t t0 = c * screens::kAnticEveryMs;
+      const screens::RoamAntic a = screens::roamAntic(t0, nullptr);
+      const uint32_t play = screens::anticOnSign(a) ? 0 : screens::kAnticPutMs;
+      const uint32_t moments[] = {play + 2500, play + 6000};
+      for (int i = 0; i < 2; i++) {
         Shot sh;
-        screens::roam(L, snap, clk, c * screens::kAnticEveryMs + x.at, screens::DeskMood::Calm);
-        save(sh, std::string("45-pet-") + x.name);
-        break;
+        screens::roam(L, snap, clk, t0 + moments[i], screens::DeskMood::Calm);
+        save(sh, std::string("45-pet-") + kAnticNames[(uint8_t)a] + "-" + std::to_string(i + 1));
+      }
+      if (!putDown && play) {
+        putDown = true;
+        Shot sh;
+        screens::roam(L, snap, clk, t0 + screens::kAnticPutMs / 2, screens::DeskMood::Calm);
+        save(sh, "45-pet-putting-sign-down");
       }
     }
   }

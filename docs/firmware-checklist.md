@@ -117,13 +117,36 @@ notes.
     back at the end time). Reboot inside the window: it comes back warm once the clock is set.
     Set "Off": the original colours return everywhere.
 17. **Screen care:** leave the gadget with Claude Code closed: after ~30 s "Disconnected", after
-    20 min the mascot wanders around the whole screen (no trail, clock under it), and with the
-    default "1 h" the panel goes dark (backlight off) at the one-hour mark. Opening the settings
-    page, `/miblo:pair` (mDNS discovery) or any Claude Code activity lights it again with the
-    normal screens. With "Never", pet mode keeps going. Over an hour, the whole picture shifts by
-    1-2 px every 5 minutes.
+    `petMin` minutes (15 by default; 1 min to 1 h on the settings page) the mascot wanders around
+    the whole screen (no trail, clock under it), and with the default "1 h" the panel goes dark
+    (backlight off) at the one-hour mark. Opening the settings page, `/miblo:pair` (mDNS
+    discovery) or any Claude Code activity lights it again with the normal screens. With
+    "Never", pet mode keeps going. Over an hour, the whole picture shifts by 1-2 px every 5
+    minutes.
 18. **Update notice:** with an older firmware than the latest release, restart the gadget with
     Claude Code open: "Update available · vX (you have vY)" shows for ~5 s once, then the normal
     screens. On the settings page, **Check for updates** reports "Up to date" on the latest
     firmware, or the new version with a link to its .bin. `/miblo:pair` on an outdated gadget
     offers the update right after pairing.
+19. **Pet antics:** in pet mode, watch for ~10 minutes: the mascot goes through its 30 antics
+    (for example spilling its coffee). The sign it carries lies on the floor while it plays and
+    the mascot does not blink during an antic. Interplay of `petMin` and `sleepMin`: with
+    `sleepMin` above `petMin` the panel goes dark `sleepMin - petMin` minutes after pet mode
+    starts; with `sleepMin` equal or below `petMin` it goes dark 15 min after pet mode starts
+    (never before it shows); `sleepMin` "Never" keeps pet mode going.
+20. **Visits (two or more Miblos):** run `/miblo:demo` and watch the first visit start within
+    about 10 s. Over a few visits, see the 30 new activities besides the original ones (37 kinds
+    of visit in all, from the duck and the code review to ping-pong, a picnic and a kite); guests walk in from the side set on the settings page. Let one
+    Miblo's panel go dark (or set it to sleep soon): no visit starts into it, and a visit in
+    progress ends with the guests going home. `/miblo:demo stop` ends the demo early.
+21. **Setup-portal Wi-Fi code:** on a configured unit (saved Wi-Fi or paired), the setup network's
+    portal asks for the on-screen code before it joins a network; a wrong code is refused. While
+    another code is on the screen (an update or a reset) a second request gets a "busy" reply
+    (429 `{"error":"busy"}` with `retryAfter`) and does not replace the code. After a factory
+    reset the unit is fresh again and the portal asks for no code.
+22. **Settings-page lock and reduced public info:** on a paired gadget, `http://miblo-xxxx.local`
+    shows only an unlock button until the on-screen code is typed; then the owner, birthday and
+    settings load. Without the token, `GET /api/info` returns only `{id, paired, proto}` and
+    mDNS advertises only the id-based `Miblo-XXXX` (no name). Flood `/api/info` without a token
+    until it answers 429, then check that a request with the pairing token still answers 200
+    (`/miblo:status` keeps working).

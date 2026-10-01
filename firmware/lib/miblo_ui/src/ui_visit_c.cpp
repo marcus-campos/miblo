@@ -37,7 +37,7 @@ enum : uint8_t {
   cWhite, cPaper, cWater, cDeep, cRain, cWood, cString, cDim, cFaint, cMuted, cText, cCheck, cRed, cSirenOff,
   cGrey, cCloth, cBread, cLettuce, cOrange, cTin, cTinRim, cCanopyDark, cAmber, cViolet, cPupil
 };
-static const uint16_t kColors[] MIBLO_ROM = {
+const uint16_t kColors[] MIBLO_ROM = {
     color::WHITE, 0xCE79 /* #cccccc folded paper */, 0x5DBC /* #5ab4e6 water */, 0x2B53 /* #2a6a9a */,
     0x8E5E /* #8cc8f0 rain */, 0x8AC6 /* #8a5a34 wood */, 0xD69A /* #d0d0d0 string */, color::DIM, color::FAINT,
     color::MUTED, color::TEXT, 0x6C4B /* #6a8a5a faded green check */, color::RED, 0x6104 /* #602020 */,
@@ -52,59 +52,62 @@ uint16_t col(uint8_t i) {
 }
 
 // A prop as a list of shapes in design units around its anchor (scaled by Sz), kept in flash.
-// R: rect (a, b, w = c, h = d); O: rounded (+ radius e); D: disc (a, b, r = c); T: triangle; L: line.
-enum : uint8_t { R, O, D, T, L };
+// Rect: (a, b, w = c, h = d); Round: + radius e; Disc: (a, b, r = c); Tri: three points; Line: two.
+enum : uint8_t { kOpRect, kOpRound, kOpDisc, kOpTri, kOpLine };
 struct Shape {
-  uint8_t op, col;
+  uint8_t pen;  // the op (top 3 bits) and the colour index (low 5 bits)
   int8_t a, b, c, d, e, g;
 };
+constexpr uint8_t pen(uint8_t op, uint8_t colour) { return (uint8_t)(op << 5 | colour); }
 
-#define SHAPES(name) static const Shape name[] MIBLO_ROM
+#define SHAPES(name) const Shape name[] MIBLO_ROM
 #define COUNT(arr) (uint8_t)(sizeof(arr) / sizeof(arr[0]))
 
-SHAPES(kBoatShape) = {{T, cWhite, -15, -2, 15, -2, 9, 5},   {T, cWhite, -15, -2, -9, 5, 9, 5},
-                      {T, cWhite, 0, -17, -10, -2, 0, -2},  {T, cPaper, 0, -17, 0, -2, 10, -2}};
-SHAPES(kRipples) = {{R, cWhite, -15, 6, 6, 1, 0, 0}, {R, cWhite, 5, 6, 6, 1, 0, 0}};
-SHAPES(kSheetFlat) = {{R, cWhite, -9, -6, 18, 12, 0, 0}, {L, cPaper, -9, -6, 0, 5, 0, 0}, {L, cPaper, 9, -6, 0, 5, 0, 0}};
-SHAPES(kSheetHouse) = {{R, cWhite, -9, -1, 18, 7, 0, 0}, {T, cWhite, -9, -1, 9, -1, 0, -8}, {T, cPaper, -9, -1, 0, -8, 0, -1}};
-SHAPES(kSheetDart) = {{T, cWhite, -12, 0, 12, -5, 12, 0}, {T, cPaper, -12, 0, 12, 0, 12, 5}};
+SHAPES(kBoatShape) = {{pen(kOpTri, cWhite), -15, -2, 15, -2, 9, 5},   {pen(kOpTri, cWhite), -15, -2, -9, 5, 9, 5},
+                      {pen(kOpTri, cWhite), 0, -17, -10, -2, 0, -2},  {pen(kOpTri, cPaper), 0, -17, 0, -2, 10, -2}};
+SHAPES(kRipples) = {{pen(kOpRect, cWhite), -15, 6, 6, 1, 0, 0}, {pen(kOpRect, cWhite), 5, 6, 6, 1, 0, 0}};
+SHAPES(kSheetFlat) = {{pen(kOpRect, cWhite), -14, -9, 27, 18, 0, 0}, {pen(kOpLine, cPaper), -14, -9, 0, 8, 0, 0},
+                      {pen(kOpLine, cPaper), 13, -9, 0, 8, 0, 0}};
+SHAPES(kSheetHouse) = {{pen(kOpRect, cWhite), -14, -2, 27, 11, 0, 0}, {pen(kOpTri, cWhite), -14, -2, 13, -2, 0, -12},
+                       {pen(kOpTri, cPaper), -14, -2, 0, -12, 0, -2}};
+SHAPES(kSheetDart) = {{pen(kOpTri, cWhite), -18, 0, 18, -8, 18, 0}, {pen(kOpTri, cPaper), -18, 0, 18, 0, 18, 8}};
 // The page (anchor: centre of its top edge, 56 x 30): title bar and its three dots, the votes (up,
 // count, down), a big "?" and the question's lines.
-SHAPES(kPage) = {{R, cDim, -28, 0, 56, 30, 0, 0},     {R, cFaint, -27, 1, 54, 5, 0, 0},
-                 {D, cMuted, -24, 3, 1, 0, 0, 0},     {D, cMuted, -20, 3, 1, 0, 0, 0},
-                 {D, cMuted, -16, 3, 1, 0, 0, 0},     {R, cMuted, -27, 6, 54, 23, 0, 0},
-                 {T, cFaint, -21, 9, -24, 13, -18, 13}, {R, cFaint, -23, 15, 4, 1, 0, 0},
-                 {T, cFaint, -24, 17, -18, 17, -21, 21}, {D, cFaint, -8, 13, 5, 0, 0, 0},
-                 {D, cMuted, -8, 13, 3, 0, 0, 0},     {R, cMuted, -13, 13, 5, 6, 0, 0},
-                 {R, cFaint, -9, 16, 2, 4, 0, 0},     {R, cFaint, -9, 23, 2, 2, 0, 0},
-                 {R, cDim, 1, 11, 20, 2, 0, 0},       {R, cDim, 1, 16, 15, 2, 0, 0},
-                 {R, cDim, 1, 21, 10, 2, 0, 0}};
-SHAPES(kCobweb) = {{L, cWhite, 27, 6, 12, 6, 0, 0},  {L, cWhite, 27, 6, 15, 13, 0, 0}, {L, cWhite, 27, 6, 21, 18, 0, 0},
-                   {L, cWhite, 27, 6, 27, 21, 0, 0}, {L, cWhite, 22, 6, 23, 8, 0, 0},  {L, cWhite, 23, 8, 25, 10, 0, 0},
-                   {L, cWhite, 25, 10, 27, 11, 0, 0}, {L, cWhite, 17, 6, 19, 11, 0, 0}, {L, cWhite, 19, 11, 23, 14, 0, 0},
-                   {L, cWhite, 23, 14, 27, 16, 0, 0}};
-SHAPES(kSpecks) = {{R, cText, -24, 9, 2, 1, 0, 0}, {R, cText, -15, 16, 2, 1, 0, 0}, {R, cText, -6, 27, 2, 1, 0, 0},
-                   {R, cText, 3, 8, 2, 1, 0, 0},   {R, cText, 11, 24, 2, 1, 0, 0},  {R, cText, 20, 20, 2, 1, 0, 0},
-                   {R, cText, -20, 23, 2, 1, 0, 0}, {R, cText, 7, 15, 2, 1, 0, 0},  {R, cText, -9, 9, 2, 1, 0, 0},
-                   {R, cText, 16, 27, 2, 1, 0, 0}};
-SHAPES(kRays) = {{R, cRed, -20, -11, 7, 2, 0, 0}, {R, cRed, 13, -11, 7, 2, 0, 0}, {R, cRed, -1, -24, 2, 5, 0, 0},
-                 {T, cRed, -16, -22, -13, -23, -10, -18}, {T, cRed, 16, -22, 13, -23, 10, -18}};
+SHAPES(kPage) = {{pen(kOpRect, cDim), -28, 0, 56, 30, 0, 0},     {pen(kOpRect, cFaint), -27, 1, 54, 5, 0, 0},
+                 {pen(kOpDisc, cMuted), -24, 3, 1, 0, 0, 0},     {pen(kOpDisc, cMuted), -20, 3, 1, 0, 0, 0},
+                 {pen(kOpDisc, cMuted), -16, 3, 1, 0, 0, 0},     {pen(kOpRect, cMuted), -27, 6, 54, 23, 0, 0},
+                 {pen(kOpTri, cFaint), -21, 9, -24, 13, -18, 13}, {pen(kOpRect, cFaint), -23, 15, 4, 1, 0, 0},
+                 {pen(kOpTri, cFaint), -24, 17, -18, 17, -21, 21}, {pen(kOpDisc, cFaint), -8, 13, 5, 0, 0, 0},
+                 {pen(kOpDisc, cMuted), -8, 13, 3, 0, 0, 0},     {pen(kOpRect, cMuted), -13, 13, 5, 6, 0, 0},
+                 {pen(kOpRect, cFaint), -9, 16, 2, 4, 0, 0},     {pen(kOpRect, cFaint), -9, 23, 2, 2, 0, 0},
+                 {pen(kOpRect, cDim), 1, 11, 20, 2, 0, 0},       {pen(kOpRect, cDim), 1, 16, 15, 2, 0, 0},
+                 {pen(kOpRect, cDim), 1, 21, 10, 2, 0, 0}};
+SHAPES(kCobweb) = {{pen(kOpLine, cWhite), 27, 6, 12, 6, 0, 0},  {pen(kOpLine, cWhite), 27, 6, 15, 13, 0, 0}, {pen(kOpLine, cWhite), 27, 6, 21, 18, 0, 0},
+                   {pen(kOpLine, cWhite), 27, 6, 27, 21, 0, 0}, {pen(kOpLine, cWhite), 22, 6, 23, 8, 0, 0},  {pen(kOpLine, cWhite), 23, 8, 25, 10, 0, 0},
+                   {pen(kOpLine, cWhite), 25, 10, 27, 11, 0, 0}, {pen(kOpLine, cWhite), 17, 6, 19, 11, 0, 0}, {pen(kOpLine, cWhite), 19, 11, 23, 14, 0, 0},
+                   {pen(kOpLine, cWhite), 23, 14, 27, 16, 0, 0}};
+SHAPES(kSpecks) = {{pen(kOpRect, cText), -24, 9, 2, 1, 0, 0}, {pen(kOpRect, cText), -15, 16, 2, 1, 0, 0}, {pen(kOpRect, cText), -6, 27, 2, 1, 0, 0},
+                   {pen(kOpRect, cText), 3, 8, 2, 1, 0, 0},   {pen(kOpRect, cText), 11, 24, 2, 1, 0, 0},  {pen(kOpRect, cText), 20, 20, 2, 1, 0, 0},
+                   {pen(kOpRect, cText), -20, 23, 2, 1, 0, 0}, {pen(kOpRect, cText), 7, 15, 2, 1, 0, 0},  {pen(kOpRect, cText), -9, 9, 2, 1, 0, 0},
+                   {pen(kOpRect, cText), 16, 27, 2, 1, 0, 0}};
+SHAPES(kRays) = {{pen(kOpRect, cRed), -20, -11, 7, 2, 0, 0}, {pen(kOpRect, cRed), 13, -11, 7, 2, 0, 0}, {pen(kOpRect, cRed), -1, -24, 2, 5, 0, 0},
+                 {pen(kOpTri, cRed), -16, -22, -13, -23, -10, -18}, {pen(kOpTri, cRed), 16, -22, 13, -23, 10, -18}};
 // A sandwich (bread, tomato, lettuce, bread) whole, then a half, then a bitten half; then crumbs.
 SHAPES(kSandwiches) = {
-    {O, cBread, -10, 2, 20, 4, 1, 0}, {R, cRed, -9, 0, 18, 2, 0, 0}, {R, cLettuce, -11, -2, 22, 2, 0, 0}, {O, cBread, -10, -7, 20, 5, 2, 0},
-    {O, cBread, -6, 2, 12, 4, 1, 0},  {R, cRed, -5, 0, 10, 2, 0, 0}, {R, cLettuce, -7, -2, 14, 2, 0, 0},  {O, cBread, -6, -7, 12, 5, 2, 0},
-    {O, cBread, -4, 2, 8, 4, 1, 0},   {R, cRed, -3, 0, 6, 2, 0, 0},  {R, cLettuce, -5, -2, 10, 2, 0, 0},  {O, cBread, -4, -7, 8, 5, 2, 0},
-    {R, cBread, -5, 3, 2, 2, 0, 0},   {R, cBread, 1, 4, 2, 1, 0, 0}, {R, cBread, 5, 2, 1, 1, 0, 0}};
-SHAPES(kPondShape) = {{O, cWater, -22, -4, 44, 8, 4, 0}, {O, cDeep, -15, -2, 30, 4, 2, 0}};
-SHAPES(kFloat) = {{D, cWhite, 0, -3, 3, 0, 0, 0}, {R, cRed, -3, -6, 6, 3, 0, 0}};
-SHAPES(kFurledShape) = {{R, cWood, -1, -30, 2, 30, 0, 0}, {T, cRed, 0, -34, -4, -10, 4, -10}, {R, cCanopyDark, -3, -19, 6, 2, 0, 0}};
-SHAPES(kCanShape) = {{R, cTin, -4, -5, 8, 10, 0, 0}, {R, cTinRim, -4, -5, 8, 1, 0, 0}, {R, cTinRim, -4, 0, 8, 1, 0, 0},
-                     {R, cTinRim, -4, 4, 8, 1, 0, 0}};
-SHAPES(kKiteShape) = {{T, cRed, 0, -11, -8, -2, 0, 9}, {T, cAmber, 0, -11, 8, -2, 0, 9}, {L, cWood, 0, -11, 0, 9, 0, 0},
-                      {L, cWood, -8, -2, 8, -2, 0, 0}};
-SHAPES(kBow) = {{T, cViolet, 0, 0, -3, -2, -3, 2}, {T, cViolet, 0, 0, 3, -2, 3, 2}};
-SHAPES(kFishBody) = {{O, cOrange, -4, 0, 8, 13, 4, 0}, {D, cPupil, -2, 4, 1, 0, 0, 0}};
-SHAPES(kFishTail) = {{T, cOrange, 0, 11, -5, 17, 5, 17}};
+    {pen(kOpRound, cBread), -10, 2, 20, 4, 1, 0}, {pen(kOpRect, cRed), -9, 0, 18, 2, 0, 0}, {pen(kOpRect, cLettuce), -11, -2, 22, 2, 0, 0}, {pen(kOpRound, cBread), -10, -7, 20, 5, 2, 0},
+    {pen(kOpRound, cBread), -6, 2, 12, 4, 1, 0},  {pen(kOpRect, cRed), -5, 0, 10, 2, 0, 0}, {pen(kOpRect, cLettuce), -7, -2, 14, 2, 0, 0},  {pen(kOpRound, cBread), -6, -7, 12, 5, 2, 0},
+    {pen(kOpRound, cBread), -4, 2, 8, 4, 1, 0},   {pen(kOpRect, cRed), -3, 0, 6, 2, 0, 0},  {pen(kOpRect, cLettuce), -5, -2, 10, 2, 0, 0},  {pen(kOpRound, cBread), -4, -7, 8, 5, 2, 0},
+    {pen(kOpRect, cBread), -5, 3, 2, 2, 0, 0},   {pen(kOpRect, cBread), 1, 4, 2, 1, 0, 0}, {pen(kOpRect, cBread), 5, 2, 1, 1, 0, 0}};
+SHAPES(kPondShape) = {{pen(kOpRound, cWater), -22, -4, 44, 8, 4, 0}, {pen(kOpRound, cDeep), -15, -2, 30, 4, 2, 0}};
+SHAPES(kFloat) = {{pen(kOpDisc, cWhite), 0, -3, 3, 0, 0, 0}, {pen(kOpRect, cRed), -3, -6, 6, 3, 0, 0}};
+SHAPES(kFurledShape) = {{pen(kOpRect, cWood), -1, -30, 2, 30, 0, 0}, {pen(kOpTri, cRed), 0, -34, -4, -10, 4, -10}, {pen(kOpRect, cCanopyDark), -3, -19, 6, 2, 0, 0}};
+SHAPES(kCanShape) = {{pen(kOpRect, cTin), -5, -6, 10, 13, 0, 0}, {pen(kOpRect, cTinRim), -5, -6, 10, 1, 0, 0},
+                     {pen(kOpRect, cTinRim), -5, 0, 10, 1, 0, 0}, {pen(kOpRect, cTinRim), -5, 6, 10, 1, 0, 0}};
+SHAPES(kKiteShape) = {{pen(kOpTri, cRed), 0, -11, -8, -2, 0, 9}, {pen(kOpTri, cAmber), 0, -11, 8, -2, 0, 9}, {pen(kOpLine, cWood), 0, -11, 0, 9, 0, 0},
+                      {pen(kOpLine, cWood), -8, -2, 8, -2, 0, 0}};
+SHAPES(kBow) = {{pen(kOpTri, cViolet), 0, 0, -3, -2, -3, 2}, {pen(kOpTri, cViolet), 0, 0, 3, -2, 3, 2}};
+SHAPES(kFishBody) = {{pen(kOpRound, cOrange), -4, 0, 8, 13, 4, 0}, {pen(kOpDisc, cPupil), -2, 4, 1, 0, 0, 0}};
+SHAPES(kFishTail) = {{pen(kOpTri, cOrange), 0, 11, -5, 17, 5, 17}};
 
 // Sz, but never 0 for a size (at 170 px wide, Sz(1) is 0).
 int sz(int v) {
@@ -130,13 +133,13 @@ void draw(const Shape* list, uint8_t n, int x, int y) {
   for (uint8_t i = 0; i < n; i++) {
     Shape p;
     mibloRomCopy(&p, &list[i], sizeof(p));
-    const uint16_t c = col(p.col);
+    const uint16_t c = col(p.pen & 31);
     const int ax = x + Sz(p.a), ay = y + Sz(p.b);
-    switch (p.op) {
-      case R: C().fillRect(ax, ay, sz(p.c), sz(p.d), c); break;
-      case O: C().fillRoundRect(ax, ay, sz(p.c), sz(p.d), Sz(p.e), c); break;
-      case D: C().fillCircle(ax, ay, sz(p.c), c); break;
-      case T: C().fillTriangle(ax, ay, x + Sz(p.c), y + Sz(p.d), x + Sz(p.e), y + Sz(p.g), c); break;
+    switch (p.pen >> 5) {
+      case kOpRect: C().fillRect(ax, ay, sz(p.c), sz(p.d), c); break;
+      case kOpRound: C().fillRoundRect(ax, ay, sz(p.c), sz(p.d), Sz(p.e), c); break;
+      case kOpDisc: C().fillCircle(ax, ay, sz(p.c), c); break;
+      case kOpTri: C().fillTriangle(ax, ay, x + Sz(p.c), y + Sz(p.d), x + Sz(p.e), y + Sz(p.g), c); break;
       default: thin(ax, ay, x + Sz(p.c), y + Sz(p.d), c); break;
     }
   }
@@ -226,9 +229,9 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       return true;
     }
     case miblo::Gift::Sprint: {  // a finish flag; running in place, side by side; a tie
-      const int flagY = s.top + Sz(4);
-      addLine(f, s.mid, flagY, s.mid, s.bottom - Sz(2), kPole);
-      addItem(f, kFlag, s.mid, flagY, (uint8_t)(t / (t < 13000 ? 400 : 150)));
+      const int flagY = s.top + Sz(4), fx = clampX(s.mid, Sz(20));
+      addLine(f, fx, flagY, fx, s.bottom - Sz(2), kPole);
+      addItem(f, kFlag, fx, flagY, (uint8_t)(t / (t < 13000 ? 400 : 150)));
       if (t < 2500) {  // on your marks: crouched, eyes on each other
         still(f, Eyes::Open, kGrumpy);
         f.them.dy = f.me.dy = 3;
@@ -239,7 +242,7 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
         f.me.dy = (int8_t)(step ? 0 : -5);
         f.them.paws = step ? Paws::TapLeft : Paws::TapRight;
         f.me.paws = step ? Paws::TapRight : Paws::TapLeft;
-        if (t < 3000) addItem(f, vprop::Burst, s.mid, flagY + Sz(8));
+        if (t < 3000) addItem(f, vprop::Burst, fx, flagY + Sz(8));
         else  // dust behind their feet
           addItem(f, vprop::Puff, clampX(step ? s.guestX - toHost * P(s, 30) : s.hostX + toHost * P(s, 30), Sz(6)),
                   s.bottom - Sz(5), 1);
@@ -249,17 +252,17 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
         f.me.dx = f.me.gx;
         f.them.paws = guestReach(s);
         f.me.paws = hostReach(s);
-        if (t < 14000) addItem(f, vprop::Burst, s.mid, flagY + Sz(8));
+        if (t < 14000) addItem(f, vprop::Burst, fx, flagY + Sz(8));
       } else {  // a tie: both win
         cheer(f, true);
       }
       return true;
     }
     case miblo::Gift::Origami: {  // a sheet folded in turns into a paper plane that flies off
-      const int y = s.bottom - Sz(8);
+      const int y = s.bottom - Sz(11), sx = clampX(s.mid, Sz(18));
       const int dir = s.mid < X(120) ? 1 : -1;  // the plane heads for the open side of the screen
       if (t < 9000) {  // folding, one fold each
-        look(f, s, s.mid, y);
+        look(f, s, sx, y);
         if (t >= 2000) {
           if (((t - 2000) / 1200) % 2 == 0) {
             f.them.paws = guestReach(s);
@@ -268,16 +271,16 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
             f.them.extras = kTongue;  // concentrating
           }
         }
-        addItem(f, kSheet, s.mid, y, (uint8_t)(t < 4500 ? 0 : t < 7000 ? 1 : 2));
+        addItem(f, kSheet, sx, y, (uint8_t)(t < 4500 ? 0 : t < 7000 ? 1 : 2));
       } else if (t < 10500) {  // it's a plane!
-        look(f, s, s.mid, y, Eyes::Wide);
-        addItem(f, vprop::Plane, s.mid + dir * Sz(9), y, dir > 0 ? 0 : 1);
-        if (t < 9600) addItem(f, vprop::Burst, s.mid, y - Sz(10));
+        look(f, s, sx, y, Eyes::Wide);
+        addItem(f, vprop::Plane, sx + dir * Sz(9), y, dir > 0 ? 0 : 1);
+        if (t < 9600) addItem(f, vprop::Burst, sx, y - Sz(10));
       } else {  // up it goes, then loops around over their heads
         const int hi = s.top + Sz(9), span = P(s, 24);
         int px, py, heading = dir;
         if (t < 14000) {
-          px = lerpTo(s.mid + dir * Sz(9), s.mid + dir * span, t - 10500, 3500);
+          px = lerpTo(sx + dir * Sz(9), s.mid + dir * span, t - 10500, 3500);
           py = lerpTo(y, hi, t - 10500, 3500);
         } else {
           const uint32_t p = t - 14000;
@@ -293,27 +296,28 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       return true;
     }
     case miblo::Gift::Nostalgia: {  // an old dusty Q&A page; blown off, laughed at; a laptop sparkles
-      const int wy = s.top + Sz(6), ly = s.bottom - Sz(4);
-      addItem(f, kWindow, s.mid, wy, (uint8_t)(t < 4500 ? 3 : 2));  // dusty (bit 0), a cobweb (bit 1)
+      const int wy = s.top + Sz(6), ly = s.bottom - Sz(4), wx = clampX(s.mid, Sz(28));
+      addItem(f, kWindow, wx, wy, (uint8_t)(t < 4500 ? 3 : 2));  // dusty (bit 0), a cobweb (bit 1)
       if (t < 2500) {  // there it is, untouched for years
-        look(f, s, s.mid, wy, t < 1200 ? Eyes::Open : Eyes::Wide);
+        look(f, s, wx, wy, t < 1200 ? Eyes::Open : Eyes::Wide);
       } else if (t < 6500) {  // the guest blows the dust off; both cough
         const bool blowing = t < 4500;
-        look(f, s, s.mid, wy, blowing ? Eyes::Open : Eyes::Closed);
+        look(f, s, wx, wy, blowing ? Eyes::Open : Eyes::Closed);
         if (blowing) {
           f.them.eyes = Eyes::Closed;
           f.them.extras = kMouthO;
         } else {
           f.me.dx = f.them.dx = (int8_t)((t / 120) % 2 ? 1 : -1);
         }
-        if (t >= 3000) addItem(f, kDust, s.mid, wy + Sz(22), (uint8_t)((t - 3000) / 700));
+        if (t >= 3000) addItem(f, kDust, wx, wy + Sz(22), (uint8_t)((t - 3000) / 700));
       } else if (t < 10500) {  // they look at each other and laugh
         if ((t / 350) % 2) f.me.extras = f.them.extras = kMouthWide;
       } else {  // a sparkle on a laptop: both turn to it, leaving the old page behind
-        addItem(f, vprop::Laptop, s.mid, ly, (uint8_t)(t / 300));
-        addItem(f, kSparkle, s.mid + Sz(12), ly - Sz(20), (uint8_t)(t / 250));
+        const int lx = clampX(s.mid, Sz(24));
+        addItem(f, vprop::Laptop, lx, ly, (uint8_t)(t / 300));
+        addItem(f, kSparkle, lx + Sz(12), ly - Sz(20), (uint8_t)(t / 250));
         if (t < 15500) {
-          look(f, s, s.mid, ly, t < 11500 ? Eyes::Wide : Eyes::Open);
+          look(f, s, lx, ly, t < 11500 ? Eyes::Wide : Eyes::Open);
           if (t >= 11500) {
             if ((t / 250) % 2) f.them.paws = guestReach(s);
             else f.me.paws = hostReach(s);
@@ -325,13 +329,13 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       return true;
     }
     case miblo::Gift::Panic: {  // kernel panic: an alarm flashing, both shaking; it stops; phew
-      const int sy = s.top + Sz(25);
+      const int sy = s.top + Sz(25), ax = clampX(s.mid, Sz(20));
       const bool on = t >= 1500 && t < 11000;
-      addItem(f, kSiren, s.mid, sy, (uint8_t)(on ? 1 + (t / 250) % 2 : 0));
+      addItem(f, kSiren, ax, sy, (uint8_t)(on ? 1 + (t / 250) % 2 : 0));
       if (t < 1500) {
         // all calm (the default happy looks)
       } else if (t < 13000) {  // the alarm; then silence
-        look(f, s, s.mid, sy, Eyes::Wide, (uint16_t)((on ? kFluffed | kAlarm : 0) | (t >= 6000 ? kSweat : 0)));
+        look(f, s, ax, sy, Eyes::Wide, (uint16_t)((on ? kFluffed | kAlarm : 0) | (t >= 6000 ? kSweat : 0)));
         if (on) {
           const int8_t shake = (int8_t)((t / 70) % 2 ? 2 : -2);
           f.them.dx = shake;
@@ -352,15 +356,15 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       return true;
     }
     case miblo::Gift::Picnic: {  // a checkered cloth and a sandwich: half each, eaten happily
-      addItem(f, kCloth, s.mid, s.bottom);
-      const int sy = s.bottom - Sz(14);
+      const int cx = clampX(s.mid, Sz(40)), sy = s.bottom - Sz(14);
+      addItem(f, kCloth, cx, s.bottom);
       if (t < 4000) {  // a sandwich! one half each
-        look(f, s, s.mid, sy, t < 1000 ? Eyes::Open : Eyes::Wide, t < 2500 ? kTongue : 0);
+        look(f, s, cx, sy, t < 1000 ? Eyes::Open : Eyes::Wide, t < 2500 ? kTongue : 0);
         if (t >= 2500) {
           if (t < 3200) f.them.paws = guestReach(s);
           else f.me.paws = hostReach(s);
         }
-        addItem(f, kSandwich, s.mid, sy, 0);
+        addItem(f, kSandwich, cx, sy, 0);
       } else if (t < 12000) {  // munching, a half each at the mouth
         const uint8_t left = (uint8_t)(t < 6500 ? 1 : t < 9500 ? 2 : 3);
         still(f, Eyes::Happy);
@@ -369,7 +373,7 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
         addItem(f, kSandwich, s.guestX - P(s, 8), s.cy + P(s, 20), left);
         addItem(f, kSandwich, s.hostX - P(s, 8), s.cy + P(s, 20), left);
       } else {  // full and happy, crumbs on the cloth
-        addItem(f, kSandwich, s.mid, sy + Sz(4), 3);
+        addItem(f, kSandwich, cx, sy + Sz(4), 3);
         f.me.extras = f.them.extras = kTongue;
         if (t >= 15000) cheer(f, false);
       }
@@ -379,13 +383,13 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       // The rod leans from the guest's paw out over the pond (towards the host); the float hangs
       // under its tip.
       const int py = s.bottom - Sz(5), hx = pawX(s), hy = pawY(s);
-      const int floatX = s.mid + toHost * P(s, 6);
+      const int pondX = clampX(s.mid, Sz(22)), floatX = pondX + toHost * P(s, 6);
       int tipX = floatX, tipY = s.cy - P(s, 16);
-      addItem(f, kPond, s.mid, py, (uint8_t)(t / 400));
+      addItem(f, kPond, pondX, py, (uint8_t)(t / 400));
       if (t < 12500) {
         const bool bite = t >= 8000, pull = t >= 10000;
         if (pull) {  // the rod comes up and back, the line taut
-          tipX = s.mid - toHost * P(s, 2);
+          tipX = pondX - toHost * P(s, 2);
           tipY = s.cy - P(s, 24);
         }
         addLine(f, hx, hy, tipX, tipY, kRod);
@@ -406,7 +410,7 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
           }
         }
       } else {  // out it comes, wriggling on the line
-        tipX = s.mid;
+        tipX = pondX;
         tipY = s.cy - P(s, 30);
         addLine(f, hx, hy, tipX, tipY, kRod);
         addLine(f, tipX, tipY, tipX, tipY + Sz(10), kString);
@@ -425,8 +429,8 @@ bool visitActivityC(miblo::Gift g, const VisitStage& s, VisitFrame& f) {
       const int left = X(4), right = X(236), rainY = s.top + 1024 * s.bottom;
       const uint8_t drops = (uint8_t)(t / 90);
       int w = (s.hostX > s.guestX ? s.hostX - s.guestX : s.guestX - s.hostX) / 2 + P(s, 34);
-      if (w > s.mid - left) w = s.mid - left;
-      if (w > right - s.mid) w = right - s.mid;
+      if (w > s.mid - left - sz(3)) w = s.mid - left - sz(3);  // the scalloped rim hangs sz(3) past it
+      if (w > right - s.mid - sz(3)) w = right - s.mid - sz(3);
       if (t < 1500) {
         // a nice day... for now
       } else if (t < 6500) {
@@ -638,9 +642,9 @@ void drawVisitItemC(const VisitItem& it) {
     case kWaves: {  // (centre) "))" going right (f 0) or left (f 1), two pixels thick
       const int d = it.f ? -1 : 1;
       for (int i = 0; i < 4; i++) {
-        const int wx = x + d * ((i / 2) * Sz(4) - Sz(2)) + (i % 2) * u, r = Sz(3 + 2 * (i / 2));
-        thin(wx, y - r, wx + d * Sz(2), y, color::TEXT);
-        thin(wx + d * Sz(2), y, wx, y + r, color::TEXT);
+        const int wx = x + d * ((i / 2) * Sz(5) - Sz(3)) + (i % 2) * u, r = Sz(4 + 2 * (i / 2));
+        thin(wx, y - r, wx + d * Sz(3), y, color::TEXT);
+        thin(wx + d * Sz(3), y, wx, y + r, color::TEXT);
       }
       break;
     }

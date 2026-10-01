@@ -33,13 +33,13 @@ static void handleInfo() {
   // A paired gadget tells someone without its token only who it is (miblo::infoView): its name,
   // version, settings and diagnostics are for the computers paired with it.
   const String auth = web::requestHeader(*srv, F("Authorization"));  // never the previous request's
+  // Flood guard for everything not authenticated with a valid token (an unpaired gadget answers
+  // in full too): a paired computer's own reads neither consume nor wait on this bucket.
+  if (!authorized() && !ctx.publicReqs.allow(millis())) {
+    json(429, "{\"error\":\"slow down\"}");
+    return;
+  }
   if (miblo::infoView(ctx.tokens, auth.c_str()) == miblo::InfoView::Public) {
-    // Flood guard, for the public answer only: a paired computer's own reads neither consume
-    // nor wait on this bucket.
-    if (!ctx.publicReqs.allow(millis())) {
-      json(429, "{\"error\":\"slow down\"}");
-      return;
-    }
     StaticJsonDocument<96> pub;
     miblo::writePublicInfo(pub.to<JsonObject>(), ctx.ident.id, true, MIBLO_PROTO);
     String out;

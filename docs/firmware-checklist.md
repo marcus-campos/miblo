@@ -136,8 +136,8 @@ notes.
     (never before it shows); `sleepMin` "Never" keeps pet mode going.
 20. **Visits (two or more Miblos):** run `/miblo:demo` and watch the first visit start within
     about 10 s. Over a few visits, see the 30 new activities besides the original ones (37 kinds
-    of visit in all, from the duck and the code review to ping-pong, a picnic and a kite); guests walk in from the side set on the settings page. Let one
-    Miblo's panel go dark (or set it to sleep soon): no visit starts into it, and a visit in
+    of visit in all, from the duck and the code review to ping-pong, a picnic and a kite);
+    guests walk in from the side set on the settings page. Let one Miblo's panel go dark (or set it to sleep soon): no visit starts into it, and a visit in
     progress ends with the guests going home. `/miblo:demo stop` ends the demo early.
 21. **Setup-portal Wi-Fi code:** on a configured unit (saved Wi-Fi or paired), the setup network's
     portal asks for the on-screen code before it joins a network; a wrong code is refused. While

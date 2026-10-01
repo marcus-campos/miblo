@@ -19,20 +19,35 @@ uint8_t TftCanvas::idx(uint16_t c) {
     spr_.setPaletteColor(palN_, c);
     return palN_++;
   }
-  uint8_t best = 0;  // palette full: nearest colour
+  // Palette full: the nearest colour as the eye sees it ("redmean" weighted RGB distance), so a
+  // brown stays brown rather than turning into a grey of the same plain-RGB distance.
+  const int cr = (c >> 11) * 255 / 31, cg = ((c >> 5) & 63) * 255 / 63, cb = (c & 31) * 255 / 31;
+  uint8_t best = 0;
   uint32_t bestD = UINT32_MAX;
   for (uint8_t i = 0; i < 16; i++) {
     const uint16_t p = pal_[i];
-    const int dr = ((p >> 11) & 31) - ((c >> 11) & 31);
-    const int dg = ((p >> 5) & 63) / 2 - ((c >> 5) & 63) / 2;
-    const int db = (p & 31) - (c & 31);
-    const uint32_t d = (uint32_t)(dr * dr + dg * dg + db * db);
+    const int pr = (p >> 11) * 255 / 31, pg = ((p >> 5) & 63) * 255 / 63, pb = (p & 31) * 255 / 31;
+    const int rmean = (cr + pr) / 2, dr = cr - pr, dg = cg - pg, db = cb - pb;
+    const uint32_t d = (uint32_t)((((512 + rmean) * dr * dr) >> 8) + 4 * dg * dg + (((767 - rmean) * db * db) >> 8));
     if (d < bestD) {
       bestD = d;
       best = i;
     }
   }
   return best;
+}
+
+void TftCanvas::fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+  if (!layer_) {
+    tft_.fillTriangle(x0, y0, x1, y1, x2, y2, c);
+    return;
+  }
+  const int l = x0 < x1 ? (x0 < x2 ? x0 : x2) : (x1 < x2 ? x1 : x2);
+  const int r = x0 > x1 ? (x0 > x2 ? x0 : x2) : (x1 > x2 ? x1 : x2);
+  const int t = y0 < y1 ? (y0 < y2 ? y0 : y2) : (y1 < y2 ? y1 : y2);
+  const int b = y0 > y1 ? (y0 > y2 ? y0 : y2) : (y1 > y2 ? y1 : y2);
+  if (!onLayer(l, t, r - l + 1, b - t + 1)) return;
+  spr_.fillTriangle(x0 - lx_, y0 - ly_, x1 - lx_, y1 - ly_, x2 - lx_, y2 - ly_, idx(c));
 }
 
 bool TftCanvas::beginLayer(int x, int y, int w, int h) {
@@ -68,6 +83,15 @@ void TftCanvas::releaseLayer() {
 void TftCanvas::wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) {
   if (!layer_) {
     tft_.drawWideLine(x0, y0, x1, y1, width, c, bg);
+    return;
+  }
+  const int ri = (width + 1) / 2;
+  if (!onLayer((x0 < x1 ? x0 : x1) - ri, (y0 < y1 ? y0 : y1) - ri, (x0 < x1 ? x1 - x0 : x0 - x1) + 2 * ri + 1,
+               (y0 < y1 ? y1 - y0 : y0 - y1) + 2 * ri + 1)) {
+    return;
+  }
+  if (width <= 1) {  // a quad this thin collapses (its corners round onto the line): a plain line
+    spr_.drawLine(x0 - lx_, y0 - ly_, x1 - lx_, y1 - ly_, idx(c));
     return;
   }
   // A 4-bit layer can't blend anti-aliased edges: flat quad with round ends instead.
@@ -187,6 +211,10 @@ int TftCanvas::text(int x, int y, const char* s, ui::Font f, uint16_t fg, ui::Al
   const char* end;
   const int w = layout(s, f, maxW, &end);
   const int left = a == ui::Align::Left ? x : (a == ui::Align::Center ? x - w / 2 : x - w);
+  if (layer_) {  // wholly off the layer (with room for accents and fallback fonts): no palette slot
+    const int asc = ascent(f);
+    if (!onLayer(left, y - asc - asc / 2, w + 1, asc * 2 + descent(f) + 1)) return w;
+  }
   int drawn = drawRun(left, y, s, end, f, fg, -1);
   if (end) drawn += drawRun(left + drawn, y, "...", nullptr, f, fg, -1);
   return drawn;

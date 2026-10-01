@@ -2,6 +2,7 @@
 #include <math.h>
 
 #include <algorithm>
+#include <cstdlib>
 
 #include "TFT_eSPI.h"
 
@@ -73,8 +74,33 @@ void TFT_eSPI::fillTriangle(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int3
   const int32_t minX = std::min({x0, x1, x2}), maxX = std::max({x0, x1, x2});
   const int32_t minY = std::min({y0, y1, y2}), maxY = std::max({y0, y1, y2});
   const float area = (float)(x1 - x0) * (y2 - y0) - (float)(x2 - x0) * (y1 - y0);
-  if (area == 0.0f) {  // degenerate: its outline, like a scanline fill of one row
-    for (int32_t py = minY; py <= maxY; py++) fillRect(minX, py, maxX - minX + 1, 1, c);
+  if (area == 0.0f) {  // degenerate (a line or a point): TFT_eSPI's own scanline spans
+    if (y0 > y1) std::swap(y0, y1), std::swap(x0, x1);
+    if (y1 > y2) std::swap(y1, y2), std::swap(x1, x2);
+    if (y0 > y1) std::swap(y0, y1), std::swap(x0, x1);
+    if (y0 == y2) {
+      fillRect(minX, y0, maxX - minX + 1, 1, c);
+      return;
+    }
+    const int32_t dx01 = x1 - x0, dy01 = y1 - y0, dx02 = x2 - x0, dy02 = y2 - y0, dx12 = x2 - x1, dy12 = y2 - y1;
+    int32_t sa = 0, sb = 0, y = y0;
+    const int32_t last = y1 == y2 ? y1 : y1 - 1;
+    for (; y <= last; y++) {
+      int32_t a = x0 + sa / dy01, b = x0 + sb / dy02;
+      sa += dx01;
+      sb += dx02;
+      if (a > b) std::swap(a, b);
+      fillRect(a, y, b - a + 1, 1, c);
+    }
+    sa = dx12 * (y - y1);
+    sb = dx02 * (y - y0);
+    for (; y <= y2; y++) {
+      int32_t a = x1 + sa / dy12, b = x0 + sb / dy02;
+      sa += dx12;
+      sb += dx02;
+      if (a > b) std::swap(a, b);
+      fillRect(a, y, b - a + 1, 1, c);
+    }
     return;
   }
   auto edge = [](float ax, float ay, float bx, float by, float px, float py) {
@@ -91,6 +117,31 @@ void TFT_eSPI::fillTriangle(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int3
         drawPixel(px, py, c);
       }
     }
+  }
+}
+
+// TFT_eSprite::drawLine's Bresenham, pixel for pixel.
+void TFT_eSPI::drawLine(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t c) {
+  const bool steep = std::abs(y1 - y0) > std::abs(x1 - x0);
+  if (steep) std::swap(x0, y0), std::swap(x1, y1);
+  if (x0 > x1) std::swap(x0, x1), std::swap(y0, y1);
+  const int32_t dx = x1 - x0, dy = std::abs(y1 - y0), ystep = y0 < y1 ? 1 : -1;
+  int32_t err = dx >> 1, xs = x0, dlen = 0;
+  for (; x0 <= x1; x0++) {
+    dlen++;
+    err -= dy;
+    if (err < 0) {
+      err += dx;
+      if (steep) fillRect(y0, xs, 1, dlen, c);
+      else fillRect(xs, y0, dlen, 1, c);
+      dlen = 0;
+      y0 += ystep;
+      xs = x0 + 1;
+    }
+  }
+  if (dlen) {
+    if (steep) fillRect(y0, xs, 1, dlen, c);
+    else fillRect(xs, y0, dlen, 1, c);
   }
 }
 

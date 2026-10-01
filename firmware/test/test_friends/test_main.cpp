@@ -357,7 +357,7 @@ static void test_visits_take_turns() {
 
 static void test_every_activity_can_come_up_and_unknown_ones_decode_as_visits() {
   bool seen[(int)Gift::Count] = {};
-  for (uint32_t seed = 1; seed < 120; seed++) {
+  for (uint32_t seed = 1; seed < 600; seed++) {  // 37 activities: enough visits to see each
     FriendPlay a, b;
     a.setSelf("miblo-aaaa", "Tofu", 0);
     b.setSelf("miblo-bbbb", "Nina", 0);
@@ -375,6 +375,33 @@ static void test_every_activity_can_come_up_and_unknown_ones_decode_as_visits() 
   const size_t n = encodeFriendPacket(p, buf, sizeof(buf));
   buf[8] = 200;
   FriendPacket q;
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+  TEST_ASSERT_EQUAL(Gift::None, q.gift);
+}
+
+// 30 new activities: the visitor draws all 37 (a tired friend still gets more coffee), and the
+// byte on the wire decodes back to the same activity; anything newer is a plain visit.
+static void test_all_activities_reachable() {
+  FriendPlay fp;
+  bool seen[(int)Gift::Count] = {};
+  int coffeeTired = 0, coffeeRested = 0;
+  for (uint32_t r = 0; r < 20000; r++) {
+    seen[(int)fp.chooseGiftForTest(false, r * 2654435761u)] = true;
+    coffeeTired += fp.chooseGiftForTest(true, r * 2654435761u) == Gift::Coffee;
+    coffeeRested += fp.chooseGiftForTest(false, r * 2654435761u) == Gift::Coffee;
+  }
+  for (int g = 0; g < (int)Gift::Count; g++) TEST_ASSERT_TRUE(seen[g]);
+  TEST_ASSERT_TRUE(coffeeTired > 4 * coffeeRested);
+  TEST_ASSERT_EQUAL_INT(37, (int)Gift::Count);
+  // The last activity survives the wire; the next byte up is a newer one: a plain visit.
+  FriendPacket p = packet(FriendPacket::VisitAsk, "miblo-bbbb", "Nina", kFriendRoaming, "miblo-aaaa", Gift::Kite);
+  uint8_t buf[kFriendPacketMax];
+  const size_t n = encodeFriendPacket(p, buf, sizeof(buf));
+  TEST_ASSERT_TRUE(n > 0);
+  FriendPacket q;
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+  TEST_ASSERT_EQUAL(Gift::Kite, q.gift);
+  buf[8] = 37;
   TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
   TEST_ASSERT_EQUAL(Gift::None, q.gift);
 }
@@ -497,6 +524,7 @@ int main(int, char**) {
   RUN_TEST(test_demo_hurries_visits);
   RUN_TEST(test_visits_take_turns);
   RUN_TEST(test_every_activity_can_come_up_and_unknown_ones_decode_as_visits);
+  RUN_TEST(test_all_activities_reachable);
   RUN_TEST(test_poll_scales_and_reserves);
   RUN_TEST(test_busy_host_sends_every_guest_home);
   return UNITY_END();

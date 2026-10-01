@@ -182,6 +182,36 @@ static const char kEn[] MIBLO_ROM =
     "%s reviewed it: LGTM!\0"  // FriendReview
     "Hunting a bug with %s\0"  // FriendBug
     "Friday deploy with %s!\0"  // FriendDeploy
+    "High five with %s!\0"  // FriendHighFive
+    "Ping-pong with %s\0"  // FriendPingPong
+    "Dancing with %s\0"  // FriendDance
+    "Pizza with %s\0"  // FriendPizza
+    "Release cake with %s!\0"  // FriendCake
+    "Merge conflict with %s\0"  // FriendMerge
+    "Daily standup with %s\0"  // FriendStandup
+    "Hackathon with %s\0"  // FriendHackathon
+    "Selfie with %s!\0"  // FriendSelfie
+    "Playing chess with %s\0"  // FriendChess
+    "Gaming with %s\0"  // FriendGame
+    "%s has gossip\0"  // FriendGossip
+    "Cheers with %s!\0"  // FriendToast
+    "Movie time with %s\0"  // FriendMovie
+    "Stacking blocks with %s\0"  // FriendBlocks
+    "Brainstorming with %s\0"  // FriendBrainstorm
+    "Pomodoro with %s\0"  // FriendPomodoro
+    "Hotfix with %s!\0"  // FriendHotfix
+    "All tests green with %s\0"  // FriendTests
+    "404 hunt with %s\0"  // FriendNotFound
+    "Ship it with %s!\0"  // FriendShipIt
+    "Sprint with %s\0"  // FriendSprint
+    "Origami with %s\0"  // FriendOrigami
+    "Stack Underflow days, %s\0"  // FriendNostalgia
+    "Kernel panic with %s!\0"  // FriendPanic
+    "Picnic with %s\0"  // FriendPicnic
+    "Fishing with %s\0"  // FriendFishing
+    "Under an umbrella with %s\0"  // FriendUmbrella
+    "Tin can phone with %s\0"  // FriendCanPhone
+    "Flying a kite with %s\0"  // FriendKite
     "The other Miblos are on my\0"  // WebFriendsSide
     "Right\0"  // WebSideRight
     "Left\0"  // WebSideLeft
@@ -365,6 +395,36 @@ static const char kPtBR[] MIBLO_ROM =
     "%s revisou: LGTM!\0"  // FriendReview
     "Caçando um bug com %s\0"  // FriendBug
     "Deploy na sexta com %s!\0"  // FriendDeploy
+    "Toca aqui com %s!\0"  // FriendHighFive
+    "Ping-pong com %s\0"  // FriendPingPong
+    "Dançando com %s\0"  // FriendDance
+    "Pizza com %s\0"  // FriendPizza
+    "Bolo de release com %s!\0"  // FriendCake
+    "Merge conflict com %s\0"  // FriendMerge
+    "Daily com %s\0"  // FriendStandup
+    "Hackathon com %s\0"  // FriendHackathon
+    "Selfie com %s!\0"  // FriendSelfie
+    "Xadrez com %s\0"  // FriendChess
+    "Jogando com %s\0"  // FriendGame
+    "%s tem fofoca\0"  // FriendGossip
+    "Um brinde com %s!\0"  // FriendToast
+    "Cinema com %s\0"  // FriendMovie
+    "Torre de blocos com %s\0"  // FriendBlocks
+    "Brainstorm com %s\0"  // FriendBrainstorm
+    "Pomodoro com %s\0"  // FriendPomodoro
+    "Hotfix com %s!\0"  // FriendHotfix
+    "Testes verdes com %s\0"  // FriendTests
+    "Caçando o 404 com %s\0"  // FriendNotFound
+    "Ship it com %s!\0"  // FriendShipIt
+    "Sprint com %s\0"  // FriendSprint
+    "Origami com %s\0"  // FriendOrigami
+    "Stack Underflow raiz, %s\0"  // FriendNostalgia
+    "Kernel panic com %s!\0"  // FriendPanic
+    "Piquenique com %s\0"  // FriendPicnic
+    "Pescando com %s\0"  // FriendFishing
+    "Guarda-chuva com %s\0"  // FriendUmbrella
+    "Telefone de lata com %s\0"  // FriendCanPhone
+    "Soltando pipa com %s\0"  // FriendKite
     "Os outros Miblos ficam\0"  // WebFriendsSide
     "À minha direita\0"  // WebSideRight
     "À minha esquerda\0"  // WebSideLeft
@@ -548,6 +608,36 @@ static const char kPtPT[] MIBLO_ROM =
     "%s reviu: LGTM!\0"  // FriendReview
     "À caça de um bug com %s\0"  // FriendBug
     "Deploy à sexta com %s!\0"  // FriendDeploy
+    "Mais cinco com %s!\0"  // FriendHighFive
+    "Pingue-pongue com %s\0"  // FriendPingPong
+    "A dançar com %s\0"  // FriendDance
+    "Pizza com %s\0"  // FriendPizza
+    "Bolo de release com %s!\0"  // FriendCake
+    "Merge conflict com %s\0"  // FriendMerge
+    "Daily com %s\0"  // FriendStandup
+    "Hackathon com %s\0"  // FriendHackathon
+    "Selfie com %s!\0"  // FriendSelfie
+    "Xadrez com %s\0"  // FriendChess
+    "A jogar com %s\0"  // FriendGame
+    "%s tem mexericos\0"  // FriendGossip
+    "Um brinde com %s!\0"  // FriendToast
+    "Cinema com %s\0"  // FriendMovie
+    "A empilhar blocos com %s\0"  // FriendBlocks
+    "Brainstorm com %s\0"  // FriendBrainstorm
+    "Pomodoro com %s\0"  // FriendPomodoro
+    "Hotfix com %s!\0"  // FriendHotfix
+    "Testes verdes com %s\0"  // FriendTests
+    "À caça do 404 com %s\0"  // FriendNotFound
+    "Ship it com %s!\0"  // FriendShipIt
+    "Sprint com %s\0"  // FriendSprint
+    "Origami com %s\0"  // FriendOrigami
+    "Stack Underflow com %s\0"  // FriendNostalgia
+    "Kernel panic com %s!\0"  // FriendPanic
+    "Piquenique com %s\0"  // FriendPicnic
+    "À pesca com %s\0"  // FriendFishing
+    "Guarda-chuva com %s\0"  // FriendUmbrella
+    "Telefone de lata com %s\0"  // FriendCanPhone
+    "Papagaio de papel com %s\0"  // FriendKite
     "Os outros Miblos ficam\0"  // WebFriendsSide
     "À minha direita\0"  // WebSideRight
     "À minha esquerda\0"  // WebSideLeft
@@ -731,6 +821,36 @@ static const char kEs[] MIBLO_ROM =
     "%s lo revisó: LGTM!\0"  // FriendReview
     "Cazando un bug con %s\0"  // FriendBug
     "¡Deploy viernes con %s!\0"  // FriendDeploy
+    "¡Choca esos cinco, %s!\0"  // FriendHighFive
+    "Ping-pong con %s\0"  // FriendPingPong
+    "Bailando con %s\0"  // FriendDance
+    "Pizza con %s\0"  // FriendPizza
+    "¡Tarta de release con %s!\0"  // FriendCake
+    "Merge conflict con %s\0"  // FriendMerge
+    "Daily con %s\0"  // FriendStandup
+    "Hackathon con %s\0"  // FriendHackathon
+    "¡Selfie con %s!\0"  // FriendSelfie
+    "Ajedrez con %s\0"  // FriendChess
+    "Jugando con %s\0"  // FriendGame
+    "%s trae chismes\0"  // FriendGossip
+    "¡Brindis con %s!\0"  // FriendToast
+    "Cine con %s\0"  // FriendMovie
+    "Apilando bloques con %s\0"  // FriendBlocks
+    "Brainstorming con %s\0"  // FriendBrainstorm
+    "Pomodoro con %s\0"  // FriendPomodoro
+    "¡Hotfix con %s!\0"  // FriendHotfix
+    "Tests en verde con %s\0"  // FriendTests
+    "Buscando el 404 con %s\0"  // FriendNotFound
+    "¡Ship it con %s!\0"  // FriendShipIt
+    "Sprint con %s\0"  // FriendSprint
+    "Origami con %s\0"  // FriendOrigami
+    "Stack Underflow con %s\0"  // FriendNostalgia
+    "¡Kernel panic con %s!\0"  // FriendPanic
+    "Pícnic con %s\0"  // FriendPicnic
+    "Pescando con %s\0"  // FriendFishing
+    "Bajo el paraguas con %s\0"  // FriendUmbrella
+    "Teléfono de lata con %s\0"  // FriendCanPhone
+    "Volando cometa con %s\0"  // FriendKite
     "Los otros Miblos están\0"  // WebFriendsSide
     "A mi derecha\0"  // WebSideRight
     "A mi izquierda\0"  // WebSideLeft
@@ -914,6 +1034,36 @@ static const char kFr[] MIBLO_ROM =
     "%s a relu : LGTM !\0"  // FriendReview
     "Chasse au bug avec %s\0"  // FriendBug
     "Prod le vendredi avec %s !\0"  // FriendDeploy
+    "Tope là avec %s !\0"  // FriendHighFive
+    "Ping-pong avec %s\0"  // FriendPingPong
+    "Danse avec %s\0"  // FriendDance
+    "Pizza avec %s\0"  // FriendPizza
+    "Gâteau de release, %s !\0"  // FriendCake
+    "Merge conflict avec %s\0"  // FriendMerge
+    "Daily avec %s\0"  // FriendStandup
+    "Hackathon avec %s\0"  // FriendHackathon
+    "Selfie avec %s !\0"  // FriendSelfie
+    "Échecs avec %s\0"  // FriendChess
+    "Jeu vidéo avec %s\0"  // FriendGame
+    "%s a des potins\0"  // FriendGossip
+    "Tchin-tchin avec %s !\0"  // FriendToast
+    "Ciné avec %s\0"  // FriendMovie
+    "Tour de blocs avec %s\0"  // FriendBlocks
+    "Brainstorming avec %s\0"  // FriendBrainstorm
+    "Pomodoro avec %s\0"  // FriendPomodoro
+    "Hotfix avec %s !\0"  // FriendHotfix
+    "Tests au vert avec %s\0"  // FriendTests
+    "Chasse au 404 avec %s\0"  // FriendNotFound
+    "Ship it avec %s !\0"  // FriendShipIt
+    "Sprint avec %s\0"  // FriendSprint
+    "Origami avec %s\0"  // FriendOrigami
+    "Stack Underflow avec %s\0"  // FriendNostalgia
+    "Kernel panic avec %s !\0"  // FriendPanic
+    "Pique-nique avec %s\0"  // FriendPicnic
+    "Pêche avec %s\0"  // FriendFishing
+    "Sous le parapluie avec %s\0"  // FriendUmbrella
+    "Pots de yaourt avec %s\0"  // FriendCanPhone
+    "Cerf-volant avec %s\0"  // FriendKite
     "Les autres Miblos sont\0"  // WebFriendsSide
     "À ma droite\0"  // WebSideRight
     "À ma gauche\0"  // WebSideLeft
@@ -1097,6 +1247,36 @@ static const char kIt[] MIBLO_ROM =
     "%s ha revisionato: LGTM!\0"  // FriendReview
     "A caccia di bug con %s\0"  // FriendBug
     "Deploy di venerdì con %s!\0"  // FriendDeploy
+    "Batti cinque con %s!\0"  // FriendHighFive
+    "Ping-pong con %s\0"  // FriendPingPong
+    "Ballando con %s\0"  // FriendDance
+    "Pizza con %s\0"  // FriendPizza
+    "Torta di release con %s!\0"  // FriendCake
+    "Merge conflict con %s\0"  // FriendMerge
+    "Daily con %s\0"  // FriendStandup
+    "Hackathon con %s\0"  // FriendHackathon
+    "Selfie con %s!\0"  // FriendSelfie
+    "Scacchi con %s\0"  // FriendChess
+    "Videogiochi con %s\0"  // FriendGame
+    "%s ha un pettegolezzo\0"  // FriendGossip
+    "Cin cin con %s!\0"  // FriendToast
+    "Film con %s\0"  // FriendMovie
+    "Torre di blocchi con %s\0"  // FriendBlocks
+    "Brainstorming con %s\0"  // FriendBrainstorm
+    "Pomodoro con %s\0"  // FriendPomodoro
+    "Hotfix con %s!\0"  // FriendHotfix
+    "Test verdi con %s\0"  // FriendTests
+    "A caccia del 404 con %s\0"  // FriendNotFound
+    "Ship it con %s!\0"  // FriendShipIt
+    "Sprint con %s\0"  // FriendSprint
+    "Origami con %s\0"  // FriendOrigami
+    "Stack Underflow con %s\0"  // FriendNostalgia
+    "Kernel panic con %s!\0"  // FriendPanic
+    "Picnic con %s\0"  // FriendPicnic
+    "A pesca con %s\0"  // FriendFishing
+    "Sotto l'ombrello con %s\0"  // FriendUmbrella
+    "Telefono di latta con %s\0"  // FriendCanPhone
+    "Aquilone con %s\0"  // FriendKite
     "Gli altri Miblo sono\0"  // WebFriendsSide
     "Alla mia destra\0"  // WebSideRight
     "Alla mia sinistra\0"  // WebSideLeft
@@ -1280,6 +1460,36 @@ static const char kDe[] MIBLO_ROM =
     "%s hat reviewt: LGTM!\0"  // FriendReview
     "Bugjagd mit %s\0"  // FriendBug
     "Freitags-Deploy mit %s!\0"  // FriendDeploy
+    "Abklatschen mit %s!\0"  // FriendHighFive
+    "Tischtennis mit %s\0"  // FriendPingPong
+    "Tanzen mit %s\0"  // FriendDance
+    "Pizza mit %s\0"  // FriendPizza
+    "Release-Kuchen mit %s!\0"  // FriendCake
+    "Merge-Konflikt mit %s\0"  // FriendMerge
+    "Daily Stand-up mit %s\0"  // FriendStandup
+    "Hackathon mit %s\0"  // FriendHackathon
+    "Selfie mit %s!\0"  // FriendSelfie
+    "Schach mit %s\0"  // FriendChess
+    "Zocken mit %s\0"  // FriendGame
+    "%s hat Tratsch\0"  // FriendGossip
+    "Prost mit %s!\0"  // FriendToast
+    "Kino mit %s\0"  // FriendMovie
+    "Klötzchen stapeln mit %s\0"  // FriendBlocks
+    "Brainstorming mit %s\0"  // FriendBrainstorm
+    "Pomodoro mit %s\0"  // FriendPomodoro
+    "Hotfix mit %s!\0"  // FriendHotfix
+    "Alle Tests grün mit %s\0"  // FriendTests
+    "404-Suche mit %s\0"  // FriendNotFound
+    "Ship it mit %s!\0"  // FriendShipIt
+    "Sprint mit %s\0"  // FriendSprint
+    "Origami mit %s\0"  // FriendOrigami
+    "Stack Underflow mit %s\0"  // FriendNostalgia
+    "Kernel Panic mit %s!\0"  // FriendPanic
+    "Picknick mit %s\0"  // FriendPicnic
+    "Angeln mit %s\0"  // FriendFishing
+    "Unterm Schirm mit %s\0"  // FriendUmbrella
+    "Dosentelefon mit %s\0"  // FriendCanPhone
+    "Drachen steigen mit %s\0"  // FriendKite
     "Die anderen Miblos stehen\0"  // WebFriendsSide
     "Rechts von mir\0"  // WebSideRight
     "Links von mir\0"  // WebSideLeft
@@ -1463,6 +1673,36 @@ static const char kRu[] MIBLO_ROM =
     "%s сделал ревью: LGTM!\0"  // FriendReview
     "Ловим баг с %s\0"  // FriendBug
     "Деплой в пятницу с %s!\0"  // FriendDeploy
+    "Дай пять, %s!\0"  // FriendHighFive
+    "Пинг-понг с %s\0"  // FriendPingPong
+    "Танцуем с %s\0"  // FriendDance
+    "Пицца с %s\0"  // FriendPizza
+    "Релизный торт с %s!\0"  // FriendCake
+    "Мерж-конфликт с %s\0"  // FriendMerge
+    "Стендап с %s\0"  // FriendStandup
+    "Хакатон с %s\0"  // FriendHackathon
+    "Селфи с %s!\0"  // FriendSelfie
+    "Шахматы с %s\0"  // FriendChess
+    "Играем с %s\0"  // FriendGame
+    "%s делится сплетней\0"  // FriendGossip
+    "Чокаемся с %s!\0"  // FriendToast
+    "Кино с %s\0"  // FriendMovie
+    "Строим башню с %s\0"  // FriendBlocks
+    "Брейншторм с %s\0"  // FriendBrainstorm
+    "Помодоро с %s\0"  // FriendPomodoro
+    "Хотфикс с %s!\0"  // FriendHotfix
+    "Все тесты зелёные с %s\0"  // FriendTests
+    "Ищем 404 с %s\0"  // FriendNotFound
+    "Ship it с %s!\0"  // FriendShipIt
+    "Спринт с %s\0"  // FriendSprint
+    "Оригами с %s\0"  // FriendOrigami
+    "Stack Underflow с %s\0"  // FriendNostalgia
+    "Kernel panic с %s!\0"  // FriendPanic
+    "Пикник с %s\0"  // FriendPicnic
+    "Рыбалка с %s\0"  // FriendFishing
+    "Под зонтом с %s\0"  // FriendUmbrella
+    "Телефон из банок с %s\0"  // FriendCanPhone
+    "Запускаем змея с %s\0"  // FriendKite
     "Другие Miblo стоят\0"  // WebFriendsSide
     "Справа\0"  // WebSideRight
     "Слева\0"  // WebSideLeft
@@ -1646,6 +1886,36 @@ static const char kZh[] MIBLO_ROM =
     "%s 审查通过: LGTM!\0"  // FriendReview
     "和 %s 一起抓 bug\0"  // FriendBug
     "和 %s 周五上线!\0"  // FriendDeploy
+    "和 %s 击掌!\0"  // FriendHighFive
+    "和 %s 打乒乓\0"  // FriendPingPong
+    "和 %s 跳舞\0"  // FriendDance
+    "和 %s 吃披萨\0"  // FriendPizza
+    "和 %s 吃发布蛋糕!\0"  // FriendCake
+    "和 %s 解决合并冲突\0"  // FriendMerge
+    "和 %s 开站会\0"  // FriendStandup
+    "和 %s 参加黑客松\0"  // FriendHackathon
+    "和 %s 自拍!\0"  // FriendSelfie
+    "和 %s 下棋\0"  // FriendChess
+    "和 %s 打游戏\0"  // FriendGame
+    "%s 有小道消息\0"  // FriendGossip
+    "和 %s 干杯!\0"  // FriendToast
+    "和 %s 看电影\0"  // FriendMovie
+    "和 %s 搭积木\0"  // FriendBlocks
+    "和 %s 头脑风暴\0"  // FriendBrainstorm
+    "和 %s 一起番茄钟\0"  // FriendPomodoro
+    "和 %s 紧急修复!\0"  // FriendHotfix
+    "和 %s 测试全绿\0"  // FriendTests
+    "和 %s 找 404\0"  // FriendNotFound
+    "和 %s Ship it!\0"  // FriendShipIt
+    "和 %s 冲刺\0"  // FriendSprint
+    "和 %s 折纸\0"  // FriendOrigami
+    "和 %s 忆 Stack Underflow\0"  // FriendNostalgia
+    "和 %s 内核恐慌!\0"  // FriendPanic
+    "和 %s 野餐\0"  // FriendPicnic
+    "和 %s 钓鱼\0"  // FriendFishing
+    "和 %s 共撑一把伞\0"  // FriendUmbrella
+    "和 %s 玩传声筒\0"  // FriendCanPhone
+    "和 %s 一起放飞\0"  // FriendKite
     "其他 Miblo 在我的\0"  // WebFriendsSide
     "右边\0"  // WebSideRight
     "左边\0"  // WebSideLeft

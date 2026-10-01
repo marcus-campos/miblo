@@ -1882,7 +1882,14 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     if (mine && !v.turnedAway) buf[0] = 0;  // still on screen (leaving or back home)
   } else {
     static const S kLine[] = {S::FriendVisiting, S::FriendCoffee, S::FriendDuck, S::FriendPair,
-                              S::FriendReview, S::FriendBug, S::FriendDeploy};
+                              S::FriendReview, S::FriendBug, S::FriendDeploy, S::FriendHighFive,
+                              S::FriendPingPong, S::FriendDance, S::FriendPizza, S::FriendCake,
+                              S::FriendMerge, S::FriendStandup, S::FriendHackathon, S::FriendSelfie,
+                              S::FriendChess, S::FriendGame, S::FriendGossip, S::FriendToast, S::FriendMovie,
+                              S::FriendBlocks, S::FriendBrainstorm, S::FriendPomodoro, S::FriendHotfix,
+                              S::FriendTests, S::FriendNotFound, S::FriendShipIt, S::FriendSprint,
+                              S::FriendOrigami, S::FriendNostalgia, S::FriendPanic, S::FriendPicnic,
+                              S::FriendFishing, S::FriendUmbrella, S::FriendCanPhone, S::FriendKite};
     static_assert(sizeof(kLine) / sizeof(kLine[0]) == (size_t)miblo::Gift::Count, "one line per activity");
     const uint8_t g = (uint8_t)v.gift < (uint8_t)miblo::Gift::Count ? (uint8_t)v.gift : 0;
     char who[40];

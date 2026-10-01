@@ -43,13 +43,43 @@ enum : uint8_t { kFriendRoaming = 1, kFriendNapping = 2, kFriendTired = 4, kFrie
 // What a visit is about (chosen by the visitor at random, a coffee more likely for a tired friend):
 // programmer things. Unknown values from a newer firmware decode as None.
 enum class Gift : uint8_t {
-  None,    // just a visit (hearts)
-  Coffee,  // brings a coffee
-  Duck,    // rubber duck debugging
-  Pair,    // pair programming on a tiny laptop
-  Review,  // code review: holds up an "LGTM" sign
-  Bug,     // hunting a bug together
-  Deploy,  // deploying (a rocket takes off)
+  None,        // just a visit (hearts)
+  Coffee,      // brings a coffee
+  Duck,        // rubber duck debugging
+  Pair,        // pair programming on a tiny laptop
+  Review,      // code review: holds up an "LGTM" sign
+  Bug,         // hunting a bug together
+  Deploy,      // deploying (a rocket takes off)
+  HighFive,    // high five: paws meet in the middle with a spark
+  PingPong,    // ping-pong: a ball goes back and forth
+  Dance,       // a little dance, notes rising
+  Pizza,       // pizza: a slice each
+  Cake,        // release cake: blow out the candle, confetti
+  Merge,       // merge conflict: tug of war over a rope
+  Standup,     // daily standup: sticky notes on a tiny board
+  Hackathon,   // hackathon: a laptop each, typing fast
+  Selfie,      // selfie: pose, flash, look at the photo
+  Chess,       // chess on a tiny board
+  Game,        // video game: a controller each
+  Gossip,      // gossip: a whisper, wide eyes, laughs
+  Toast,       // a toast: mugs clink
+  Movie,       // movie time: a tiny screen and popcorn
+  Blocks,      // stacking blocks until the tower falls
+  Brainstorm,  // brainstorm: light bulbs over both
+  Pomodoro,    // pomodoro: work until the tomato timer rings
+  Hotfix,      // hotfix: a smoking server, put out with an extinguisher
+  Tests,       // tests passing: green checks one by one
+  NotFound,    // 404: searching with a magnifier, nothing found
+  ShipIt,      // ship it: a paper boat slides across
+  Sprint,      // sprint: running in place to a finish flag
+  Origami,     // origami: a sheet folded into a paper plane
+  Nostalgia,   // nostalgia: the dusty Q&A site everyone used before AI ("Stack Underflow")
+  Panic,       // kernel panic: an alarm, both shaking
+  Picnic,      // picnic: a checkered cloth and a sandwich
+  Fishing,     // fishing: a fish bites, pulled in together
+  Umbrella,    // rain: one umbrella over both
+  CanPhone,    // tin can phone: a cup each and a string
+  Kite,        // flying a kite
   Count
 };
 
@@ -116,6 +146,9 @@ class FriendPlay {
   // A friend napping too while we nap, or nullptr.
   const char* napBuddy() const;
   uint8_t count() const;
+#ifdef PIO_UNIT_TESTING
+  Gift chooseGiftForTest(bool tired, uint32_t rnd) const { return chooseGift(tired, rnd); }
+#endif
 
  private:
   struct Friend {

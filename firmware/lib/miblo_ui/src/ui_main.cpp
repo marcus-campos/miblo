@@ -1184,7 +1184,54 @@ static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc) {
         k = MascotLook{0, 3, 0, 0, Eyes::Closed, Paws::Down, (uint16_t)((at / 900) % 2 ? kZ1 : kZ1 | kZ2)};
       else k = MascotLook{0, 0, 0, -3, Eyes::Open, Paws::Down, 0};
       break;
-    default: break;  // Task 4
+    case RoamAntic::Sneeze:  // wrinkles its nose, sneezes ("achoo" cloud), the sign shakes
+      if (at < 1500) {
+        k = MascotLook{0, 0, 0, 0, Eyes::Sleepy, Paws::Down, 0};
+      } else if (at < 2500) {
+        k = MascotLook{0, -3, 0, 0, Eyes::Closed, Paws::Down, kMouthWide};
+        sc.signDx = (at / 80) % 2 ? Sz(2) : -Sz(2);
+        addProp(sc, PropKind::Puff, sc.catX + Sz(46), sc.catY - Sz(4), (uint8_t)((at - 1500) / 250));
+      } else if (at < 3500) {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+        addProp(sc, PropKind::Puff, sc.catX + Sz(46), sc.catY - Sz(4), 4);
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      }
+      break;
+    case RoamAntic::Peek: {  // ducks behind the sign (ears only), peeks out on one side, the other
+      sc.catBehind = true;
+      int dy = 56, dx = 0;
+      Eyes e = Eyes::Open;
+      if (at < 1500) dy = (int)(at * 56 / 1500);
+      else if (at >= 3000 && at < 4500) dy = 16, dx = -14, e = Eyes::Wide;
+      else if (at >= 6000 && at < 7500) dy = 16, dx = 14, e = Eyes::Wide;
+      else if (at >= 7500) dy = (int)((kAnticMs - at) * 56 / 1500), e = Eyes::Happy;
+      k = MascotLook{(int8_t)dx, (int8_t)dy, 0, 0, e, Paws::Down, 0};
+      break;
+    }
+    case RoamAntic::Heart:  // looks at you, "^ ^", a little heart beating beside its ear
+      k = MascotLook{0, (int8_t)(at >= 2000 && at < 2400 ? -3 : 0), 0, 0, Eyes::Happy, Paws::Down,
+                     (uint16_t)(at < 6000 && (at / 600) % 2 == 0 ? kHeart : 0)};
+      break;
+    case RoamAntic::Glasses: {  // sunglasses come down onto its face ("deal with it"), then go up
+      const int seat = sc.catY + Sz(4), from = sc.catY - Sz(32);
+      const int gy = at < 2000 ? lerp(from, seat, at, 2000) : at < 7000 ? seat : lerp(seat, from, at - 7000, 2000);
+      k = MascotLook{0, (int8_t)(at >= 2000 && at < 2600 ? -2 : 0), 0, 0, at < 2000 ? Eyes::Wide : Eyes::Open,
+                     Paws::Down, 0};
+      addProp(sc, PropKind::Glasses, sc.catX, gy);
+      break;
+    }
+    case RoamAntic::Stamp:  // stamps "LGTM" on the sign
+      if (at < 1500) {
+        k = MascotLook{0, -3, 0, 3, Eyes::Open, Paws::ReachRight, 0};
+      } else if (at < 7500) {
+        k = MascotLook{0, 0, 0, 3, Eyes::Happy, Paws::Down, 0};
+        sc.stamp = true;
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+      }
+      break;
+    default: break;
   }
 }
 

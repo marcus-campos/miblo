@@ -1,5 +1,6 @@
 // ui_visit_b.cpp — visits between Miblos: video game, gossip, a toast, movie time, stacking
 // blocks, brainstorm, pomodoro, hotfix, tests passing, 404 (and their props, kinds 96..127).
+#include "miblo_rom.h"
 #include "ui_visit_kit.h"
 
 namespace screens {
@@ -32,7 +33,10 @@ constexpr uint16_t kCream = 0xFF9A;      // #fff0d0 popcorn
 constexpr uint16_t kGlass = 0xB71F;      // #b0e0ff the magnifier's lens
 constexpr uint16_t kBrown = 0x8AC6;      // #8a5a34 its handle
 constexpr uint16_t kDarkGreen = 0x0400;  // #008000 grass on the cinema screen
-constexpr uint16_t kBlockColors[] = {color::RED, color::AMBER, color::GREEN, color::BLUE, color::VIOLET, color::CORAL};
+// Small tables live in flash (MIBLO_ROM: on the ESP8266 plain const data would take RAM).
+const uint16_t kBlockColors[] MIBLO_ROM = {color::RED, color::AMBER, color::GREEN, color::BLUE, color::VIOLET, color::CORAL};
+// A signed byte of a table in flash.
+int romI8(const int8_t* p) { return (int8_t)mibloRomByte((const char*)p); }
 
 // The size class of a group (the top two bits of our items' `f`): 0 a pair, 1 three cats, 2 four.
 // Its cats' half size: what Pen draws 40 units as, and what Scene::z scales by (they must agree).
@@ -556,12 +560,12 @@ void drawMovieScreen(const Pen& p, int x, int y, uint8_t f) {  // (centre) a fil
 }
 
 void drawPopcorn(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) f & 3: how full; f & 4: jumping out
-  static const int8_t kPuff[4][2] = {{0, -17}, {-5, -15}, {5, -15}, {-1, -19}};
+  static const int8_t kPuff[4][2] MIBLO_ROM = {{0, -17}, {-5, -15}, {5, -15}, {-1, -19}};
   const int n = 1 + (f & 3);
-  for (int i = 0; i < n; i++) disc(p, x, y, kPuff[i][0], kPuff[i][1], 3, kCream);
+  for (int i = 0; i < n; i++) disc(p, x, y, romI8(&kPuff[i][0]), romI8(&kPuff[i][1]), 3, kCream);
   if (f & 4) {
-    static const int8_t kFly[4][2] = {{-10, -26}, {9, -28}, {-3, -31}, {4, -23}};
-    for (const auto& k : kFly) disc(p, x, y, k[0], k[1], 2, kCream);
+    static const int8_t kFly[4][2] MIBLO_ROM = {{-10, -26}, {9, -28}, {-3, -31}, {4, -23}};
+    for (const auto& k : kFly) disc(p, x, y, romI8(&k[0]), romI8(&k[1]), 2, kCream);
   }
   rect(p, x, y, -6, -14, 12, 14, color::WHITE);
   C().fillTriangle(x - p(8), y - p(14), x - p(6), y - p(14), x - p(6), y - 1, color::WHITE);
@@ -571,7 +575,9 @@ void drawPopcorn(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) f 
 
 void drawBlock(const Pen& p, int cx, int bottom, int i) {  // (bottom centre) one block, colour i
   const int h = p(8);
-  C().fillRect(cx - p(6), bottom - h, p(12), h > 4 ? h - 1 : h, kBlockColors[i % 6]);
+  uint16_t c;
+  mibloRomCopy(&c, &kBlockColors[i % 6], sizeof(c));
+  C().fillRect(cx - p(6), bottom - h, p(12), h > 4 ? h - 1 : h, c);
 }
 
 // (bottom centre) f & 7 blocks; (f >> 3) & 3 the lean (1 left, 2 right); f & 32 fallen, with
@@ -579,9 +585,9 @@ void drawBlock(const Pen& p, int cx, int bottom, int i) {  // (bottom centre) on
 void drawTower(const Pen& p, int x, int y, uint8_t f) {
   const int n = f & 7, k = (f >> 3) & 3;
   if (f & 32) {  // scattered on the floor (each block from its place in the tower)
-    static const int8_t kFloor[7][2] = {{-18, 0}, {-6, 0}, {6, 0}, {18, 0}, {-12, -8}, {12, -8}, {0, -16}};
+    static const int8_t kFloor[7][2] MIBLO_ROM = {{-18, 0}, {-6, 0}, {6, 0}, {18, 0}, {-12, -8}, {12, -8}, {0, -16}};
     for (int i = 0; i < n; i++) {
-      const int fx = kFloor[i][0], fy = kFloor[i][1], tx = 0, ty = -8 * i;
+      const int fx = romI8(&kFloor[i][0]), fy = romI8(&kFloor[i][1]), tx = 0, ty = -8 * i;
       const int bx = k ? tx + (fx - tx) * k / 3 : fx, by = k ? ty + (fy - ty) * k / 3 : fy;
       drawBlock(p, x + p(bx), y + p(by), i);
     }
@@ -620,9 +626,9 @@ void drawTomato(const Pen& p, int x, int y, uint8_t f) {  // (centre) f & 7: the
   tri(p, cx, y, 6, -8, 0, -10, 1, -6, color::GREEN);
   rect(p, cx, y, -1, -12, 2, 3, color::GREEN);
   disc(p, cx, y, 0, 1, 5, color::WHITE);
-  static const int8_t kHand[8][2] = {{0, -4}, {3, -3}, {4, 0}, {3, 3}, {0, 4}, {-3, 3}, {-4, 0}, {-3, -3}};
+  static const int8_t kHand[8][2] MIBLO_ROM = {{0, -4}, {3, -3}, {4, 0}, {3, 3}, {0, 4}, {-3, 3}, {-4, 0}, {-3, -3}};
   const int h = f & 7, w = p(2) < 2 ? 2 : p(2);
-  C().wideLine(cx, y + p(1), cx + p(kHand[h][0]), y + p(1) + p(kHand[h][1]), w, ring ? color::RED : color::PUPIL,
+  C().wideLine(cx, y + p(1), cx + p(romI8(&kHand[h][0])), y + p(1) + p(romI8(&kHand[h][1])), w, ring ? color::RED : color::PUPIL,
                color::WHITE);
 }
 

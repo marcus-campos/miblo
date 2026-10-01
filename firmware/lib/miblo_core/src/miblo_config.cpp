@@ -4,6 +4,7 @@
 
 #include "miblo_tz.h"
 #include "miblo_utf8.h"
+#include "miblo_rom.h"
 
 namespace miblo {
 
@@ -34,8 +35,8 @@ static bool intIn(JsonVariantConst v, int lo, int hi, uint8_t& out) {
 }
 
 static uint8_t daysIn(uint8_t month) {
-  static const uint8_t kDays[12] = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-  return month >= 1 && month <= 12 ? kDays[month - 1] : 0;
+  static const uint8_t kDays[12] MIBLO_ROM = {31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  return month >= 1 && month <= 12 ? mibloRomByte((const char*)&kDays[month - 1]) : 0;
 }
 
 static bool digits(const char* s, int n, int& out) {

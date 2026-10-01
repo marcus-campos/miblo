@@ -1978,7 +1978,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     snprintf(buf, sizeof(buf), t(lang, v.turnedAway ? S::FriendBusy : S::FriendAway), v.name);
     if (mine && !v.turnedAway) buf[0] = 0;  // still on screen (leaving or back home)
   } else {
-    static const S kLine[] = {S::FriendVisiting, S::FriendCoffee, S::FriendDuck, S::FriendPair,
+    static const S kLine[] MIBLO_ROM = {S::FriendVisiting, S::FriendCoffee, S::FriendDuck, S::FriendPair,
                               S::FriendReview, S::FriendBug, S::FriendDeploy, S::FriendHighFive,
                               S::FriendPingPong, S::FriendDance, S::FriendPizza, S::FriendCake,
                               S::FriendMerge, S::FriendStandup, S::FriendHackathon, S::FriendSelfie,
@@ -1992,7 +1992,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     char who[40];
     if (v.extra) snprintf(who, sizeof(who), "%s +%u", v.name, (unsigned)v.extra);  // a group
     else snprintf(who, sizeof(who), "%s", v.name);
-    snprintf(buf, sizeof(buf), t(lang, kLine[g]), who);
+    snprintf(buf, sizeof(buf), t(lang, (S)mibloRomByte((const char*)&kLine[g])), who);
     if (!guest) buf[0] = 0;
   }
   if (vertical) return;
@@ -2009,7 +2009,7 @@ void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
   deskCat(R_BODY, X(120), Y(90), 56, deskLook(DeskMood::Celebrate, true, ms));
   if (party) {
     // Confetti along the top and the bottom, reshuffled a few times a second.
-    static const uint16_t kColors[] = {color::AMBER, color::GREEN, color::BLUE, color::CORAL, color::VIOLET, color::RED};
+    static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN, color::BLUE, color::CORAL, color::VIOLET, color::RED};
     const uint32_t frame = ms / 250;
     for (uint8_t band = 0; band < 2; band++) {
       const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
@@ -2019,7 +2019,9 @@ void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
         r = r * 1103515245u + 12345u;
         const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
         const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
-        C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), kColors[(r >> 4) % 6]);
+        uint16_t c;
+        mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
+        C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
       }
     }
   }

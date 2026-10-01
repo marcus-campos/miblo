@@ -89,8 +89,8 @@ void check(int cx, int cy, int size, uint16_t c) {
 
 uint8_t mascotPose(uint8_t frame) {
   // Idle-heavy 8-frame loop (~3.2 s at 400 ms/frame).
-  static const uint8_t kSeq[8] = {0, 0, 1, 0, 2, 0, 3, 0};
-  return kSeq[frame % 8];
+  static const uint8_t kSeq[8] MIBLO_ROM = {0, 0, 1, 0, 2, 0, 3, 0};
+  return mibloRomByte((const char*)&kSeq[frame % 8]);
 }
 
 namespace {
@@ -121,7 +121,7 @@ struct MascotPen {
 struct MascotColors {
   uint16_t skin, earIn, line, nose, lid;
 };
-constexpr MascotColors kMascotColors[] = {
+const MascotColors kMascotColors[] MIBLO_ROM = {
     {color::SKIN, color::EAR_IN, color::WRINKLE, color::NOSE, color::PUPIL},  // sphynx #f2b8a8
     {0xF282, 0xFD2F, 0xB1C1, 0xFD2F, color::PUPIL},                         // orange #f55110 (the logo's)
     {0x4A4A, 0x7ACC, 0x2946, 0xD3D1, 0xCE5A},                               // black (#4a4a55: shows on the dark bg)
@@ -136,7 +136,13 @@ void setMascotStyle(uint8_t style) {
 uint8_t mascotStyle() { return g_style; }
 void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
 uint8_t mascotAccessory() { return g_accessory; }
-uint16_t mascotSkin() { return kMascotColors[g_style].skin; }
+// The current style's colours (copied out of flash).
+static MascotColors mascotColors() {
+  MascotColors mc;
+  mibloRomCopy(&mc, &kMascotColors[g_style], sizeof(mc));
+  return mc;
+}
+uint16_t mascotSkin() { return mascotColors().skin; }
 
 // Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
 // even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
@@ -166,7 +172,7 @@ static void drawHat(MascotPen& d, int x, int b) {
 // the extras (sweat, alarm, zzz, open mouth).
 static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk, bool table = true,
                     bool box = true) {
-  const MascotColors& mc = kMascotColors[g_style];
+  const MascotColors mc = mascotColors();
   const int x = k.dx;
   const int b = k.dy;
   if (box) d.rect(-48, -48, 96, 96, color::BG);
@@ -328,7 +334,7 @@ constexpr int kLogoW = 22;
 constexpr int kLogoH = 20;
 
 void logo(int cx, int cy, int size) {
-  const uint16_t c = kMascotColors[g_style].skin;
+  const uint16_t c = mascotSkin();
   const int px = size / kLogoW < 1 ? 1 : size / kLogoW;  // whole pixels: crisp at any scale
   const int left = cx - kLogoW * px / 2;
   const int top = cy - kLogoH * px / 2;

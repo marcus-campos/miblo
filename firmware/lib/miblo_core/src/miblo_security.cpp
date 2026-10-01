@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "miblo_rom.h"
+
 namespace miblo {
 
 void formatCode(uint32_t rnd, char out[5]) {
@@ -10,10 +12,10 @@ void formatCode(uint32_t rnd, char out[5]) {
 }
 
 void makeToken(const uint8_t rnd[16], char out[33]) {
-  static const char hex[] = "0123456789abcdef";
+  auto hex = [](int v) { return (char)(v < 10 ? '0' + v : 'a' + v - 10); };  // no table: it would sit in RAM
   for (int i = 0; i < 16; i++) {
-    out[i * 2] = hex[rnd[i] >> 4];
-    out[i * 2 + 1] = hex[rnd[i] & 0x0F];
+    out[i * 2] = hex(rnd[i] >> 4);
+    out[i * 2 + 1] = hex(rnd[i] & 0x0F);
   }
   out[32] = 0;
 }
@@ -41,14 +43,14 @@ bool constantTimeEquals(const char* a, const char* b) {
 static char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
 
 bool findContentLength(const char* headers, size_t len, uint32_t& out) {
-  static const char kName[] = "content-length:";
+  static const char kName[] MIBLO_ROM = "content-length:";
   const size_t nameLen = sizeof(kName) - 1;
   bool found = false;
   size_t i = 0;
   while (i < len) {
     if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
     bool match = len - i > nameLen;
-    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == kName[k];
+    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == (char)mibloRomByte(kName + k);
     if (match) {
       size_t j = i + nameLen;
       while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
@@ -71,21 +73,21 @@ bool findContentLength(const char* headers, size_t len, uint32_t& out) {
 }
 
 bool contentTypeIsMultipart(const char* headers, size_t len) {
-  static const char kName[] = "content-type:";
-  static const char kPrefix[] = "multipart/";
+  static const char kName[] MIBLO_ROM = "content-type:";
+  static const char kPrefix[] MIBLO_ROM = "multipart/";
   const size_t nameLen = sizeof(kName) - 1;
   const size_t prefixLen = sizeof(kPrefix) - 1;
   size_t i = 0;
   while (i < len) {
     if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
     bool match = len - i > nameLen;
-    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == kName[k];
+    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == (char)mibloRomByte(kName + k);
     if (match) {
       size_t j = i + nameLen;
       while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
       if (len - j < prefixLen) return false;
       for (size_t k = 0; k < prefixLen; k++) {
-        if (lower(headers[j + k]) != kPrefix[k]) return false;
+        if (lower(headers[j + k]) != (char)mibloRomByte(kPrefix + k)) return false;
       }
       return true;
     }

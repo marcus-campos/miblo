@@ -1,6 +1,7 @@
 #include "miblo_policy.h"
 
 #include "miblo_format.h"
+#include "miblo_rom.h"
 
 namespace miblo {
 
@@ -218,11 +219,11 @@ QuietPhase QuietClock::update(bool quiet, uint32_t nowMs, bool justFinished) {
 }
 
 void pixelShift(uint8_t i, int8_t& dx, int8_t& dy) {
-  static const int8_t kSteps[kShiftSteps][2] = {{0, 0},  {2, 0},   {2, 2},  {0, 2}, {-2, 2},
+  static const int8_t kSteps[kShiftSteps][2] MIBLO_ROM = {{0, 0},  {2, 0},   {2, 2},  {0, 2}, {-2, 2},
                                                 {-2, 0}, {-2, -2}, {0, -2}, {2, -2}};
   i %= kShiftSteps;
-  dx = kSteps[i][0];
-  dy = kSteps[i][1];
+  dx = (int8_t)mibloRomByte((const char*)&kSteps[i][0]);
+  dy = (int8_t)mibloRomByte((const char*)&kSteps[i][1]);
 }
 
 void UpdateNotice::observe(const char* latest, const char* current, uint32_t nowMs) {

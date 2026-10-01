@@ -439,7 +439,11 @@ void renderAll(Lang L) {
       const uint32_t t0 = c * screens::kAnticEveryMs;
       const screens::RoamAntic a = screens::roamAntic(t0, nullptr);
       const uint32_t play = screens::anticOnSign(a) ? 0 : screens::kAnticPutMs;
-      const uint32_t moments[] = {play + 2500, play + 6000};
+      // Two moments where the antic reads; Peek's are the middle of each peek (out at 3000 on the
+      // left and at 6000 on the right, 1.5 s each), Heart's with the heart on (it beats until 6000).
+      uint32_t moments[] = {play + 2500, play + 6000};
+      if (a == screens::RoamAntic::Peek) moments[0] = 3750, moments[1] = 6750;
+      if (a == screens::RoamAntic::Heart) moments[0] = 1500, moments[1] = 4900;
       for (int i = 0; i < 2; i++) {
         Shot sh;
         screens::roam(L, snap, clk, t0 + moments[i], screens::DeskMood::Calm);

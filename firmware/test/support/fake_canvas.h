@@ -120,6 +120,11 @@ class FakeCanvas : public ui::Canvas {
   int boxTexts = 0;    // textBox() calls (in-place value updates)
   int layerBegins = 0, layerEnds = 0, layerReleases = 0;
   int lastLayer[4] = {0, 0, 0, 0};
+  // Band check: while bandArmed, every primitive must stay inside [bandMinX, bandMaxX] x
+  // [bandTop, bandBottom]; each one that does not counts in bandOut.
+  bool bandArmed = false;
+  int bandMinX = 0, bandMaxX = 0, bandTop = 0, bandBottom = 0;
+  int bandOut = 0;
 
  private:
   struct Fill {
@@ -140,5 +145,6 @@ class FakeCanvas : public ui::Canvas {
     calls++;
     if (inLayer) layerCalls++;
     if (x < 0 || y < 0 || x + w > spec_.w || y + h > spec_.h) outOfBounds++;
+    if (bandArmed && (x < bandMinX || y < bandTop || x + w > bandMaxX || y + h > bandBottom)) bandOut++;
   }
 };

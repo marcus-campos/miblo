@@ -3,6 +3,7 @@
 
 #include "../support/fake_canvas.h"
 #include "ui_screens.h"
+#include "ui_visit_kit.h"
 
 using namespace miblo;
 using ui::Align;
@@ -1154,17 +1155,29 @@ static void test_pet_antics_stay_on_screen() {
   }
 }
 
+// The canvas whose band check visit() arms around each prop it draws.
+static FakeCanvas* gBandCanvas = nullptr;
+static void armBand(bool drawing) {
+  if (gBandCanvas) gBandCanvas->bandArmed = drawing;
+}
+
 // Every activity (the 7 old and the 30 new), host and visitor, 1 to 3 guests, every side, every
-// supported resolution, all along the stay: nothing off screen (walking in and out, the cats
-// leave the screen on purpose: the panel clips them). And a frame that differs only in an item's
-// animation redraws.
+// supported resolution, all along the stay and the first step of leaving (the tall area clears
+// back to the band): nothing off screen (walking in and out, the cats leave the screen on purpose:
+// the panel clips them), and every prop inside its band: x X(3)..X(237), y Y(30)..the cats'
+// bottom. And a frame that differs only in an item's animation redraws.
 static void test_visits_stay_on_screen_all_activities() {
+  screens::visitItemHookForTest = armBand;
   const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
   for (const auto& sp : specs) {
     FakeCanvas fc(sp);
+    gBandCanvas = &fc;
     screens::bind(fc);
     idle();
     screens::reset();
+    fc.bandMinX = screens::X(3);
+    fc.bandMaxX = screens::X(237);
+    fc.bandTop = screens::Y(30);
     for (int g = 0; g < (int)miblo::Gift::Count; g++)
       for (int role = 0; role < 2; role++)
         for (uint8_t extra = 0; extra < 3; extra++)
@@ -1178,13 +1191,18 @@ static void test_visits_stay_on_screen_all_activities() {
             v.role = role ? miblo::VisitRole::Visitor : miblo::VisitRole::Host;
             v.gift = (miblo::Gift)g;
             v.extra = extra;
-            for (uint32_t ms = miblo::kVisitArriveMs; ms < miblo::kVisitPartMs; ms += 250) {
+            const int cats = role ? 2 : 2 + extra;  // the cats' size, as visit() picks it
+            fc.bandBottom = screens::Y(104) + screens::Sz(cats <= 2 ? 40 : cats == 3 ? 33 : 27);
+            for (uint32_t ms = miblo::kVisitArriveMs; ms <= miblo::kVisitPartMs; ms += 250) {
               v.ms = ms;
               screens::visit(Lang::En, snap, testClock(), v, side);
             }
           }
     TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    TEST_ASSERT_EQUAL_INT(0, fc.bandOut);
   }
+  screens::visitItemHookForTest = nullptr;
+  gBandCanvas = nullptr;
   // Pair programming at t = 590 and 610 ms: same looks (paws switch every 250 ms), only the
   // laptop's code frame (every 300 ms) differs, and that alone redraws the cats.
   FakeCanvas fc({240, 240});
@@ -1201,6 +1219,21 @@ static void test_visits_stay_on_screen_all_activities() {
   v.ms = miblo::kVisitArriveMs + 610;
   screens::visit(Lang::En, snap, testClock(), v);
   TEST_ASSERT_GREATER_THAN_INT(before, fc.calls);
+}
+
+// addItem keeps up to four props and drops kinds nobody draws.
+static void test_visit_add_item_drops_bad_kinds() {
+  screens::VisitFrame f{};
+  screens::addItem(f, screens::vprop::None, 1, 1);
+  screens::addItem(f, screens::vprop::Count, 1, 1);
+  screens::addItem(f, screens::kItemsA - 1, 1, 1);
+  screens::addItem(f, screens::kItemsEnd, 1, 1);
+  TEST_ASSERT_EQUAL_UINT8(0, f.n);
+  const uint8_t ok[] = {screens::vprop::Duck, screens::vprop::Drop, screens::kItemsA, screens::kItemsEnd - 1,
+                        screens::kItemsB};
+  for (uint8_t k : ok) screens::addItem(f, k, 2, 3, 4);
+  TEST_ASSERT_EQUAL_UINT8(4, f.n);
+  TEST_ASSERT_EQUAL_UINT8(screens::kItemsEnd - 1, f.items[3].kind);
 }
 
 int main() {
@@ -1235,6 +1268,7 @@ int main() {
   RUN_TEST(test_props_stay_near_their_anchor);
   RUN_TEST(test_pet_antics_stay_on_screen);
   RUN_TEST(test_visits_stay_on_screen_all_activities);
+  RUN_TEST(test_visit_add_item_drops_bad_kinds);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

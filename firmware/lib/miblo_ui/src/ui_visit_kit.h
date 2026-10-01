@@ -45,6 +45,7 @@ enum : uint8_t {
   Laser = 25,      // (centre) a laser dot with its glow
   Dots = 26,       // (left dot) "..." while talking; f = how many (1..3)
   Drop = 27,       // (centre) a splash of water
+  Count = 28,      // not a kind: how many there are (checked against PropKind::Count)
 };
 }  // namespace vprop
 // Each activity file owns a range of new kinds, drawn by its drawVisitItemX.

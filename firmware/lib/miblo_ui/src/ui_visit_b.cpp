@@ -493,67 +493,82 @@ struct Pen {
   }
 };
 
+// Shapes at (x + p(dx), y + p(dy)) in prop units, out of line: each one costs a call rather than
+// its own scaling code. (p is odd, p(-v) == -p(v), so x - p(v) is x + p(-v).)
+__attribute__((noinline)) void rect(const Pen& p, int x, int y, int dx, int dy, int w, int h, uint16_t c) {
+  C().fillRect(x + p(dx), y + p(dy), p(w), p(h), c);
+}
+__attribute__((noinline)) void rrect(const Pen& p, int x, int y, int dx, int dy, int w, int h, int r, uint16_t c) {
+  C().fillRoundRect(x + p(dx), y + p(dy), p(w), p(h), p(r), c);
+}
+__attribute__((noinline)) void disc(const Pen& p, int x, int y, int dx, int dy, int r, uint16_t c) {
+  C().fillCircle(x + p(dx), y + p(dy), p(r), c);
+}
+__attribute__((noinline)) void tri(const Pen& p, int x, int y, int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+  C().fillTriangle(x + p(x0), y + p(y0), x + p(x1), y + p(y1), x + p(x2), y + p(y2), c);
+}
+
 void drawGameTv(const Pen& p, int x, int y, uint8_t f) {  // (centre) players on a black screen
   const int fr = f & 15;
-  C().fillRoundRect(x - p(24), y - p(15), p(48), p(30), p(3), color::FAINT);
-  C().fillRect(x - p(21), y - p(12), p(42), p(24), color::BLACK);
+  rrect(p, x, y, -24, -15, 48, 30, 3, color::FAINT);
+  rect(p, x, y, -21, -12, 42, 24, color::BLACK);
   const int ground = y + p(9);
-  C().fillRect(x - p(21), ground, p(42), p(1), color::GREEN);
+  rect(p, x, ground, -21, 0, 42, 1, color::GREEN);
   const int lx = x - p(13), rx = x + p(13) - p(5);  // left edges of the two players
   if (f & 16) {  // game over: the winner jumps with a crown, the other lies flat
     const bool leftWon = f & 32;
     const int wx = leftWon ? lx : rx, ox = leftWon ? rx : lx;
     const int wy = ground - p(5) - (fr % 4 < 2 ? p(5) : 0);
-    C().fillRect(wx, wy, p(5), p(5), leftWon ? color::CORAL : color::BLUE);
+    rect(p, wx, wy, 0, 0, 5, 5, leftWon ? color::CORAL : color::BLUE);
     C().fillTriangle(wx, wy - 1, wx + p(5), wy - 1, wx + p(2), wy - p(4), color::AMBER);
-    C().fillRect(ox - p(1), ground - p(2), p(7), p(2), color::DIM);
+    rect(p, ox, ground, -1, -2, 7, 2, color::DIM);
     return;
   }
   auto jump = [&](int k) { return p(2 * (k % 8 < 4 ? k % 8 : 8 - k % 8)); };  // 0..8 up
   C().fillRect(lx, ground - p(5) - jump(fr), p(5), p(5), color::CORAL);
   C().fillRect(rx, ground - p(5) - jump(fr + 4), p(5), p(5), color::BLUE);
   const int bx = x - p(6) + p((fr < 8 ? fr : 15 - fr) * 10 / 7);  // the ball between them
-  C().fillRect(bx, y - p(6), p(2), p(2), color::WHITE);
+  rect(p, bx, y, 0, -6, 2, 2, color::WHITE);
 }
 
 void drawPad(const Pen& p, int x, int y, uint8_t f) {  // (centre) a white controller; f 1: a button pressed
-  C().fillRoundRect(x - p(11), y - p(5), p(22), p(10), p(4), color::WHITE);
-  C().fillRect(x - p(9), y - p(1), p(6), p(2), color::DIM);  // the cross
-  C().fillRect(x - p(7), y - p(3), p(2), p(6), color::DIM);
-  C().fillCircle(x + p(4), y + p(1), p(2), f & 1 ? color::AMBER : color::RED);
-  C().fillCircle(x + p(8), y - p(1), p(2), color::BLUE);
+  rrect(p, x, y, -11, -5, 22, 10, 4, color::WHITE);
+  rect(p, x, y, -9, -1, 6, 2, color::DIM);  // the cross
+  rect(p, x, y, -7, -3, 2, 6, color::DIM);
+  disc(p, x, y, 4, 1, 2, f & 1 ? color::AMBER : color::RED);
+  disc(p, x, y, 8, -1, 2, color::BLUE);
 }
 
 void drawMovieScreen(const Pen& p, int x, int y, uint8_t f) {  // (centre) a film; f & 16: the scary scene
   const int fr = f & 15;
-  C().fillRoundRect(x - p(24), y - p(13), p(48), p(26), p(2), color::FAINT);
+  rrect(p, x, y, -24, -13, 48, 26, 2, color::FAINT);
   const int ix = x - p(22), iy = y - p(11), iw = p(44), ih = p(22);
   if (f & 16) {
     C().fillRect(ix, iy, iw, ih, fr % 5 == 0 ? color::WHITE : color::BLACK);  // lightning now and then
     if (fr % 5) {
-      C().fillCircle(x - p(5), y - p(2), p(2), color::RED);
-      C().fillCircle(x + p(5), y - p(2), p(2), color::RED);
+      disc(p, x, y, -5, -2, 2, color::RED);
+      disc(p, x, y, 5, -2, 2, color::RED);
     }
     return;
   }
   C().fillRect(ix, iy, iw, ih, fr % 6 == 0 ? color::VIOLET : color::BLUE);  // the sky, flickering
   C().fillRect(ix, y + p(4), iw, ih - p(15), kDarkGreen);
-  C().fillCircle(x + p(15), y - p(5), p(3), color::WHITE);
+  disc(p, x, y, 15, -5, 3, color::WHITE);
   C().fillCircle(x - p(15) + p(fr * 2), y + p(1) - (fr % 2 ? p(1) : 0), p(3), color::AMBER);  // the hero
 }
 
 void drawPopcorn(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) f & 3: how full; f & 4: jumping out
   static const int8_t kPuff[4][2] = {{0, -17}, {-5, -15}, {5, -15}, {-1, -19}};
   const int n = 1 + (f & 3);
-  for (int i = 0; i < n; i++) C().fillCircle(x + p(kPuff[i][0]), y + p(kPuff[i][1]), p(3), kCream);
+  for (int i = 0; i < n; i++) disc(p, x, y, kPuff[i][0], kPuff[i][1], 3, kCream);
   if (f & 4) {
     static const int8_t kFly[4][2] = {{-10, -26}, {9, -28}, {-3, -31}, {4, -23}};
-    for (const auto& k : kFly) C().fillCircle(x + p(k[0]), y + p(k[1]), p(2), kCream);
+    for (const auto& k : kFly) disc(p, x, y, k[0], k[1], 2, kCream);
   }
-  C().fillRect(x - p(6), y - p(14), p(12), p(14), color::WHITE);
+  rect(p, x, y, -6, -14, 12, 14, color::WHITE);
   C().fillTriangle(x - p(8), y - p(14), x - p(6), y - p(14), x - p(6), y - 1, color::WHITE);
   C().fillTriangle(x + p(8), y - p(14), x + p(6), y - p(14), x + p(6), y - 1, color::WHITE);
-  for (int i = -5; i <= 3; i += 4) C().fillRect(x + p(i), y - p(14), p(2), p(14), color::RED);
+  for (int i = -5; i <= 3; i += 4) rect(p, x, y, i, -14, 2, 14, color::RED);
 }
 
 void drawBlock(const Pen& p, int cx, int bottom, int i) {  // (bottom centre) one block, colour i
@@ -581,32 +596,32 @@ void drawTower(const Pen& p, int x, int y, uint8_t f) {
 void drawBulb(const Pen& p, int x, int y, uint8_t f) {  // (centre of the glass) f 1: lit, with rays
   const bool lit = f & 1;
   if (lit) {
-    C().fillRect(x - p(1), y - p(12), p(2), p(3), color::AMBER);
-    C().fillRect(x - p(12), y - p(1), p(3), p(2), color::AMBER);
-    C().fillRect(x + p(9), y - p(1), p(3), p(2), color::AMBER);
-    C().fillRect(x - p(9), y - p(9), p(2), p(2), color::AMBER);
-    C().fillRect(x + p(7), y - p(9), p(2), p(2), color::AMBER);
+    rect(p, x, y, -1, -12, 2, 3, color::AMBER);
+    rect(p, x, y, -12, -1, 3, 2, color::AMBER);
+    rect(p, x, y, 9, -1, 3, 2, color::AMBER);
+    rect(p, x, y, -9, -9, 2, 2, color::AMBER);
+    rect(p, x, y, 7, -9, 2, 2, color::AMBER);
   }
-  C().fillCircle(x, y, p(6), lit ? kYellow : color::FAINT);
-  C().fillRect(x - p(3), y + p(4), p(6), p(5), color::MUTED);
-  C().fillRect(x - p(3), y + p(6), p(6), p(1), color::DIM);
-  if (lit) C().fillCircle(x - p(2), y - p(2), p(1), color::WHITE);
+  disc(p, x, y, 0, 0, 6, lit ? kYellow : color::FAINT);
+  rect(p, x, y, -3, 4, 6, 5, color::MUTED);
+  rect(p, x, y, -3, 6, 6, 1, color::DIM);
+  if (lit) disc(p, x, y, -2, -2, 1, color::WHITE);
 }
 
 void drawTomato(const Pen& p, int x, int y, uint8_t f) {  // (centre) f & 7: the hand; f & 8: ringing (f & 16 shakes)
   const bool ring = f & 8;
   const int cx = x + (ring ? (f & 16 ? p(1) : -p(1)) : 0);
   if (ring) {
-    C().fillRect(x - p(16), y - p(5), p(2), p(3), color::AMBER);
-    C().fillRect(x - p(17), y + p(1), p(3), p(2), color::AMBER);
-    C().fillRect(x + p(14), y - p(5), p(2), p(3), color::AMBER);
-    C().fillRect(x + p(14), y + p(1), p(3), p(2), color::AMBER);
+    rect(p, x, y, -16, -5, 2, 3, color::AMBER);
+    rect(p, x, y, -17, 1, 3, 2, color::AMBER);
+    rect(p, x, y, 14, -5, 2, 3, color::AMBER);
+    rect(p, x, y, 14, 1, 3, 2, color::AMBER);
   }
-  C().fillCircle(cx, y, p(10), color::RED);
-  C().fillTriangle(cx - p(6), y - p(8), cx, y - p(10), cx - p(1), y - p(6), color::GREEN);
-  C().fillTriangle(cx + p(6), y - p(8), cx, y - p(10), cx + p(1), y - p(6), color::GREEN);
-  C().fillRect(cx - p(1), y - p(12), p(2), p(3), color::GREEN);
-  C().fillCircle(cx, y + p(1), p(5), color::WHITE);
+  disc(p, cx, y, 0, 0, 10, color::RED);
+  tri(p, cx, y, -6, -8, 0, -10, -1, -6, color::GREEN);
+  tri(p, cx, y, 6, -8, 0, -10, 1, -6, color::GREEN);
+  rect(p, cx, y, -1, -12, 2, 3, color::GREEN);
+  disc(p, cx, y, 0, 1, 5, color::WHITE);
   static const int8_t kHand[8][2] = {{0, -4}, {3, -3}, {4, 0}, {3, 3}, {0, 4}, {-3, 3}, {-4, 0}, {-3, -3}};
   const int h = f & 7, w = p(2) < 2 ? 2 : p(2);
   C().wideLine(cx, y + p(1), cx + p(kHand[h][0]), y + p(1) + p(kHand[h][1]), w, ring ? color::RED : color::PUPIL,
@@ -614,29 +629,28 @@ void drawTomato(const Pen& p, int x, int y, uint8_t f) {  // (centre) f & 7: the
 }
 
 void drawKeyboard(const Pen& p, int x, int y, uint8_t f) {  // (centre) f 1: a key pressed on the left, 0 on the right
-  C().fillRoundRect(x - p(13), y - p(4), p(26), p(8), p(2), color::DIM);
+  rrect(p, x, y, -13, -4, 26, 8, 2, color::DIM);
   const int pressed = f & 1 ? 1 : 4;
   for (int row = 0; row < 2; row++)
     for (int k = 0; k < 6; k++)
-      C().fillRect(x + p(-11 + 4 * k), y + (row ? p(1) : -p(3)), p(3), p(2),
-                   row == 0 && k == pressed ? color::AMBER : color::TEXT);
+      rect(p, x, y, -11 + 4 * k, row ? 1 : -3, 3, 2, row == 0 && k == pressed ? color::AMBER : color::TEXT);
 }
 
 void drawServer(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) (f >> 3) & 3: 0 fine, 1 smoke, 2 fire, 3 foam
   const int fr = f & 7, state = (f >> 3) & 3, top = y - p(28);
-  C().fillRoundRect(x - p(9), top, p(18), p(28), p(2), color::DIM);
+  rrect(p, x, top, -9, 0, 18, 28, 2, color::DIM);
   for (int i = 0; i < 3; i++) {
     const int sy = top + p(3) + i * p(8);
-    C().fillRect(x - p(7), sy, p(14), p(5), color::BLACK);
+    rect(p, x, sy, -7, 0, 14, 5, color::BLACK);
     if ((fr + i) % 3 == 0) continue;  // a blinking LED (few colours: a strip's layer has 16)
     const uint16_t led = state == 1 ? color::AMBER : state == 2 ? color::RED : color::GREEN;
-    C().fillRect(x + p(3), sy + p(1), p(3), p(3), led);
+    rect(p, x, sy, 3, 1, 3, 3, led);
   }
   switch (state) {
     case 1: {  // smoke rising
       const int rise = p(fr % 4);
-      C().fillCircle(x - p(3), top - p(4) - rise, p(3), color::MUTED);
-      C().fillCircle(x + p(3), top - p(10) - rise, p(4), color::MUTED);
+      disc(p, x, top - rise, -3, -4, 3, color::MUTED);
+      disc(p, x, top - rise, 3, -10, 4, color::MUTED);
       break;
     }
     case 2: {  // flames
@@ -645,14 +659,14 @@ void drawServer(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) (f 
       C().fillTriangle(x + p(3), top, x + p(11), top + p(2), x + p(9) - flick, top - p(10), color::RED);
       C().fillTriangle(x - p(9), top, x + p(9), top, x + flick, top - p(18) - (fr % 3 ? 0 : p(2)), color::RED);
       C().fillTriangle(x - p(6), top, x + p(6), top, x - flick, top - p(11), color::AMBER);
-      C().fillTriangle(x - p(3), top, x + p(3), top, x, top - p(5), color::WHITE);
+      tri(p, x, top, -3, 0, 3, 0, 0, -5, color::WHITE);
       break;
     }
     case 3:  // foam all over it
-      C().fillCircle(x - p(5), top + p(1), p(4), color::WHITE);
-      C().fillCircle(x + p(3), top - p(1), p(5), color::WHITE);
-      C().fillCircle(x + p(8), top + p(4), p(3), color::WHITE);
-      C().fillCircle(x - p(8), top + p(9), p(3), color::WHITE);
+      disc(p, x, top, -5, 1, 4, color::WHITE);
+      disc(p, x, top, 3, -1, 5, color::WHITE);
+      disc(p, x, top, 8, 4, 3, color::WHITE);
+      disc(p, x, top, -8, 9, 3, color::WHITE);
       break;
     default: break;
   }
@@ -660,16 +674,16 @@ void drawServer(const Pen& p, int x, int y, uint8_t f) {  // (bottom centre) (f 
 
 void drawExtinguisher(const Pen& p, int x, int y, uint8_t f) {  // (centre of the cylinder) f & 1: nozzle left; f & 2 spraying
   const int dir = f & 1 ? -1 : 1, jit = f & 4 ? p(1) : 0;
-  C().fillRect(x - p(2), y - p(11), p(4), p(3), color::DIM);  // the valve
+  rect(p, x, y, -2, -11, 4, 3, color::DIM);  // the valve
   const int w = p(2) < 2 ? 2 : p(2);
   C().wideLine(x, y - p(10), x + dir * p(8), y - p(12), w, color::DIM, color::BG);  // the hose
-  C().fillTriangle(x + dir * p(8), y - p(12), x + dir * p(12), y - p(14), x + dir * p(12), y - p(10), color::DIM);
-  C().fillRoundRect(x - p(4), y - p(8), p(8), p(16), p(3), color::RED);
-  C().fillRect(x - p(4), y - p(1), p(8), p(3), color::WHITE);
+  tri(p, x, y, dir * 8, -12, dir * 12, -14, dir * 12, -10, color::DIM);
+  rrect(p, x, y, -4, -8, 8, 16, 3, color::RED);
+  rect(p, x, y, -4, -1, 8, 3, color::WHITE);
   if (f & 2) {
-    C().fillCircle(x + dir * p(15), y - p(12) + jit, p(2), color::WHITE);
-    C().fillCircle(x + dir * p(19), y - p(12) - jit, p(3), color::WHITE);
-    C().fillCircle(x + dir * p(24), y - p(12) + jit, p(3), color::WHITE);
+    disc(p, x, y + jit, dir * 15, -12, 2, color::WHITE);
+    disc(p, x, y - jit, dir * 19, -12, 3, color::WHITE);
+    disc(p, x, y + jit, dir * 24, -12, 3, color::WHITE);
   }
 }
 
@@ -678,27 +692,27 @@ void drawChecks(const Pen& p, int x, int y, uint8_t f) {  // (centre) f & 15 gre
   for (int i = 0; i < 8; i++) {
     const int cx = x + p((2 * (i % 4) - 3) * 13) / 2, cy = y + p((2 * (i / 4) - 1) * 13) / 2;
     if (i < n) check(cx, cy, p(11), color::GREEN);
-    else if (i == n && (f & 16)) C().fillCircle(cx, cy, p(2), color::AMBER);
-    else C().fillCircle(cx, cy, p(1), color::FAINT);
+    else if (i == n && (f & 16)) disc(p, cx, cy, 0, 0, 2, color::AMBER);
+    else disc(p, cx, cy, 0, 0, 1, color::FAINT);
   }
 }
 
 void drawLens(const Pen& p, int x, int y, uint8_t f) {  // (centre of the lens) f & 1: handle down-left, else down-right
   const int hd = f & 1 ? -1 : 1, w = p(3) < 2 ? 2 : p(3);
   C().wideLine(x + hd * p(6), y + p(6), x + hd * p(12), y + p(12), w, kBrown, color::BG);
-  C().fillCircle(x, y, p(9), color::MUTED);
-  C().fillCircle(x, y, p(7), kGlass);
-  C().fillCircle(x - p(3), y - p(3), p(2), color::WHITE);
+  disc(p, x, y, 0, 0, 9, color::MUTED);
+  disc(p, x, y, 0, 0, 7, kGlass);
+  disc(p, x, y, -3, -3, 2, color::WHITE);
 }
 
 void drawQuestion(const Pen& p, int x, int y) {  // (centre) a big amber "?"
   const uint16_t c = color::AMBER;
-  C().fillRect(x - p(6), y - p(14), p(12), p(4), c);  // the hook
-  C().fillRect(x - p(6), y - p(14), p(4), p(6), c);
-  C().fillRect(x + p(3), y - p(14), p(4), p(11), c);
-  C().fillRect(x - p(1), y - p(6), p(8), p(4), c);
-  C().fillRect(x - p(1), y - p(6), p(4), p(9), c);  // the stem
-  C().fillRect(x - p(1), y + p(6), p(4), p(4), c);  // the dot
+  rect(p, x, y, -6, -14, 12, 4, c);  // the hook
+  rect(p, x, y, -6, -14, 4, 6, c);
+  rect(p, x, y, 3, -14, 4, 11, c);
+  rect(p, x, y, -1, -6, 8, 4, c);
+  rect(p, x, y, -1, -6, 4, 9, c);  // the stem
+  rect(p, x, y, -1, 6, 4, 4, c);  // the dot
 }
 
 void drawSign404(int x, int y) {  // (centre) a white card, "404" in red (screen scale, like "LGTM")

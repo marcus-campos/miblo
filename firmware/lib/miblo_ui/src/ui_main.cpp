@@ -1236,9 +1236,257 @@ static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc) {
 }
 
 static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
-  (void)a;
-  (void)p;
-  (void)sc;  // Tasks 5 and 6
+  MascotLook& k = sc.k;
+  const int cx = sc.catX, cy = sc.catY;
+  switch (a) {
+    case RoamAntic::Laptop: {  // types on a laptop; a bug crawls out of it and gets squashed
+      const int lx = cx + Sz(52), ly = cy + Sz(30);  // the keyboard's centre
+      if (p < 5000) {
+        k = MascotLook{0, 0, 3, 3, Eyes::Open, (p / 200) % 2 ? Paws::ReachRight : Paws::Down, 0};
+        addProp(sc, PropKind::Laptop, lx, ly, (uint8_t)(p / 150));
+      } else if (p < 6500) {
+        addProp(sc, PropKind::Laptop, lx, ly, 33);
+        addProp(sc, PropKind::Bug, lerp(lx - Sz(8), cx + Sz(22), p - 5000, 1500), ly - Sz(4), (uint8_t)(p / 120));
+        k = MascotLook{0, 0, 3, 3, Eyes::Wide, Paws::Down, 0};
+      } else if (p < 7500) {
+        addProp(sc, PropKind::Laptop, lx, ly, 33);
+        addProp(sc, PropKind::Burst, cx + Sz(22), ly - Sz(4));
+        k = MascotLook{0, -3, 3, 3, Eyes::Wide, Paws::ReachRight, 0};
+      } else {
+        addProp(sc, PropKind::Laptop, lx, ly, 33);
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      }
+      break;
+    }
+    case RoamAntic::Tail: {  // its tail swings; it watches, turns after it, ends up dizzy
+      const uint8_t sw = (uint8_t)(p / 250);
+      addProp(sc, PropKind::Tail, cx + Sz(40), cy + Sz(28), p < 6500 ? sw : 2);
+      if (p < 3000) k = MascotLook{0, 0, 3, (int8_t)(sw % 8 < 4 ? -2 : 0), Eyes::Open, Paws::Down, 0};
+      else if (p < 6500)
+        k = MascotLook{(int8_t)((p / 300) % 2 ? -4 : 4), 0, 3, 0, Eyes::Wide,
+                       (p / 300) % 2 ? Paws::ReachLeft : Paws::ReachRight, 0};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Dizzy, Paws::Down, kStars};
+      break;
+    }
+    case RoamAntic::Stretch:  // paws up, a big yawn, then content
+      if (p < 1500) k = MascotLook{0, 0, 0, 0, Eyes::Closed, Paws::Up, 0};
+      else if (p < 4500) k = MascotLook{0, -3, 0, 0, Eyes::Closed, Paws::Up, kMouthWide};
+      else if (p < 6000) k = MascotLook{0, 0, 0, 0, Eyes::Sleepy, Paws::Down, 0};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    case RoamAntic::Lick:  // licks a paw, eyes closed, then content
+      if (p < 6000) k = MascotLook{0, 0, 0, 0, Eyes::Closed, Paws::Lick, (uint16_t)((p / 400) % 2 ? kTongue : 0)};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    case RoamAntic::Fly:  // a fly zigzags around its head; two swipes; it gets away; grumpy
+      if (p < 7000) {
+        const int fx = cx - Sz(50) + shuttle(p, 2200, Sz(100)), fy = cy - Sz(44) + shuttle(p + 500, 1300, Sz(30));
+        addProp(sc, PropKind::Fly, fx, fy, (uint8_t)(p / 60));
+        const Paws pw = p >= 3500 && p < 4000 ? Paws::ReachLeft : p >= 5500 && p < 6000 ? Paws::ReachRight : Paws::Down;
+        k = MascotLook{0, (int8_t)(pw != Paws::Down ? -3 : 0), (int8_t)(fx < cx - Sz(10) ? -3 : fx > cx + Sz(10) ? 3 : 0),
+                       -3, Eyes::Wide, pw, 0};
+      } else if (p < 8000) {
+        addProp(sc, PropKind::Fly, lerp(cx + Sz(40), X(240) - X(8), p - 7000, 1000),
+                lerp(cy - Sz(40), Y(10), p - 7000, 1000), (uint8_t)(p / 60));
+        k = MascotLook{0, 0, 3, -3, Eyes::Open, Paws::Down, kGrumpy};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, kGrumpy};
+      }
+      break;
+    case RoamAntic::Yarn: {  // a ball of yarn rolls in, a push, it rolls away unwinding, comes back
+      const int px = cx - Sz(30), yy = cy + Sz(34), far = X(14);
+      int bx = px, thread = 0;
+      if (p < 1500) bx = lerp(far, px, p, 1500);
+      else if (p >= 2500 && p < 5000) bx = lerp(px, far, p - 2500, 2500), thread = px;
+      else if (p >= 5000 && p < 7000) bx = lerp(far, px, p - 5000, 2000), thread = px;
+      addProp(sc, PropKind::Yarn, bx, yy, (uint8_t)(bx / (Sz(3) > 0 ? Sz(3) : 1)), thread);
+      if (p >= 1500 && p < 2500) k = MascotLook{0, -3, -3, 3, Eyes::Wide, Paws::ReachLeft, 0};
+      else if (p < 7000) k = MascotLook{0, 0, -3, 3, Eyes::Wide, Paws::Down, 0};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    }
+    case RoamAntic::Mug: {  // looks at you, pushes a mug slowly off the edge; it falls; innocent
+      const int my0 = cy + Sz(24), mx0 = cx + Sz(46), edge = X(240) - Sz(16);
+      if (p < 2000) {
+        addProp(sc, PropKind::Mug, mx0, my0);
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+      } else if (p < 4000) {
+        addProp(sc, PropKind::Mug, lerp(mx0, edge, p - 2000, 2000), my0);
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::ReachRight, 0};
+      } else if (p < 5500) {
+        addProp(sc, PropKind::Mug, edge, lerp(my0, Y(240) - Sz(10), p - 4000, 1500));
+        k = MascotLook{0, 0, 3, 3, Eyes::Wide, Paws::Down, kMouthO};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      }
+      break;
+    }
+    case RoamAntic::Box:  // a box shows up; it hops in (ears and eyes peeking out), hops out
+      addProp(sc, PropKind::Box, cx, cy + Sz(38));
+      if (p < 1500) k = MascotLook{0, 0, 0, 3, Eyes::Open, Paws::Down, 0};
+      else if (p < 2500) k = MascotLook{0, (int8_t)(p < 1900 ? -5 : 16), 0, 0, Eyes::Wide, Paws::Down, 0};
+      else if (p < 6500)
+        k = MascotLook{0, 16, 0, 0, (p % 1500) < 200 ? Eyes::Closed : Eyes::Open, Paws::Down, 0};
+      else if (p < 7500) k = MascotLook{0, (int8_t)(p < 6900 ? -5 : 0), 0, 0, Eyes::Happy, Paws::Down, 0};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    case RoamAntic::Keys:  // plays a little keyboard; notes float up
+      addProp(sc, PropKind::Keys, cx, cy + Sz(36));
+      for (int i = 0; i < 3; i++) {
+        const uint32_t ph = (p + (uint32_t)i * 700) % 2100;
+        addProp(sc, PropKind::Note, cx - Sz(40) + i * Sz(40), cy - Sz(8) - (int)(ph * (uint32_t)Sz(30) / 2100));
+      }
+      k = MascotLook{0, 0, 0, 3, Eyes::Happy, (p / 250) % 2 ? Paws::TapLeft : Paws::TapRight, 0};
+      break;
+    case RoamAntic::Laser: {  // a red dot races around; eyes on it; a pounce; gone
+      if (p < 6600) {
+        const int lx = X(20) + shuttle(p, 3000, X(200));
+        const int ly = Y(14) + shuttle(p + 900, 2300, sc.sy - Sz(8) - Y(14));
+        addProp(sc, PropKind::Laser, lx, ly);
+        const int8_t gx = (int8_t)(lx < cx - Sz(10) ? -3 : lx > cx + Sz(10) ? 3 : 0);
+        const int8_t gy = (int8_t)(ly < cy - Sz(10) ? -3 : ly > cy + Sz(10) ? 3 : 0);
+        if (p >= 6000) k = MascotLook{0, -5, gx, gy, Eyes::Wide, gx < 0 ? Paws::ReachLeft : Paws::ReachRight, 0};
+        else k = MascotLook{0, 0, gx, gy, Eyes::Wide, Paws::Down, 0};
+      } else {
+        k = MascotLook{0, 0, (int8_t)((p / 400) % 2 ? -3 : 3), 0, Eyes::Open, Paws::Down, 0};
+      }
+      break;
+    }
+    case RoamAntic::Bubbles: {  // bubbles float up; swipes; one pops on its nose
+      const int top = Y(10), bottom = sc.sy - Sz(10);
+      for (int i = 0; i < 3; i++) {
+        if (p >= 6000 && i == 1) continue;  // this one popped on its nose
+        const uint32_t ph = (p + (uint32_t)i * 1200) % 3600;
+        addProp(sc, PropKind::Bubble, cx - Sz(40) + i * Sz(40) + (int)((ph / 300) % 2) * Sz(2),
+                bottom - (int)((int64_t)ph * (bottom - top) / 3600));
+      }
+      if (p >= 6000 && p < 6600) addProp(sc, PropKind::Burst, cx, cy + Sz(14));
+      if (p < 6000)
+        k = MascotLook{0, -2, 0, -3, Eyes::Wide, (p / 700) % 2 ? Paws::ReachLeft : Paws::ReachRight, 0};
+      else if (p < 7000) k = MascotLook{0, 0, 0, 0, Eyes::Closed, Paws::Down, kMouthO};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      break;
+    }
+    case RoamAntic::Fish:  // a fish snack, three bites, licks its lips
+      if (p < 2000) {
+        addProp(sc, PropKind::Fish, cx, cy + Sz(32), 0);
+        k = MascotLook{0, 0, 0, 3, Eyes::Wide, Paws::Down, 0};
+      } else if (p < 6000) {
+        addProp(sc, PropKind::Fish, cx, cy + Sz(32), (uint8_t)((p - 2000) / 1000));
+        const bool bite = (p / 250) % 2;
+        k = MascotLook{0, (int8_t)(bite ? 2 : 0), 0, 3, Eyes::Closed, Paws::Down, (uint16_t)(bite ? kMouthO : 0)};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, (uint16_t)((p / 400) % 2 ? kTongue : 0)};
+      }
+      break;
+    case RoamAntic::Duck: {  // explains the bug to a rubber duck... then gets it
+      addProp(sc, PropKind::Duck, cx + Sz(54), cy + Sz(24));
+      if (p < 5000) {
+        addProp(sc, PropKind::Dots, cx + Sz(34), cy - Sz(14), (uint8_t)(1 + (p / 500) % 3));
+        k = MascotLook{0, 0, 3, 0, Eyes::Open, Paws::Down, (uint16_t)((p / 300) % 2 ? kMouthO : 0)};
+      } else if (p < 6500) {
+        k = MascotLook{0, -3, 3, 0, Eyes::Wide, Paws::Down, kAlarm};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+      }
+      break;
+    }
+    case RoamAntic::Coffee:  // a slow coffee, eyes closed on the sip
+      if (p < 3000) k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, kCoffee};
+      else if (p < 6000) k = MascotLook{0, -1, 0, 0, Eyes::Closed, Paws::Down, kCoffee};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, kCoffee};
+      break;
+    case RoamAntic::Butterfly:  // a butterfly flutters around and lands on its nose: cross-eyed
+      if (p < 5000) {
+        const int bx = cx - Sz(50) + shuttle(p, 2600, Sz(100)), by = cy - Sz(40) + shuttle(p + 700, 1700, Sz(20));
+        addProp(sc, PropKind::Butterfly, bx, by, (uint8_t)(p / 150));
+        k = MascotLook{0, 0, (int8_t)(bx < cx - Sz(10) ? -3 : bx > cx + Sz(10) ? 3 : 0), -3, Eyes::Open, Paws::Down, 0};
+      } else if (p < 8000) {
+        addProp(sc, PropKind::Butterfly, cx, cy + Sz(14), (uint8_t)(p / 600));
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, kCrossEyed};
+      } else {
+        addProp(sc, PropKind::Butterfly, lerp(cx, cx + Sz(50), p - 8000, 1000), lerp(cy + Sz(14), Y(12), p - 8000, 1000),
+                (uint8_t)(p / 150));
+        k = MascotLook{0, 0, 3, -3, Eyes::Happy, Paws::Down, 0};
+      }
+      break;
+    case RoamAntic::Balloon: {  // pokes a balloon, it pops: fur up, shaking, sweating
+      const int bx = cx + Sz(50), by = cy - Sz(16) + (int)((p / 500) % 2) * Sz(2);
+      if (p < 3800) {
+        addProp(sc, PropKind::Balloon, bx, by);
+        k = MascotLook{0, (int8_t)(p >= 3000 ? -3 : 0), 3, -3, Eyes::Open, p >= 3000 ? Paws::ReachRight : Paws::Down, 0};
+      } else if (p < 4400) {
+        addProp(sc, PropKind::Burst, bx, by);
+        k = MascotLook{0, -4, 0, 0, Eyes::Wide, Paws::Down, (uint16_t)(kFluffed | kMouthO)};
+      } else if (p < 6500) {
+        k = MascotLook{(int8_t)((p / 100) % 2 ? -1 : 1), 0, 0, 0, Eyes::Wide, Paws::Down, kFluffed};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, kSweat};
+      }
+      break;
+    }
+    case RoamAntic::Plane:  // a paper plane crosses the screen; it swipes at it on the way back
+      if (p < 4000) {
+        const int x = lerp(X(28), X(230), p, 4000);
+        addProp(sc, PropKind::Plane, x, Y(22), 0);
+        k = MascotLook{0, 0, (int8_t)(x < cx - Sz(10) ? -3 : x > cx + Sz(10) ? 3 : 0), -3, Eyes::Open, Paws::Down, 0};
+      } else if (p >= 4500 && p < 8500) {
+        const int x = lerp(X(212), X(10), p - 4500, 4000);
+        addProp(sc, PropKind::Plane, x, cy + Sz(4), 1);
+        const bool swipe = p >= 6000 && p < 6800;
+        k = MascotLook{0, (int8_t)(swipe ? -3 : 0), (int8_t)(x < cx - Sz(10) ? -3 : x > cx + Sz(10) ? 3 : 0), 0,
+                       Eyes::Wide, swipe ? Paws::ReachLeft : Paws::Down, 0};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+      }
+      break;
+    case RoamAntic::Bowl: {  // watches a fish bowl, dips a paw in (splash), wet paw: grumpy
+      const int bx = cx + Sz(54), by = cy + Sz(26);
+      addProp(sc, PropKind::Bowl, bx, by, (uint8_t)(p / 150));
+      if (p < 4000) {
+        k = MascotLook{0, 0, 3, 3, Eyes::Wide, Paws::Down, 0};
+      } else if (p < 6000) {
+        k = MascotLook{0, -2, 3, 3, Eyes::Wide, Paws::ReachRight, 0};
+        if ((p / 300) % 2) {
+          addProp(sc, PropKind::Drop, bx - Sz(8), by - Sz(18));
+          addProp(sc, PropKind::Drop, bx + Sz(6), by - Sz(20));
+        }
+      } else {
+        k = MascotLook{0, 0, 0, 3, Eyes::Open, Paws::Down, kGrumpy};
+      }
+      break;
+    }
+    case RoamAntic::Deploy: {  // presses the big red button; a little rocket takes off
+      const int bx = cx - Sz(42), by = cy + Sz(28);
+      addProp(sc, PropKind::Button, bx, by, (uint8_t)(p >= 1500 && p < 2500 ? 1 : 0));
+      if (p < 1500) {
+        k = MascotLook{0, 0, -3, 3, Eyes::Open, Paws::Down, 0};
+      } else if (p < 2500) {
+        k = MascotLook{0, -2, -3, 3, Eyes::Open, Paws::ReachLeft, 0};
+      } else if (p < 6000) {
+        addProp(sc, PropKind::Rocket, cx + Sz(52), lerp(cy + Sz(10), Y(4), p - 2500, 3500), (uint8_t)(1 + p / 100));
+        k = MascotLook{0, 0, 3, -3, Eyes::Wide, Paws::Down, 0};
+      } else {
+        k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, kHeart};
+      }
+      break;
+    }
+    case RoamAntic::Cucumber:  // a cucumber appears behind it; it turns round and jumps
+      if (p >= 1500) addProp(sc, PropKind::Cucumber, cx + Sz(50), cy + Sz(20));
+      if (p < 3000) k = MascotLook{0, 0, -3, 0, Eyes::Open, Paws::Down, 0};
+      else if (p < 3200) k = MascotLook{0, 0, 3, 0, Eyes::Open, Paws::Down, 0};
+      else if (p < 5000)
+        k = MascotLook{0, (int8_t)(p < 3800 ? -6 : 0), 3, 0, Eyes::Wide, Paws::Down, (uint16_t)(kFluffed | kAlarm)};
+      else k = MascotLook{0, 0, 3, 0, Eyes::Open, Paws::Down, kSweat};
+      break;
+    case RoamAntic::Blanket: {  // pulls up a blanket and dozes off
+      addProp(sc, PropKind::Blanket, cx, p < 1500 ? lerp(cy + Sz(40), cy + Sz(14), p, 1500) : cy + Sz(14));
+      k = MascotLook{0, 0, 0, 0, p < 3000 ? Eyes::Sleepy : Eyes::Closed, Paws::Down,
+                     (uint16_t)(p < 3000 ? 0 : (p / 900) % 2 ? kZ1 : kZ1 | kZ2)};
+      break;
+    }
+    default: break;
+  }
 }
 
 // The sign's face: clock, limits, next reset (or "limit freed"), the last task, the away icon,

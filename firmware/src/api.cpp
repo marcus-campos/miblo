@@ -185,11 +185,11 @@ static void handleConfig() {
     json(401, "{\"error\":\"unauthorized\"}");
     return;
   }
-  if (heapLowForRequest(srv->arg(F("plain")).length())) {
+  if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
     json(503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
     json(400, "{\"error\":\"bad json\"}");
     return;

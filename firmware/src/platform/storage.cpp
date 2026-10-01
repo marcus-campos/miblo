@@ -61,7 +61,7 @@ void markConfigured() {
 bool loadConfig(miblo::Config& cfg) {
   File f = LittleFS.open(kConfig, "r");
   if (!f) return false;
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
@@ -81,7 +81,7 @@ bool loadConfig(miblo::Config& cfg) {
 }
 
 bool saveConfig(const miblo::Config& cfg) {
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   miblo::configToStored(cfg, doc.to<JsonObject>());
   File f = LittleFS.open(kConfig, "w");
   if (!f) return false;

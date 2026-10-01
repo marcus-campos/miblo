@@ -820,7 +820,7 @@ static void settingsPage() {
   out += F("</button></div></div></div><script>const C=");
   pageFlush(out);
 
-  DynamicJsonDocument cfg(1024);
+  DynamicJsonDocument cfg(miblo::kConfigJsonCapacity);
   if (open) miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday here
   else cfg.to<JsonObject>();                                             // locked: nothing
   appendJsonForScript(out, cfg);
@@ -923,7 +923,7 @@ static void handleSettingsSecret() {
     sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1536);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);  // the config (page view) and a few fields
   doc["owner"] = ctx.cfg.owner;
   doc["birthday"] = ctx.cfg.birthday;
   miblo::configToJson(ctx.cfg, doc.createNestedObject("cfg"), false);
@@ -946,11 +946,11 @@ static void handleSettings() {
     sendJson(*srv, 413, "{\"error\":\"too large\"}");
     return;
   }
-  if (heapLowForRequest(1024)) {
+  if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
     sendJson(*srv, 503, "{\"error\":\"busy\"}");
     return;
   }
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
     sendJson(*srv, 400, "{\"error\":\"bad json\"}");
     return;

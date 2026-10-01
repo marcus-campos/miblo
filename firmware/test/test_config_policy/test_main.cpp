@@ -847,11 +847,12 @@ static void test_blue_filter() {
   TEST_ASSERT_EQUAL_UINT16(1020, r.blueTo);
 }
 
-// The saved config is read back into a 1024-byte JSON document (storage.cpp loadConfig), and the
-// settings page posts it whole into another (web.cpp handleSettings): a document that is too
-// small fails the load and every setting falls back to the defaults. Worst case: every string at
-// its byte limit. On the ESP8266 each member takes 16 bytes (ArduinoJson 6, 32-bit); the host's
-// slots are bigger, so the usage is converted.
+// The saved config is read back into a kConfigJsonCapacity-byte JSON document (storage.cpp
+// loadConfig), and the settings page posts it whole into another (web.cpp handleSettings): a
+// document that is too small fails the load and every setting falls back to the defaults. Worst
+// case: every string at its byte limit, which must leave a third of the document free for keys
+// to come. On the ESP8266 each member takes 16 bytes (ArduinoJson 6, 32-bit); the host's slots
+// are bigger, so the usage is converted.
 static void test_stored_config_fits_on_the_gadget() {
   Config c;
   memset(c.name, 'n', sizeof(c.name) - 1);
@@ -870,7 +871,8 @@ static void test_stored_config_fits_on_the_gadget() {
   TEST_ASSERT_FALSE(deserializeJson(in, (const char*)text));  // const: strings copied, as from a file
   const size_t members = in.as<JsonObjectConst>().size();
   const size_t onGadget = in.memoryUsage() - JSON_OBJECT_SIZE(members) + 16 * members;
-  TEST_ASSERT_TRUE_MESSAGE(onGadget <= 1024, "a worst-case stored config no longer fits loadConfig's 1024 bytes");
+  TEST_ASSERT_TRUE_MESSAGE(onGadget * 3 <= kConfigJsonCapacity * 2,
+                           "a worst-case stored config leaves less than a third of kConfigJsonCapacity free");
 }
 
 int main() {

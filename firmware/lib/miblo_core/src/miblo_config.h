@@ -1,5 +1,6 @@
 #pragma once
 #include <ArduinoJson.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "miblo_alerts.h"
@@ -50,6 +51,12 @@ struct Config {
 };
 
 constexpr uint8_t kMascotStyles = 4;
+
+// Capacity of every JSON document that holds the whole config: the saved file (storage.cpp), a
+// settings POST from the page or the plugin, and the page's copy. Too small and the saved config
+// fails to load, which resets every setting: the worst case (every string at its byte limit)
+// must stay within 2/3 of it (test_stored_config_fits_on_the_gadget). A transient allocation.
+constexpr size_t kConfigJsonCapacity = 1536;
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.

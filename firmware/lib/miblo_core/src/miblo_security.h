@@ -95,14 +95,18 @@ class TokenStore {
 // resets the failures and the escalation.
 class PresenceGate {
  public:
-  enum class Purpose : uint8_t { Update, Reset, Settings };
+  enum class Purpose : uint8_t { Update, Reset, Settings, Wifi };
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
   static constexpr uint32_t kLockMaxMs = EscalatingLockout::kMaxMs;
 
-  // false (and nothing changes) while locked out.
+  // false (and nothing changes) while locked out, or while a code for another purpose is still
+  // active (busyFor): nobody can replace a code the owner is reading off the screen. For the same
+  // purpose an active code is kept as it is (same code, same timer). The owner can always ask
+  // again once it expires (kTtlMs) or after it was used (close()).
   bool open(Purpose p, const char* code4, uint32_t nowMs);
+  bool busyFor(Purpose p, uint32_t nowMs) const { return active(nowMs) && p != purpose_; }
   bool locked(uint32_t nowMs) const { return lock_.locked(nowMs); }
   uint32_t lockRemainingMs(uint32_t nowMs) const { return lock_.remainingMs(nowMs); }
   // Clears an expired lockout (see EscalatingLockout::update).
@@ -130,6 +134,12 @@ class PresenceGate {
 // updatable without physical presence). Any saved network, any pairing, or a request from another
 // interface (the home LAN) also keeps the code (and its escalating lockout) mandatory.
 bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
+
+// Does joining a network from the setup portal (POST /wifi) need the on-screen code? Not on a
+// fresh unit (never configured, no saved network, not paired): setup stays frictionless. Any of
+// those, though, and it does: the portal of a configured unit that lost its Wi-Fi is an open AP,
+// and whoever is nearby must not be able to move it to their own network.
+bool wifiCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount);
 
 // A token bucket that throttles how often an EXPENSIVE, UNAUTHENTICATED response is produced
 // (the settings/portal page and /api/info), so a flood from an unpaired client on the LAN cannot

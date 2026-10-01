@@ -2,6 +2,7 @@
 #include "platform/platform.h"
 
 #include "miblo_i18n.h"
+#include "miblo_security.h"
 
 // Pages for humans (localized): the Wi-Fi captive portal and the settings page.
 namespace web {
@@ -32,5 +33,10 @@ bool requireJson(WebServerT& server);
 inline String requestHeader(WebServerT& server, const __FlashStringHelper* name) { return String(server.header(name)); }
 // 429 {"error":"locked","retryAfter":<s>} for a locked presence gate or pairing guard.
 void sendLocked(WebServerT& server, uint32_t remainingMs);
+// Opens the presence gate for `p` with a fresh code on the screen (an active code for the same
+// purpose is kept). On a lockout answers 429 {"error":"locked",retryAfter}; while another
+// purpose's code is still on the screen, 429 {"error":"busy",retryAfter} (it is never replaced).
+// true when the code for `p` is now on the screen.
+bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs);
 
 }  // namespace web

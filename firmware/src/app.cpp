@@ -68,7 +68,8 @@ static const char* modeName(Lang lang) {
 static miblo::S presenceCodeTitle(miblo::PresenceGate::Purpose p) {
   switch (p) {
     case miblo::PresenceGate::Purpose::Update: return miblo::S::CodeUpdate;
-    case miblo::PresenceGate::Purpose::Settings: return miblo::S::CodeSettings;
+    case miblo::PresenceGate::Purpose::Settings:
+    case miblo::PresenceGate::Purpose::Wifi: return miblo::S::CodeSettings;  // joining a network is a setting
     case miblo::PresenceGate::Purpose::Reset: break;
   }
   return miblo::S::CodeReset;

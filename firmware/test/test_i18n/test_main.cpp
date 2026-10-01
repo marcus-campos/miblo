@@ -184,8 +184,29 @@ static void test_session_line() {
   TEST_ASSERT_EQUAL_STRING("Bash", b);
 }
 
+// The language a web page is drawn in. Before pairing (setup) the automatic mode follows the
+// browser and the gadget keeps it (store = true when it changes); a paired gadget draws the page in
+// the browser's language and never changes or saves anything because of a page view.
+static void test_page_language() {
+  bool store = true;
+  // Unpaired, automatic: the browser's language, stored when it differs.
+  TEST_ASSERT_TRUE(pageLanguage(false, false, Lang::En, Lang::Fr, store) == Lang::Fr);
+  TEST_ASSERT_TRUE(store);
+  TEST_ASSERT_TRUE(pageLanguage(false, false, Lang::Fr, Lang::Fr, store) == Lang::Fr);
+  TEST_ASSERT_FALSE(store);
+  // Unpaired, chosen explicitly: the chosen one.
+  TEST_ASSERT_TRUE(pageLanguage(false, true, Lang::De, Lang::Fr, store) == Lang::De);
+  TEST_ASSERT_FALSE(store);
+  // Paired: the browser's language, nothing stored (automatic or not).
+  TEST_ASSERT_TRUE(pageLanguage(true, false, Lang::En, Lang::Fr, store) == Lang::Fr);
+  TEST_ASSERT_FALSE(store);
+  TEST_ASSERT_TRUE(pageLanguage(true, true, Lang::De, Lang::Es, store) == Lang::Es);
+  TEST_ASSERT_FALSE(store);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_page_language);
   RUN_TEST(test_every_language_has_every_string_with_same_placeholders);
   RUN_TEST(test_known_strings);
   RUN_TEST(test_tr_truncates_on_utf8_boundary);

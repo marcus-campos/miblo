@@ -29,7 +29,7 @@ import macwifi  # noqa: E402  (flash-fleet.py put its directory on sys.path)
 NEW = "0.2.0"
 FAST = dict(probe_timeout=0.5, http_timeout=1.0, upload_timeout=5.0, poll_interval=0.02,
             stage1_timeout=1.5, stage2_timeout=1.5, max_retry_wait=0.05,
-            ap_join_timeout=1.0, scan_interval=0.02)
+            ap_join_timeout=1.0, scan_interval=0.02, reboot_settle=0.5)
 
 
 def collapse(joins):
@@ -54,12 +54,16 @@ class FakeDevice:
 
     def __init__(self, state, fw=None, build="abc1234", space=1000, next_fw=NEW, stuck=False,
                  code="4821", lock_once=False, board="geekmagic_ultra", chip="4F2A",
-                 stock_ssid="GIFTV", codeless=False, paired=False):
+                 stock_ssid="GIFTV", codeless=False, paired=False, reboot_after=0.0, drop_reply=False):
         self.state, self.fw, self.build, self.space = state, fw, build, space
         self.next_fw, self.stuck, self.code, self.lock_once = next_fw, stuck, code, lock_once
         self.board = board
         self.chip, self.stock_ssid, self.codeless = chip, stock_ssid, codeless
         self.paired = paired
+        self.reboot_after = reboot_after  # Miblo: the old image keeps answering this long after "OK"
+        self.drop_reply = drop_reply      # Miblo: the upload's reply never arrives (status 0)
+        self.old_answers = 0              # /api/info answered by the old image after an upload
+        self.upgrading = False
         self.uploads = []      # (path, size) of accepted uploads
         self.keepwifi = []     # loader uploads: was ?keepwifi=1 passed
         self.opened = 0
@@ -82,6 +86,8 @@ class FakeDevice:
                 if dev.state == "rebooting":
                     self.close_connection = True
                     return
+                if dev.state == "miblo" and path == "/api/info" and dev.upgrading:
+                    dev.old_answers += 1
                 if dev.state == "miblo" and path == "/api/info" and dev.paired:
                     return self.send(200, json.dumps({"id": "miblo-" + dev.chip.lower(), "paired": True, "proto": 1}),
                                      "application/json")
@@ -136,8 +142,12 @@ class FakeDevice:
                     if not dev.codeless and parse_qs(url.query).get("code", [""])[0] != dev.code:
                         return self.send(403, '{"error":"bad code"}', "application/json")
                     dev.uploads.append(("miblo", size))
-                    self.send(200, "OK")
-                    dev.reboot("miblo", dev.next_fw)
+                    if dev.drop_reply:
+                        self.close_connection = True
+                        self.connection.shutdown(2)  # no reply at all: the tool sees status 0
+                    else:
+                        self.send(200, "OK")
+                    dev.reboot("miblo", dev.next_fw, after=dev.reboot_after)
                     return
                 self.send(404, "Not found")
 
@@ -146,13 +156,19 @@ class FakeDevice:
         self.host = "127.0.0.1:%d" % self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
 
-    def reboot(self, state, fw=None):
+    def reboot(self, state, fw=None, after=0.0):
         def later():
+            if after:
+                self.upgrading = True  # still the old image, answering as before
+                time.sleep(after)
+                self.upgrading = False
+            self.state = "rebooting"
             time.sleep(0.05)
             if fw is not None:
                 self.fw = fw
             self.state = state
-        self.state = "rebooting"
+        if not after:
+            self.state = "rebooting"
         threading.Thread(target=later, daemon=True).start()
 
     def close(self):
@@ -385,6 +401,23 @@ class FleetTest(unittest.TestCase):
         self.assertIn("verified by the update's own reply", out)
         self.assertIn("1 flashed", out)
         self.assertEqual(prompts, ["Enter the 4-digit code shown on miblo-4f2a (%s): " % dev.host])
+
+    def test_paired_update_never_trusts_the_old_image(self):
+        # The firmware answers "OK" and reboots ~0.8 s later: the old image must not be the one
+        # that "comes back".
+        dev = self.device("miblo", fw="0.1.0", code="4821", paired=True, reboot_after=0.1)
+        rc, out, _ = self.run_fleet("--update", codes=["4821"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(dev.old_answers, 0, out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
+
+    def test_paired_update_without_a_reply_is_not_a_false_failure(self):
+        dev = self.device("miblo", fw="0.1.0", code="4821", paired=True, drop_reply=True)
+        rc, out, _ = self.run_fleet("--update", codes=["4821"])
+        self.assertEqual(rc, 0, out)
+        self.assertIn("no reply to the upload", out)
+        self.assertIn("1 flashed", out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
 
     def test_needs_update_flag(self):
         dev = self.device("miblo", fw="0.1.0")

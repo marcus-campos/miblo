@@ -115,6 +115,7 @@ class Timing:
     ap_join_timeout: float = 30.0   # --via-ap: joined network must give an IP and answer on :80
     scan_interval: float = 3.0      # --via-ap: between Wi-Fi scans
     mdns_timeout: float = 2.5       # --discover: how long to collect mDNS answers
+    reboot_settle: float = 3.0      # paired unit: after its "OK" the old image still answers ~0.8 s
 
 
 @dataclass
@@ -684,13 +685,23 @@ class Runner:
             # A paired unit's /api/info has no "fw" (only its id) without the pairing token: the
             # update is verified by the unit's own reply to the upload (HTTP 200 "OK", sent once
             # the image is written and checked), then by the unit answering again after its reboot.
-            if unit.upload_status != 200:
-                raise FlashError("no reply to the upload from a paired unit: its version can't be checked")
-            self.log(unit, "update: verified by the update's own reply (paired unit: /api/info doesn't show its version)")
+            # The firmware reboots ~0.8 s after that reply: wait first, so the old image can't be
+            # the one that "answers again".
+            # Board gap: a paired unit doesn't report its board either, so plan() can't skip a
+            # unit of another board; the firmware's own image check is the only guard then.
+            if unit.upload_status == 200:
+                self.log(unit, "update: verified by the update's own reply (paired unit: /api/info doesn't show its version)")
+                unit.after = "miblo %s (paired)" % want
+            else:
+                # As for any unit: a connection dropped after sending counts as accepted (the unit
+                # may reboot before its reply gets out), but here nothing can confirm the version.
+                self.log(unit, "update: no reply to the upload (the unit may have restarted first); "
+                         "paired unit: its version can't be checked")
+                unit.after = "miblo ? (paired, unverified)"
+            self.sleep(self.timing.reboot_settle)
             self.poll(unit, "/api/info", lambda d: bool(d.get("id")),
                       self.timing.stage2_timeout if limit is None else limit,
                       "the unit to answer again after its reboot")
-            unit.after = "miblo %s (paired)" % want
             return
         self.log(unit, "waiting for Miblo %s to boot..." % want)
         doc = self.poll(unit, "/api/info", lambda d: d.get("fw") == want,
@@ -732,11 +743,14 @@ class Runner:
 
     def locked_wait(self, unit: Unit, data: bytes) -> None:
         try:
-            wait = float(json.loads(data.decode()).get("retryAfter", 60))
+            doc = json.loads(data.decode())
+            wait = float(doc.get("retryAfter", 60))
+            busy = doc.get("error") == "busy"
         except (ValueError, AttributeError):
-            wait = 60.0
+            wait, busy = 60.0, False
         wait = min(max(wait, 1.0), self.timing.max_retry_wait)
-        self.log(unit, "device locked (too many attempts), retrying in %gs..." % wait)
+        why = "another code is on its screen" if busy else "device locked (too many attempts)"
+        self.log(unit, "%s, retrying in %gs..." % (why, wait))
         self.sleep(wait)
 
     def open_gate(self, unit: Unit) -> dict:

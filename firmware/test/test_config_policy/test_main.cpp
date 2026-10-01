@@ -820,12 +820,57 @@ static void test_blue_filter() {
   TEST_ASSERT_EQUAL_STRING("blueFrom", bad);
   TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":600,\"blueTo\":600}", &bad));  // an empty window
   TEST_ASSERT_EQUAL_UINT8(2, c.blueFilter);  // a rejected patch changes nothing
+  TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":1020}", &bad));  // moved onto the end: that field is named
+  TEST_ASSERT_EQUAL_STRING("blueFrom", bad);
+  TEST_ASSERT_EQUAL_UINT16(480, c.blueFrom);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueTo\":480}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueTo", bad);
+
+  // The page and the API read the four settings back.
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL(2, doc["blueFilter"].as<int>());
+  TEST_ASSERT_EQUAL(3, doc["blueLevel"].as<int>());
+  TEST_ASSERT_EQUAL(480, doc["blueFrom"].as<int>());
+  TEST_ASSERT_EQUAL(1020, doc["blueTo"].as<int>());
+
+  // A config saved before the filter existed loads with it off.
+  Config old;
+  TEST_ASSERT_TRUE(patch(old, "{\"night\":true,\"nightFrom\":1320,\"nightTo\":420}"));
+  TEST_ASSERT_EQUAL_UINT8(0, old.blueFilter);
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(old, 23 * 60));
 
   const Config r = storedRoundTrip(c);
   TEST_ASSERT_EQUAL_UINT8(2, r.blueFilter);
   TEST_ASSERT_EQUAL_UINT8(3, r.blueLevel);
   TEST_ASSERT_EQUAL_UINT16(480, r.blueFrom);
   TEST_ASSERT_EQUAL_UINT16(1020, r.blueTo);
+}
+
+// The saved config is read back into a 1024-byte JSON document (storage.cpp loadConfig), and the
+// settings page posts it whole into another (web.cpp handleSettings): a document that is too
+// small fails the load and every setting falls back to the defaults. Worst case: every string at
+// its byte limit. On the ESP8266 each member takes 16 bytes (ArduinoJson 6, 32-bit); the host's
+// slots are bigger, so the usage is converted.
+static void test_stored_config_fits_on_the_gadget() {
+  Config c;
+  memset(c.name, 'n', sizeof(c.name) - 1);
+  memset(c.owner, 'o', sizeof(c.owner) - 1);
+  memset(c.tz, 't', sizeof(c.tz) - 1);
+  strcpy(c.birthday, "12-31");
+  strcpy(c.born, "2026-10-01");
+  c.mode = Mode::Overview;  // the longest mode code
+  c.langSet = false;        // stored with "langAuto" too
+  StaticJsonDocument<4096> out;
+  configToStored(c, out.to<JsonObject>());
+  char text[2048];
+  const size_t len = serializeJson(out, text, sizeof(text));
+  TEST_ASSERT_TRUE(len < sizeof(text) - 1);
+  DynamicJsonDocument in(8192);
+  TEST_ASSERT_FALSE(deserializeJson(in, (const char*)text));  // const: strings copied, as from a file
+  const size_t members = in.as<JsonObjectConst>().size();
+  const size_t onGadget = in.memoryUsage() - JSON_OBJECT_SIZE(members) + 16 * members;
+  TEST_ASSERT_TRUE_MESSAGE(onGadget <= 1024, "a worst-case stored config no longer fits loadConfig's 1024 bytes");
 }
 
 int main() {
@@ -863,6 +908,7 @@ int main() {
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
   RUN_TEST(test_blue_filter);
+  RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);

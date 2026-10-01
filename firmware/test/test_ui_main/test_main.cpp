@@ -1280,9 +1280,56 @@ static void test_warm_color() {
   TEST_ASSERT_EQUAL_INT(0xFFFF, fc.colorAt(45, 5));
 }
 
+// Every colour ShiftCanvas forwards is filtered (foregrounds and backgrounds of every primitive,
+// and the whole-panel clear), so nothing on the screen keeps its cold colour.
+struct ColorLog : ui::Canvas {
+  std::vector<uint16_t> colors;
+  ui::ScreenSpec spec() const override { return {240, 240}; }
+  void fillRect(int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillRoundRect(int, int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void drawRect(int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillCircle(int, int, int, uint16_t c) override { colors.push_back(c); }
+  void fillTriangle(int, int, int, int, int, int, uint16_t c) override { colors.push_back(c); }
+  void wideLine(int, int, int, int, int, uint16_t c, uint16_t bg) override { colors.push_back(c), colors.push_back(bg); }
+  void arc(int, int, int, int, int, int, uint16_t fg, uint16_t bg) override { colors.push_back(fg), colors.push_back(bg); }
+  int text(int, int, const char*, ui::Font, uint16_t fg, ui::Align, int) override { return colors.push_back(fg), 7; }
+  int textWidth(const char*, ui::Font) override { return 7; }
+  int textBox(int, int, const char*, ui::Font, uint16_t fg, uint16_t bg, ui::Align, int) override {
+    return colors.push_back(fg), colors.push_back(bg), 7;
+  }
+  void clear(uint16_t c) override { colors.push_back(c); }
+};
+
+static void test_shift_canvas_warms_every_color() {
+  for (uint8_t level = 0; level <= 3; level++) {
+    ColorLog log;
+    ui::ShiftCanvas sc(log);
+    sc.setShift(2, -1);
+    sc.setWarmth(level);
+    uint16_t c = 0x1111;  // a different colour for each argument
+    const uint16_t first = c;
+    sc.fillRect(0, 0, 1, 1, c++);
+    sc.fillRoundRect(0, 0, 1, 1, 1, c++);
+    sc.drawRect(0, 0, 1, 1, c++);
+    sc.fillCircle(0, 0, 1, c++);
+    sc.fillTriangle(0, 0, 1, 1, 2, 0, c++);
+    sc.wideLine(0, 0, 9, 9, 3, c, (uint16_t)(c + 1)), c += 2;
+    sc.arc(50, 50, 20, 15, 0, 90, c, (uint16_t)(c + 1)), c += 2;
+    TEST_ASSERT_EQUAL_INT(7, sc.text(0, 0, "a", ui::Font::Small, c++, ui::Align::Left, 99));
+    TEST_ASSERT_EQUAL_INT(7, sc.textBox(0, 0, "a", ui::Font::Small, c, (uint16_t)(c + 1), ui::Align::Left, 99));
+    c += 2;
+    sc.clear(c++);
+    TEST_ASSERT_EQUAL_INT(c - first, (int)log.colors.size());
+    for (size_t i = 0; i < log.colors.size(); i++) {
+      TEST_ASSERT_EQUAL_HEX16(ui::warmColor((uint16_t)(first + i), level), log.colors[i]);
+    }
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_warm_color);
+  RUN_TEST(test_shift_canvas_warms_every_color);
   RUN_TEST(test_pet_antics_order);
   RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);

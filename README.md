@@ -59,7 +59,7 @@
   - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s the desk mascot takes over (see below).
 - **Alerts:**
   - **Amber** when a session needs you (a permission request or a question). You get a flash (2 blinks by default, 2 to 5 on the settings page), then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
-  - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert.
+  - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert. A passive `monitor` background task (a watcher that stays alive for hours) doesn't count as work in flight.
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
 - **Limit forecast:** when your recent pace would use up the 5-hour window before it resets, the Limits arc and the desk screen say when, in amber ("runs out in 1h20").
 - **"Limit freed":** when the 5-hour window resets after real use (50% or more), the screen turns green and the mascot celebrates, with the new usage and the next reset.
@@ -242,6 +242,8 @@ When a Claude Code session starts, the plugin checks GitHub for a newer release 
 - **From Claude Code:** `/miblo:update` checks the latest GitHub release and offers to update the **plugin** first, then the **firmware** of each paired gadget that's out of date. Type the 4-digit code shown on the gadget. It takes about a minute, so don't unplug the gadget while it runs. Pairing and settings are kept. If Claude Code asks you to, run `/reload-plugins` afterwards.
 - **From the browser:** open `http://miblo-xxxx.local/update` (or `http://<ip>/update`). The gadget shows a 4-digit code. Type it, choose the `.bin` and upload. The screen shows a progress bar and the gadget reboots when it's done.
 
+A paired gadget's `/update` page does not show the version either. While another code is on the screen (for a setting change, a reset or a Wi-Fi change), a second request is refused with "busy" and never replaces it; wait for the first code to expire.
+
 The boot screen shows the firmware version and build (for example `v1.0.0 (4534fb8)`), and `GET /api/info` reports the same. Once a gadget is paired, `GET /api/info` answers only `id`, `paired` and `proto` unless the request carries a paired computer's token (`Authorization: Bearer <token>`), its mDNS announcement carries only its id, and its settings page asks for the code on its screen before showing anything.
 
 ## Reset and recovery
@@ -277,6 +279,7 @@ Miblo's own update page (`http://miblo-xxxx.local/update`, with the on-screen co
 | Screen says **Connection refused / Check password or use WPA2** | The router rejected the gadget. Check the password. If the router uses WPA3 or "WPA2/WPA3" mode, switch it to WPA2, because Miblo doesn't support WPA3. |
 | Screen says **Could not connect / Error code N** | Another connection failure. Check the network and try again from the setup QR. |
 | No limits on the screen ("limits unavailable") | Run `/miblo:status` to see whether the status line is linked. If it isn't, run `/miblo:link-statusline`. Limits appear after the next response. The 5-hour and weekly limits exist only on **Pro/Max** subscriptions. With an API key, the gadget shows today's cost instead. |
+| `/miblo:status` or `/miblo:update` says a gadget is `unauthorized` or "no longer accepts this pairing" | The gadget was reset or paired to something else. Run `/miblo:pair` again. |
 | Gadget shows **Disconnected** | It hasn't received anything for 30 s. The bridge starts again with the next Claude Code activity. Check `/miblo:status`. |
 | Blank status line after uninstalling the plugin | Always run `/miblo:unlink-statusline` **before** uninstalling. If you already uninstalled, reinstall the plugin, run `/miblo:unlink-statusline`, then uninstall again. |
 

@@ -102,10 +102,11 @@ static screens::Clock clockNow() {
 }
 
 static uint8_t backlight = 0;  // % last sent to the board (0 = not yet)
-static bool displayOff = false;  // the panel is asleep (nobody using it: see miblo::screenAsleep)
+static bool displayOff = false;  // the panel is asleep (nobody using it: see miblo::PetLatch)
 static uint8_t shiftStep = 0;    // current pixel-shift position (ui::ShiftCanvas)
 static uint32_t shiftAtMs = 0;
 static uint32_t roamSinceMs = 0;  // when pet mode came up
+static miblo::PetLatch petLatch;  // pet mode, and when the panel sleeps
 static char shownName[64] = "";   // the name the screen last knew (a change greets with it)
 static char knownOwner[64 + 6] = "";  // owner name + birthday last applied (a change re-arms today's greeting)
 static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
@@ -338,12 +339,13 @@ void loop() {
   }
   const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
                                  screen == ScreenId::Summary || screen == ScreenId::Disconnected);
-  // Once pet mode starts it stays until real activity (a session at work, an alert, someone at the
-  // gadget): screens that come and go while it is quiet (the Desk cycle, the computer dropping out
-  // for a moment) restart the idle count but never bring the pet back to its desk.
-  static bool petOn = false;
-  if (!idleScreen || sinceSeen < miblo::kInteractionAwakeMs) petOn = false;
-  else if (miblo::petMode(idleMs, sinceSeen, ctx.cfg.petMin)) petOn = true;
+  // Once pet mode starts it stays until real activity (see miblo::PetLatch): a session running or
+  // waiting (not a stale one while the computer is away), an alert, setup, pairing or an update.
+  // A limit reset, an update notice or the computer dropping out for a moment don't count.
+  const bool ordinaryScreen = idleScreen || screen == ScreenId::Main || screen == ScreenId::LimitReset ||
+                              screen == ScreenId::UpdateAvailable;
+  const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0));
+  const bool petOn = petLatch.update(activity, idleMs, sinceSeen, ctx.cfg.petMin, now);
   // TEMP diagnostics: what restarted the idle count last (removed before release).
   static uint32_t prevIdleMs = 0;
   if (prevIdleMs > 5000 && idleMs < prevIdleMs) {
@@ -392,7 +394,7 @@ void loop() {
        screen == ScreenId::Paired)) {
     screen = ScreenId::Hello;
   }
-  const bool asleep = !ctx.demo && miblo::screenAsleep(idleMs, sinceSeen, ctx.cfg.sleepMin, ctx.cfg.petMin);
+  const bool asleep = !ctx.demo && petLatch.asleep(ctx.cfg.sleepMin, ctx.cfg.petMin, now);
   if (asleep != displayOff) {
     displayOff = asleep;
     board::setDisplay(!asleep);

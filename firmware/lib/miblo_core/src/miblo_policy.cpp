@@ -238,9 +238,21 @@ bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin) {
   return sinceInteractionMs >= kInteractionAwakeMs && idleMs >= (uint32_t)petMin * 60000;
 }
 
-bool screenAsleep(uint32_t idleMs, uint32_t sinceInteractionMs, uint16_t sleepMin, uint8_t petMin) {
+bool PetLatch::update(bool activity, uint32_t idleMs, uint32_t sinceInteractionMs, uint8_t petMin,
+                      uint32_t nowMs) {
+  if (activity || sinceInteractionMs < kInteractionAwakeMs) {
+    on_ = false;
+  } else if (!on_ && petMode(idleMs, sinceInteractionMs, petMin)) {
+    on_ = true;
+    sinceMs_ = nowMs;
+  }
+  return on_;
+}
+
+bool PetLatch::asleep(uint16_t sleepMin, uint8_t petMin, uint32_t nowMs) const {
+  if (!on_ || !sleepMin) return false;
   const uint32_t afterMin = sleepMin > petMin ? sleepMin : (uint32_t)petMin + 15;
-  return sleepMin && sinceInteractionMs >= kInteractionAwakeMs && idleMs >= afterMin * 60000;
+  return nowMs - sinceMs_ >= (afterMin - petMin) * 60000;
 }
 
 }  // namespace miblo

@@ -33,22 +33,28 @@ void loop(uint32_t nowMs) {
 
   uint8_t buf[miblo::kFriendPacketMax];
   miblo::FriendPacket p;
-  while (ctx.friends.nextPacket(p)) {
-    const size_t n = miblo::encodeFriendPacket(p, buf, sizeof(buf));
-    if (!n) continue;
-    udp.beginPacket(WiFi.broadcastIP(), miblo::kFriendPort);
-    udp.write(buf, n);
-    udp.endPacket();
-  }
-  // A few packets per pass; anything bigger than a Miblo packet is skipped unread, and so is
-  // anything that cannot come from another Miblo on this network: Miblos send from kFriendPort,
-  // from an address of our own subnet that is neither ours (our broadcast coming back, or our
-  // address spoofed) nor the subnet's network or broadcast address.
+  auto send = [&]() {
+    while (ctx.friends.nextPacket(p)) {
+      const size_t n = miblo::encodeFriendPacket(p, buf, sizeof(buf));
+      if (!n) continue;
+      udp.beginPacket(WiFi.broadcastIP(), miblo::kFriendPort);
+      udp.write(buf, n);
+      udp.endPacket();
+    }
+  };
+  send();
+  // Up to kReadMax packets per pass (a flood must not pile up in the network stack's buffers),
+  // each answered at once so replies never wait in a full queue. Anything bigger than a Miblo
+  // packet is skipped unread, and so is anything that cannot come from another Miblo on this
+  // network: Miblos send from kFriendPort, from an address of our own subnet that is neither ours
+  // (our broadcast coming back, or our address spoofed) nor the subnet's network or broadcast
+  // address. parsePacket() discards the previous packet, read or not (flush() would send one).
+  constexpr int kReadMax = 16;
   const uint32_t self = (uint32_t)WiFi.localIP();
   const uint32_t mask = (uint32_t)WiFi.subnetMask();
-  for (int k = 0; k < 4; k++) {
+  for (int k = 0; k < kReadMax; k++) {
     const int len = udp.parsePacket();
-    if (len <= 0) return;
+    if (len <= 0) break;
     if (len > (int)sizeof(buf)) continue;
     const uint32_t from = (uint32_t)udp.remoteIP();
     const uint32_t host = from & ~mask;
@@ -57,7 +63,9 @@ void loop(uint32_t nowMs) {
       continue;
     }
     udp.read(buf, len);
-    if (miblo::decodeFriendPacket(buf, (size_t)len, p)) ctx.friends.receive(p, nowMs, from);
+    if (!miblo::decodeFriendPacket(buf, (size_t)len, p)) continue;
+    ctx.friends.receive(p, nowMs, from);
+    send();
   }
 }
 

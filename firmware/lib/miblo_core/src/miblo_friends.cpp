@@ -51,9 +51,18 @@ static bool validId(const char* s, bool optional) {
 
 // Invisible or direction-changing characters (zero-width, bidi overrides and isolates, BOM,
 // interlinear annotations): a name could hide or reorder text with them.
+// Also fillers that draw nothing (soft hyphen, grapheme joiner, Hangul fillers, Mongolian vowel
+// separator, variation selectors, tag characters).
 static bool formatChar(uint32_t cp) {
   return (cp >= 0x200B && cp <= 0x200F) || (cp >= 0x2028 && cp <= 0x202E) || (cp >= 0x2060 && cp <= 0x206F) ||
-         cp == 0xFEFF || (cp >= 0xFFF9 && cp <= 0xFFFB);
+         cp == 0xFEFF || (cp >= 0xFFF9 && cp <= 0xFFFB) || cp == 0x00AD || cp == 0x034F || cp == 0x115F ||
+         cp == 0x1160 || cp == 0x180E || cp == 0x3164 || cp == 0xFFA0 || (cp >= 0xFE00 && cp <= 0xFE0F) ||
+         (cp >= 0xE0000 && cp <= 0xE007F);
+}
+
+static bool spaceChar(uint32_t cp) {
+  return cp == ' ' || cp == 0x00A0 || cp == 0x1680 || (cp >= 0x2000 && cp <= 0x200A) || cp == 0x202F ||
+         cp == 0x205F || cp == 0x3000;
 }
 
 // A name: <= 20 characters of well-formed UTF-8 (no overlong forms, surrogates or code points past
@@ -71,16 +80,27 @@ static bool validName(const char* s) {
   return true;
 }
 
-// Removes formatChar()s in place (the name is already valid).
-static void cleanName(char* s) {
+// Removes formatChar()s and the spaces around the name, in place (the name is already valid). A
+// name left empty becomes the id's default name ("miblo-4f2a" is "Miblo-4F2A").
+static void cleanName(char* s, size_t cap, const char* id) {
   char* w = s;
+  char* end = s;  // after the last non-space
   for (const char* p = s; *p;) {
     const char* start = p;
     const uint32_t cp = utf8Next(p);
-    if (formatChar(cp)) continue;
+    if (formatChar(cp) || (w == s && spaceChar(cp))) continue;
     while (start < p) *w++ = *start++;
+    if (!spaceChar(cp)) end = w;
   }
-  *w = 0;
+  *end = 0;
+  if (s[0]) return;
+  strncpy(s, id, cap - 1);
+  s[cap - 1] = 0;
+  if (strncmp(s, "miblo-", 6) != 0) return;
+  s[0] = 'M';
+  for (char* c = s + 6; *c; c++) {
+    if (*c >= 'a' && *c <= 'z') *c = (char)(*c - 'a' + 'A');
+  }
 }
 
 static bool getStr(const uint8_t* in, size_t len, size_t& n, char* dst, size_t cap) {
@@ -114,7 +134,7 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
     if (!validId(p.host, true)) return false;
   }
   if (!validId(p.id, false) || !validId(p.to, true) || !validName(p.name)) return false;
-  cleanName(p.name);
+  cleanName(p.name, sizeof(p.name), p.id);
   // Addressed to itself, or an invitation to visit its own addressee: nothing sends these.
   if (strcmp(p.id, p.to) == 0 || (p.host[0] && strcmp(p.host, p.to) == 0)) return false;
   // Home with no addressee: "all my guests, go home" (the host's human got back to work).
@@ -159,6 +179,11 @@ bool FriendPlay::inUse(const char* id) const {
 }
 
 FriendPlay::Friend* FriendPlay::admit(const char* id, uint32_t ip, uint32_t nowMs) {
+  // One machine is one Miblo: a new id from an address a live friend holds is someone multiplying
+  // itself (every limit is per id). 0 is "unknown" (tests only).
+  for (const Friend& c : friends_) {
+    if (ip && c.used && c.ip == ip) return nullptr;
+  }
   Friend* f = nullptr;
   for (Friend& c : friends_) {
     if (!c.used) {
@@ -214,22 +239,31 @@ static uint32_t offsetMs(uint8_t offset) {
   return ms < kVisitWalkMs ? ms : kVisitWalkMs;
 }
 
-void FriendPlay::queue(FriendPacket::Type type, const char* to, Gift gift) {
-  if (outN_ >= sizeof(out_) / sizeof(out_[0])) return;
-  FriendPacket& p = out_[outN_++];
-  p = FriendPacket();
-  p.type = type;
-  strcpy(p.id, id_);
-  strcpy(p.name, name_);
-  p.mascot = mascot_;
-  p.flags = (uint8_t)(flags_ | (visit_.role != VisitRole::None ? kFriendBusy : 0));
-  if (to) strncpy(p.to, to, sizeof(p.to) - 1);
-  p.gift = gift;
+FriendPlay::Out* FriendPlay::queue(FriendPacket::Type type, const char* to, Gift gift) {
+  if (outN_ >= kFriendOutMax) return nullptr;
+  Out& o = out_[outN_++];
+  memset(&o, 0, sizeof(o));
+  o.type = type;
+  o.flags = (uint8_t)(flags_ | (visit_.role != VisitRole::None ? kFriendBusy : 0));
+  if (to) strncpy(o.to, to, sizeof(o.to) - 1);
+  o.gift = gift;
+  o.chance = 255;
+  return &o;
 }
 
 bool FriendPlay::nextPacket(FriendPacket& out) {
   if (!outN_) return false;
-  out = out_[0];
+  const Out& o = out_[0];
+  out = FriendPacket();
+  out.type = o.type;
+  strcpy(out.id, id_);
+  strcpy(out.name, name_);
+  out.mascot = mascot_;
+  out.flags = o.flags;
+  strcpy(out.to, o.to);
+  out.gift = o.gift;
+  out.chance = o.chance;
+  strcpy(out.host, o.host);
   for (uint8_t i = 1; i < outN_; i++) out_[i - 1] = out_[i];
   outN_--;
   return true;
@@ -281,8 +315,7 @@ void FriendPlay::queuePoll(uint8_t wanted) {
   const uint16_t others = heardLast_ > heard_ ? heardLast_ : heard_;
   const uint32_t want = (uint32_t)wanted * kPollWanted;
   const uint32_t chance = others <= want ? 255u : 255u * want / others;
-  queue(FriendPacket::Who, nullptr, Gift::None);
-  out_[outN_ - 1].chance = (uint8_t)(chance ? chance : 1);
+  if (Out* o = queue(FriendPacket::Who, nullptr, Gift::None)) o->chance = (uint8_t)(chance ? chance : 1);
 }
 
 // The group is formed (us + the members that answered): draw the host among all of us, uniformly,
@@ -312,8 +345,8 @@ void FriendPlay::formGroup(uint32_t nowMs) {
   for (uint8_t i = 0; i < membersN_; i++) {
     if (Friend* m = find(members_[i])) noteStart(*m, nowMs);
     if (i + 1 == h) continue;
-    queue(FriendPacket::Invite, members_[i], gift);
-    if (h) strcpy(out_[outN_ - 1].host, host);
+    Out* o = queue(FriendPacket::Invite, members_[i], gift);
+    if (o && h) strcpy(o->host, host);
   }
   membersN_ = 0;
 }
@@ -374,6 +407,7 @@ void FriendPlay::update(uint32_t nowMs, bool enabled, uint8_t flags, uint32_t rn
     heardLast_ = heard_;
     heard_ = 0;
     heardAtMs_ = nowMs;
+    for (Friend& f : friends_) f.marks &= (uint8_t)~kMarkHeard;
   }
   // Our answer to someone's "who is free?", once its random delay is up (if still free).
   if (replying_ && (int32_t)(nowMs - replyAtMs_) >= 0) {
@@ -478,12 +512,17 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
     if (nowMs - f->rateMs >= kFriendRateWindowMs) {
       f->rateMs = nowMs;
       f->rateN = 0;
+      f->marks &= (uint8_t)~kMarkHomed;
     }
     if (f->rateN >= kFriendRateMax) return;
     f->rateN++;
   }
-  if (p.type == FriendPacket::Beacon && heard_ < 0xFFFF) heard_++;  // network size, newcomers included
   if (!f) return;  // no room for a stranger right now
+  // Network size (sets our poll's answer chance): each friend once per beacon period.
+  if (p.type == FriendPacket::Beacon && !(f->marks & kMarkHeard) && heard_ < 0xFFFF) {
+    f->marks |= kMarkHeard;
+    heard_++;
+  }
   strcpy(f->name, p.name[0] ? p.name : p.id);
   f->mascot = p.mascot;
   f->flags = p.flags;
@@ -565,7 +604,12 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
         strcpy(extraIds_[visit_.extra], p.id);
         visit_.extraMascot[visit_.extra++] = p.mascot;
       } else {
-        queue(FriendPacket::Home, p.id, Gift::None);  // too late, too many, or not invited: do not wait
+        // Too late, too many, or not invited: do not wait. Once per sender per rate window, and
+        // never into the queue's last slot (real packets keep their room).
+        if (!(f->marks & kMarkHomed) && outN_ + 1 < kFriendOutMax) {
+          f->marks |= kMarkHomed;
+          queue(FriendPacket::Home, p.id, Gift::None);
+        }
       }
       break;
     }

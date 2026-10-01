@@ -781,7 +781,7 @@ static void test_id_flood_keeps_known_friends() {
   uint32_t t = kBeaconEveryMs + 10;
   for (int i = 0; i < 1000; i++) {
     snprintf(id, sizeof(id), "miblo-x%04d", i);
-    b.receive(packet(FriendPacket::Beacon, id, "X", 0), t + i, kIpEvil);
+    b.receive(packet(FriendPacket::Beacon, id, "X", 0), t + i, 0x10000000u + i);  // many machines
   }
   TEST_ASSERT_EQUAL_UINT8(kMaxFriends, b.count());
   // At most one known friend made room in that second.
@@ -792,6 +792,145 @@ static void test_id_flood_keeps_known_friends() {
     known += b.knows(id);
   }
   TEST_ASSERT_TRUE(known >= 3);
+}
+
+// One machine is one Miblo: a second id from an address a live friend holds is ignored (so one
+// machine cannot multiply its per-id limits), until that friend is forgotten.
+static void test_one_machine_is_one_miblo() {
+  FriendPlay b;
+  b.setSelf("miblo-bbbb", "Nina", 0);
+  b.update(0, true, 0, 7);
+  b.receive(packet(FriendPacket::Beacon, "miblo-aaaa", "Tofu", 0), 10, kIpA);
+  b.receive(packet(FriendPacket::Beacon, "miblo-zzzz", "Zed", 0), 20, kIpA);
+  TEST_ASSERT_FALSE(b.knows("miblo-zzzz"));
+  TEST_ASSERT_EQUAL_UINT8(1, b.count());
+  b.update(11 + kFriendTtlMs, true, 0, 7);  // Tofu forgotten: the address is free again
+  b.receive(packet(FriendPacket::Beacon, "miblo-zzzz", "Zed", 0), 12 + kFriendTtlMs, kIpA);
+  TEST_ASSERT_TRUE(b.knows("miblo-zzzz"));
+}
+
+// The network size behind the poll's answer chance counts each friend once per beacon period: a
+// chatty one (or ids that were not let in) cannot make everyone's polls go unanswered.
+static void test_network_size_counts_each_friend_once() {
+  FriendPlay lone;
+  lone.setSelf("miblo-zzzz", "Z", 0);
+  lone.update(0, true, kFriendRoaming, 1);
+  char id[16];
+  bool polled = false;
+  FriendPacket p;
+  for (uint32_t t = 100; t < kFirstVisitMinMs + kFirstVisitSpanMs + 1000 && !polled; t += 100) {
+    if (t % 1000 == 0) {
+      for (uint32_t k = 0; k < kFriendRateMax; k++) {  // as fast as allowed
+        lone.receive(packet(FriendPacket::Beacon, "miblo-aaaa", "Tofu", 0), t - kFriendRateMax + k, kIpA);
+      }
+      for (int i = 0; i < 50; i++) {  // more ids from that same machine: not let in
+        snprintf(id, sizeof(id), "miblo-x%04d", i);
+        lone.receive(packet(FriendPacket::Beacon, id, "X", 0), t, kIpA);
+      }
+    }
+    lone.update(t, true, kFriendRoaming, 1);
+    while (lone.nextPacket(p)) {
+      if (p.type != FriendPacket::Who) continue;
+      polled = true;
+      TEST_ASSERT_EQUAL_UINT8(255, p.chance);  // one other Miblo: everyone answers
+    }
+  }
+  TEST_ASSERT_TRUE(polled);
+}
+
+// Organising a group of 4 (1:3): every packet of it goes out, whether we host or another does.
+static void test_full_group_sends_every_invite() {
+  int outside = 0, inside = 0;
+  for (uint32_t seed = 1; seed < 400 && (!outside || !inside); seed++) {
+    FriendPlay a;
+    a.setSelf("miblo-aaaa", "Tofu", 0);
+    a.update(0, true, kFriendRoaming, seed);
+    a.demo(0, 600000);
+    const char* m[3] = {"miblo-cccc", "miblo-dddd", "miblo-eeee"};
+    for (int i = 0; i < 3; i++) a.receive(packet(FriendPacket::Beacon, m[i], "M", kFriendRoaming), 0, kIpC + i);
+    FriendPacket p;
+    bool polled = false;
+    uint32_t t = 0;
+    while (!polled && t < 20000) {
+      t += 100;
+      a.update(t, true, kFriendRoaming, seed * 7919 + t);
+      while (a.nextPacket(p)) polled |= p.type == FriendPacket::Who;
+    }
+    TEST_ASSERT_TRUE(polled);
+    int hostN = 0, okN = 0, invN = 0, formedAt = 0;
+    for (int i = 0; i < 3 && !formedAt; i++) {
+      a.receive(packet(FriendPacket::Here, m[i], "M", kFriendRoaming, "miblo-aaaa"), t, kIpC + i);
+      if (i == 2) a.update(t, true, kFriendRoaming, 1);  // a beacon may join the same batch
+      while (a.nextPacket(p)) {
+        hostN += p.type == FriendPacket::Host;
+        okN += p.type == FriendPacket::VisitOk;
+        invN += p.type == FriendPacket::Invite;
+      }
+      if (hostN || invN) formedAt = i + 1;
+    }
+    if (formedAt != 3) continue;  // a smaller group
+    if (hostN) {
+      outside++;
+      TEST_ASSERT_EQUAL_INT(1, okN);
+      TEST_ASSERT_EQUAL_INT(2, invN);
+    } else {
+      inside++;
+      TEST_ASSERT_EQUAL_INT(3, invN);
+    }
+  }
+  TEST_ASSERT_TRUE(outside > 0);
+  TEST_ASSERT_TRUE(inside > 0);
+}
+
+// "Go home" answers to strangers cannot fill the outgoing queue (a slot always stays free for the
+// real packets), and one sender gets at most one per second.
+static void test_home_replies_do_not_crowd_the_queue() {
+  FriendPlay b;
+  uint32_t t = 1000;
+  chosenAsHost(b, t);
+  drain(b);
+  for (int k = 0; k < 5; k++) {
+    b.receive(packet(FriendPacket::VisitOk, "miblo-eeee", "Evil", kFriendRoaming, "miblo-bbbb"), t + k, kIpEvil);
+  }
+  FriendPacket p;
+  int homes = 0;
+  while (b.nextPacket(p)) homes += p.type == FriendPacket::Home;
+  TEST_ASSERT_EQUAL_INT(1, homes);
+  char id[16];
+  for (int i = 0; i < 20; i++) {
+    snprintf(id, sizeof(id), "miblo-s%04d", i);
+    b.receive(packet(FriendPacket::VisitOk, id, "S", kFriendRoaming, "miblo-bbbb"), t + 2000, 0x20000000u + i);
+  }
+  homes = 0;
+  while (b.nextPacket(p)) homes += p.type == FriendPacket::Home;
+  TEST_ASSERT_TRUE(homes > 0);
+  TEST_ASSERT_TRUE(homes < (int)kFriendOutMax);
+}
+
+// Filler characters that render as nothing are removed too, the name is trimmed, and a name left
+// empty becomes the id's default name.
+static void test_blank_looking_names_fall_back_to_the_default() {
+  const char* filler[] = {"\xC2\xAD", "\xCD\x8F", "\xE1\x85\x9F", "\xE1\x85\xA0", "\xE1\xA0\x8E", "\xE3\x85\xA4",
+                          "\xEF\xBE\xA0", "\xEF\xB8\x80", "\xEF\xB8\x8F", "\xF3\xA0\x80\x81", "\xF3\xA0\x81\xBF"};
+  uint8_t buf[kFriendPacketMax];
+  FriendPacket q;
+  char name[64];
+  for (const char* f : filler) {
+    snprintf(name, sizeof(name), "Ni%sna", f);
+    FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", name, 0);
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, encodeFriendPacket(p, buf, sizeof(buf)), q));
+    TEST_ASSERT_EQUAL_STRING("Nina", q.name);
+    snprintf(name, sizeof(name), " %s%s ", f, f);
+    p = packet(FriendPacket::Beacon, "miblo-4f2a", name, 0);
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, encodeFriendPacket(p, buf, sizeof(buf)), q));
+    TEST_ASSERT_EQUAL_STRING("Miblo-4F2A", q.name);
+  }
+  FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", "  Nina Bo \xE3\x80\x80", 0);
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, encodeFriendPacket(p, buf, sizeof(buf)), q));
+  TEST_ASSERT_EQUAL_STRING("Nina Bo", q.name);
+  p = packet(FriendPacket::Beacon, "miblo-4f2a", "", 0);
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, encodeFriendPacket(p, buf, sizeof(buf)), q));
+  TEST_ASSERT_EQUAL_STRING("Miblo-4F2A", q.name);
 }
 
 int main(int, char**) {
@@ -823,5 +962,10 @@ int main(int, char**) {
   RUN_TEST(test_visit_offset_is_clamped);
   RUN_TEST(test_names_and_odd_packets_are_rejected);
   RUN_TEST(test_id_flood_keeps_known_friends);
+  RUN_TEST(test_one_machine_is_one_miblo);
+  RUN_TEST(test_network_size_counts_each_friend_once);
+  RUN_TEST(test_full_group_sends_every_invite);
+  RUN_TEST(test_home_replies_do_not_crowd_the_queue);
+  RUN_TEST(test_blank_looking_names_fall_back_to_the_default);
   return UNITY_END();
 }

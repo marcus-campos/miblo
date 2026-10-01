@@ -104,7 +104,11 @@ static screens::Clock clockNow() {
 
 static uint8_t backlight = 0;  // % last sent to the board (0 = not yet)
 static bool displayOff = false;  // the panel is asleep (nobody using it: see miblo::PetLatch)
-static uint8_t shiftStep = 0;    // current pixel-shift position (ui::ShiftCanvas)
+// Everything is drawn through it: the picture moves a pixel or two every few minutes so nothing
+// sits still for hours (LCD ghosting), and it applies the blue light filter. It only keeps a
+// reference to the board's canvas, so it can be built before board::begin().
+static ui::ShiftCanvas shifted(board::canvas());
+static uint8_t shiftStep = 0;    // current pixel-shift position (shifted)
 static uint32_t shiftAtMs = 0;
 static uint32_t roamSinceMs = 0;  // when pet mode came up
 static miblo::PetLatch petLatch;  // pet mode, and when the panel sleeps
@@ -148,29 +152,27 @@ static void updateOccasion(uint32_t now) {
 
 // Local minute of the day, or -1 while the time is unknown.
 static int minuteOfDay() {
-  time_t now = time(nullptr);
-  if (now <= 1600000000) return -1;
-  struct tm lt;
-  localtime_r(&now, &lt);
-  return lt.tm_hour * 60 + lt.tm_min;
+  miblo::Date d;
+  int minute;
+  return today(d, minute) ? minute : -1;
 }
 
-// Brightness for the current time (night mode); only touches the board when it changes.
-static void updateBacklight() {
+// Brightness at `minute` (local minute of the day, -1 = unknown; night mode); only touches the
+// board when it changes.
+static void updateBacklight(int minute) {
   if (displayOff) return;  // stays dark until the panel wakes
-  const uint8_t want = miblo::brightnessAt(ctx.cfg, minuteOfDay());
+  const uint8_t want = miblo::brightnessAt(ctx.cfg, minute);
   if (want == backlight) return;
   backlight = want;
   board::setBacklight(want);
 }
 
-// Blue light filter for the current time; when its strength changes, everything is redrawn in
-// the new colours (what is on the panel was drawn with the old ones).
-static void updateWarmth() {
-  auto& canvas = static_cast<ui::ShiftCanvas&>(screens::canvas());
-  const uint8_t want = miblo::warmthAt(ctx.cfg, minuteOfDay());
-  if (want == canvas.warmth()) return;
-  canvas.setWarmth(want);
+// Blue light filter at `minute` (as updateBacklight); when its strength changes, everything is
+// redrawn in the new colours (what is on the panel was drawn with the old ones).
+static void updateWarmth(int minute) {
+  const uint8_t want = miblo::warmthAt(ctx.cfg, minute);
+  if (want == shifted.warmth()) return;
+  shifted.setWarmth(want);
   firstFrame = true;
 }
 
@@ -187,8 +189,9 @@ static bool justFinished() {
 }
 
 static void applyConfig() {
-  updateBacklight();
-  updateWarmth();
+  const int minute = minuteOfDay();
+  updateBacklight(minute);
+  updateWarmth(minute);
   screens::setMascotStyle(ctx.cfg.mascot);
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
@@ -223,9 +226,6 @@ void setup() {
   hardResetRemaining = boot.remaining;
 
   board::begin();
-  // Everything is drawn through a shifting canvas: the picture moves a pixel or two every few
-  // minutes so nothing sits still for hours (LCD ghosting).
-  static ui::ShiftCanvas shifted(board::canvas());
   screens::bind(shifted);
   if (boot.factoryReset) {
     // Escape hatch: touch as little as possible (a corrupt config must not block the reset), so
@@ -299,8 +299,13 @@ void loop() {
   lastFrameMs = now;
 
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
-  updateBacklight();
-  updateWarmth();
+  // The local date and time, read once per frame (night dimming, the filter, greetings).
+  miblo::Date day{};
+  int minute = 0;
+  const bool timeKnown = today(day, minute);
+  const int minuteNow = timeKnown ? minute : -1;
+  updateBacklight(minuteNow);
+  updateWarmth(minuteNow);
   // Before the first snapshot ctx.snap is all zeros (parseSnapshot only writes it on success).
   const miblo::AlertView& alert = ctx.alerts.update(ctx.snap, now);
 
@@ -385,9 +390,6 @@ void loop() {
 
   // Greetings: the first activity of the day, or a new name. Only over ordinary screens.
   updateOccasion(now);
-  miblo::Date day{};
-  int minute = 0;
-  const bool timeKnown = today(day, minute);
   ctx.greeter.update(now, screen == ScreenId::Main && counts.running > 0, timeKnown, day, minute, ctx.cfg);
   const miblo::Greeting greeting = ctx.greeter.showing(now);
   if (greeting != miblo::Greeting::None &&
@@ -402,7 +404,7 @@ void loop() {
     board::setDisplay(!asleep);
     if (!asleep) {
       backlight = 0;  // relight at the current brightness
-      updateBacklight();
+      updateBacklight(minuteNow);
       firstFrame = true;
     }
   }
@@ -411,7 +413,7 @@ void loop() {
     shiftAtMs = now;
     int8_t dx, dy;
     miblo::pixelShift(++shiftStep, dx, dy);
-    static_cast<ui::ShiftCanvas&>(screens::canvas()).setShift(dx, dy);
+    shifted.setShift(dx, dy);
     firstFrame = true;  // redraw everything at the new offset
   }
   enter(screen);

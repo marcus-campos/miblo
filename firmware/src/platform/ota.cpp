@@ -83,9 +83,13 @@ static void page() {
   web::pageStart(out, lang, web::tr(lang, S::WebFirmware).c_str());
   out += F("<h1>");
   web::appendEscaped(out, web::tr(lang, S::WebFirmware).c_str());
-  out += F("</h1><p class=\"m\">");
-  web::appendEscaped(out, web::tr(lang, S::WebVersion).c_str());
-  out += F(" " MIBLO_FW_VERSION "</p><label id=\"cl\">");
+  out += F("</h1>");
+  if (!ctx.tokens.count()) {  // a paired gadget's version is for its computers (/api/info)
+    out += F("<p class=\"m\">");
+    web::appendEscaped(out, web::tr(lang, S::WebVersion).c_str());
+    out += F(" " MIBLO_FW_VERSION "</p>");
+  }
+  out += F("<label id=\"cl\">");
   web::appendEscaped(out, web::tr(lang, S::WebCodeHint).c_str());
   out += F("</label><input id=\"code\" inputmode=\"numeric\" maxlength=\"4\" autocomplete=\"off\"><label>.bin</label>"
            "<input id=\"f\" type=\"file\" accept=\".bin\"><button onclick=\"up()\">");

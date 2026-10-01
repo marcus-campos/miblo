@@ -423,7 +423,7 @@ test('rename renames the gadget and updates the stored name', async () => {
     assert.equal(r.out.trim(), 'Renamed Miblo-4F2A to Office desk.');
     assert.equal(dev.state.config.name, 'Office desk');
     assert.equal(new DeviceStore(d.dataDir).list()[0].name, 'Office desk');
-    const info = await new DeviceClient().info(dev.addr);
+    const info = await new DeviceClient().info(dev.addr, new DeviceStore(d.dataDir).list()[0].token);
     assert.equal(info.name, 'Office desk');
     assert.match((await run(['rotate', '--status'], d)).out, /^Office desk \(miblo-4f2a\)/);
   } finally {
@@ -535,9 +535,9 @@ test('the fake device validates the name like the firmware', async () => {
     for (const name of ['a'.repeat(21), 42, '\u{1F600}'.repeat(16)]) {
       await assert.rejects(client.setConfig(dev.addr, token, { name }), (e) => e.status === 400 && e.data.field === 'name');
     }
-    assert.equal((await client.info(dev.addr)).name, 'Miblo-4F2A');
+    assert.equal((await client.info(dev.addr, token)).name, 'Miblo-4F2A');
     await client.setConfig(dev.addr, token, { name: 'Café' });
-    assert.equal((await client.info(dev.addr)).name, 'Café');
+    assert.equal((await client.info(dev.addr, token)).name, 'Café');
   } finally {
     await dev.close();
   }
@@ -553,7 +553,7 @@ test('owner sends the owner name and a normalized birthday, and stores neither',
     assert.equal(r.out.trim(), 'Miblo-4F2A now knows your name (Ana Maria) and birthday (03-14).');
     assert.equal(dev.state.config.owner, 'Ana Maria');
     assert.equal(dev.state.config.birthday, '03-14');
-    const info = await new DeviceClient().info(dev.addr);
+    const info = await new DeviceClient().info(dev.addr, new DeviceStore(d.dataDir).list()[0].token);
     assert.ok(!('owner' in info) && !('birthday' in info));
     const stored = JSON.stringify(new DeviceStore(d.dataDir).list());
     assert.ok(!stored.includes('Ana') && !stored.includes('03-14'));
@@ -695,4 +695,67 @@ test('demo explains old firmware and offline gadgets', async () => {
   const client = { demo: async () => { const e = new Error('404'); e.status = 404; throw e; } };
   const old = await run(['demo'], { ...d, client });
   assert.match(old.out, /does not support the demo yet/);
+});
+
+test('pair a gadget already paired to another computer: listed by id, named once paired', async () => {
+  const dev = await startFakeDevice({ id: 'miblo-b452', name: 'Desk', tokens: ['someone-else'] });
+  const d = deps();
+  try {
+    assert.deepEqual(Object.keys(await new DeviceClient().info(dev.addr)).sort(), ['id', 'paired', 'proto']);
+    const r = await run(['pair', dev.addr, '4827'], d);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.out.trim(), `Paired with Desk (miblo-b452) at ${dev.addr}.`);
+    assert.equal(new DeviceStore(d.dataDir).list()[0].name, 'Desk');
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair falls back to the id-derived name when the paired gadget cannot be read again', async () => {
+  const seen = [];
+  const client = {
+    info: async (addr, token) => {
+      seen.push(token);
+      if (token) throw new Error('offline');
+      return { id: 'miblo-b452', paired: true, proto: 1 };
+    },
+    pair: async () => 'tok',
+    setConfig: async () => {},
+  };
+  const d = deps({ client });
+  const r = await run(['pair', '10.0.0.9', '4827'], d);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.out.trim(), 'Paired with Miblo-B452 (miblo-b452) at 10.0.0.9:80.');
+  assert.deepEqual(seen, [undefined, 'tok']);
+  assert.equal(new DeviceStore(d.dataDir).list()[0].name, 'Miblo-B452');
+});
+
+test('rotate, night and rename read a paired gadget with its token', async () => {
+  const dev = await startFakeDevice();
+  const d = deps();
+  try {
+    await run(['pair', dev.addr, '4827'], d);
+    assert.match((await run(['rotate', '--status'], d)).out, /rotation off/);
+    assert.match((await run(['night', '--status'], d)).out, /night mode off/);
+    await run(['rename', 'miblo-4f2a', 'Kitchen'], d);
+    await run(['rename', 'miblo-4f2a', '--default'], d);
+    assert.equal(new DeviceStore(d.dataDir).list()[0].name, 'Miblo-4F2A');
+  } finally {
+    await dev.close();
+  }
+});
+
+test('status commands survive the reduced /api/info of a gadget that dropped this pairing', async () => {
+  const dev = await startFakeDevice({ tokens: ['someone-else'] });
+  const d = deps();
+  try {
+    new DeviceStore(d.dataDir).upsert({ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: dev.addr, token: 'stale' });
+    const rot = await run(['rotate', '--status'], d);
+    assert.equal(rot.code, 0);
+    assert.match(rot.out, /no longer accepts this pairing/);
+    const night = await run(['night', '--status'], d);
+    assert.match(night.out, /no longer accepts this pairing/);
+  } finally {
+    await dev.close();
+  }
 });

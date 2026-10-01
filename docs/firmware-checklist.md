@@ -47,8 +47,10 @@ notes.
    (saved automatically the first time); switching the language to `pt-BR` changes the screen.
 4. **Pairing:** `/miblo:pair` finds `Miblo-XXXX`, asks for the code shown on screen, then shows
    "Paired with <host>" for 5 s, then "Disconnected"/clock until the first snapshot. `GET
-   http://<ip>/api/info` shows `paired: true`, `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`,
-   `caps: []`. Five wrong codes in a row cause a 429 for 60 s.
+   http://<ip>/api/info` with no token now shows only `{id, paired: true, proto}`; with the pairing
+   token (`-H "Authorization: Bearer <token>"`, from the plugin's devices.json) it shows
+   `board: "geekmagic_ultra"`, `screen: {w:240,h:240}`, `caps: []`. The settings page shows only an
+   unlock button until the on-screen code is typed. Five wrong codes in a row cause a 429 for 60 s.
 5. **Screens:** with real sessions — Working (compact `5h ▓░ 30%  7d ▓░ 13%` strip on top, up to
    3 session cards with name, time in state and current activity, footer "N RUNNING · 1/2" +
    clock; with 4+ sessions the cards page every 5 s), Needs you (amber band, compact strip, pending
@@ -94,7 +96,7 @@ notes.
     still requires the code on its setup AP.
 13. **Extended-use health check:** after using the device normally for at least 10 minutes
     (receiving snapshots, switching modes, triggering a couple of alerts), request
-    `GET http://<ip>/api/info` again and inspect the heap fields. Confirm free heap and max
+    `GET http://<ip>/api/info` again (with the pairing token) and inspect the heap fields. Confirm free heap and max
     contiguous free block (`maxBlock`) are stable — not trending toward zero or badly fragmented —
     compared to a reading taken right after boot. A steadily shrinking heap or a `maxBlock` far
     smaller than free heap indicates a leak or fragmentation that should block the release.

@@ -1,6 +1,7 @@
 #include "miblo_mdns.h"
 
 #include <ctype.h>
+#include <stdio.h>
 #include <string.h>
 
 namespace miblo {
@@ -283,6 +284,14 @@ size_t mdnsAnnounce(const MdnsInfo& info, uint8_t* out, size_t cap) {
   writeTxt(w, info, 120, CACHE_FLUSH);
   writeA(w, info, 120, CACHE_FLUSH);
   return w.ok() ? w.size() : 0;
+}
+
+void mdnsPublicIdentity(MdnsInfo& info, const char* id, const char* defaultName, char* txtBuf, size_t cap) {
+  info.instance = defaultName;
+  info.host = id;
+  snprintf(txtBuf, cap, "id=%s", id);
+  info.txt[0] = txtBuf;
+  info.txtCount = 1;
 }
 
 }  // namespace miblo

@@ -8,7 +8,6 @@
 
 #include "../context.h"
 #include "miblo_mdns.h"
-#include "miblo_version.h"
 #include "net.h"
 #include "platform.h"
 
@@ -22,23 +21,14 @@ static uint32_t nextAnnounceMs = 0;
 static uint8_t in[512];
 static uint8_t out[512];
 static char txtId[32];
-static char txtName[80];
-static char txtFw[24];
 
 static miblo::MdnsInfo info() {
   miblo::MdnsInfo i{};
-  i.instance = deviceName();
-  i.host = ctx.ident.id;
+  // Only the id goes out to the whole LAN (the name and version are for paired computers).
+  miblo::mdnsPublicIdentity(i, ctx.ident.id, ctx.ident.defaultName, txtId, sizeof(txtId));
   IPAddress ip = WiFi.localIP();
   for (int k = 0; k < 4; k++) i.ip[k] = ip[k];
   i.port = 80;
-  snprintf(txtId, sizeof(txtId), "id=%s", ctx.ident.id);
-  snprintf(txtName, sizeof(txtName), "name=%s", deviceName());
-  snprintf(txtFw, sizeof(txtFw), "fw=%s", MIBLO_FW_VERSION);
-  i.txt[0] = txtId;
-  i.txt[1] = txtName;
-  i.txt[2] = txtFw;
-  i.txtCount = 3;
   return i;
 }
 

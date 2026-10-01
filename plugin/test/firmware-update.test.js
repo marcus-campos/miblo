@@ -264,3 +264,31 @@ test('send times out when the gadget does not come back with the new version', a
     assert.match(r.out, /did not come back with 0\.2\.2/);
   } finally { t.dev.state.rebooting = false; await t.close(); }
 });
+
+test('a paired gadget: check, open and send read its version with the stored token', async () => {
+  const t = await setup({ device: { tokens: ['t'] } });
+  try {
+    const c = await t.cli('check');
+    assert.equal(c.json.devices[0].fw, '0.2.1');
+    assert.equal(c.json.devices[0].needsUpdate, true);
+    const o = await t.cli('open', 'miblo-0000');
+    assert.equal(o.code, 0, o.out);
+    const s = await t.cli('send', 'miblo-0000', '1234');
+    assert.equal(s.code, 0, s.out);
+    assert.match(s.out, /updated from 0\.2\.1 to 0\.2\.2/);
+  } finally { await t.close(); }
+});
+
+test('a gadget that dropped this pairing: version unknown in check, open refuses and says to pair', async () => {
+  const t = await setup({ device: { tokens: ['someone-else'] } });
+  try {
+    const c = await t.cli('check');
+    assert.equal(c.code, 0);
+    assert.equal(c.json.devices[0].online, true);
+    assert.equal(c.json.devices[0].fw, '');
+    assert.equal(c.json.devices[0].needsUpdate, null);
+    const o = await t.cli('open', 'miblo-0000');
+    assert.notEqual(o.code, 0);
+    assert.match(o.out, /\/miblo:pair/);
+  } finally { await t.close(); }
+});

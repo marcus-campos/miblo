@@ -60,3 +60,18 @@ test('flags unauthorized devices', async () => {
   await mgr.pushAll({});
   assert.equal(mgr.status()[0].unauthorized, true);
 });
+
+test('reads the gadget caps with its pairing token and tolerates the reduced /api/info', async () => {
+  const calls = [];
+  const pushes = [];
+  const client = {
+    async info(addr, token) { calls.push([addr, token]); return { id: 'g1', paired: true, proto: 1 }; },
+    async pushState(addr, token, snap) { pushes.push(snap); },
+  };
+  const store = memStore([{ id: 'g1', name: 'G1', addr: '10.0.0.5:80', token: 't' }]);
+  const mgr = new DeviceManager({ client, store, now: () => 0 });
+  await mgr.pushAll({ v: 1, sessions: [] });
+  assert.deepEqual(calls, [['10.0.0.5:80', 't']]);
+  assert.equal(pushes.length, 1);
+  assert.equal(mgr.status()[0].online, true);
+});

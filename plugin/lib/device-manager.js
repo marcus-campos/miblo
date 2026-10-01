@@ -32,7 +32,7 @@ export class DeviceManager {
   async #caps(dev, h) {
     if (h.caps && this.now() - h.capsAt < 3600_000) return h.caps;
     try {
-      const info = await this.client.info(dev.addr);
+      const info = await this.client.info(dev.addr, dev.token);
       const n = Number(info?.maxSessions);
       const b = Number(info?.maxBytes);
       h.caps = { maxSessions: Number.isInteger(n) && n > 0 ? n : LEGACY_MAX_SESSIONS,

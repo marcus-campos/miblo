@@ -15,9 +15,10 @@ export const LOCKOUT_MS = 60_000;
 export function startFakeDevice({
   id = 'miblo-4f2a', name = 'Miblo-4F2A', code = '4827', now = () => Date.now(),
   fw = '0.0.0-fake', board = 'geekmagic_ultra', otaCode = '1234', otaCodeRequired = true, rebootMs = 30,
+  tokens = [],  // already paired with these tokens (e.g. to another computer)
 } = {}) {
   const state = {
-    token: null, tokens: [], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
+    token: null, tokens: [...tokens], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
     fw, gateOpen: false, otaBadCodes: 0, otaLockedUntil: 0, uploads: [], rebooting: false,
   };
   const readRaw = (req) =>
@@ -99,6 +100,9 @@ export function startFakeDevice({
     if (req.method === 'POST' && url.pathname === '/update') return otaUpload(req, res, url, raw, send);
     const body = raw ? asJson(raw) : null;
     if (req.method === 'GET' && req.url === '/api/info') {
+      // A paired gadget tells a caller without one of its tokens only who it is (src/api.cpp,
+      // miblo::infoView): id, paired and proto. Before pairing, or with a token: everything.
+      if (state.tokens.length > 0 && !authed(req)) return send(200, { id, paired: true, proto: 1 });
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
       return send(200, { id, name: currentName(), fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg() });

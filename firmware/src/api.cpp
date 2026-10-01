@@ -7,6 +7,7 @@
 #include "board.h"
 #include "platform/platform.h"
 #include "context.h"
+#include "miblo_info.h"
 #include "miblo_snapshot.h"
 #include "miblo_utf8.h"
 #include "miblo_version.h"
@@ -31,6 +32,17 @@ static bool authorized() {
 static void handleInfo() {
   if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated)
     json(429, "{\"error\":\"slow down\"}");
+    return;
+  }
+  // A paired gadget tells someone without its token only who it is (miblo::infoView): its name,
+  // version, settings and diagnostics are for the computers paired with it.
+  const String auth = web::requestHeader(*srv, F("Authorization"));  // never the previous request's
+  if (miblo::infoView(ctx.tokens, auth.c_str()) == miblo::InfoView::Public) {
+    StaticJsonDocument<96> pub;
+    miblo::writePublicInfo(pub.to<JsonObject>(), ctx.ident.id, true, MIBLO_PROTO);
+    String out;
+    serializeJson(pub, out);
+    json(200, out.c_str());
     return;
   }
   // 27 top-level members + screen{2} + caps + copied strings (flash, reset): ~560 B on the

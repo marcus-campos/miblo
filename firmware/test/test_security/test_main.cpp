@@ -1,6 +1,9 @@
 #include <string.h>
 #include <unity.h>
 
+#include <ArduinoJson.h>
+
+#include "miblo_info.h"
 #include "miblo_security.h"
 
 using namespace miblo;
@@ -346,8 +349,35 @@ static void test_via_soft_ap_subnet() {
   TEST_ASSERT_FALSE(viaSoftApSubnet(true, phone, otherAp, otherAp));  // soft AP not on 192.168.4.x
 }
 
+// GET /api/info: everything while the gadget is not paired yet (setup needs it) or for a paired
+// computer's bearer token; anyone else on the LAN of a paired gadget gets only id/paired/proto.
+static void test_info_view() {
+  TokenStore none;
+  TEST_ASSERT_TRUE(infoView(none, nullptr) == InfoView::Full);
+  TEST_ASSERT_TRUE(infoView(none, "") == InfoView::Full);
+  TEST_ASSERT_TRUE(infoView(none, "Bearer whatever") == InfoView::Full);
+  TokenStore paired;
+  paired.add("00112233445566778899aabbccddeeff", "mac");
+  TEST_ASSERT_TRUE(infoView(paired, nullptr) == InfoView::Public);
+  TEST_ASSERT_TRUE(infoView(paired, "") == InfoView::Public);
+  TEST_ASSERT_TRUE(infoView(paired, "Bearer nope") == InfoView::Public);
+  TEST_ASSERT_TRUE(infoView(paired, "00112233445566778899aabbccddeeff") == InfoView::Public);  // no scheme
+  TEST_ASSERT_TRUE(infoView(paired, "Bearer 00112233445566778899aabbccddeeff") == InfoView::Full);
+}
+
+static void test_public_info_has_only_three_fields() {
+  StaticJsonDocument<256> doc;
+  writePublicInfo(doc.to<JsonObject>(), "miblo-4f2a", true, 1);
+  TEST_ASSERT_EQUAL(3, (int)doc.as<JsonObject>().size());
+  TEST_ASSERT_EQUAL_STRING("miblo-4f2a", doc["id"].as<const char*>());
+  TEST_ASSERT_TRUE(doc["paired"].as<bool>());
+  TEST_ASSERT_EQUAL(1, doc["proto"].as<int>());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_info_view);
+  RUN_TEST(test_public_info_has_only_three_fields);
   RUN_TEST(test_codes_and_tokens);
   RUN_TEST(test_bearer_parsing);
   RUN_TEST(test_constant_time_equals);

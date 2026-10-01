@@ -9,6 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanId, cleanName } from './mdns.js';
+import { isReducedInfo } from './device-client.js';
 
 export const GITHUB_API = 'https://api.github.com';
 export const GITHUB_RAW = 'https://raw.githubusercontent.com';
@@ -118,13 +119,19 @@ export class FirmwareUpdater {
       const row = { id: cleanId(d.id), name: cleanName(d.name) };
       let info;
       try {
-        info = await this.#info(d.addr);
+        info = await this.#info(d.addr, d.token);
       } catch {
         results.push({ ...row, online: false, needsUpdate: null });
         continue;
       }
-      const board = String(info.board ?? '');
-      const fw = String(info.fw ?? '');
+      const board = String(info?.board ?? '');
+      const fw = String(info?.fw ?? '');
+      if (!fw) {
+        // Only {id, paired, proto}: the gadget no longer accepts this computer's pairing (or an
+        // odd reply). The version is unknown, so never "up to date" nor "needs an update".
+        results.push({ ...row, online: true, fw, board, needsUpdate: null, ...(isReducedInfo(info) ? { unauthorized: true } : {}) });
+        continue;
+      }
       if (!source) {
         results.push({ ...row, online: true, fw, board, needsUpdate: false });
         continue;
@@ -164,7 +171,8 @@ export class FirmwareUpdater {
   async open({ id, file }) {
     const d = this.#one(id);
     const info = await this.#infoOrOffline(d);
-    const board = String(info.board ?? '');
+    if (isReducedInfo(info)) fail(1, `${cleanName(d.name)} no longer accepts this computer's pairing: run /miblo:pair again.`);
+    const board = String(info?.board ?? '');
     if (!board) fail(1, `${cleanName(d.name)} did not report its board; refusing to update.`);
     const image = file ? this.#fromFile(file, board) : await this.#fromRelease(board);
 
@@ -226,8 +234,8 @@ export class FirmwareUpdater {
     while (Date.now() < deadline) {
       await this.sleep(this.pollMs);
       try {
-        const info = await this.#info(d.addr);
-        if (String(info.fw) === pending.version) {
+        const info = await this.#info(d.addr, d.token);
+        if (String(info?.fw) === pending.version) {
           return `${cleanName(d.name)} updated from ${pending.from} to ${pending.version}.`;
         }
       } catch {
@@ -253,14 +261,15 @@ export class FirmwareUpdater {
     return list[0];
   }
 
-  async #info(addr) {
-    const res = await this.fetch(`http://${addr}/api/info`, { signal: AbortSignal.timeout(this.deviceTimeoutMs) });
+  async #info(addr, token) {
+    const headers = token ? { authorization: `Bearer ${token}` } : {};
+    const res = await this.fetch(`http://${addr}/api/info`, { headers, signal: AbortSignal.timeout(this.deviceTimeoutMs) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return res.json();
   }
 
   async #infoOrOffline(d) {
-    try { return await this.#info(d.addr); } catch { return fail(1, `Could not reach ${cleanName(d.name)}. Is it on and on the same network?`); }
+    try { return await this.#info(d.addr, d.token); } catch { return fail(1, `Could not reach ${cleanName(d.name)}. Is it on and on the same network?`); }
   }
 
   // ---- images ----

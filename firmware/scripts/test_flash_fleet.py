@@ -48,16 +48,18 @@ class FakeDevice:
              into the loader (unless `stuck`), otherwise answers "Update error: ERROR[4]: ...".
     loader : GET /info; POST /update reboots into Miblo `next_fw`.
     miblo  : GET /api/info; POST /update/open shows `code`; POST /update?code= reboots into
-             Miblo `next_fw`. `lock_once` makes the first /update/open answer 429.
+             Miblo `next_fw`. `lock_once` makes the first /update/open answer 429. `paired`: the
+             unit is paired to a computer, so /api/info (no token) says only {id, paired, proto}.
     """
 
     def __init__(self, state, fw=None, build="abc1234", space=1000, next_fw=NEW, stuck=False,
                  code="4821", lock_once=False, board="geekmagic_ultra", chip="4F2A",
-                 stock_ssid="GIFTV", codeless=False):
+                 stock_ssid="GIFTV", codeless=False, paired=False):
         self.state, self.fw, self.build, self.space = state, fw, build, space
         self.next_fw, self.stuck, self.code, self.lock_once = next_fw, stuck, code, lock_once
         self.board = board
         self.chip, self.stock_ssid, self.codeless = chip, stock_ssid, codeless
+        self.paired = paired
         self.uploads = []      # (path, size) of accepted uploads
         self.keepwifi = []     # loader uploads: was ?keepwifi=1 passed
         self.opened = 0
@@ -80,6 +82,9 @@ class FakeDevice:
                 if dev.state == "rebooting":
                     self.close_connection = True
                     return
+                if dev.state == "miblo" and path == "/api/info" and dev.paired:
+                    return self.send(200, json.dumps({"id": "miblo-" + dev.chip.lower(), "paired": True, "proto": 1}),
+                                     "application/json")
                 if dev.state == "miblo" and path == "/api/info":
                     return self.send(200, json.dumps({"id": "miblo-" + dev.chip.lower(), "name": "Miblo-" + dev.chip, "fw": dev.fw,
                                                       "build": dev.build, "board": dev.board}),
@@ -364,6 +369,22 @@ class FleetTest(unittest.TestCase):
         self.assertEqual(prompts[0], "Enter the 4-digit code shown on Miblo-4F2A (%s): " % dev.host)
         self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
         self.assertIn("1 flashed", out)
+
+    def test_paired_unit_is_miblo_with_unknown_version(self):
+        self.device("miblo", fw=NEW, paired=True)
+        rc, out, _ = self.run_fleet("--dry-run", "--update")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("miblo ? (paired)", out)
+        self.assertIn(ff.OTA, out)  # its version is not readable: offered as an update
+
+    def test_update_paired_unit_verified_by_the_update_reply(self):
+        dev = self.device("miblo", fw="0.1.0", code="4821", paired=True)
+        rc, out, prompts = self.run_fleet("--update", codes=["4821"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual((dev.state, dev.fw), ("miblo", NEW))
+        self.assertIn("verified by the update's own reply", out)
+        self.assertIn("1 flashed", out)
+        self.assertEqual(prompts, ["Enter the 4-digit code shown on miblo-4f2a (%s): " % dev.host])
 
     def test_needs_update_flag(self):
         dev = self.device("miblo", fw="0.1.0")

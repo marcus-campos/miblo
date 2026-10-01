@@ -218,8 +218,33 @@ static void test_announcement_contains_all_records() {
   TEST_ASSERT_NOT_NULL(find(recs, 1));
 }
 
+// A paired Miblo tells the network only its id: the TXT record carries "id=" and nothing else,
+// and the instance is the id-derived default name (never the name the owner gave it).
+static void test_public_identity_announces_only_the_id() {
+  MdnsInfo in{};
+  in.ip[0] = 192;
+  in.ip[1] = 168;
+  in.ip[3] = 42;
+  in.port = 80;
+  char txt[32];
+  mdnsPublicIdentity(in, "miblo-4f2a", "Miblo-4F2A", txt, sizeof(txt));
+  TEST_ASSERT_EQUAL_UINT8(1, in.txtCount);
+  TEST_ASSERT_EQUAL_STRING("id=miblo-4f2a", in.txt[0]);
+  TEST_ASSERT_EQUAL_STRING("Miblo-4F2A", in.instance);
+  TEST_ASSERT_EQUAL_STRING("miblo-4f2a", in.host);
+  uint8_t out[512];
+  size_t n = mdnsAnnounce(in, out, sizeof(out));
+  TEST_ASSERT_TRUE(n > 0);
+  uint16_t id, qd, an, ar;
+  auto recs = parse(out, n, id, qd, an, ar);
+  const Rec* t = find(recs, 16);
+  TEST_ASSERT_NOT_NULL(t);
+  TEST_ASSERT_EQUAL_STRING("id=miblo-4f2a", t->data.c_str());
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_public_identity_announces_only_the_id);
   RUN_TEST(test_bridge_query_gets_unicast_answer_with_everything);
   RUN_TEST(test_legacy_query_echoes_id);
   RUN_TEST(test_multicast_query_for_host_address);

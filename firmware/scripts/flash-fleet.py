@@ -10,7 +10,10 @@ portal). The script finds the units, works out what each one runs and installs M
                       GET /api/info and check that "fw" is the expected version
   Miblo            -> skipped when already on the expected version; otherwise updated only with
                       --update (POST /update/open shows a 4-digit code on the screen, you type it
-                      here, then the image goes to POST /update?code=XXXX); one unit at a time
+                      here, then the image goes to POST /update?code=XXXX); one unit at a time.
+                      A paired unit tells this tool only its id (/api/info has no "fw" without
+                      the pairing token): its version shows as "?", it is offered as an update,
+                      and the update is verified by the unit's own "OK" reply to the upload
   anything else    -> skipped
 
 Finding units: --host/--subnet name them explicitly or scan a CIDR; --discover instead asks the
@@ -139,6 +142,8 @@ class Unit:
     chip: Optional[str] = None      # --via-ap: "4f2a" (from the SSID or the device id)
     bssid: Optional[str] = None     # --via-ap: the access point joined, when the name is shared
     verify: bool = False            # LAN: installed, the unit restarted on its Miblo-Setup network
+    paired: bool = False            # Miblo paired to a computer: /api/info shows only its id
+    upload_status: int = 0          # HTTP status of the last image upload (0 = no reply)
 
     @property
     def label(self) -> str:
@@ -148,6 +153,8 @@ class Unit:
 
     @property
     def before(self) -> str:
+        if self.kind == MIBLO and self.paired:
+            return "miblo ? (paired)"
         if self.kind == MIBLO:
             return "miblo %s%s" % (self.fw or "?", " (%s)" % self.build if self.build else "")
         if self.kind == LOADER:
@@ -272,6 +279,12 @@ def classify(unit: Unit, timing: Timing) -> None:
         unit.build = info.get("build")
         unit.board = info.get("board")
         unit.name = info.get("name") or info.get("id")
+        return
+    if info and info.get("paired") is True and info.get("id"):
+        # A paired Miblo tells the LAN only {id, paired, proto}: version and board unknown.
+        unit.kind = MIBLO
+        unit.paired = True
+        unit.name = str(info.get("id"))
         return
     info = get_json(base + "/info", timing.http_timeout)
     if info and info.get("app") == "miblo-loader":
@@ -667,6 +680,18 @@ class Runner:
 
     def wait_for_miblo(self, unit: Unit, limit: Optional[float] = None) -> None:
         want = self.images.version
+        if unit.paired:
+            # A paired unit's /api/info has no "fw" (only its id) without the pairing token: the
+            # update is verified by the unit's own reply to the upload (HTTP 200 "OK", sent once
+            # the image is written and checked), then by the unit answering again after its reboot.
+            if unit.upload_status != 200:
+                raise FlashError("no reply to the upload from a paired unit: its version can't be checked")
+            self.log(unit, "update: verified by the update's own reply (paired unit: /api/info doesn't show its version)")
+            self.poll(unit, "/api/info", lambda d: bool(d.get("id")),
+                      self.timing.stage2_timeout if limit is None else limit,
+                      "the unit to answer again after its reboot")
+            unit.after = "miblo %s (paired)" % want
+            return
         self.log(unit, "waiting for Miblo %s to boot..." % want)
         doc = self.poll(unit, "/api/info", lambda d: d.get("fw") == want,
                         self.timing.stage2_timeout if limit is None else limit,
@@ -755,6 +780,7 @@ class Runner:
             status, data = upload(base_url(unit.host) + "/update", image, self.timing)
             if status not in (200, 0):
                 raise FlashError("update failed: HTTP %d %s" % (status, text_of(data)[:80]))
+            unit.upload_status = status
             after(unit)
             return
         if not self.interactive:
@@ -765,6 +791,7 @@ class Runner:
             self.log(unit, "update: uploading %s (%d KB)..." % (image.name, image.stat().st_size // 1024))
             status, data = upload(base_url(unit.host) + "/update?code=" + code, image, self.timing)
             if status in (200, 0):
+                unit.upload_status = status
                 after(unit)
                 return
             if status == 403:

@@ -361,9 +361,11 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
   out += tmp;
 }
 
-// The settings page's script (after `const C=<config>;const T=<texts>;` and kTzJs). It fills the
-// fields from C, shows or hides the fields that depend on a toggle, and posts every setting at
-// once (POST /settings); a refused field is highlighted.
+// The settings page's script (after `const C=<config>;const V=<{fw,board}|null>;const T=<texts>;`
+// and kTzJs). It fills the fields from C, shows or hides the fields that depend on a toggle, and
+// posts every setting at once (POST /settings); a refused field is highlighted. V is null on a
+// paired gadget's locked page: C is empty and #all hidden until the on-screen code unlocks it, then
+// the settings, name and version come from /settings-secret.
 static const char kSetJs[] PROGMEM =
     "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
     // To change anything the browser must prove presence with the code on the gadget screen; the
@@ -381,8 +383,8 @@ static const char kSetJs[] PROGMEM =
     "if(r.status===401){if(!await unlock())return r;r=await fetch(u,{method:'POST',headers:hdr(),body:b});}return r;}"
     // Night times travel as minutes of the day; the page shows them as HH:MM.
     "const p2=n=>String(n).padStart(2,'0');"
-    "for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
-    "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
+    "function fill(){for(const k in C){const e=$(k);if(!e)continue;if(e.type==='checkbox')e.checked=C[k];"
+    "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}}fill();"
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
@@ -390,9 +392,15 @@ static const char kSetJs[] PROGMEM =
     "let SEC=false;"
     "async function loadSecret(){const r=await fetch('/settings-secret',{headers:hdr()});"
     "if(r.status===401){TOK=null;try{localStorage.removeItem('miblo_tok')}catch(e){}return;}"
-    "if(!r.ok)return;const s=await r.json();$('owner').value=s.owner||'';"
+    "if(!r.ok)return;const s=await r.json();"
+    // Locked page: the first unlock brings everything a paired gadget keeps from the LAN.
+    "if(!V&&!SEC&&s.cfg){Object.assign(C,s.cfg);fill();FW=s.fw||'';BD=s.board||'';"
+    "$('h').textContent=C.name||$('name').placeholder;"
+    "$('m').textContent=T.ver+' '+FW+' \\u00b7 '+T.pc.replace('%u',s.paired);"
+    "$('ub').hidden=true;$('all').hidden=false;tz();dep();rv();pd();}"
+    "$('owner').value=s.owner||'';"
     "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
-    "if(TOK)loadSecret();"
+    "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
     // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
     "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
     "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
@@ -410,7 +418,7 @@ static const char kSetJs[] PROGMEM =
     "dep();rv();pd();"
     "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
     "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
-    "function save(){for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
+    "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
     "'nightBrightness','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
@@ -431,7 +439,7 @@ static const char kSetJs[] PROGMEM =
     ".then(r=>{if(!r.ok)alert(T.bad);});});}"
     // Check for updates: the browser asks GitHub (the gadget has no HTTPS to spare) and
     // compares with this firmware; a newer one gets the how-to and a link to its .bin.
-    "const FW='" MIBLO_FW_VERSION "',BD='" MIBLO_BOARD_NAME "';"
+    "let FW=V?V.fw:'',BD=V?V.board:'';"
     "function vc(a,b){a=a.split('.').map(Number);b=b.split('.').map(Number);"
     "for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d;}return 0;}"
     "function chk(){const st=$('up');st.textContent='...';"
@@ -445,7 +453,7 @@ static const char kSetJs[] PROGMEM =
     "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
     "st.append(document.createElement('br'),l);}"
     "}).catch(()=>{st.textContent=T.chkfail;});}"
-    "tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});";
+    "function tz(){tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});}if(V)tz();";
 
 // Settings page builders; every text is escaped.
 static void text(String& out, Lang lang, S id) { appendEscaped(out, tr(lang, id).c_str()); }
@@ -507,21 +515,36 @@ static void option(String& out, Lang lang, const __FlashStringHelper* value, S i
 static void settingsPage() {
   Lang lang = pageLang(*srv);
   String out;
-  pageStart(out, lang, deviceName());
+  // A paired gadget tells the LAN only its id: its name, version and settings reach a browser
+  // only after the code on its screen unlocks the page (the script then reads /settings-secret).
+  // Before pairing everything is shown, as setup needs it.
+  const bool open = ctx.tokens.count() == 0;
+  const char* title = open ? deviceName() : ctx.ident.defaultName;
+  pageStart(out, lang, title);
   out += F("<h1 id=\"h\">");
-  appendEscaped(out, deviceName());
-  out += F("</h1><p class=\"m\">");
-  text(out, lang, S::WebVersion);
-  out += F(" " MIBLO_FW_VERSION " &middot; ");
-  char line[96];
-  snprintf(line, sizeof(line), tr(lang, S::WebPairedCount).c_str(), (unsigned)ctx.tokens.count());
-  appendEscaped(out, line);
+  appendEscaped(out, title);
+  out += F("</h1><p class=\"m\" id=\"m\">");
+  if (open) {
+    text(out, lang, S::WebVersion);
+    out += F(" " MIBLO_FW_VERSION " &middot; ");
+    char line[96];
+    snprintf(line, sizeof(line), tr(lang, S::WebPairedCount).c_str(), (unsigned)ctx.tokens.count());
+    appendEscaped(out, line);
+  }
   out += F("</p>");
-  if (!ctx.usageEverSeen) {
+  if (open && !ctx.usageEverSeen) {
     out += F("<p class=\"w\">");
     text(out, lang, S::WebLimitsHint);
     out += F("</p>");
   }
+  // Locked page: only this until the code is typed.
+  out += F("<div id=\"ub\" hidden><p class=\"w\">");
+  text(out, lang, S::WebUnlock);
+  out += F("</p><button onclick=\"unlock()\">");
+  text(out, lang, S::WebUnlockTitle);
+  out += F("</button></div><div id=\"all\"");
+  if (!open) out += F(" hidden");
+  out += F(">");
 
   // Screen: what it shows and how.
   out += F("<div class=\"c\"><h2>");
@@ -660,13 +683,15 @@ static void settingsPage() {
   // Always-visible save bar.
   out += F("<div class=\"bar\"><div><span id=\"st\"></span><button onclick=\"save()\">");
   text(out, lang, S::WebSave);
-  out += F("</button></div></div><script>const C=");
+  out += F("</button></div></div></div><script>const C=");
   pageFlush(out);
 
   DynamicJsonDocument cfg(1024);
-  miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday on the public page
+  if (open) miblo::configToJson(ctx.cfg, cfg.to<JsonObject>(), false);  // no owner/birthday here
+  else cfg.to<JsonObject>();                                             // locked: nothing
   appendJsonForScript(out, cfg);
-  out += F(";const T=");
+  out += open ? F(";const V={\"fw\":\"" MIBLO_FW_VERSION "\",\"board\":\"" MIBLO_BOARD_NAME "\"};const T=")
+              : F(";const V=null;const T=");
   DynamicJsonDocument txt(2048);
   txt["saved"] = tr(lang, S::WebSaved);
   txt["uptodate"] = tr(lang, S::WebUpToDate);
@@ -681,6 +706,8 @@ static void settingsPage() {
   txt["unlock"] = tr(lang, S::WebUnlock);
   txt["utitle"] = tr(lang, S::WebUnlockTitle);
   txt["ubad"] = tr(lang, S::WebUnlockBad);
+  txt["ver"] = tr(lang, S::WebVersion);
+  txt["pc"] = tr(lang, S::WebPairedCount);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
@@ -755,15 +782,24 @@ static void handleSettingsUnlock() {
   sendJson(*srv, 200, out.c_str());
 }
 
-// GET /settings-secret: the private fields (owner, birthday), only for an unlocked session.
+// GET /settings-secret, only for an unlocked session: the private fields (owner, birthday) and,
+// for a paired gadget's locked page, the settings, version, board and number of paired computers.
 static void handleSettingsSecret() {
   if (!webAuthorized()) {
     sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
     return;
   }
-  StaticJsonDocument<128> doc;
+  if (heapLowForRequest(2048)) {
+    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    return;
+  }
+  DynamicJsonDocument doc(1536);
   doc["owner"] = ctx.cfg.owner;
   doc["birthday"] = ctx.cfg.birthday;
+  miblo::configToJson(ctx.cfg, doc.createNestedObject("cfg"), false);
+  doc["fw"] = MIBLO_FW_VERSION;
+  doc["board"] = MIBLO_BOARD_NAME;
+  doc["paired"] = ctx.tokens.count();
   String out;
   serializeJson(doc, out);
   sendJson(*srv, 200, out.c_str());

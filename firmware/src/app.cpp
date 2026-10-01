@@ -256,8 +256,7 @@ void loop() {
     ctx.configChanged = false;
     storage::saveConfig(ctx.cfg);
     applyConfig();
-    net::applyTimezone();
-    mdns::announce();
+    net::applyTimezone();  // (no new mDNS announcement: it carries only the id, never the name)
     if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
       strlcpy(shownName, deviceName(), sizeof(shownName));
       ctx.greeter.named(now);

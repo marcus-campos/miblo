@@ -268,8 +268,10 @@ void loop() {
   if (ctx.configChanged) {
     ctx.configChanged = false;
     storage::saveConfig(ctx.cfg);
-    applyConfig();
+    // The time zone first: night dimming and the blue light filter go by the local time, so a new
+    // zone must not light the old zone's schedule for a frame (and redraw everything twice).
     net::applyTimezone();  // (no new mDNS announcement: it carries only the id, never the name)
+    applyConfig();
     if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
       strlcpy(shownName, deviceName(), sizeof(shownName));
       ctx.greeter.named(now);

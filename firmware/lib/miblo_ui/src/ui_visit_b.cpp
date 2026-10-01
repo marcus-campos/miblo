@@ -91,6 +91,13 @@ Paws reach(int dir) { return dir > 0 ? Paws::ReachRight : Paws::ReachLeft; }
 Paws typing(uint32_t t, uint32_t every) { return (t / every) % 2 ? Paws::TapLeft : Paws::TapRight; }
 int hop(uint32_t t, uint32_t every, uint32_t shift) { return (t / every + shift) % 2 ? -4 : 0; }
 
+// Both cats the same way, mirrored: eyes (gx towards the other one, gy) and the rest alike.
+__attribute__((noinline)) void both(Scene& c, int gx, int gy, Eyes e, Paws p = Paws::Down, uint16_t extras = 0,
+                                    int dy = 0) {
+  c.f.them = look(gx * c.d, gy, e, p, extras, dy);
+  c.f.me = look(-gx * c.d, gy, e, p, extras, dy);
+}
+
 // The happy ending most activities share: hopping in turns, eyes "^ ^", a heart for the host.
 void cheer(Scene& c, Paws paws = Paws::Down) {
   const uint32_t t = c.s.t;
@@ -176,8 +183,7 @@ void toast(Scene& c) {
       hx = hClink;
       spark = true;
     }
-    c.f.them = look(2 * d, -2, p >= 1500 ? Eyes::Happy : Eyes::Open, Paws::Up);
-    c.f.me = look(-2 * d, -2, p >= 1500 ? Eyes::Happy : Eyes::Open, Paws::Up);
+    both(c, 2, -2, p >= 1500 ? Eyes::Happy : Eyes::Open, Paws::Up);
   };
   if (t < 2000) {
     c.f.them.paws = reach(d);
@@ -236,8 +242,7 @@ void movie(Scene& c) {
     c.f.me = look(-2 * d, -3, Eyes::Wide, Paws::Down, kFluffed | kSweat, t < 10600 ? -5 : 0);
     c.f.me.dx = (int8_t)-shiver;
   } else if (t < 13000) {
-    c.f.them = look(0, 0, Eyes::Closed, Paws::Cover, kSweat);
-    c.f.me = look(0, 0, Eyes::Closed, Paws::Cover, kSweat);
+    both(c, 0, 0, Eyes::Closed, Paws::Cover, kSweat);
   } else if (t < 15500) {
     c.f.them = look(3 * d, 0, Eyes::Happy, Paws::Down, kMouthWide, (t / 200) % 2 ? -2 : 0);
     c.f.me = look(-3 * d, 0, Eyes::Happy, Paws::Down, kMouthWide, (t / 200) % 2 ? 0 : -2);
@@ -276,16 +281,14 @@ void blocks(Scene& c) {
   } else if (t < kFall) {
     const uint8_t lean = (t / 220) % 2 ? 1 : 2;  // swaying left and right
     c.put(kTower, s.mid, base, (uint8_t)(6 | lean << 3), true);
-    c.f.them = look(2 * d, -2, Eyes::Wide, Paws::Down, kSweat);
-    c.f.me = look(-2 * d, -2, Eyes::Wide, Paws::Down, kSweat);
+    both(c, 2, -2, Eyes::Wide, Paws::Down, kSweat);
   } else {
     // Falling: two in-between frames, then on the floor.
     const uint32_t fall = (t - kFall) / kTumble;
     c.put(kTower, s.mid, base, (uint8_t)(6 | 32 | (fall < 2 ? 1 + fall : 0) << 3), true);
     if (t < kLaugh) {
       const int jump = t < kFall + 700 ? -5 : 0;
-      c.f.them = look(2 * d, 2, Eyes::Wide, Paws::Up, kFluffed, jump);
-      c.f.me = look(-2 * d, 2, Eyes::Wide, Paws::Up, kFluffed, jump);
+      both(c, 2, 2, Eyes::Wide, Paws::Up, kFluffed, jump);
     } else {
       cheer(c);
       c.f.them.extras |= kMouthWide;
@@ -375,11 +378,9 @@ void hotfix(Scene& c) {
   if (t < 1500) {
     // all fine: the default happy look
   } else if (t < kSmoke) {
-    c.f.them = look(2 * d, 2, Eyes::Open);
-    c.f.me = look(-2 * d, 2, Eyes::Open);
+    both(c, 2, 2, Eyes::Open);
   } else if (t < kFire) {
-    c.f.them = look(2 * d, 1, Eyes::Wide, Paws::Down, kSweat);
-    c.f.me = look(-2 * d, 1, Eyes::Wide, Paws::Down, kSweat);
+    both(c, 2, 1, Eyes::Wide, Paws::Down, kSweat);
   } else if (t < kGrab) {
     c.f.them = look(2 * d, 1, Eyes::Wide, Paws::Cover, kFluffed);
     c.f.them.dx = (int8_t)shiver;
@@ -388,8 +389,7 @@ void hotfix(Scene& c) {
     c.f.them = look(2 * d, 1, Eyes::Wide, Paws::Down, kSweat);
     c.f.me = look(-3 * d, 1, Eyes::Open, reach(-d), kGrumpy);  // determined
   } else if (t < kRelief) {
-    c.f.them = look(2 * d, 2, Eyes::Sleepy, Paws::Down, kSweat | kMouthO);
-    c.f.me = look(-2 * d, 2, Eyes::Sleepy, Paws::Down, kSweat | kMouthO);
+    both(c, 2, 2, Eyes::Sleepy, Paws::Down, kSweat | kMouthO);
   } else {
     cheer(c);
     c.f.them.extras |= kSweat;
@@ -414,8 +414,7 @@ void tests(Scene& c) {
     c.f.me = look(-2 * d, -3, e, Paws::Down, ex, fresh && n % 2 == 0 ? -3 : 0);
   } else if (t < kAll + 1300) {
     const int jump = (t / 160) % 2 ? -5 : 0;
-    c.f.them = look(2 * d, -2, Eyes::Happy, Paws::Up, 0, jump);
-    c.f.me = look(-2 * d, -2, Eyes::Happy, Paws::Up, 0, jump);
+    both(c, 2, -2, Eyes::Happy, Paws::Up, 0, jump);
   } else {
     cheer(c, Paws::Up);
   }
@@ -432,8 +431,7 @@ void notFound(Scene& c) {
   if (t < kSearch) {
     c.put(kSign404, s.mid, c.above());
     const Eyes e = t < 800 ? Eyes::Open : Eyes::Wide;
-    c.f.them = look(2 * d, -3, e, Paws::Down, t < 800 ? 0 : kMouthO);
-    c.f.me = look(-2 * d, -3, e, Paws::Down, t < 800 ? 0 : kMouthO);
+    both(c, 2, -3, e, Paws::Down, t < 800 ? 0 : kMouthO);
   } else if (t < kGiveUp) {
     // The lens sweeps from beside the guest to over the host, and back.
     const int from = s.guestX - d * c.u(14), to = s.hostX - d * c.u(6);

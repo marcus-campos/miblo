@@ -51,14 +51,15 @@ static bool matchTag(const char* tag, size_t len, Lang& out) {
     out = (region[0] == 0 || strcmp(region, "br") == 0) ? Lang::PtBR : Lang::PtPT;
     return true;
   }
-  static const struct {
-    const char* primary;
-    Lang lang;
-  } simple[] = {{"en", Lang::En}, {"es", Lang::Es}, {"fr", Lang::Fr}, {"it", Lang::It},
-                {"de", Lang::De}, {"ru", Lang::Ru}, {"zh", Lang::Zh}};
-  for (const auto& s : simple) {
-    if (strcmp(primary, s.primary) == 0) {
-      out = s.lang;
+  // Two-letter tags and their language, in flash (MIBLO_ROM).
+  static const char kSimple[][3] MIBLO_ROM = {{'e', 'n', (char)Lang::En}, {'e', 's', (char)Lang::Es},
+                                              {'f', 'r', (char)Lang::Fr}, {'i', 't', (char)Lang::It},
+                                              {'d', 'e', (char)Lang::De}, {'r', 'u', (char)Lang::Ru},
+                                              {'z', 'h', (char)Lang::Zh}};
+  if (!primary[0] || !primary[1] || primary[2]) return false;
+  for (const auto& s : kSimple) {
+    if (primary[0] == (char)mibloRomByte(s) && primary[1] == (char)mibloRomByte(s + 1)) {
+      out = (Lang)mibloRomByte(s + 2);
       return true;
     }
   }
@@ -114,7 +115,8 @@ void tr(Lang lang, S id, char* out, size_t cap) {
     out[0] = 0;
     return;
   }
-  const char* p = kLangTables[(int)lang];
+  const char* p;
+  mibloRomCopy(&p, &kLangTables[(int)lang], sizeof(p));  // the table itself is in flash too
   for (int i = 0; i < (int)id; i++) {
     while (mibloRomByte(p)) p++;
     p++;

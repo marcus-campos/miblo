@@ -4,13 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "miblo_rom.h"
+
 namespace miblo {
 
 bool toolVerb(const char* tool, S& out) {
+  // In flash (MIBLO_ROM), names inline: a table of pointers and its strings would sit in RAM.
   static const struct {
-    const char* tool;
+    char tool[13];
     S verb;
-  } kMap[] = {
+  } kMap[] MIBLO_ROM = {
       {"Edit", S::VerbEditing},      {"MultiEdit", S::VerbEditing}, {"Write", S::VerbEditing},
       {"NotebookEdit", S::VerbEditing}, {"Read", S::VerbReading},  {"Grep", S::VerbSearching},
       {"Glob", S::VerbSearching},    {"WebFetch", S::VerbFetching}, {"WebSearch", S::VerbWebSearch},
@@ -18,8 +21,10 @@ bool toolVerb(const char* tool, S& out) {
   };
   if (!tool) return false;
   for (const auto& m : kMap) {
-    if (strcmp(tool, m.tool) == 0) {
-      out = m.verb;
+    size_t k = 0;
+    while (k < sizeof(m.tool) && tool[k] && tool[k] == (char)mibloRomByte(m.tool + k)) k++;
+    if (k < sizeof(m.tool) && !tool[k] && !mibloRomByte(m.tool + k)) {
+      out = (S)mibloRomByte((const char*)&m.verb);
       return true;
     }
   }

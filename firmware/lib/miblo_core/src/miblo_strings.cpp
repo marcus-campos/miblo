@@ -1923,6 +1923,6 @@ static const char kZh[] MIBLO_ROM =
     "下方\0"  // WebSideDown
     "%s 忙起来了\0";  // FriendBusy
 
-const char* const kLangTables[] = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
+const char* const kLangTables[] MIBLO_ROM = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 
 }  // namespace miblo

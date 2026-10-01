@@ -195,9 +195,7 @@ bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
   return false;
 }
 
-bool wifiCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount) {
-  return everConfigured || hasWifiCreds || tokenCount != 0;
-}
+bool wifiCodeRequired(bool hasWifiCreds, uint8_t tokenCount) { return hasWifiCreds || tokenCount != 0; }
 
 bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp) {
   return everConfigured || hasWifiCreds || tokenCount != 0 || !viaSoftAp;

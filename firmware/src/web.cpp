@@ -9,7 +9,6 @@
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
-#include "platform/storage.h"
 
 namespace web {
 
@@ -287,11 +286,9 @@ static void handleWifiStatus() {
   sendJson(*srv, 200, out.c_str());
 }
 
-// Joining a network from the portal needs the on-screen code unless the unit is fresh (never
-// configured, nothing saved, not paired): see miblo::wifiCodeRequired.
-static bool wifiCodeNeeded() {
-  return miblo::wifiCodeRequired(storage::everConfigured(), net::hasSavedNetwork(), ctx.tokens.count());
-}
+// Joining a network from the portal needs the on-screen code unless the unit is fresh (no saved
+// network, not paired; a factory-reset unit is fresh again): see miblo::wifiCodeRequired.
+static bool wifiCodeNeeded() { return miblo::wifiCodeRequired(net::hasSavedNetwork(), ctx.tokens.count()); }
 
 // Only from a client of the setup network, while it is up: never from the home LAN.
 static bool fromSetupNetwork() { return net::apActive() && srv->client().localIP() == WiFi.softAPIP(); }
@@ -343,7 +340,9 @@ static void portalPage() {
     out += F("<label for=\"code\">");
     appendEscaped(out, tr(lang, S::WebCodeHint).c_str());
     out += F("</label><input id=\"code\" name=\"code\" inputmode=\"numeric\" maxlength=\"4\" "
-             "autocomplete=\"off\" required><p class=\"w\" id=\"cw\" hidden>");
+             "autocomplete=\"off\" required><button type=\"button\" class=\"s\" onclick=\"sc()\">");
+    appendEscaped(out, tr(lang, S::WebUnlockTitle).c_str());  // "Code on the screen"
+    out += F("</button><p class=\"w\" id=\"cw\" hidden>");
     appendEscaped(out, tr(lang, S::WebFailed).c_str());
     out += F("</p>");
   }
@@ -363,9 +362,13 @@ static void portalPage() {
   out += F("{const t=document.getElementById('tz');tzFill(document.getElementById('tzr'),t,t.dataset.cur,null);}"
            "function o(){document.getElementById('other').hidden=document.getElementById('ssid').value!==''}o();");
   if (needCode) {
-    out += F("fetch('/wifi-code',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
-             ".then(r=>{if(r.status===429)return r.json().then(j=>{const w=document.getElementById('cw');"
-             "w.textContent+=' ('+(j.retryAfter||60)+' s)';w.hidden=false;});});");
+    // The code goes on the screen only when the person asks for it (not when a passer-by merely
+    // loads the page).
+    out += F("function sc(){const w=document.getElementById('cw');w.hidden=true;"
+             "fetch('/wifi-code',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
+             ".then(r=>{if(r.status===429)return r.json().then(j=>{"
+             "w.textContent=w.dataset.t+' ('+(j.retryAfter||60)+' s)';w.hidden=false;});}).catch(()=>{});}"
+             "{const w=document.getElementById('cw');w.dataset.t=w.textContent;}");
   }
   out += F("</script>");
   pageEnd(out);

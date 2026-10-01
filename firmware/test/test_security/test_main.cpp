@@ -406,18 +406,25 @@ static void test_presence_code_never_replaced_while_active() {
 // configured, nothing saved, not paired). Anything else needs the code on the screen, so whoever
 // is near a configured unit that lost its Wi-Fi cannot move it to their network.
 static void test_wifi_code_required() {
-  // (everConfigured, hasWifiCreds, tokenCount)
-  TEST_ASSERT_FALSE(wifiCodeRequired(false, false, 0));
-  TEST_ASSERT_TRUE(wifiCodeRequired(true, false, 0));
-  TEST_ASSERT_TRUE(wifiCodeRequired(false, true, 0));
-  TEST_ASSERT_TRUE(wifiCodeRequired(false, false, 1));
-  TEST_ASSERT_TRUE(wifiCodeRequired(true, true, 4));
+  // (hasWifiCreds, tokenCount)
+  TEST_ASSERT_FALSE(wifiCodeRequired(false, 0));
+  TEST_ASSERT_TRUE(wifiCodeRequired(true, 0));
+  TEST_ASSERT_TRUE(wifiCodeRequired(false, 1));
+  TEST_ASSERT_TRUE(wifiCodeRequired(true, 4));
+}
+
+// A factory-reset unit (resale, a return) has no saved network and no pairing: it sets up again
+// without a code. everConfigured (the /.configured marker that survives a reset) is intentionally
+// not an input here; it still gates OTA (otaCodeRequired).
+static void test_wifi_code_a_reset_unit_is_frictionless() {
+  TEST_ASSERT_FALSE(wifiCodeRequired(false, 0));
 }
 
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_presence_code_never_replaced_while_active);
   RUN_TEST(test_wifi_code_required);
+  RUN_TEST(test_wifi_code_a_reset_unit_is_frictionless);
   RUN_TEST(test_info_view);
   RUN_TEST(test_public_info_has_only_three_fields);
   RUN_TEST(test_codes_and_tokens);

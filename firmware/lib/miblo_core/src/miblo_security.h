@@ -135,11 +135,13 @@ class PresenceGate {
 // interface (the home LAN) also keeps the code (and its escalating lockout) mandatory.
 bool otaCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount, bool viaSoftAp);
 
-// Does joining a network from the setup portal (POST /wifi) need the on-screen code? Not on a
-// fresh unit (never configured, no saved network, not paired): setup stays frictionless. Any of
-// those, though, and it does: the portal of a configured unit that lost its Wi-Fi is an open AP,
-// and whoever is nearby must not be able to move it to their own network.
-bool wifiCodeRequired(bool everConfigured, bool hasWifiCreds, uint8_t tokenCount);
+// Does joining a network from the setup portal (POST /wifi) need the on-screen code? Yes on a unit
+// with a saved network or a pairing: the portal of a unit that lost its Wi-Fi is an open AP, and
+// whoever is nearby must not be able to move it to their own network. No on a fresh unit, and a
+// factory-reset unit (resale, a return) has no network and no pairing, so it is fresh again and
+// sets up without friction. The /.configured marker is deliberately not an input here (it
+// survives a factory reset and still gates OTA: otaCodeRequired).
+bool wifiCodeRequired(bool hasWifiCreds, uint8_t tokenCount);
 
 // A token bucket that throttles how often an EXPENSIVE, UNAUTHENTICATED response is produced
 // (the settings/portal page and /api/info), so a flood from an unpaired client on the LAN cannot

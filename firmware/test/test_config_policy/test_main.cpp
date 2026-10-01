@@ -783,6 +783,51 @@ static void test_flash_blinks() {
   TEST_ASSERT_EQUAL(5, doc["flashBlinks"].as<int>());
 }
 
+// Blue light filter (its own schedule, separate from night dimming): off by default; 1 always,
+// 2 between blueFrom and blueTo (overnight windows too); strength 1..3; survives a reboot.
+static void test_blue_filter() {
+  Config c;
+  TEST_ASSERT_EQUAL_UINT8(0, c.blueFilter);
+  TEST_ASSERT_EQUAL_UINT8(2, c.blueLevel);
+  TEST_ASSERT_EQUAL_UINT16(21 * 60, c.blueFrom);
+  TEST_ASSERT_EQUAL_UINT16(7 * 60, c.blueTo);
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 23 * 60));  // off
+
+  TEST_ASSERT_TRUE(patch(c, "{\"blueFilter\":1,\"blueLevel\":3}"));
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 12 * 60));
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, -1));  // always: even before the clock is set
+
+  // Scheduled: its own hours, whatever night dimming says.
+  TEST_ASSERT_TRUE(patch(c, "{\"blueFilter\":2,\"blueFrom\":1290,\"blueTo\":390,\"night\":true,"
+                            "\"nightFrom\":600,\"nightTo\":660}"));
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 21 * 60 + 30));
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 0));
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 6 * 60 + 29));
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 6 * 60 + 30));
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 10 * 60 + 30));  // night dimming's hours: not the filter's
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, -1));            // unknown time: not scheduled
+  TEST_ASSERT_TRUE(patch(c, "{\"blueFrom\":480,\"blueTo\":1020}"));  // a daytime window
+  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 12 * 60));
+  TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 17 * 60));
+
+  const char* bad = nullptr;
+  TEST_ASSERT_FALSE(patch(c, "{\"blueFilter\":3}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueFilter", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueLevel\":0}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueLevel", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueLevel\":4}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":1440}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueFrom", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":600,\"blueTo\":600}", &bad));  // an empty window
+  TEST_ASSERT_EQUAL_UINT8(2, c.blueFilter);  // a rejected patch changes nothing
+
+  const Config r = storedRoundTrip(c);
+  TEST_ASSERT_EQUAL_UINT8(2, r.blueFilter);
+  TEST_ASSERT_EQUAL_UINT8(3, r.blueLevel);
+  TEST_ASSERT_EQUAL_UINT16(480, r.blueFrom);
+  TEST_ASSERT_EQUAL_UINT16(1020, r.blueTo);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_match_spec);
@@ -817,6 +862,7 @@ int main() {
   RUN_TEST(test_night_mode_config_and_brightness);
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
+  RUN_TEST(test_blue_filter);
   RUN_TEST(test_pet_latch);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);

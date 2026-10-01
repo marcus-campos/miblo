@@ -130,6 +130,16 @@ enum class S : uint8_t {
   WebNightFrom,         // settings: night mode start time
   WebNightTo,           // settings: night mode end time
   WebNightBrightness,   // settings: brightness during the night window
+  WebBlue,              // settings: blue light filter (a select: off / always / scheduled)
+  WebBlueOff,           // settings: blue light filter option "off"
+  WebBlueAlways,        // settings: blue light filter option "always"
+  WebBlueScheduled,     // settings: blue light filter option "on a schedule"
+  WebBlueFrom,          // settings: blue light filter schedule start time
+  WebBlueTo,            // settings: blue light filter schedule end time
+  WebBlueLevel,         // settings: blue light filter strength (a select)
+  WebBlueLight,         // settings: strength option "light"
+  WebBlueMedium,        // settings: strength option "medium"
+  WebBlueStrong,        // settings: strength option "strong"
   LimitFreed,           // "limit freed" screen band: the 5h window reset after real use
   RunsOutIn,            // burn-rate projection: "runs out in %s"
   TodayTitle,           // daily summary header

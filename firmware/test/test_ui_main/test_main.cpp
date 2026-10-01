@@ -1236,8 +1236,41 @@ static void test_visit_add_item_drops_bad_kinds() {
   TEST_ASSERT_EQUAL_UINT8(screens::kItemsEnd - 1, f.items[3].kind);
 }
 
+// Blue light filter: the colour under a warmer white point. Off changes nothing, black stays
+// black, red is kept, and each level is warmer than the last (blue drops faster than green).
+// ShiftCanvas applies it to every colour it forwards, and switching it off restores the colours.
+static void test_warm_color() {
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ui::warmColor(0xFFFF, 0));
+  TEST_ASSERT_EQUAL_HEX16(0x1234, ui::warmColor(0x1234, 0));
+  TEST_ASSERT_EQUAL_HEX16(0x0000, ui::warmColor(0x0000, 3));
+  TEST_ASSERT_EQUAL_HEX16(0xF800, ui::warmColor(0xF800, 3));  // pure red is untouched
+  int prevG = 63, prevB = 31;
+  for (uint8_t level = 1; level <= 3; level++) {
+    const uint16_t w = ui::warmColor(0xFFFF, level);
+    const int r = w >> 11, g = (w >> 5) & 63, b = w & 31;
+    TEST_ASSERT_EQUAL_INT(31, r);
+    TEST_ASSERT_TRUE(g < prevG && b < prevB);
+    TEST_ASSERT_TRUE(b * 63 < g * 31);  // relative to its range, blue is lower than green
+    prevG = g, prevB = b;
+  }
+  TEST_ASSERT_EQUAL_HEX16(ui::warmColor(0xFFFF, 3), ui::warmColor(0xFFFF, 9));  // clamped
+
+  FakeCanvas fc({240, 240});
+  ui::ShiftCanvas sc(fc);
+  sc.setWarmth(2);
+  TEST_ASSERT_EQUAL_UINT8(2, sc.warmth());
+  sc.fillRect(0, 0, 10, 10, 0xFFFF);
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(0xFFFF, 2), fc.colorAt(5, 5));
+  sc.fillRoundRect(20, 0, 10, 10, 2, ui::color::BLUE);
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(ui::color::BLUE, 2), fc.colorAt(25, 5));
+  sc.setWarmth(0);
+  sc.fillRect(40, 0, 10, 10, 0xFFFF);
+  TEST_ASSERT_EQUAL_INT(0xFFFF, fc.colorAt(45, 5));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_warm_color);
   RUN_TEST(test_pet_antics_order);
   RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);

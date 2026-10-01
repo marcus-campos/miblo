@@ -164,6 +164,16 @@ static void updateBacklight() {
   board::setBacklight(want);
 }
 
+// Blue light filter for the current time; when its strength changes, everything is redrawn in
+// the new colours (what is on the panel was drawn with the old ones).
+static void updateWarmth() {
+  auto& canvas = static_cast<ui::ShiftCanvas&>(screens::canvas());
+  const uint8_t want = miblo::warmthAt(ctx.cfg, minuteOfDay());
+  if (want == canvas.warmth()) return;
+  canvas.setWarmth(want);
+  firstFrame = true;
+}
+
 // A session finished moments ago (kFreshFinishSec): only then is "All done" worth showing. A new
 // idle session (or the computer coming back to idle sessions) has nothing done to report.
 static constexpr uint32_t kFreshFinishSec = 120;
@@ -178,6 +188,7 @@ static bool justFinished() {
 
 static void applyConfig() {
   updateBacklight();
+  updateWarmth();
   screens::setMascotStyle(ctx.cfg.mascot);
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
@@ -287,6 +298,7 @@ void loop() {
 
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
   updateBacklight();
+  updateWarmth();
   // Before the first snapshot ctx.snap is all zeros (parseSnapshot only writes it on success).
   const miblo::AlertView& alert = ctx.alerts.update(ctx.snap, now);
 

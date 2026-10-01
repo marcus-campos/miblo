@@ -85,49 +85,75 @@ class Canvas {
   virtual void clear(uint16_t c) { fillRect(0, 0, spec().w, spec().h, c); }
 };
 
+// Blue light filter: `c` as it looks under a warmer white point, the colour temperature of each
+// level being 4500 K, 3500 K and 2700 K (black-body RGB multipliers after Tanner Helland's
+// approximation: green 219/196/169, blue 186/137/87 out of 255; red stays). Level 0 returns `c`
+// unchanged; levels above 3 are treated as 3. A switch, not a table: on the ESP8266 a const
+// table would sit in RAM.
+inline uint16_t warmColor(uint16_t c, uint8_t level) {
+  uint16_t gm, bm;
+  switch (level) {
+    case 0: return c;
+    case 1: gm = 219, bm = 186; break;
+    case 2: gm = 196, bm = 137; break;
+    default: gm = 169, bm = 87; break;
+  }
+  const uint16_t g = (uint16_t)((((c >> 5) & 63) * gm + 127) / 255);
+  const uint16_t b = (uint16_t)(((c & 31) * bm + 127) / 255);
+  return (uint16_t)((c & 0xF800) | g << 5 | b);
+}
+
 // Draws through another canvas with everything moved by (dx, dy) pixels. Shifting the whole
 // picture a pixel or two every few minutes keeps static edges (headers, rings, text) from
 // sitting on the same pixels for hours, which is what leaves ghost images on an LCD.
 // Content moved past an edge is simply clipped by the panel.
+// It is also where the blue light filter is applied (setWarmth): every colour it forwards goes
+// through warmColor, so all screens, the mascot and the props are filtered alike. Changing the
+// warmth does not repaint what is already on the panel: the caller redraws everything.
 class ShiftCanvas : public Canvas {
  public:
   explicit ShiftCanvas(Canvas& inner) : in_(inner) {}
   void setShift(int dx, int dy) { dx_ = dx, dy_ = dy; }
   int dx() const { return dx_; }
   int dy() const { return dy_; }
+  void setWarmth(uint8_t level) { warm_ = level; }
+  uint8_t warmth() const { return warm_; }
 
   ScreenSpec spec() const override { return in_.spec(); }
-  void fillRect(int x, int y, int w, int h, uint16_t c) override { in_.fillRect(x + dx_, y + dy_, w, h, c); }
+  void fillRect(int x, int y, int w, int h, uint16_t c) override { in_.fillRect(x + dx_, y + dy_, w, h, f(c)); }
   void fillRoundRect(int x, int y, int w, int h, int r, uint16_t c) override {
-    in_.fillRoundRect(x + dx_, y + dy_, w, h, r, c);
+    in_.fillRoundRect(x + dx_, y + dy_, w, h, r, f(c));
   }
-  void drawRect(int x, int y, int w, int h, uint16_t c) override { in_.drawRect(x + dx_, y + dy_, w, h, c); }
-  void fillCircle(int cx, int cy, int r, uint16_t c) override { in_.fillCircle(cx + dx_, cy + dy_, r, c); }
+  void drawRect(int x, int y, int w, int h, uint16_t c) override { in_.drawRect(x + dx_, y + dy_, w, h, f(c)); }
+  void fillCircle(int cx, int cy, int r, uint16_t c) override { in_.fillCircle(cx + dx_, cy + dy_, r, f(c)); }
   void fillTriangle(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) override {
-    in_.fillTriangle(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, x2 + dx_, y2 + dy_, c);
+    in_.fillTriangle(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, x2 + dx_, y2 + dy_, f(c));
   }
   void wideLine(int x0, int y0, int x1, int y1, int width, uint16_t c, uint16_t bg) override {
-    in_.wideLine(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, width, c, bg);
+    in_.wideLine(x0 + dx_, y0 + dy_, x1 + dx_, y1 + dy_, width, f(c), f(bg));
   }
   void arc(int cx, int cy, int r, int ir, int a0, int a1, uint16_t fg, uint16_t bg) override {
-    in_.arc(cx + dx_, cy + dy_, r, ir, a0, a1, fg, bg);
+    in_.arc(cx + dx_, cy + dy_, r, ir, a0, a1, f(fg), f(bg));
   }
-  int text(int x, int y, const char* s, Font f, uint16_t fg, Align a, int maxW) override {
-    return in_.text(x + dx_, y + dy_, s, f, fg, a, maxW);
+  int text(int x, int y, const char* s, Font font, uint16_t fg, Align a, int maxW) override {
+    return in_.text(x + dx_, y + dy_, s, font, f(fg), a, maxW);
   }
-  int textWidth(const char* s, Font f) override { return in_.textWidth(s, f); }
-  int textBox(int x, int y, const char* s, Font f, uint16_t fg, uint16_t bg, Align a, int boxW) override {
-    return in_.textBox(x + dx_, y + dy_, s, f, fg, bg, a, boxW);
+  int textWidth(const char* s, Font font) override { return in_.textWidth(s, font); }
+  int textBox(int x, int y, const char* s, Font font, uint16_t fg, uint16_t bg, Align a, int boxW) override {
+    return in_.textBox(x + dx_, y + dy_, s, font, f(fg), f(bg), a, boxW);
   }
   bool beginLayer(int x, int y, int w, int h) override { return in_.beginLayer(x + dx_, y + dy_, w, h); }
   void endLayer() override { in_.endLayer(); }
   void releaseLayer() override { in_.releaseLayer(); }
-  void clear(uint16_t c) override { in_.clear(c); }  // the whole panel, not the shifted area
+  void clear(uint16_t c) override { in_.clear(f(c)); }  // the whole panel, not the shifted area
 
  private:
+  uint16_t f(uint16_t c) const { return warmColor(c, warm_); }
+
   Canvas& in_;
   int dx_ = 0;
   int dy_ = 0;
+  uint8_t warm_ = 0;  // blue light filter strength, 0 = off
 };
 
 }  // namespace ui

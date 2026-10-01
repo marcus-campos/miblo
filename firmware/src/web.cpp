@@ -533,8 +533,8 @@ static const char kSetJs[] PROGMEM =
     "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-    "if(k==='mascot'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
+    "'nightBrightness','blueFilter','blueFrom','blueTo','blueLevel','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
+    "if(k==='mascot'||k==='blueFilter'||k==='blueLevel'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -728,6 +728,26 @@ static void settingsPage() {
   out += F("<input id=\"nightTo\" type=\"time\" required></div></div>");
   slider(out, lang, S::WebNightBrightness, F("nightBrightness"), 1);
   out += F("</div></div>");
+  pageFlush(out);
+
+  // Blue light filter: off, always, or on its own schedule (not night dimming's hours).
+  out += F("<div class=\"c\">");
+  label(out, lang, S::WebBlue, F("blueFilter"));
+  out += F("<select id=\"blueFilter\">");
+  option(out, lang, F("0"), S::WebBlueOff);
+  option(out, lang, F("1"), S::WebBlueAlways);
+  option(out, lang, F("2"), S::WebBlueScheduled);
+  out += F("</select><div data-if=\"blueFilter:2\"><div class=\"g\"><div>");
+  label(out, lang, S::WebBlueFrom, F("blueFrom"));
+  out += F("<input id=\"blueFrom\" type=\"time\" required></div><div>");
+  label(out, lang, S::WebBlueTo, F("blueTo"));
+  out += F("<input id=\"blueTo\" type=\"time\" required></div></div></div>");
+  label(out, lang, S::WebBlueLevel, F("blueLevel"));
+  out += F("<select id=\"blueLevel\">");
+  option(out, lang, F("1"), S::WebBlueLight);
+  option(out, lang, F("2"), S::WebBlueMedium);
+  option(out, lang, F("3"), S::WebBlueStrong);
+  out += F("</select></div>");
   pageFlush(out);
 
   // About you.

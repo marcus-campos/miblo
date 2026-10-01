@@ -160,6 +160,14 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn16(v, 0, 1439, next.nightTo);
     } else if (strcmp(k, "nightBrightness") == 0) {
       ok = intIn(v, 1, 100, next.nightBrightness);
+    } else if (strcmp(k, "blueFilter") == 0) {
+      ok = intIn(v, 0, 2, next.blueFilter);
+    } else if (strcmp(k, "blueLevel") == 0) {
+      ok = intIn(v, 1, 3, next.blueLevel);
+    } else if (strcmp(k, "blueFrom") == 0) {
+      ok = intIn16(v, 0, 1439, next.blueFrom);
+    } else if (strcmp(k, "blueTo") == 0) {
+      ok = intIn16(v, 0, 1439, next.blueTo);
     } else if (strcmp(k, "mascot") == 0) {
       ok = intIn(v, 0, kMascotStyles - 1, next.mascot);
     } else if (strcmp(k, "sleepMin") == 0) {
@@ -178,6 +186,7 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
   }
   // An empty night window (start == end) is meaningless: reject whichever end the patch moved.
   if (!bad && next.nightFrom == next.nightTo) bad = patch["nightTo"].isNull() ? "nightFrom" : "nightTo";
+  if (!bad && next.blueFrom == next.blueTo) bad = patch["blueTo"].isNull() ? "blueFrom" : "blueTo";
   if (bad) {
     if (badField) *badField = bad;
     return false;
@@ -205,6 +214,10 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["nightFrom"] = cfg.nightFrom;
   out["nightTo"] = cfg.nightTo;
   out["nightBrightness"] = cfg.nightBrightness;
+  out["blueFilter"] = cfg.blueFilter;
+  out["blueLevel"] = cfg.blueLevel;
+  out["blueFrom"] = cfg.blueFrom;
+  out["blueTo"] = cfg.blueTo;
   out["mascot"] = cfg.mascot;
   out["sleepMin"] = cfg.sleepMin;
   out["petMin"] = cfg.petMin;
@@ -246,16 +259,28 @@ RotationTiming rotationTiming(const Config& cfg) {
   return t;
 }
 
-bool nightActive(const Config& cfg, int minuteOfDay) {
-  if (!cfg.night || minuteOfDay < 0 || cfg.nightFrom == cfg.nightTo) return false;
+// Inside the daily window [from, to) (local minutes; it may cross midnight, 22:00 -> 07:00). An
+// unknown time (-1) or an empty window is never inside.
+static bool inWindow(uint16_t from, uint16_t to, int minuteOfDay) {
+  if (minuteOfDay < 0 || from == to) return false;
   const int m = minuteOfDay % 1440;
-  if (cfg.nightFrom < cfg.nightTo) return m >= cfg.nightFrom && m < cfg.nightTo;
-  return m >= cfg.nightFrom || m < cfg.nightTo;  // crosses midnight (22:00 -> 07:00)
+  if (from < to) return m >= from && m < to;
+  return m >= from || m < to;
+}
+
+bool nightActive(const Config& cfg, int minuteOfDay) {
+  return cfg.night && inWindow(cfg.nightFrom, cfg.nightTo, minuteOfDay);
 }
 
 uint8_t brightnessAt(const Config& cfg, int minuteOfDay) {
   if (!nightActive(cfg, minuteOfDay)) return cfg.brightness;
   return cfg.nightBrightness < cfg.brightness ? cfg.nightBrightness : cfg.brightness;
+}
+
+uint8_t warmthAt(const Config& cfg, int minuteOfDay) {
+  if (cfg.blueFilter == 1) return cfg.blueLevel;
+  if (cfg.blueFilter == 2 && inWindow(cfg.blueFrom, cfg.blueTo, minuteOfDay)) return cfg.blueLevel;
+  return 0;
 }
 
 BootDecision decideBoot(uint8_t storedCount, bool powerOn) {

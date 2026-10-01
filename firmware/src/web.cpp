@@ -512,9 +512,10 @@ static const char kSetJs[] PROGMEM =
     "$('owner').value=s.owner||'';"
     "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
     "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
-    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it.
+    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it
+    // (or one of "a|b").
     "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
-    "x=$(k);e.hidden=v?x.value!==v:!x.checked;}}"
+    "x=$(k);e.hidden=v?!v.split('|').includes(x.value):!x.checked;}}"
     // Sliders show their value (#<id>V).
     "function rv(){for(const e of document.querySelectorAll('input[type=range]'))$(e.id+'V').textContent=e.value+'%';}"
     "function st(t,c){const e=$('st');e.textContent=t;e.className=c||'';}"
@@ -730,14 +731,15 @@ static void settingsPage() {
   out += F("</div></div>");
   pageFlush(out);
 
-  // Blue light filter: off, always, or on its own schedule (not night dimming's hours).
+  // Blue light filter: off, always, or on its own schedule (not night dimming's hours); its
+  // details only while it is on, like night mode's.
   out += F("<div class=\"c\">");
   label(out, lang, S::WebBlue, F("blueFilter"));
   out += F("<select id=\"blueFilter\">");
   option(out, lang, F("0"), S::WebBlueOff);
   option(out, lang, F("1"), S::WebBlueAlways);
   option(out, lang, F("2"), S::WebBlueScheduled);
-  out += F("</select><div data-if=\"blueFilter:2\"><div class=\"g\"><div>");
+  out += F("</select><div data-if=\"blueFilter:1|2\"><div data-if=\"blueFilter:2\"><div class=\"g\"><div>");
   label(out, lang, S::WebBlueFrom, F("blueFrom"));
   out += F("<input id=\"blueFrom\" type=\"time\" required></div><div>");
   label(out, lang, S::WebBlueTo, F("blueTo"));
@@ -747,7 +749,7 @@ static void settingsPage() {
   option(out, lang, F("1"), S::WebBlueLight);
   option(out, lang, F("2"), S::WebBlueMedium);
   option(out, lang, F("3"), S::WebBlueStrong);
-  out += F("</select></div>");
+  out += F("</select></div></div>");
   pageFlush(out);
 
   // About you.

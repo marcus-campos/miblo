@@ -133,6 +133,7 @@ void setMascotStyle(uint8_t style) {
 uint8_t mascotStyle() { return g_style; }
 void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
 uint8_t mascotAccessory() { return g_accessory; }
+uint16_t mascotSkin() { return kMascotColors[g_style].skin; }
 
 // Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
 // even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
@@ -174,6 +175,12 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
     d.tri(31 + x, -33 + b, 28 + x, -10 + b, 14 + x, -17 + b, mc.earIn);
   }
   d.rrect(-32 + x, -20 + b, 64, 52, 24, mc.skin);  // head
+  if (desk && (k.extras & kFluffed)) {  // fur standing up on both cheeks
+    for (int s = -1; s <= 1; s += 2) {
+      d.tri(s * 31 + x, -8 + b, s * 40 + x, -2 + b, s * 31 + x, 4 + b, mc.skin);
+      d.tri(s * 31 + x, 6 + b, s * 41 + x, 12 + b, s * 31 + x, 18 + b, mc.skin);
+    }
+  }
   switch (k.eyes) {
     case Eyes::Closed:
       d.rect(-22 + x, 5 + b, 16, 3, mc.lid);
@@ -192,16 +199,30 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       d.circle(14 + x + k.gx, 6 + b + k.gy, 3, color::PUPIL);
       break;
     case Eyes::Open:
-    case Eyes::Sleepy:
+    case Eyes::Sleepy: {
+      const int cross = (k.extras & kCrossEyed) ? 3 : 0;
       d.circle(-14 + x, 6 + b, 8, color::EYE_GREEN);
       d.circle(14 + x, 6 + b, 8, color::EYE_GREEN);
-      d.circle(-14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
-      d.circle(14 + x + k.gx, 6 + b + k.gy, 4, color::PUPIL);
+      d.circle(-14 + x + k.gx + cross, 6 + b + k.gy, 4, color::PUPIL);
+      d.circle(14 + x + k.gx - cross, 6 + b + k.gy, 4, color::PUPIL);
       if (k.eyes == Eyes::Sleepy) {  // heavy lids over the top half
         d.rect(-23 + x, -3 + b, 18, 8, mc.skin);
         d.rect(5 + x, -3 + b, 18, 8, mc.skin);
         d.rect(-22 + x, 4 + b, 16, 2, mc.lid);
         d.rect(6 + x, 4 + b, 16, 2, mc.lid);
+      }
+      if (k.extras & kGrumpy) {  // lids slanting down towards the nose
+        d.tri(-23 + x, -3 + b, -5 + x, -3 + b, -5 + x, 5 + b, mc.skin);
+        d.tri(23 + x, -3 + b, 5 + x, -3 + b, 5 + x, 5 + b, mc.skin);
+      }
+      break;
+    }
+    case Eyes::Dizzy:  // hypnotised: rings in the eyes
+      for (int e = -14; e <= 14; e += 28) {
+        d.circle(e + x, 6 + b, 8, color::EYE_GREEN);
+        d.circle(e + x, 6 + b, 6, color::PUPIL);
+        d.circle(e + x, 6 + b, 4, color::EYE_GREEN);
+        d.circle(e + x, 6 + b, 2, color::PUPIL);
       }
       break;
   }
@@ -209,6 +230,10 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
   drawHat(d, x, b);
   if (!desk) return;
   if (k.extras & kMouthO) d.circle(x, 26 + b, 3, mc.lid);
+  if (k.extras & kMouthWide) {  // a yawn or a sneeze
+    d.rrect(-7 + x, 22 + b, 14, 11, 5, mc.lid);
+    d.rect(-4 + x, 28 + b, 8, 4, mc.earIn);
+  }
   // A paw: a skin pad with a darker outline and toe lines, so it reads as a paw even over the
   // (skin) head.
   auto paw = [&](int px, int py, int pw, int ph, int r) {
@@ -233,7 +258,24 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       paw(-28, -5, 24, 21, 6);
       paw(4, -5, 24, 21, 6);
       break;
+    case Paws::Up:  // stretching: both paws up beside the ears
+      paw(-46, -34, 16, 11, 5);
+      paw(30, -34, 16, 11, 5);
+      break;
+    case Paws::Lick:  // the left paw at the mouth
+      paw(-12, 16, 16, 11, 5);
+      paw(10, 28, 16, 11, 5);
+      break;
+    case Paws::TapLeft:  // the left paw lifted (typing, playing keys)
+      paw(-26, 23, 16, 11, 5);
+      paw(10, 28, 16, 11, 5);
+      break;
+    case Paws::TapRight:
+      paw(-26, 28, 16, 11, 5);
+      paw(10, 23, 16, 11, 5);
+      break;
   }
+  if (k.extras & kTongue) d.rrect(-3 + x, 22 + b, 6, 6, 2, mc.earIn);
   if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming
     d.rect(29 + x, 6 + b, 2, 5, color::MUTED);
     d.rect(34 + x, 4 + b, 2, 6, color::MUTED);
@@ -267,6 +309,12 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
     d.tri(43, -32, 46, -32, 40, -29, color::DIM);
     d.tri(46, -32, 43, -29, 40, -29, color::DIM);
     d.rect(40, -29, 6, 2, color::DIM);
+  }
+  if (k.extras & kStars) {  // dizzy: little stars above the head, fixed like the zzz
+    for (int sx = -32; sx <= 26; sx += 29) {
+      d.rect(sx, -45, 7, 2, color::AMBER);
+      d.rect(sx + 3, -48, 2, 8, color::AMBER);
+    }
   }
 }
 

@@ -1011,8 +1011,33 @@ static void test_update_available_screen() {
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 }
 
+// The new poses (stretching, licking, playing keys, dizzy, grumpy, cross-eyed, fluffed up) stay
+// inside the cat's 96-unit box: drawn with the box touching the top-left and bottom-right corners,
+// nothing may fall off the screen.
+static void test_mascot_new_poses_stay_in_box() {
+  using screens::Eyes;
+  using screens::Paws;
+  const screens::MascotLook looks[] = {
+      {0, -3, 0, 0, Eyes::Closed, Paws::Up, screens::kMouthWide},
+      {0, 0, 0, 0, Eyes::Closed, Paws::Lick, screens::kTongue},
+      {0, 0, 0, 3, Eyes::Happy, Paws::TapLeft, 0},
+      {0, 0, 0, 3, Eyes::Happy, Paws::TapRight, 0},
+      {0, 0, 0, 0, Eyes::Dizzy, Paws::Down, screens::kStars},
+      {0, 0, 3, 0, Eyes::Open, Paws::Down, (uint16_t)(screens::kGrumpy | screens::kCrossEyed)},
+      {0, -6, 3, 0, Eyes::Wide, Paws::Down, (uint16_t)(screens::kFluffed | screens::kAlarm)},
+  };
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  for (const auto& k : looks) {
+    screens::deskMascot(36, 36, k, 36, false, false);
+    screens::deskMascot(204, 204, k, 36, false, false);
+  }
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);
   RUN_TEST(test_overview_attention_content);
   RUN_TEST(test_discreet_mode_hides_details);

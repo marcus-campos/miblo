@@ -64,10 +64,17 @@ void mascot(int cx, int cy, uint8_t frame, bool small = false);
 uint8_t mascotPose(uint8_t frame);
 
 // Expression of the big Desk mascot (design units of the 96-unit box).
-enum class Eyes : uint8_t { Open, Closed, Wide, Sleepy, Happy };  // Happy: "^ ^"
-enum class Paws : uint8_t { Down, ReachLeft, ReachRight, Cover };  // Cover: paws over the eyes
-// MascotLook::extras. kCoffee: a cup in hand (a friend's visit); kHeart: a heart beside the ear.
-enum : uint8_t { kSweat = 1, kAlarm = 2, kZ1 = 4, kZ2 = 8, kMouthO = 16, kCoffee = 32, kHeart = 64 };
+enum class Eyes : uint8_t { Open, Closed, Wide, Sleepy, Happy, Dizzy };  // Happy: "^ ^"; Dizzy: rings
+// Cover: paws over the eyes; Up: stretching; Lick: one paw at the mouth; TapLeft/TapRight: one
+// paw lifted (typing, playing keys).
+enum class Paws : uint8_t { Down, ReachLeft, ReachRight, Cover, Up, Lick, TapLeft, TapRight };
+// MascotLook::extras. kCoffee: a cup in hand (a friend's visit); kHeart: a heart beside the ear;
+// kMouthWide: a yawn or a sneeze; kTongue: the tip of the tongue; kGrumpy: frowning lids;
+// kCrossEyed: pupils to the middle; kFluffed: fur standing up; kStars: dizzy stars over the head.
+enum : uint16_t {
+  kSweat = 1, kAlarm = 2, kZ1 = 4, kZ2 = 8, kMouthO = 16, kCoffee = 32, kHeart = 64,
+  kMouthWide = 128, kTongue = 256, kGrumpy = 512, kCrossEyed = 1024, kFluffed = 2048, kStars = 4096
+};
 struct MascotLook {
   int8_t dx;   // whole cat sideways (shiver)
   int8_t dy;   // whole cat up/down (hop < 0)
@@ -75,7 +82,7 @@ struct MascotLook {
   int8_t gy;
   Eyes eyes;
   Paws paws;
-  uint8_t extras;  // kSweat | kAlarm | kZ1 | kZ2 | kMouthO
+  uint16_t extras;  // the k* flags above
   bool operator==(const MascotLook& o) const {
     return dx == o.dx && dy == o.dy && gx == o.gx && gy == o.gy && eyes == o.eyes && paws == o.paws &&
            extras == o.extras;
@@ -93,6 +100,8 @@ uint8_t mascotStyle();
 // drawn from then on.
 void setMascotAccessory(uint8_t accessory);
 uint8_t mascotAccessory();
+// The current mascot colour's skin (props drawn in the cat's colour, like its tail).
+uint16_t mascotSkin();
 // Desk mascot with front paws: flat primitives only, inside the square
 // (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
 // `table`: the table edge under the paws (left out when the mascot moves around the screen).

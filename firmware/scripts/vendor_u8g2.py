@@ -57,6 +57,10 @@ U8G2_COMMIT = "d6c8499c5f2707cac8eccd09fd8f677d12b17977"
 # pinyin (8), box drawing (9) and the 3755 level-1 hanzi (16-55). Latin, Cyrillic and digits come
 # from the fonts before it in each stack.
 GB2312_ROWS = [1, 2, 3, 8, 9] + list(range(16, 56))
+# Characters outside those rows that a translated line needs: GB2312 level 2 (rows 56-87) has
+# about 3000 rarer hanzi, too many to carry for a few words, so only the ones in use are added.
+# 筝: 风筝 (kite), in the visit line FriendKite.
+EXTRA_CHARS = "筝"
 
 # Fonts only used for a few characters: vendored as a subset (same glyph data and metrics, the
 # other glyphs dropped) under a new name. fub20 draws percentages and "--" (NumM) and the "%"
@@ -116,7 +120,7 @@ def subset_font(data, chars):
 
 
 def gb2312_chars():
-    """Unicode code points of ASCII plus the GB2312_ROWS of GB2312."""
+    """Unicode code points of ASCII, the GB2312_ROWS of GB2312 and EXTRA_CHARS."""
     chars = set(range(32, 127))
     for row in GB2312_ROWS:
         for col in range(1, 95):
@@ -124,6 +128,7 @@ def gb2312_chars():
                 chars.add(ord(bytes([0xA0 + row, 0xA0 + col]).decode("gb2312")))
             except UnicodeDecodeError:
                 pass  # unassigned cell
+    chars.update(ord(c) for c in EXTRA_CHARS)
     return sorted(chars)
 
 

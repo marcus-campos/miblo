@@ -1915,7 +1915,7 @@ static const char kZh[] MIBLO_ROM =
     "和 %s 钓鱼\0"  // FriendFishing
     "和 %s 共撑一把伞\0"  // FriendUmbrella
     "和 %s 玩纸杯电话\0"  // FriendCanPhone
-    "和 %s 一起放飞\0"  // FriendKite
+    "和 %s 放风筝\0"  // FriendKite
     "其他 Miblo 在我的\0"  // WebFriendsSide
     "右边\0"  // WebSideRight
     "左边\0"  // WebSideLeft

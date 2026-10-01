@@ -180,8 +180,8 @@ void pixelShift(uint8_t i, int8_t& dx, int8_t& dy);
 // Nobody using it: `idleMs` is how long the computer has been away (Disconnected) or everything
 // has been quiet (the Desk cycle); 0 on any other screen. After kRoamAfterMs the mascot wanders
 // around the screen (pet mode: nothing stays still); after sleepMin minutes (0 = never) the
-// panel turns off. Someone opening the gadget's pages, or the plugin looking for it, keeps the
-// normal screens up for kInteractionAwakeMs (the address and pairing code are on them).
+// panel turns off. Someone opening the gadget's pages, or the plugin asking it for a code, keeps
+// the normal screens up for kInteractionAwakeMs (the address and pairing code are on them).
 constexpr uint32_t kRoamAfterMs = 20UL * 60000;
 constexpr uint32_t kInteractionAwakeMs = 120000;
 bool petMode(uint32_t idleMs, uint32_t sinceInteractionMs);

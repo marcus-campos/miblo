@@ -120,9 +120,9 @@ void loop(uint32_t nowMs) {
     miblo::MdnsInfo i = info();
     miblo::MdnsReply r = miblo::mdnsRespond(in, (size_t)len, port, i, out, sizeof(out));
     if (!r.len) continue;
-    // The plugin looking for gadgets (/miblo:pair shows the code on screen next): wake the
-    // screen. Only queries naming our service count, not the LAN's generic service browsing.
-    if (memmem(in, (size_t)len, "\x06_miblo", 7)) ctx.lastInteractionMs = millis();
+    // A query is not someone at the gadget: the plugin also searches the network on its own (to
+    // find a unit that moved, every minute while one is unreachable), which would keep pet mode
+    // and the screen's sleep from ever starting. /miblo:pair wakes the screen with its code request.
     if (r.unicast) {
       udp.beginPacket(from, port);
       udp.write(out, r.len);

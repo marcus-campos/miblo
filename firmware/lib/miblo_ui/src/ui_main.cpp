@@ -771,6 +771,67 @@ DeskMood deskMoodFor(const Snapshot& s, uint32_t now, bool* focusLeft) {
   return deskMood(worst);
 }
 
+// Props of the programmer activities (miblo::Gift), drawn over the band after the cats.
+enum class PropKind : uint8_t { None, Duck, Laptop, Lgtm, Bug, Rocket, Burst };
+struct Prop {
+  PropKind kind;
+  int x, y;   // screen coordinates (see drawProp for the anchor of each)
+  uint8_t f;  // animation frame: code lines, rocket flame, wing beat...
+  int x2;     // Yarn: where its thread starts (0 = none)
+};
+constexpr uint16_t kDuckYellow = 0xFFE0;
+constexpr uint16_t kOrange = 0xFC00;
+constexpr uint16_t kGrey = 0x8410;
+constexpr uint16_t kDarkGreen = 0x0400;
+
+static void drawProp(const Prop& p) {
+  const int x = p.x, y = p.y, u = Sz(1) < 1 ? 1 : Sz(1);
+  switch (p.kind) {
+    case PropKind::Duck:  // rubber duck (centre of the body)
+      C().fillCircle(x, y, Sz(6), kDuckYellow);
+      C().fillCircle(x + Sz(5), y - Sz(6), Sz(4), kDuckYellow);
+      C().fillTriangle(x + Sz(8), y - Sz(7), x + Sz(13), y - Sz(5), x + Sz(8), y - Sz(4), kOrange);
+      C().fillRect(x + Sz(6), y - Sz(8), u + u, u + u, color::PUPIL);
+      break;
+    case PropKind::Laptop:  // (centre of the keyboard) with code scrolling on the screen
+      C().fillRect(x - Sz(15), y, Sz(30), Sz(3), kGrey);
+      C().fillRect(x - Sz(12), y - Sz(17), Sz(24), Sz(17), kGrey);
+      C().fillRect(x - Sz(11), y - Sz(16), Sz(22), Sz(15), color::BLACK);
+      for (int i = 0; i < 4; i++) {
+        const int len = 4 + (p.f * 5 + i * 7) % 13;
+        C().fillRect(x - Sz(9) + (i % 2) * Sz(3), y - Sz(14) + i * Sz(3), Sz(len), u, i % 3 ? color::GREEN : color::BLUE);
+      }
+      break;
+    case PropKind::Lgtm:  // code review sign (top-left corner)
+      C().fillRoundRect(x, y, Sz(44), Sz(16), Sz(3), color::WHITE);
+      C().text(x + Sz(22), y + Sz(12), "LGTM", Font::SmallBold, kDarkGreen, Align::Center, Sz(42));
+      break;
+    case PropKind::Bug:  // a little bug (centre of the body), legs going
+      for (int s = -1; s <= 1; s += 2) {
+        for (int l = -1; l <= 1; l++) C().fillRect(x + l * Sz(2), y + s * Sz(3) + (p.f % 2 ? s : 0), u, Sz(2), color::PUPIL);
+      }
+      C().fillCircle(x, y, Sz(3), color::RED);
+      C().fillCircle(x + Sz(3), y, Sz(2), color::PUPIL);
+      break;
+    case PropKind::Rocket:  // (tip of the nose), flame when f > 0
+      C().fillTriangle(x, y, x - Sz(4), y + Sz(6), x + Sz(4), y + Sz(6), color::RED);
+      C().fillRect(x - Sz(4), y + Sz(6), Sz(8), Sz(12), color::WHITE);
+      C().fillCircle(x, y + Sz(10), Sz(2), color::BLUE);
+      C().fillTriangle(x - Sz(4), y + Sz(12), x - Sz(8), y + Sz(19), x - Sz(4), y + Sz(18), color::RED);
+      C().fillTriangle(x + Sz(4), y + Sz(12), x + Sz(8), y + Sz(19), x + Sz(4), y + Sz(18), color::RED);
+      if (p.f) C().fillTriangle(x - Sz(3), y + Sz(18), x + Sz(3), y + Sz(18), x, y + Sz(21 + (p.f % 2) * 3), color::AMBER);
+      break;
+    case PropKind::Burst:  // the bug is fixed: a spark
+      C().fillRect(x - Sz(6), y - u, Sz(12), u + u, color::AMBER);
+      C().fillRect(x - u, y - Sz(6), u + u, Sz(12), color::AMBER);
+      C().fillCircle(x, y, Sz(2), color::WHITE);
+      break;
+    case PropKind::None: break;
+  }
+}
+
+constexpr uint16_t kCoffeeBrown = 0x6A20;
+
 // ---- pet mode ----
 // The box moves at most a pixel a frame and carries a margin of background around its content,
 // so each redraw also wipes where it was; a bigger jump (a stalled frame) clears the screen first.
@@ -848,37 +909,112 @@ RoamAntic roamAntic(uint32_t ms, uint32_t* atMs) {
 // The pet's sign: visible (not the screen's black), with a lighter edge.
 constexpr uint16_t kSignFill = 0x2125;  // #26262c
 constexpr uint16_t kSignEdge = 0x5ACC;  // #5a5a66
-constexpr uint16_t kCoffeeBrown = 0x6A20;
 
-// The crossed-out laptop (computer away), in the sign's top-right corner, beside the cat's paws.
+// The crossed-out laptop (computer away), in the sign's top-right corner.
 constexpr int kAwayIconW = 22, kAwayIconH = 15;
 
-void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h) {
-  const int top = cy - roamH() / 2;
-  const int sy = top + Y(kRoamMargin) + 2 * Sz(kRoamCatHalf) - Sz(10);  // the sign's top edge
+static void signAwayIcon(int sx, int sy, int sw, int& x, int& y, int& w, int& h) {
   w = Sz(kAwayIconW), h = Sz(kAwayIconH);
-  x = cx + roamW() / 2 - X(kRoamMargin) - Sz(8) - w;
+  x = sx + sw - Sz(8) - w;
   y = sy + Sz(6);
 }
 
-void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
-          uint32_t lookMs, bool computerAway) {
-  int cx, cy;
-  roamPosition(ms, cx, cy);
-  MascotLook k = deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs);
-  // Antics while it is calm and nothing else is being said (a friend's hi, a nap together).
+// What pet mode shows at a given moment: the cat, its sign (held, or down on the floor), and the
+// props of the antic playing.
+struct RoamScene {
+  int catX, catY;      // the cat's centre
+  int sx, sy, sw, sh;  // the sign
+  bool floor;          // the sign is (going) down on the floor: the whole screen is redrawn
+  bool catBehind;      // peekaboo: the cat is drawn before the sign, which hides it
+  MascotLook k;
+  int signDx;          // the sign wiggles (batted, a sneeze)
+  bool blot;           // coffee spilled on the sign
+  int drops;           // coffee drops falling (0..3)
+  int curX, curY;      // the mouse cursor on the sign, 0..100 (curX -1: none)
+  bool stamp;          // "LGTM" stamped on the sign
+  Prop props[5];
+  uint8_t nProps;
+};
+
+static void addProp(RoamScene& sc, PropKind kind, int x, int y, uint8_t f = 0, int x2 = 0) {
+  if (sc.nProps < sizeof(sc.props) / sizeof(sc.props[0])) sc.props[sc.nProps++] = Prop{kind, x, y, f, x2};
+}
+
+static int lerp(int a, int b, uint32_t t, uint32_t len) {
+  if (t >= len) return b;
+  return a + (int)((int64_t)(b - a) * (int32_t)t / (int32_t)len);
+}
+
+// The cat roaming with the sign in its paws, the box centred on (rx, ry).
+static void heldLayout(int rx, int ry, RoamScene& sc) {
+  const int top = ry - roamH() / 2, left = rx - roamW() / 2;
+  sc.catX = rx;
+  sc.catY = top + Y(kRoamMargin) + Sz(kRoamCatHalf);
+  sc.sx = left + X(kRoamMargin);
+  sc.sw = roamW() - 2 * X(kRoamMargin);
+  sc.sy = sc.catY + Sz(kRoamCatHalf) - Sz(10);
+  sc.sh = top + roamH() - Y(kRoamMargin) - sc.sy;
+}
+
+// The sign on the floor (bottom of the screen) and the cat above it, both centred: the antics
+// lay their props out around this spot. `shift` (-1..1) moves the sign a pixel from one antic to
+// the next, so it never sits on exactly the same pixels.
+constexpr int kPlayCatY = 68;
+static void floorLayout(int shift, RoamScene& sc) {
+  sc.catX = X(120);
+  sc.catY = Y(kPlayCatY);
+  sc.sx = X(120) - sc.sw / 2 + shift;
+  sc.sy = Y(240) - Y(3) - sc.sh - (shift < 0 ? -shift : shift);
+}
+
+void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h) {
+  RoamScene sc{};
+  heldLayout(cx, cy, sc);
+  signAwayIcon(sc.sx, sc.sy, sc.sw, x, y, w, h);
+}
+
+static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc);   // Task 3 (existing four) + Task 4
+static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc);  // Tasks 5 and 6
+
+static RoamScene roamScene(uint32_t ms, const MascotLook& base, bool playful) {
+  RoamScene sc{};
+  sc.curX = -1;
+  sc.k = base;
+  int rx, ry;
+  roamPosition(ms, rx, ry);
+  heldLayout(rx, ry, sc);
   uint32_t at = 0;
-  const bool playful = (mood == DeskMood::Calm || mood == DeskMood::Watchful) && !(note && note[0]);
-  const RoamAntic antic = playful ? roamAntic(ms, &at) : RoamAntic::None;
-  int signDx = 0;          // the sign wiggles when batted
-  bool blot = false;       // coffee spilled on the sign
-  int drops = 0;           // coffee drops falling (0..3)
-  int curX = -1, curY = 0; // the mouse cursor on the sign (-1 = none)
-  switch (antic) {
+  const RoamAntic a = playful ? roamAntic(ms, &at) : RoamAntic::None;
+  if (a == RoamAntic::None) return sc;
+  if (anticOnSign(a)) {
+    signAntic(a, at, sc);
+    return sc;
+  }
+  // Away from the sign: put it down on the floor, play above it, pick it up again (back where the
+  // roaming has got to by then).
+  const RoamScene held = sc;
+  floorLayout((int)((ms / kAnticEveryMs) % 3) - 1, sc);
+  sc.floor = true;
+  if (at < kAnticPutMs || at >= kAnticPutMs + kAnticMs) {
+    const uint32_t t = at < kAnticPutMs ? at : kAnticFloorMs - at;  // 0 = held .. kAnticPutMs = down
+    sc.catX = lerp(held.catX, sc.catX, t, kAnticPutMs);
+    sc.catY = lerp(held.catY, sc.catY, t, kAnticPutMs);
+    sc.sx = lerp(held.sx, sc.sx, t, kAnticPutMs);
+    sc.sy = lerp(held.sy, sc.sy, t, kAnticPutMs);
+    sc.k = MascotLook{0, 0, 0, 3, Eyes::Open, Paws::Down, 0};  // eyes on the sign it carries
+    return sc;
+  }
+  floorAntic(a, at - kAnticPutMs, sc);
+  return sc;
+}
+
+static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc) {
+  MascotLook& k = sc.k;
+  switch (a) {
     case RoamAntic::Bat: {  // bats at the sign with one paw, then the other
       const bool left = (at / 400) % 2;
       k = MascotLook{0, 0, (int8_t)(left ? -3 : 3), 3, Eyes::Open, left ? Paws::ReachLeft : Paws::ReachRight, 0};
-      if ((at / 200) % 2) signDx = left ? -Sz(2) : Sz(2);
+      if ((at / 200) % 2) sc.signDx = left ? -Sz(2) : Sz(2);
       if (at >= kAnticMs - 1500) k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
       break;
     }
@@ -887,21 +1023,21 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
         k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, kCoffee};
       } else if (at < 3000) {
         k = MascotLook{2, -2, 3, 3, Eyes::Open, Paws::Down, kCoffee};
-        drops = 1 + (int)((at - 2000) / 350);
+        sc.drops = 1 + (int)((at - 2000) / 350);
       } else if (at < 6000) {
         k = MascotLook{(int8_t)((at / 120) % 2 ? -1 : 1), 0, 0, 3, Eyes::Wide, Paws::Down, kSweat | kMouthO};
-        blot = true;
+        sc.blot = true;
       } else {
         k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Cover, kSweat};
-        blot = true;
+        sc.blot = true;
       }
       break;
     case RoamAntic::Cursor: {  // a mouse cursor runs over the sign; eyes on it, then a pounce
       const uint32_t pounce = kAnticMs - 1500;
       if (at < pounce) {
-        curX = shuttle(at, 2600, 100);  // 0..100 across the sign, placed below
-        curY = shuttle(at + 700, 1900, 100);
-        k = MascotLook{0, 0, (int8_t)(curX < 35 ? -3 : curX > 65 ? 3 : 0), 3, Eyes::Wide, Paws::Down, 0};
+        sc.curX = shuttle(at, 2600, 100);
+        sc.curY = shuttle(at + 700, 1900, 100);
+        k = MascotLook{0, 0, (int8_t)(sc.curX < 35 ? -3 : sc.curX > 65 ? 3 : 0), 3, Eyes::Wide, Paws::Down, 0};
       } else {
         k = MascotLook{0, (int8_t)(at < pounce + 500 ? -4 : 0), 0, 3, Eyes::Happy,
                        at < pounce + 500 ? Paws::ReachLeft : Paws::Down, 0};
@@ -910,14 +1046,68 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     }
     case RoamAntic::Nap:  // dozes off on the sign
       if (at < 1200) k = MascotLook{0, 0, 0, 0, Eyes::Sleepy, Paws::Down, 0};
-      else if (at < kAnticMs - 1000) k = MascotLook{0, 3, 0, 0, Eyes::Closed, Paws::Down, (uint8_t)((at / 900) % 2 ? kZ1 : kZ1 | kZ2)};
+      else if (at < kAnticMs - 1000)
+        k = MascotLook{0, 3, 0, 0, Eyes::Closed, Paws::Down, (uint16_t)((at / 900) % 2 ? kZ1 : kZ1 | kZ2)};
       else k = MascotLook{0, 0, 0, -3, Eyes::Open, Paws::Down, 0};
       break;
-    case RoamAntic::None: break;
-    default: break;  // the other antics are drawn later; until then it looks calm
+    default: break;  // Task 4
   }
-  const int bw = roamW(), bh = roamH();
-  const int left = cx - bw / 2, top = cy - bh / 2;
+}
+
+static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
+  (void)a;
+  (void)p;
+  (void)sc;  // Tasks 5 and 6
+}
+
+// The sign's face: clock, limits, next reset (or "limit freed"), the last task, the away icon,
+// and what an antic did to it (coffee, cursor, stamp).
+static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, const char* reset, uint16_t resetFg,
+                     const char* lastName, uint16_t nameFg, const char* lastWhen, bool computerAway) {
+  const int sx = sc.sx + sc.signDx, sy = sc.sy, sw = sc.sw, sh = sc.sh;
+  C().fillRoundRect(sx, sy, sw, sh, Sz(6), kSignEdge);
+  C().fillRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, Sz(5), kSignFill);
+  const int w = sw - 2 * X(kRoamMargin), tx = sx + sw / 2, y0 = sy + Sz(10);
+  C().text(tx, y0 + Y(16), hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
+  if (lim[0]) C().text(tx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
+  if (reset[0]) C().text(tx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
+  if (lastName[0]) C().text(tx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
+  if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
+  if (sc.blot) {  // a coffee stain across the top of the sign
+    C().fillCircle(tx - Sz(14), sy + Sz(9), Sz(6), kCoffeeBrown);
+    C().fillCircle(tx - Sz(3), sy + Sz(12), Sz(8), kCoffeeBrown);
+    C().fillCircle(tx + Sz(11), sy + Sz(8), Sz(5), kCoffeeBrown);
+    C().fillCircle(tx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
+  }
+  for (int i = 0; i < sc.drops; i++) C().fillCircle(sc.catX + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
+  if (sc.curX >= 0) {  // the mouse cursor: a white arrow
+    const int ax = sx + Sz(10) + (sw - Sz(24)) * sc.curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * sc.curY / 100;
+    C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
+    C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
+  }
+  if (sc.stamp) drawProp(Prop{PropKind::Lgtm, sx + sw - Sz(50), sy + sh - Sz(22), 0, 0});
+  if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
+    int ix, iy, iw, ih;
+    signAwayIcon(sx, sy, sw, ix, iy, iw, ih);
+    const int t1 = Sz(1) > 0 ? Sz(1) : 1;
+    const int lw = iw - Sz(4), lh = ih - Sz(4), lx = ix + Sz(2);  // the lid, above the base
+    C().fillRect(lx, iy, lw, t1, color::DIM);
+    C().fillRect(lx, iy + lh - t1, lw, t1, color::DIM);
+    C().fillRect(lx, iy, t1, lh, color::DIM);
+    C().fillRect(lx + lw - t1, iy, t1, lh, color::DIM);
+    C().fillRect(ix, iy + lh + t1, iw, Sz(2), color::DIM);  // the base
+    // The slash, set off from the outline by a gap in the sign's colour.
+    const int inset = Sz(3);
+    C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
+    C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(2), color::AMBER, kSignFill);
+  }
+}
+
+void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
+          uint32_t lookMs, bool computerAway) {
+  // Antics while it is calm and nothing else is being said (a friend's hi, a nap together).
+  const bool playful = (mood == DeskMood::Calm || mood == DeskMood::Watchful) && !(note && note[0]);
+  const RoamScene sc = roamScene(ms, deskLook(mood, true, lookMs == UINT32_MAX ? ms : lookMs), playful);
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
 
   // The card's lines (empty when unknown).
@@ -956,61 +1146,34 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     nameFg = color::AMBER;
   }
 
-  uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(cx * 1000 + cy)), k);
+  uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(sc.catX * 1000 + sc.catY)), sc.k);
+  h = hashInt(h, (uint32_t)(sc.sx * 1000 + sc.sy));
   h = hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim), reset), lastName), lastWhen);
   h = hashInt(h, mascotAccessory());
-  h = hashInt(hashInt(h, (uint32_t)(signDx + 16) | (uint32_t)blot << 8 | (uint32_t)drops << 9),
-              (uint32_t)((curX + 1) * 1000 + curY));
-  h = hashInt(h, computerAway);
+  h = hashInt(h, (uint32_t)sc.floor | (uint32_t)sc.catBehind << 1 | (uint32_t)sc.blot << 2 | (uint32_t)sc.stamp << 3 |
+                     (uint32_t)sc.drops << 4 | (uint32_t)(sc.signDx + 16) << 8 | (uint32_t)computerAway << 16);
+  h = hashInt(h, (uint32_t)((sc.curX + 1) * 1000 + sc.curY));
+  for (uint8_t i = 0; i < sc.nProps; i++) {
+    const Prop& p = sc.props[i];
+    h = hashInt(hashInt(h, (uint32_t)p.kind | (uint32_t)p.f << 8), (uint32_t)(p.x * 1000 + p.y) ^ ((uint32_t)p.x2 << 20));
+  }
   if (!dirty(R_BODY, h)) return;
+  // The held sign travels in a box around the cat (cleared as it moves); away from the sign the
+  // whole screen is redrawn. Switching between the two clears the screen.
+  const int bw = sc.floor ? X(240) : roamW(), bh = sc.floor ? Y(240) : roamH();
+  const int left = sc.floor ? 0 : sc.catX - bw / 2;
+  const int top = sc.floor ? 0 : sc.catY - Sz(kRoamCatHalf) - Y(kRoamMargin);
   static int lastX = -1000, lastY = -1000;
-  if (abs(cx - lastX) > X(kRoamMargin) || abs(cy - lastY) > Y(kRoamMargin)) C().clear(color::BG);
-  lastX = cx, lastY = cy;
-  const int catY = top + Y(kRoamMargin) + Sz(kRoamCatHalf);
-  const int y0 = catY + Sz(kRoamCatHalf);
+  static bool wasFloor = false;
+  if (sc.floor != wasFloor || (!sc.floor && (abs(left - lastX) > X(kRoamMargin) || abs(top - lastY) > Y(kRoamMargin))))
+    C().clear(color::BG);
+  lastX = left, lastY = top, wasFloor = sc.floor;
   auto draw = [&] {
     C().fillRect(left, top, bw, bh, color::BG);
-    // The sign, held up to the cat's paws (drawn first: the paws rest on its top edge).
-    const int sx = left + X(kRoamMargin) + signDx, sw = bw - 2 * X(kRoamMargin);
-    const int sy = y0 - Sz(10), sh = top + bh - Y(kRoamMargin) - sy;
-    C().fillRoundRect(sx, sy, sw, sh, Sz(6), kSignEdge);
-    C().fillRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, Sz(5), kSignFill);
-    const int w = sw - 2 * X(kRoamMargin);
-    const int tx = cx + signDx;
-    C().text(tx, y0 + Y(16), clk.hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
-    if (lim[0]) C().text(tx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
-    if (reset[0]) C().text(tx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
-    if (lastName[0]) C().text(tx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
-    if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
-    if (blot) {  // a coffee stain across the top of the sign
-      C().fillCircle(cx - Sz(14), sy + Sz(9), Sz(6), kCoffeeBrown);
-      C().fillCircle(cx - Sz(3), sy + Sz(12), Sz(8), kCoffeeBrown);
-      C().fillCircle(cx + Sz(11), sy + Sz(8), Sz(5), kCoffeeBrown);
-      C().fillCircle(cx + Sz(22), sy + Sz(14), Sz(2), kCoffeeBrown);
-    }
-    for (int i = 0; i < drops; i++) C().fillCircle(cx + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
-    if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
-      int ix, iy, iw, ih;
-      roamAwayIcon(cx, cy, ix, iy, iw, ih);
-      ix += signDx;
-      const int t1 = Sz(1) > 0 ? Sz(1) : 1;
-      const int lw = iw - Sz(4), lh = ih - Sz(4), lx = ix + Sz(2);  // the lid, above the base
-      C().fillRect(lx, iy, lw, t1, color::DIM);
-      C().fillRect(lx, iy + lh - t1, lw, t1, color::DIM);
-      C().fillRect(lx, iy, t1, lh, color::DIM);
-      C().fillRect(lx + lw - t1, iy, t1, lh, color::DIM);
-      C().fillRect(ix, iy + lh + t1, iw, Sz(2), color::DIM);  // the base
-      // The slash, set off from the outline by a gap in the sign's colour.
-      const int inset = Sz(3);
-      C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
-      C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(2), color::AMBER, kSignFill);
-    }
-    if (curX >= 0) {  // the mouse cursor: a white arrow
-      const int ax = sx + Sz(10) + (sw - Sz(24)) * curX / 100, ay = sy + Sz(12) + (sh - Sz(28)) * curY / 100;
-      C().fillTriangle(ax, ay, ax, ay + Sz(11), ax + Sz(8), ay + Sz(8), color::WHITE);
-      C().fillRect(ax + Sz(3), ay + Sz(8), Sz(2), Sz(5), color::WHITE);
-    }
-    deskMascot(cx, catY, k, kRoamCatHalf, false, false);  // over the sign, no background square
+    if (sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);
+    drawSign(sc, clk.hhmm, lim, reset, resetFg, lastName, nameFg, lastWhen, computerAway);
+    if (!sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);  // over the sign
+    for (uint8_t i = 0; i < sc.nProps; i++) drawProp(sc.props[i]);
   };
   // In strips, like the desk mascot: no big heap block, no flash.
   const int stripH = (bh + kCatStrips - 1) / kCatStrips;
@@ -1036,64 +1199,6 @@ static int walk(uint32_t ms, uint32_t t0, int a, int b) {
   if (ms <= t0) return a;
   if (ms >= t0 + miblo::kVisitWalkMs) return b;
   return a + (int)((int64_t)(b - a) * (int32_t)(ms - t0) / (int32_t)miblo::kVisitWalkMs);
-}
-
-// Props of the programmer activities (miblo::Gift), drawn over the band after the cats.
-enum class PropKind : uint8_t { None, Duck, Laptop, Lgtm, Bug, Rocket, Burst };
-struct Prop {
-  PropKind kind;
-  int x, y;   // screen coordinates (see drawProp for the anchor of each)
-  uint8_t f;  // animation frame: code lines, rocket flame
-};
-constexpr uint16_t kDuckYellow = 0xFFE0;
-constexpr uint16_t kOrange = 0xFC00;
-constexpr uint16_t kGrey = 0x8410;
-constexpr uint16_t kDarkGreen = 0x0400;
-
-static void drawProp(const Prop& p) {
-  const int x = p.x, y = p.y, u = Sz(1) < 1 ? 1 : Sz(1);
-  switch (p.kind) {
-    case PropKind::Duck:  // rubber duck (centre of the body)
-      C().fillCircle(x, y, Sz(6), kDuckYellow);
-      C().fillCircle(x + Sz(5), y - Sz(6), Sz(4), kDuckYellow);
-      C().fillTriangle(x + Sz(8), y - Sz(7), x + Sz(13), y - Sz(5), x + Sz(8), y - Sz(4), kOrange);
-      C().fillRect(x + Sz(6), y - Sz(8), u + u, u + u, color::PUPIL);
-      break;
-    case PropKind::Laptop:  // (centre of the keyboard) with code scrolling on the screen
-      C().fillRect(x - Sz(15), y, Sz(30), Sz(3), kGrey);
-      C().fillRect(x - Sz(12), y - Sz(17), Sz(24), Sz(17), kGrey);
-      C().fillRect(x - Sz(11), y - Sz(16), Sz(22), Sz(15), color::BLACK);
-      for (int i = 0; i < 4; i++) {
-        const int len = 4 + (p.f * 5 + i * 7) % 13;
-        C().fillRect(x - Sz(9) + (i % 2) * Sz(3), y - Sz(14) + i * Sz(3), Sz(len), u, i % 3 ? color::GREEN : color::BLUE);
-      }
-      break;
-    case PropKind::Lgtm:  // code review sign (top-left corner)
-      C().fillRoundRect(x, y, Sz(44), Sz(16), Sz(3), color::WHITE);
-      C().text(x + Sz(22), y + Sz(12), "LGTM", Font::SmallBold, kDarkGreen, Align::Center, Sz(42));
-      break;
-    case PropKind::Bug:  // a little bug (centre of the body), legs going
-      for (int s = -1; s <= 1; s += 2) {
-        for (int l = -1; l <= 1; l++) C().fillRect(x + l * Sz(2), y + s * Sz(3) + (p.f % 2 ? s : 0), u, Sz(2), color::PUPIL);
-      }
-      C().fillCircle(x, y, Sz(3), color::RED);
-      C().fillCircle(x + Sz(3), y, Sz(2), color::PUPIL);
-      break;
-    case PropKind::Rocket:  // (tip of the nose), flame when f > 0
-      C().fillTriangle(x, y, x - Sz(4), y + Sz(6), x + Sz(4), y + Sz(6), color::RED);
-      C().fillRect(x - Sz(4), y + Sz(6), Sz(8), Sz(12), color::WHITE);
-      C().fillCircle(x, y + Sz(10), Sz(2), color::BLUE);
-      C().fillTriangle(x - Sz(4), y + Sz(12), x - Sz(8), y + Sz(19), x - Sz(4), y + Sz(18), color::RED);
-      C().fillTriangle(x + Sz(4), y + Sz(12), x + Sz(8), y + Sz(19), x + Sz(4), y + Sz(18), color::RED);
-      if (p.f) C().fillTriangle(x - Sz(3), y + Sz(18), x + Sz(3), y + Sz(18), x, y + Sz(21 + (p.f % 2) * 3), color::AMBER);
-      break;
-    case PropKind::Burst:  // the bug is fixed: a spark
-      C().fillRect(x - Sz(6), y - u, Sz(12), u + u, color::AMBER);
-      C().fillRect(x - u, y - Sz(6), u + u, Sz(12), color::AMBER);
-      C().fillCircle(x, y, Sz(2), color::WHITE);
-      break;
-    case PropKind::None: break;
-  }
 }
 
 // A walking cat: bobbing, eyes towards where it goes (dx, dy: -1, 0 or 1).

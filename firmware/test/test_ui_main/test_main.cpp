@@ -1072,6 +1072,48 @@ static void test_pet_antics_order() {
   TEST_ASSERT_EQUAL_INT(9, held);
 }
 
+// Off the sign: the sign goes down on the floor with all its lines (and the away icon), the
+// whole screen is redrawn; back to a held sign, the screen is cleared first (no floor leftovers).
+static void test_floor_sign_keeps_lines_and_icon() {
+  uint32_t c = 1;
+  while (screens::anticOnSign(screens::roamAntic(c * screens::kAnticEveryMs, nullptr))) c++;
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  fc.clearLog();
+  const uint32_t play = c * screens::kAnticEveryMs + screens::kAnticPutMs + 4000;
+  screens::roam(Lang::En, snap, testClock(), play, screens::DeskMood::Calm, nullptr, UINT32_MAX, true);
+  TEST_ASSERT_TRUE(fc.drew("14:32"));
+  TEST_ASSERT_TRUE(fc.drew("5h 62%"));
+  TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
+  int dimLid = 0;  // the crossed-out laptop's lid (DIM) is somewhere in the bottom half
+  for (int y = 120; y < 240; y++)
+    for (int x = 0; x < 240; x++) dimLid += fc.colorAt(x, y) == ui::color::DIM;
+  TEST_ASSERT_TRUE(dimLid > 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  const int fills = fc.panelFills;
+  screens::roam(Lang::En, snap, testClock(), (c + 1) * screens::kAnticEveryMs - 1, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.panelFills > fills);  // a full clear when the held sign comes back
+}
+
+// Not playful (a friend's note, or not calm): no antic, the sign stays in its paws.
+static void test_pet_scene_quiet_when_not_playful() {
+  uint32_t c = 1;
+  while (screens::anticOnSign(screens::roamAntic(c * screens::kAnticEveryMs, nullptr))) c++;
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  const uint32_t ms = c * screens::kAnticEveryMs + screens::kAnticPutMs + 4000;
+  screens::roam(Lang::En, snap, testClock(), ms, screens::DeskMood::Calm, "Hi, Nina!");
+  int x, y, w, h, cx, cy;
+  screens::roamPosition(ms, cx, cy);
+  screens::roamAwayIcon(cx, cy, x, y, w, h);
+  TEST_ASSERT_TRUE(fc.drew("Hi, Nina!"));
+  TEST_ASSERT_EQUAL_INT(0x2125, fc.colorAt(x - 4, y + h));  // the held sign's fill at the pet's spot
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_pet_antics_order);
@@ -1099,6 +1141,8 @@ int main() {
   RUN_TEST(test_limit_reset_and_summary_content);
   RUN_TEST(test_pet_mode_card_and_path);
   RUN_TEST(test_pet_mode_shows_computer_away);
+  RUN_TEST(test_floor_sign_keeps_lines_and_icon);
+  RUN_TEST(test_pet_scene_quiet_when_not_playful);
   RUN_TEST(test_update_available_screen);
   return UNITY_END();
 }

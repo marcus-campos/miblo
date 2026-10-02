@@ -202,15 +202,39 @@ void pageStart(String& out, Lang lang, const char* title) {
   out += F("</style></head><body>");
 }
 
+// How long one piece of a response may go without any progress before the connection is given
+// up. The core's sendContent() copies a piece out through the piece's own Stream, and gives up
+// after that stream's getTimeout() without progress -- the Stream default, 1 s. It then still
+// writes the chunk's closing "\r\n": the browser gets a chunk shorter than its size line, i.e. a
+// silently corrupt page. On Wi-Fi a lost segment with two segments in flight waits for lwIP's
+// retransmit timer (~1-1.5 s), so one retransmit was enough. 5 s outlasts a few retransmits.
+static constexpr uint32_t kPieceTimeoutMs = 5000;
+
+// Sends one piece of the current response (RAM or PROGMEM, no copy) and makes sure it went out
+// whole; if not, the connection is closed: a page that fails to load beats a page broken in
+// the middle. Later pieces on the closed connection fail at once (nothing can be written).
+//
+// Success is read from the piece's getLastSendReport(), which sendSize() sets: Success only when
+// every requested byte was written. NOT from streamRemaining(): StreamConstPtr returns its total
+// size there, whatever has been consumed, so it is never 0 after a send -- that check (an earlier
+// attempt) closed every page right after its first piece.
+static void sendPiece(const char* data, size_t len) {
+  if (!len) return;  // a zero-length chunk would end the response
+  StreamConstPtr piece(data, len);  // detects a flash pointer by itself (read via pgm_read)
+  piece.setTimeout(kPieceTimeoutMs);
+  srv->sendContent(&piece, len);  // HEAD: sends nothing and leaves the report at Success
+  if (piece.getLastSendReport() != Stream::Report::Success) srv->client().stop();
+}
+
 void pageFlush(String& out, bool force) {
   if (!out.length() || (!force && out.length() < kPageChunk)) return;
-  srv->sendContent(out);
+  sendPiece(out.c_str(), out.length());
   out.remove(0);  // keeps the reserved buffer for the next chunk
 }
 
 void pageSendP(String& out, PGM_P blob) {
   pageFlush(out, true);
-  srv->sendContent_P(blob);
+  sendPiece(blob, strlen_P(blob));
 }
 
 void pageEnd(String& out) {
@@ -1320,14 +1344,14 @@ static void handleZones() {
   while (names.next()) {
     const size_t len = strlen(names.name);
     if (n + len + 1 > sizeof(buf)) {
-      srv->sendContent(buf, n);
+      sendPiece(buf, n);
       n = 0;
     }
     memcpy(buf + n, names.name, len);
     n += len;
     buf[n++] = '\n';
   }
-  if (n) srv->sendContent(buf, n);
+  if (n) sendPiece(buf, n);
 }
 
 static void handleRoot() {

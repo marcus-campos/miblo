@@ -177,7 +177,6 @@ notes.
       once, and so does restarting the gadget. `GET /api/info` shows `focus` (phase, round,
       rounds, left).
 
-<!-- daily:alerts -->
     - **Meeting mode:** with a session waiting for permission, run `/miblo:meeting 2`. The
       screens turn discreet, a tie badge sits in the bottom-right corner (never over a number or
       the clock: check Overview, Limits, Sessions, Desk and pet mode), and the mascot wears a tie.

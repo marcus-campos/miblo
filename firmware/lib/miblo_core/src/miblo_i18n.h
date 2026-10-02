@@ -183,6 +183,12 @@ enum class S : uint8_t {
   WebSecYou,            // settings: section heading (owner name and birthday)
   WebSecDevice,         // settings: section heading (device name, time zone, language, visits)
   WebAdvanced,          // settings: collapsed section (firmware, pairing code, factory reset)
+  WebSystem,            // settings > advanced: the live System panel's heading
+  WebCpu,               // System panel: processing load (last minute graph)
+  WebRam,               // System panel: RAM in use (last minute graph)
+  WebStorage,           // System panel: storage
+  WebInUse,             // System panel: "%s of %s in use" (amounts like "46 KB", "80 KB")
+  WebFwRoom,            // System panel: "Firmware %s · room for updates %s"
   WebCheckField,        // settings: a save was refused; the offending field is highlighted
   CodeSettings,         // PresenceCode screen: "Code to change settings"
   WebUnlock,            // settings page: "Type the code on the gadget screen to change settings"

@@ -150,3 +150,8 @@ notes.
     mDNS advertises only the id-based `Miblo-XXXX` (no name). Flood `/api/info` without a token
     until it answers 429, then check that a request with the pairing token still answers 200
     (`/miblo:status` keeps working).
+23. **System panel:** on the settings page, open **Advanced**: the Processing and Memory (RAM)
+    graphs fill from the right once a second (the last minute only) and the processing load reads
+    a few percent while idle; Storage shows the data in use and the firmware size with the room
+    left for updates. Closing Advanced stops the reads (no more `/settings-system` requests), and
+    on a paired gadget a browser without the on-screen code gets 401 from `/settings-system`.

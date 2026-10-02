@@ -182,6 +182,12 @@ static const char kEn[] MIBLO_ROM =
     "About you\0"  // WebSecYou
     "Device\0"  // WebSecDevice
     "Advanced\0"  // WebAdvanced
+    "System\0"  // WebSystem
+    "Processing\0"  // WebCpu
+    "Memory (RAM)\0"  // WebRam
+    "Storage\0"  // WebStorage
+    "%s of %s in use\0"  // WebInUse
+    "Firmware %s · room for updates %s\0"  // WebFwRoom
     "Check the highlighted field\0"  // WebCheckField
     "Code to change settings\0"  // CodeSettings
     "To change settings, type the code shown on the gadget screen.\0"  // WebUnlock
@@ -405,6 +411,12 @@ static const char kPtBR[] MIBLO_ROM =
     "Sobre você\0"  // WebSecYou
     "Aparelho\0"  // WebSecDevice
     "Avançado\0"  // WebAdvanced
+    "Sistema\0"  // WebSystem
+    "Processamento\0"  // WebCpu
+    "Memória (RAM)\0"  // WebRam
+    "Armazenamento\0"  // WebStorage
+    "%s de %s em uso\0"  // WebInUse
+    "Firmware %s · espaço para atualizações %s\0"  // WebFwRoom
     "Confira o campo destacado\0"  // WebCheckField
     "Código para mudar as configurações\0"  // CodeSettings
     "Para mudar as configurações, digite o código que aparece na tela do aparelho.\0"  // WebUnlock
@@ -628,6 +640,12 @@ static const char kPtPT[] MIBLO_ROM =
     "Sobre si\0"  // WebSecYou
     "Aparelho\0"  // WebSecDevice
     "Avançado\0"  // WebAdvanced
+    "Sistema\0"  // WebSystem
+    "Processamento\0"  // WebCpu
+    "Memória (RAM)\0"  // WebRam
+    "Armazenamento\0"  // WebStorage
+    "%s de %s em uso\0"  // WebInUse
+    "Firmware %s · espaço para atualizações %s\0"  // WebFwRoom
     "Verifique o campo destacado\0"  // WebCheckField
     "Código para alterar as definições\0"  // CodeSettings
     "Para alterar as definições, introduza o código no ecrã do aparelho.\0"  // WebUnlock
@@ -851,6 +869,12 @@ static const char kEs[] MIBLO_ROM =
     "Sobre ti\0"  // WebSecYou
     "Dispositivo\0"  // WebSecDevice
     "Avanzado\0"  // WebAdvanced
+    "Sistema\0"  // WebSystem
+    "Procesamiento\0"  // WebCpu
+    "Memoria (RAM)\0"  // WebRam
+    "Almacenamiento\0"  // WebStorage
+    "%s de %s en uso\0"  // WebInUse
+    "Firmware %s · espacio para actualizaciones %s\0"  // WebFwRoom
     "Revisa el campo resaltado\0"  // WebCheckField
     "Código para cambiar los ajustes\0"  // CodeSettings
     "Para cambiar los ajustes, escribe el código que aparece en la pantalla.\0"  // WebUnlock
@@ -1074,6 +1098,12 @@ static const char kFr[] MIBLO_ROM =
     "À propos de vous\0"  // WebSecYou
     "Appareil\0"  // WebSecDevice
     "Avancé\0"  // WebAdvanced
+    "Système\0"  // WebSystem
+    "Processeur\0"  // WebCpu
+    "Mémoire (RAM)\0"  // WebRam
+    "Stockage\0"  // WebStorage
+    "%s sur %s utilisés\0"  // WebInUse
+    "Firmware %s · place pour les mises à jour %s\0"  // WebFwRoom
     "Vérifiez le champ en surbrillance\0"  // WebCheckField
     "Code pour modifier les réglages\0"  // CodeSettings
     "Pour modifier les réglages, saisissez le code affiché à l'écran.\0"  // WebUnlock
@@ -1297,6 +1327,12 @@ static const char kIt[] MIBLO_ROM =
     "Su di te\0"  // WebSecYou
     "Dispositivo\0"  // WebSecDevice
     "Avanzate\0"  // WebAdvanced
+    "Sistema\0"  // WebSystem
+    "Elaborazione\0"  // WebCpu
+    "Memoria (RAM)\0"  // WebRam
+    "Archiviazione\0"  // WebStorage
+    "%s di %s in uso\0"  // WebInUse
+    "Firmware %s · spazio per aggiornamenti %s\0"  // WebFwRoom
     "Controlla il campo evidenziato\0"  // WebCheckField
     "Codice per cambiare le impostazioni\0"  // CodeSettings
     "Per cambiare le impostazioni, digita il codice mostrato sullo schermo.\0"  // WebUnlock
@@ -1520,6 +1556,12 @@ static const char kDe[] MIBLO_ROM =
     "Über dich\0"  // WebSecYou
     "Gerät\0"  // WebSecDevice
     "Erweitert\0"  // WebAdvanced
+    "System\0"  // WebSystem
+    "Prozessor\0"  // WebCpu
+    "Arbeitsspeicher (RAM)\0"  // WebRam
+    "Speicherplatz\0"  // WebStorage
+    "%s von %s belegt\0"  // WebInUse
+    "Firmware %s · Platz für Updates %s\0"  // WebFwRoom
     "Prüfe das markierte Feld\0"  // WebCheckField
     "Code zum Ändern der Einstellungen\0"  // CodeSettings
     "Zum Ändern der Einstellungen den Code auf dem Bildschirm eingeben.\0"  // WebUnlock
@@ -1743,6 +1785,12 @@ static const char kRu[] MIBLO_ROM =
     "О вас\0"  // WebSecYou
     "Устройство\0"  // WebSecDevice
     "Дополнительно\0"  // WebAdvanced
+    "Система\0"  // WebSystem
+    "Процессор\0"  // WebCpu
+    "Память (RAM)\0"  // WebRam
+    "Хранилище\0"  // WebStorage
+    "занято %s из %s\0"  // WebInUse
+    "Прошивка %s · место для обновлений %s\0"  // WebFwRoom
     "Проверьте выделенное поле\0"  // WebCheckField
     "Код для изменения настроек\0"  // CodeSettings
     "Чтобы изменить настройки, введите код с экрана устройства.\0"  // WebUnlock
@@ -1966,6 +2014,12 @@ static const char kZh[] MIBLO_ROM =
     "关于你\0"  // WebSecYou
     "设备\0"  // WebSecDevice
     "高级\0"  // WebAdvanced
+    "系统\0"  // WebSystem
+    "处理器\0"  // WebCpu
+    "内存 (RAM)\0"  // WebRam
+    "存储\0"  // WebStorage
+    "已用 %s / %s\0"  // WebInUse
+    "固件 %s · 更新空间 %s\0"  // WebFwRoom
     "请检查标出的字段\0"  // WebCheckField
     "修改设置的验证码\0"  // CodeSettings
     "要修改设置, 请输入屏幕上显示的验证码.\0"  // WebUnlock

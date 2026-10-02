@@ -2,6 +2,7 @@
 
 #include <ArduinoJson.h>
 
+#include "app.h"
 #include "board.h"
 #include "context.h"
 #include "miblo_snapshot.h"
@@ -42,7 +43,10 @@ static const char kCss[] PROGMEM =
     "details h2{margin-top:16px}.bar{position:fixed;left:0;right:0;bottom:0;background:#0b0b0df0;"
     "border-top:1px solid #26262c;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}"
     ".bar>div{max-width:528px;margin:0 auto;display:flex;align-items:center;gap:12px}"
-    ".bar button{margin:0;flex:0 0 45%}#st{flex:1}#st.ok{color:#22c55e}#st.no{color:#ef4444}";
+    ".bar button{margin:0;flex:0 0 45%}#st{flex:1}#st.ok{color:#22c55e}#st.no{color:#ef4444}"
+    ".sy svg{display:block;width:100%;height:56px;margin:6px 0 4px;background:#0b0b0d;border:1px solid #26262c;"
+    "border-radius:8px}.mb{height:10px;margin:6px 0;background:#26262c;border-radius:5px;overflow:hidden}"
+    ".mb i{display:block;height:100%;width:0;background:#a78bfa}";
 
 // Time zone picker shared by the portal and the settings page: a region <select> (`reg`) and a
 // city <select> (`sel`, the value that is submitted), filled from GET /api/zones (the device's
@@ -467,6 +471,31 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 // posts every setting at once (POST /settings); a refused field is highlighted. V is null on a
 // paired gadget's locked page: C is empty and #all hidden until the on-screen code unlocks it, then
 // the settings, name and version come from /settings-secret.
+// The System panel (settings > Advanced): while it is open, the load, RAM and storage are read
+// once a second; the last minute of load and RAM is kept in the page (never stored) and drawn as
+// two small graphs, newest on the right.
+static const char kSysJs[] PROGMEM =
+    "const SY={cpu:[],ram:[]};let SYT=null;"
+    "const kb=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';"
+    "const fmt=(s,...a)=>{let i=0;return s.replace(/%s/g,()=>a[i++]);};"
+    "function spark(id,a,c){if(!a.length)return;const W=59,x0=W-(a.length-1);"
+    "const p=a.map((v,i)=>(x0+i)+','+(20-Math.min(100,v)/5).toFixed(2)).join(' ');"
+    "$(id).innerHTML='<polygon points=\"'+x0+',20 '+p+' '+W+',20\" fill=\"'+c+'33\"/>'"
+    "+'<polyline points=\"'+p+'\" fill=\"none\" stroke=\"'+c+'\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';}"
+    "async function sys(){const r=await fetch('/settings-system',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
+    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
+    "const ram=s.ram?Math.round(s.ramUsed*100/s.ram):0;"
+    "for(const[k,v]of[['cpu',s.cpu],['ram',ram]]){SY[k].push(v);if(SY[k].length>60)SY[k].shift();}"
+    "$('cpuv').textContent=s.cpu+'% \\u00b7 '+s.mhz+' MHz';"
+    "$('ramv').textContent=fmt(T.inuse,kb(s.ramUsed),kb(s.ram));"
+    "spark('cpug',SY.cpu,'#f5a524');spark('ramg',SY.ram,'#60a5fa');"
+    "$('fsb').style.width=(s.fs?s.fsUsed*100/s.fs:0)+'%';$('fsv').textContent=fmt(T.inuse,kb(s.fsUsed),kb(s.fs));"
+    "$('fwv').textContent=fmt(T.fwroom,kb(s.fw),kb(s.otaRoom));}"
+    // One read at a time (a slow answer never piles requests up), only while the panel is open.
+    "function tick(){SYT=null;sys().finally(()=>{if($('adv').open)SYT=setTimeout(tick,1000);});}"
+    "$('adv').addEventListener('toggle',()=>{if($('adv').open){if(!SYT)tick();}"
+    "else{clearTimeout(SYT);SYT=null;}});";
+
 static const char kSetJs[] PROGMEM =
     "const $=k=>document.getElementById(k),J={'Content-Type':'application/json'};"
     // To change anything the browser must prove presence with the code on the gadget screen; the
@@ -795,10 +824,21 @@ static void settingsPage() {
   out += F("</select></div></div>");
   pageFlush(out);
 
-  // Advanced (collapsed): firmware, pairing code, factory reset.
-  out += F("<details class=\"c\"><summary>");
+  // Advanced (collapsed): the live System panel, firmware, pairing code, factory reset.
+  out += F("<details class=\"c\" id=\"adv\"><summary>");
   text(out, lang, S::WebAdvanced);
   out += F("</summary><h2>");
+  text(out, lang, S::WebSystem);
+  out += F("</h2><div class=\"sy\"><div class=\"t\">");
+  text(out, lang, S::WebCpu);
+  out += F("<span class=\"m\" id=\"cpuv\">--</span></div><svg id=\"cpug\" viewBox=\"0 0 59 20\" "
+           "preserveAspectRatio=\"none\"></svg><div class=\"t\">");
+  text(out, lang, S::WebRam);
+  out += F("<span class=\"m\" id=\"ramv\">--</span></div><svg id=\"ramg\" viewBox=\"0 0 59 20\" "
+           "preserveAspectRatio=\"none\"></svg><div class=\"t\">");
+  text(out, lang, S::WebStorage);
+  out += F("<span class=\"m\" id=\"fsv\">--</span></div><div class=\"mb\"><i id=\"fsb\"></i></div>"
+           "<p class=\"m\" id=\"fwv\"></p></div><h2>");
   text(out, lang, S::WebFirmware);
   out += F("</h2><button class=\"s\" onclick=\"chk()\">");
   text(out, lang, S::WebCheckUpdates);
@@ -844,10 +884,13 @@ static void settingsPage() {
   txt["ver"] = tr(lang, S::WebVersion);
   txt["pc"] = tr(lang, S::WebPairedCount);
   txt["again"] = tr(lang, S::WebTryAgain);
+  txt["inuse"] = tr(lang, S::WebInUse);
+  txt["fwroom"] = tr(lang, S::WebFwRoom);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
   pageSendP(out, kSetJs);
+  pageSendP(out, kSysJs);
   out += F("</script>");
   pageEnd(out);
 }
@@ -934,6 +977,32 @@ static void handleSettingsSecret() {
   String out;
   serializeJson(doc, out);
   sendJson(*srv, 200, out.c_str());
+}
+
+// GET /settings-system: the settings page's System panel, read once a second while it is open:
+// processing load, RAM in use, and storage. For whoever may see the settings (a web session, a
+// paired computer, or anyone before pairing, as the page itself).
+static void handleSettingsSystem() {
+  if (ctx.tokens.count() > 0 && !webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  // The filesystem's usage walks its blocks: read it now and then, not on every poll.
+  static uint32_t fsUsed = 0, fsTotal = 0, fsAtMs = 0;
+  const uint32_t now = millis();
+  if (fsTotal == 0 || now - fsAtMs >= 30000) {
+    fsUsage(fsUsed, fsTotal);
+    fsAtMs = now;
+  }
+  const uint32_t heap = freeHeap(), ram = ramTotal();
+  char out[200];
+  snprintf_P(out, sizeof(out),
+             PSTR("{\"cpu\":%u,\"mhz\":%u,\"ramUsed\":%lu,\"ram\":%lu,\"fw\":%lu,\"otaRoom\":%lu,"
+                  "\"chip\":%lu,\"fsUsed\":%lu,\"fs\":%lu}"),
+             (unsigned)app::cpuLoad(), (unsigned)ESP.getCpuFreqMHz(), (unsigned long)(heap < ram ? ram - heap : 0),
+             (unsigned long)ram, (unsigned long)ESP.getSketchSize(), (unsigned long)ESP.getFreeSketchSpace(),
+             (unsigned long)flashChipBytes(), (unsigned long)fsUsed, (unsigned long)fsTotal);
+  sendJson(*srv, 200, out);
 }
 
 static void handleSettings() {
@@ -1088,6 +1157,7 @@ void begin(WebServerT& server) {
   server.on(F("/settings-code"), HTTP_POST, handleSettingsCode);
   server.on(F("/settings-unlock"), HTTP_POST, handleSettingsUnlock);
   server.on(F("/settings-secret"), HTTP_GET, handleSettingsSecret);
+  server.on(F("/settings-system"), HTTP_GET, handleSettingsSystem);
   server.on(F("/api/zones"), HTTP_GET, handleZones);
   server.on(F("/api/wifi-status"), HTTP_GET, handleWifiStatus);
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);

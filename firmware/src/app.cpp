@@ -214,6 +214,9 @@ static void parseHeapProbe() {
   const uint32_t h = freeHeap();
   if (h < g_minHeapParse) g_minHeapParse = h;
 }
+static miblo::CpuMeter cpuMeter;  // the settings page's processing graph
+uint8_t cpuLoad() { return cpuMeter.percent(); }
+
 uint32_t minHeapDuringParse() { return g_minHeapParse == 0xFFFFFFFFu ? 0 : g_minHeapParse; }
 
 void setup() {
@@ -257,6 +260,7 @@ void setup() {
 
 void loop() {
   const uint32_t now = millis();
+  cpuMeter.update(micros());
   server.handleClient();
   net::loop(now);
   mdns::loop(now);
@@ -296,7 +300,12 @@ void loop() {
   ctx.pairing.update(now);
   if (ctx.showPairCode && now - ctx.pairCodeAtMs >= miblo::kPairCodeScreenMs) ctx.showPairCode = false;
 
-  if (now - lastFrameMs < 100) return;  // ~10 frames/s
+  if (now - lastFrameMs < 100) {  // ~10 frames/s; in between, a pause (the Wi-Fi stack runs in it)
+    const uint32_t t0 = micros();
+    delay(1);
+    cpuMeter.idle(micros() - t0);
+    return;
+  }
   lastFrameMs = now;
 
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;

@@ -221,6 +221,35 @@ class DemoBreak {
   bool was_ = true;  // at boot nothing has "started" yet
 };
 
+// How busy the processor is, for the settings page: the share of each second the main loop spent
+// working, that is not waiting in its idle pause (which also lets the Wi-Fi stack run).
+class CpuMeter {
+ public:
+  static constexpr uint32_t kWindowUs = 1000000;
+  void idle(uint32_t us) { idleUs_ += us; }
+  // Call on every loop with micros(). Safe across its wrap.
+  void update(uint32_t nowUs) {
+    if (!started_) {
+      started_ = true;
+      startUs_ = nowUs;
+      idleUs_ = 0;
+      return;
+    }
+    const uint32_t span = nowUs - startUs_;
+    if (span < kWindowUs) return;
+    const uint32_t idle = idleUs_ < span ? idleUs_ : span;
+    percent_ = (uint8_t)(((uint64_t)(span - idle) * 100 + span / 2) / span);
+    startUs_ = nowUs;
+    idleUs_ = 0;
+  }
+  uint8_t percent() const { return percent_; }
+
+ private:
+  bool started_ = false;
+  uint32_t startUs_ = 0, idleUs_ = 0;
+  uint8_t percent_ = 0;
+};
+
 // Once per boot, when the first snapshot that names the latest release shows a newer version
 // than this firmware, the screen says so for kShowMs, then carries on.
 class UpdateNotice {

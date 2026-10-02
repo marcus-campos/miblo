@@ -15,6 +15,13 @@ inline uint32_t flashChipId() { return ESP.getFlashChipId(); }
 inline uint32_t freeHeap() { return ESP.getFreeHeap(); }
 inline uint32_t maxFreeBlock() { return ESP.getMaxFreeBlockSize(); }
 inline String resetReason() { return ESP.getResetReason(); }
+inline uint32_t ramTotal() { return 81920; }  // the ESP8266's data RAM: 80 KB (static data + heap)
+inline uint32_t flashChipBytes() { return ESP.getFlashChipRealSize(); }
+inline void fsUsage(uint32_t& used, uint32_t& total) {
+  FSInfo i{};
+  if (!LittleFS.info(i)) i.usedBytes = i.totalBytes = 0;
+  used = i.usedBytes, total = i.totalBytes;
+}
 #elif defined(ESP32)
 #include <LittleFS.h>
 #include <Update.h>
@@ -27,6 +34,9 @@ inline uint32_t flashChipId() { return ESP.getFlashChipSize(); }
 inline uint32_t freeHeap() { return ESP.getFreeHeap(); }
 inline uint32_t maxFreeBlock() { return ESP.getMaxAllocHeap(); }
 inline String resetReason() { return String((int)esp_reset_reason()); }
+inline uint32_t ramTotal() { return ESP.getHeapSize(); }
+inline uint32_t flashChipBytes() { return ESP.getFlashChipSize(); }
+inline void fsUsage(uint32_t& used, uint32_t& total) { used = LittleFS.usedBytes(), total = LittleFS.totalBytes(); }
 #else
 #error "Miblo: unsupported platform (use ESP8266 or ESP32)"
 #endif

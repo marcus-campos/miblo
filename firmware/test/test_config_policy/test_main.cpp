@@ -736,6 +736,30 @@ static void test_demo_ends_on_new_activity() {
   TEST_ASSERT_TRUE(q.update(true, true));
 }
 
+// Processing load for the settings page: the share of each second the main loop spent working,
+// i.e. not waiting in its idle pause. Safe across micros() wrap.
+static void test_cpu_meter() {
+  CpuMeter m;
+  TEST_ASSERT_EQUAL_UINT8(0, m.percent());
+  const uint32_t t0 = 5000;
+  m.update(t0);
+  m.idle(750000);
+  m.update(t0 + 999999);  // the window isn't over yet
+  TEST_ASSERT_EQUAL_UINT8(0, m.percent());
+  m.update(t0 + 1000000);
+  TEST_ASSERT_EQUAL_UINT8(25, m.percent());  // 250 ms of work in that second
+  m.idle(2000000);  // idle longer than the window (a long delay): never below 0 %
+  m.update(t0 + 2000000);
+  TEST_ASSERT_EQUAL_UINT8(0, m.percent());
+  m.update(t0 + 3000000);  // no idle at all
+  TEST_ASSERT_EQUAL_UINT8(100, m.percent());
+  CpuMeter w;  // across the 32-bit micros() wrap
+  w.update(UINT32_MAX - 400000);
+  w.idle(900000);
+  w.update(599999);
+  TEST_ASSERT_EQUAL_UINT8(10, w.percent());
+}
+
 static void test_update_notice() {
   TEST_ASSERT_TRUE(compareVersions("1.1.0", "1.0.9") > 0);
   TEST_ASSERT_TRUE(compareVersions("1.0.2", "1.0.10") < 0);
@@ -932,6 +956,7 @@ int main() {
   RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);
   RUN_TEST(test_demo_ends_on_new_activity);
+  RUN_TEST(test_cpu_meter);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);
   RUN_TEST(test_flash_blinks);

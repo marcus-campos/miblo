@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "../context.h"
+#include "miblo_livetz.h"
 #include "miblo_tz.h"
 #include "platform.h"
 #include "storage.h"
@@ -130,10 +131,40 @@ static void stopAp() {
   apOn = false;
 }
 
+// The live offset the clock runs on (seconds east), or kTableTz while it runs on the table's rule:
+// syncTimezone() touches TZ only when this changes, never on every pass.
+static constexpr int32_t kTableTz = INT32_MIN;
+static int32_t appliedTz = kTableTz;
+static uint32_t tzCheckedMs = 0;
+
+static uint32_t epochNow() {
+  const time_t now = time(nullptr);
+  return now > 1600000000 ? (uint32_t)now : 0;
+}
+
+static int32_t wantedTz(uint32_t epoch) {
+  int32_t east;
+  return ctx.liveTz.offset(ctx.cfg.tz, epoch, east) ? east : kTableTz;
+}
+
 void applyTimezone() {
   char rule[48];
-  miblo::tzResolve(ctx.cfg.tz, rule, sizeof(rule));
+  const uint32_t epoch = epochNow();
+  appliedTz = wantedTz(epoch);
+  miblo::liveRule(ctx.cfg.tz, ctx.liveTz, epoch, rule, sizeof(rule));
   configTime(rule, "pool.ntp.org", "time.google.com");
+}
+
+void syncTimezone(uint32_t nowMs) {
+  if (nowMs - tzCheckedMs < 1000) return;
+  tzCheckedMs = nowMs;
+  const uint32_t epoch = epochNow();
+  if (wantedTz(epoch) == appliedTz) return;
+  char rule[48];
+  appliedTz = wantedTz(epoch);
+  miblo::liveRule(ctx.cfg.tz, ctx.liveTz, epoch, rule, sizeof(rule));
+  setenv("TZ", rule, 1);  // only the zone: NTP keeps running as configTime() set it up
+  tzset();
 }
 
 void begin(uint32_t nowMs) {

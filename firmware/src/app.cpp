@@ -202,7 +202,7 @@ static void updateDailyLook(int minuteNow, const miblo::Date& day, bool timeKnow
     changed = true;
   }
   char label[37] = "", hhmm[6] = "";
-  if (ctx.cfg.tz2[0] && miblo::zoneHHMM(ctx.cfg.tz2, epoch, hhmm, sizeof(hhmm))) {
+  if (ctx.cfg.tz2[0] && miblo::zoneHHMM(ctx.cfg.tz2, epoch, hhmm, sizeof(hhmm), &ctx.liveTz)) {
     miblo::zoneLabel(ctx.cfg, label, sizeof(label));
   } else {
     hhmm[0] = 0;
@@ -336,6 +336,7 @@ void loop() {
   cpuMeter.update(micros());
   server.handleClient();
   net::loop(now);
+  net::syncTimezone(now);
   mdns::loop(now);
   friendsnet::loop(now);
 

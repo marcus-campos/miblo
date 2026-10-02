@@ -33,7 +33,11 @@ uint8_t joinFailureCode();
 // current WiFi.status() (wl_status_t).
 uint8_t lastDisconnectReason();
 int wifiStatus();
-// Reapplies the timezone (ctx.cfg.tz, IANA name resolved to POSIX via miblo_tz) and NTP.
+// Reapplies the timezone (ctx.cfg.tz: its live offset from the bridge while fresh, else the IANA
+// name resolved to POSIX via miblo_tz) and NTP.
 void applyTimezone();
+// Once a second: switches TZ when the live offset starts, ends (stale, another zone) or reaches its
+// announced change. Leaves it alone otherwise.
+void syncTimezone(uint32_t nowMs);
 
 }  // namespace net

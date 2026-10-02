@@ -19,13 +19,13 @@ import { createLogger, errText } from '../lib/logger.js';
 
 // `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
 // DeviceManager's default when omitted.
-export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {},
+export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {}, addrOk = null,
   release = createReleaseCache({ dataDir, now }), zones }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
   const forecast = new LimitForecast({ now });
-  const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now, zones });
+  const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now, zones, ...(addrOk ? { addrOk } : {}) });
   let seq = 0;
   let timer = null;
   let lastActive = now();

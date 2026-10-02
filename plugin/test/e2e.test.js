@@ -359,7 +359,7 @@ const intlZones = () => new ZoneOffsets({ source: (z) => (utc) => intlOffset(z, 
 
 // A bridge on a fixed clock, listening on a free port, pushing to `dev`; `hook(evt)` runs
 // bin/hook.js against it and lets the debounced push land before the clock moves on.
-async function fixedBridge(dev, { tz, tz2, discoverFn = async () => [], extraDevs = [] } = {}) {
+async function fixedBridge(dev, { tz, tz2, discoverFn = async () => [], extraDevs = [], addrOk = null } = {}) {
   const dataDir = path.join(tmpRoot(), 'data');
   const store = new DeviceStore(dataDir);
   for (const [i, d] of [dev, ...extraDevs].entries()) {
@@ -373,7 +373,7 @@ async function fixedBridge(dev, { tz, tz2, discoverFn = async () => [], extraDev
   const clock = { now: () => t, advance: (ms) => { t += ms; }, set: (ms) => { t = ms; } };
   const bridge = createBridge({
     dataDir, now: clock.now, client: new DeviceClient({ busyRetryMs: [] }), discoverFn, host: 'MacBook-Marcus',
-    version: VERSION, release: { get: () => '1.12.0', refreshIfStale: async () => {} }, zones: intlZones(),
+    version: VERSION, release: { get: () => '1.12.0', refreshIfStale: async () => {} }, zones: intlZones(), addrOk,
   });
   // Pushes still on their way to the gadget: settled before the clock moves on or a test reads.
   const inflight = new Set();
@@ -599,7 +599,8 @@ test('fixed clock: a busy gadget (503) still gets the alert; with nothing to ale
 test('fixed clock: a gadget that moved to another address is found again (mDNS) and keeps getting snapshots', async () => {
   const old = await startFakeDevice();
   let moved = null;
-  const b = await fixedBridge(old, { discoverFn: async () => (moved ? [{ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: moved.addr }] : []) });
+  // The fakes listen on 127.0.0.1 with random ports; a real gadget must be on the LAN on port 80.
+  const b = await fixedBridge(old, { addrOk: () => true, discoverFn: async () => (moved ? [{ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: moved.addr }] : []) });
   try {
     await b.bridge.push();
     assert.equal(old.state.snapshots.length, 1);

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  intlOffset, posixOffset, tzifOffset, nextChange, zoneSource, ZoneOffsets, osZoneInfo, newerTz, isZoneName,
+  intlOffset, posixOffset, tzifOffset, nextChange, zoneSource, ZoneOffsets, osZoneInfo, newerTz, isZoneName, ZONE_CACHE_MAX,
 } from '../lib/tz-offsets.js';
 
 const s = (iso) => Date.parse(iso) / 1000;
@@ -180,4 +180,40 @@ test('intl: an offset string it does not understand throws (caught by ZoneOffset
   assert.throws(() => intlOffset('Europe/Paris', OCT2), RangeError);
   const z = new ZoneOffsets({ source: (zone) => (utc) => intlOffset(zone, utc * 1000) });
   assert.equal(z.get('Europe/Paris', OCT2), null);
+});
+
+// L6: zone names come from the gadget (/api/info tz, tz2). A spoofed or malicious one could send a
+// new name every hour: the cache is bounded (LRU) and a name that is not a zone name is never
+// looked up nor kept.
+test('cache: a name that is not a zone name is never looked up nor cached', () => {
+  let made = 0;
+  const z = new ZoneOffsets({ source: () => { made++; return () => 0; } });
+  for (const bad of ['../etc/passwd', '/abs', 'a/b/c/d', 'x'.repeat(48), '', 'Europe/..', 'Bad Zone', 42, null]) {
+    assert.equal(z.get(bad, 0), null);
+  }
+  assert.equal(made, 0);
+  assert.equal(z.size, 0);
+});
+
+test('cache: bounded to the 16 most recently used zones', () => {
+  let made = 0;
+  const z = new ZoneOffsets({ source: () => { made++; return () => 0; } });
+  for (let i = 0; i < 100; i++) {
+    z.get(`Fake/Zone${i}`, 0);
+    z.get('Europe/Lisbon', 0);  // kept in use: never evicted
+  }
+  assert.equal(z.size, ZONE_CACHE_MAX);
+  assert.equal(ZONE_CACHE_MAX, 16);
+  assert.equal(made, 101);
+  z.get('Fake/Zone99', 0);
+  assert.equal(made, 101);
+  z.get('Fake/Zone0', 0);  // long evicted: worked out again
+  assert.equal(made, 102);
+});
+
+test('cache: expired entries are dropped', () => {
+  const z = new ZoneOffsets({ source: () => () => 0 });
+  for (let i = 0; i < 10; i++) z.get(`Fake/Zone${i}`, 0);
+  z.get('Europe/Lisbon', 2 * 3600_000);
+  assert.equal(z.size, 1);
 });

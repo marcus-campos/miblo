@@ -156,6 +156,7 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
 // settings page's worst-case save is ~910 B (every field at its longest, CJK names): 1.5 KiB
 // leaves room for the next fields without a large transient copy.
 static constexpr uint32_t kPageBodyMax = 1536;
+static_assert(kPageBodyMax <= miblo::kBodyHoldMax, "a settings save must be held back whole (largeBodyRefusal)");
 static bool bodyTooLarge() {
   String cl = requestHeader(*srv, F("Content-Length"));
   return cl.length() > 0 && (uint32_t)cl.toInt() > kPageBodyMax;
@@ -1425,6 +1426,25 @@ static WebServerT::ClientFuture refuse(WiFiClient* client, PGM_P status, PGM_P b
 // Size guard (best effort). Refuses non-multipart bodies over kMaxPostBody (largest Content-Length
 // if duplicated) before the server buffers them in RAM; the handler checks remain as a second
 // layer.
+// A body larger than the connection can hold back (miblo::kBodyHoldMax, lookahead_client.h) is read
+// by the server with a blocking wait of up to 5 s: a stranger who sends the headers and stops
+// would freeze the gadget that long per connection. Only a paired computer's snapshot is that
+// large (the settings page's saves stay under kPageBodyMax = kBodyHoldMax), so any other large
+// body is refused before it is read: 413, or 401 without a valid token.
+static PGM_P largeBodyRefusal(LookaheadClient* client, const String& url) {
+  const char* p = client->peekBuffer();
+  const size_t n = client->peekAvailable();
+  if (miblo::requestBodyLength(p, n) <= miblo::kBodyHoldMax) return nullptr;
+  if (url != F("/api/state")) return PSTR("413 Payload Too Large");
+  char auth[56];
+  char token[40];
+  if (miblo::findHeader(p, n, "authorization", auth, sizeof(auth)) &&
+      miblo::bearerToken(auth, token, sizeof(token)) && ctx.tokens.find(token) >= 0) {
+    return nullptr;
+  }
+  return PSTR("401 Unauthorized");
+}
+
 static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
                                               WebServerT::ContentTypeFunction) {
   using miblo::BodyAction;
@@ -1467,7 +1487,11 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
       refused = refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
       break;
     case BodyAction::CheckSize:
-      refused = WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
+      if (PGM_P status = largeBodyRefusal(client, url)) {
+        refused = refuse(client, status, PSTR("{\"error\":\"refused\"}"));
+      } else {
+        refused = WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
+      }
       break;
     default:  // BadRequest (HeadersIncomplete cannot happen with a judged block)
       refused = refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
@@ -1542,6 +1566,7 @@ void begin(WebServerT& server) {
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type", "X-Miblo-Web");
   routes::add(server, kRoutes);
   server.onNotFound([] {
+    srv->client().rearm();  // as routes.cpp: the next request on this connection waits until it is all here
     if (captiveRedirect()) return;
     sendJson(*srv, 404, F("{\"error\":\"not found\"}"));
   });

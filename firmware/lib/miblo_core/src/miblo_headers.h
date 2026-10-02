@@ -81,6 +81,34 @@ enum class GatherResult : uint8_t { Ready, TooLarge, TimedOut, Closed, NoMemory 
 // those bytes stay in `buf` and are replayed too.
 GatherResult gatherHeaders(HeaderBuffer& buf, ByteSource& src, uint32_t budgetMs);
 
+// Whether a connection's request is all there for ESP8266WebServer, whose parser reads every
+// header line, and then the body, with a blocking wait of up to 5 s each: one client that sends
+// half a request and stops froze the whole gadget (screen, alerts, other clients) for ~10 s per
+// connection, minutes with a few dozen. The connection reports no data until pollRequest says
+// Ready, so the server waits for it without blocking (its non-blocking HC_WAIT_READ state, which
+// drops it after 5 s, or after 30 ms when another client has data). See lookahead_client.h.
+enum class RequestReadiness : uint8_t {
+  Ready,     // the header block (through its blank line), and a small body all here
+  Waiting,   // not yet: ask again later
+  TooLarge,  // no header block within HeaderBuffer::kCap: refuse (431)
+  Closed,    // the peer closed before sending it all
+  NoMemory,  // no heap for the buffer: ask again later
+};
+// A body larger than this is not held back: the TCP window (lwIP low memory: 4 x 536 B) cannot
+// hold more unread, so waiting for it would never end. The server reads it with its own 5 s wait.
+constexpr size_t kBodyHoldMax = 1536;
+// Reads what has arrived (never waits) into `buf` and judges it. Body bytes still in the socket
+// count without being read.
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src);
+
+// The body length of a complete header block (the largest Content-Length), 0 when the block has
+// not all arrived or has none.
+size_t requestBodyLength(const char* p, size_t n);
+// The value of header `lowerName` (lowercase, without the colon) in a complete header block, the
+// last one if repeated (as the server reads it), trimmed, into `out`. False if absent, if the
+// block is incomplete, or if the value does not fit (never cut).
+bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap);
+
 // What the request hook does with a body request (POST, PUT, PATCH, DELETE).
 enum class BodyAction : uint8_t {
   Continue,           // let the server parse it

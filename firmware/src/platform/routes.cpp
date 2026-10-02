@@ -20,10 +20,11 @@ class TableHandler : public esp8266webserver::RequestHandler<LookaheadServer> {
     Route r;
     return find(HTTP_POST, uri, r) && r.upload;
   }
-  bool handle(WebServerT&, HTTPMethod method, const String& uri) override {
+  bool handle(WebServerT& server, HTTPMethod method, const String& uri) override {
     Route r;
     if (!find(method, uri, r)) return false;
     r.fn();
+    server.client().rearm();  // a second request on this connection waits until it is all here
     return true;
   }
   void upload(WebServerT&, const String& uri, HTTPUpload&) override {

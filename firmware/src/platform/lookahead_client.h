@@ -3,7 +3,15 @@
 // can read a request's header block ahead and then replays those bytes, unchanged and in order,
 // to ESP8266WebServer's own parser.
 //
-// Why: the server's request hook (web.cpp limitPostBody) must judge the whole header block before
+// Why (1): ESP8266WebServer parses a request with blocking reads, up to 5 s per header line and
+// per body: a client that sent half a request and stopped froze the whole loop() (screen, alerts,
+// every other client) for ~10 s per connection, minutes with a few dozen connections. So until
+// the whole request is here (miblo::pollRequest, which never waits) the connection reports no
+// data, and the server waits in its non-blocking state instead (dropping it after 5 s, or 30 ms
+// when another client has data). Re-armed after each request (routes.cpp, the not-found handler),
+// since a connection may carry a second one.
+//
+// Why (2): the server's request hook (web.cpp limitPostBody) must judge the whole header block before
 // the server parses it (a multipart Content-Type with a huge boundary crashes _parseForm), but
 // WiFiClient can only peek at the first received segment (peekBuffer/peekBytes stop at the first
 // pbuf). ESP8266WebServerTemplate takes the connection type from its ServerType::ClientType, so
@@ -19,6 +27,9 @@ class LookaheadClient : public WiFiClient {
  public:
   LookaheadClient() = default;
   explicit LookaheadClient(const WiFiClient& c) : WiFiClient(c) {}
+
+  // Holds the next request back until it is all here (see Why (1) above).
+  void rearm() { held_ = true; }
   LookaheadClient(const LookaheadClient&) = default;
   LookaheadClient& operator=(const LookaheadClient&) = default;
   ~LookaheadClient() override = default;
@@ -43,7 +54,10 @@ class LookaheadClient : public WiFiClient {
   bool hasAhead() const { return ahead_.pending() > 0; }
 
   // Reading: the read-ahead bytes first, then the socket.
-  int available() override { return (int)ahead_.pending() + WiFiClient::available(); }
+  int available() override {
+    if (held_ && !releaseRequest()) return 0;
+    return (int)ahead_.pending() + WiFiClient::available();
+  }
   int read() override { return ahead_.pending() ? ahead_.readByte() : WiFiClient::read(); }
   int read(uint8_t* buf, size_t size) override {
     return ahead_.pending() ? (int)ahead_.read(buf, size) : WiFiClient::read(buf, size);
@@ -91,7 +105,33 @@ class LookaheadClient : public WiFiClient {
     LookaheadClient& c;
   };
 
+  // True once the request is all here. A request that can never be complete (no header block
+  // within the buffer, or the peer gone) is answered and closed here, so the server drops it.
+  bool releaseRequest() {
+    Source src{*this};
+    switch (miblo::pollRequest(ahead_, src)) {
+      case miblo::RequestReadiness::Ready:
+        held_ = false;
+        return true;
+      case miblo::RequestReadiness::TooLarge: {
+        static const char kReply[] PROGMEM =
+            "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        WiFiClient::write_P(kReply, sizeof(kReply) - 1);
+        stop();
+        return false;
+      }
+      case miblo::RequestReadiness::Closed:
+        stop();
+        return false;
+      case miblo::RequestReadiness::Waiting:
+      case miblo::RequestReadiness::NoMemory:
+        break;
+    }
+    return false;
+  }
+
   miblo::HeaderBuffer ahead_;
+  bool held_ = true;
 };
 
 class LookaheadServer : public WiFiServer {

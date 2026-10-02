@@ -209,6 +209,118 @@ static void test_closed_connection_is_refused() {
   TEST_ASSERT_EQUAL(BodyAction::HeadersIncomplete, decideGather(GatherResult::Closed));
 }
 
+// pollRequest: the connection is handed to ESP8266WebServer (whose parser blocks on every line
+// for up to 5 s) only once the whole request it will read is there. Never waits.
+static void test_poll_waits_without_blocking_for_the_header_block() {
+  FakeSource src;
+  src.segments = {"GET /api/info HTTP/1.1\r\n", "Host: x\r\n", "\r\n"};
+  src.gapMs = 300;
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(0, src.waits);  // never waited
+  TEST_ASSERT_EQUAL(0, src.now);
+  src.now = 300;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  src.now = 600;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(0, src.waits);
+  TEST_ASSERT_EQUAL_STRING_LEN("GET /api/info HTTP/1.1\r\nHost: x\r\n\r\n", b.data(), b.pending());
+}
+
+static void test_poll_a_stalled_request_never_becomes_ready() {
+  FakeSource src;  // the request line and one header, then nothing: the attack
+  src.segments = {"GET /api/info HTTP/1.1\r\nHost: x\r\n"};
+  HeaderBuffer b;
+  for (int i = 0; i < 100; i++) {
+    src.now += 100;
+    TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  }
+  TEST_ASSERT_EQUAL(0, src.waits);
+  FakeSource bare;  // no request line end at all
+  bare.segments = {"GET /api/info HTTP/1.1"};
+  HeaderBuffer b2;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b2, bare));
+}
+
+static void test_poll_waits_for_a_small_body_too() {
+  FakeSource src;  // the body would be read with a blocking 5 s wait: hold it back until it is all here
+  src.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 11\r\n\r\n", "{\"text\":", "\"a\"}"};
+  src.gapMs = 100;
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  src.now = 100;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  src.now = 200;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
+  FakeSource stalled;
+  stalled.segments = {"POST /api/say HTTP/1.1\r\ncontent-length: 50\r\n\r\n{\"te"};
+  HeaderBuffer b2;
+  stalled.now = 5000;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b2, stalled));
+  // Duplicated Content-Length: the largest counts.
+  FakeSource dup;
+  dup.segments = {"POST /x HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 9\r\n\r\nab"};
+  HeaderBuffer b3;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b3, dup));
+}
+
+static void test_poll_a_large_body_is_not_held_back() {
+  // Larger than what the TCP window can hold unread: waiting for it would never end. The server
+  // reads it with its own (bounded) wait.
+  FakeSource src;
+  src.segments = {"POST /api/state HTTP/1.1\r\nContent-Length: 6000\r\n\r\n{"};
+  HeaderBuffer b;
+  TEST_ASSERT_GREATER_THAN(kBodyHoldMax, 6000);
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
+  FakeSource none;  // no Content-Length: no body
+  none.segments = {"POST /api/find HTTP/1.1\r\nHost: x\r\n\r\n"};
+  HeaderBuffer b2;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b2, none));
+}
+
+static void test_poll_closed_too_large_and_body_counts_socket_bytes() {
+  FakeSource closed;
+  closed.segments = {"GET / HTTP/1.1\r\nHost"};
+  closed.closeAtEnd = true;
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Closed, pollRequest(b, closed));
+  FakeSource big;
+  big.segments = segments("GET / HTTP/1.1\r\nX-Pad: " + std::string(4000, 'a') + "\r\n\r\n");
+  big.gapMs = 0;
+  HeaderBuffer b2;
+  TEST_ASSERT_EQUAL(RequestReadiness::TooLarge, pollRequest(b2, big));
+  TEST_ASSERT_EQUAL(HeaderBuffer::kCap, b2.pending());
+  // A body already complete in the socket while the buffer is full of headers: ready, without
+  // reading past the buffer.
+  std::string head = "POST /api/say HTTP/1.1\r\nX-Pad: " + std::string(1960, 'p') + "\r\nContent-Length: 100\r\n\r\n";
+  TEST_ASSERT_LESS_THAN(HeaderBuffer::kCap, head.size());
+  TEST_ASSERT_GREATER_THAN(HeaderBuffer::kCap, head.size() + 100);
+  FakeSource full;
+  full.segments = {head + std::string(100, 'b')};
+  HeaderBuffer b3;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b3, full));
+}
+
+// The hook reads two things from the gathered block before a large body is read: its length and
+// the caller's credentials.
+static void test_request_body_length_and_header_lookup() {
+  const std::string h = "Host: x\r\ncontent-LENGTH:  6000\r\nAuthorization: Bearer abc123\r\n"
+                        "authorization: Bearer last\r\n\r\n{\"s";
+  TEST_ASSERT_EQUAL(6000, requestBodyLength(h.data(), h.size()));
+  char v[40];
+  TEST_ASSERT_TRUE(findHeader(h.data(), h.size(), "authorization", v, sizeof(v)));
+  TEST_ASSERT_EQUAL_STRING("Bearer last", v);  // the last one wins, as in the server
+  TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "x-miblo-web", v, sizeof(v)));
+  char tiny[4];
+  TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "authorization", tiny, sizeof(tiny)));  // never cut
+  const std::string partial = "Host: x\r\nContent-Length: 9\r\n";  // no blank line yet
+  TEST_ASSERT_EQUAL(0, requestBodyLength(partial.data(), partial.size()));
+  const std::string body = "Host: x\r\n\r\nAuthorization: Bearer fake\r\n";  // past the block: body
+  TEST_ASSERT_FALSE(findHeader(body.data(), body.size(), "authorization", v, sizeof(v)));
+  const std::string huge = "Content-Length: 99999999999999999999\r\n\r\n";
+  TEST_ASSERT_GREATER_THAN(kBodyHoldMax, requestBodyLength(huge.data(), huge.size()));
+}
+
 static void test_body_decisions() {
   char h[256];
   snprintf(h, sizeof(h), "Content-Type: multipart/form-data; boundary=%040d\r\n\r\n", 1);
@@ -270,6 +382,12 @@ int main() {
   RUN_TEST(test_drain_input_is_bounded);
   RUN_TEST(test_oversized_header_block_is_refused);
   RUN_TEST(test_closed_connection_is_refused);
+  RUN_TEST(test_poll_waits_without_blocking_for_the_header_block);
+  RUN_TEST(test_poll_a_stalled_request_never_becomes_ready);
+  RUN_TEST(test_poll_waits_for_a_small_body_too);
+  RUN_TEST(test_poll_a_large_body_is_not_held_back);
+  RUN_TEST(test_poll_closed_too_large_and_body_counts_socket_bytes);
+  RUN_TEST(test_request_body_length_and_header_lookup);
   RUN_TEST(test_body_decisions);
   RUN_TEST(test_replay_and_copy);
   return UNITY_END();

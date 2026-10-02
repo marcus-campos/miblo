@@ -164,7 +164,9 @@
 
 ### Pets
 
-*Coming in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **11 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog or the Miblo alien. Its colour is yours to choose too; by default it wears the Miblo colour.
+*Coming in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **12 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog, the Miblo alien or **Riff**, an original rocker with a spiky mohawk, a studded collar and a guitar-pick earring, who plays air guitar when a long task ends.
+
+Then make it yours, one colour part at a time: body, outline, inner detail, nose or beak, face lines, eyes and accent. Each part is "Auto" (the Miblo colour look, the default) or any RGB colour you pick, and preset palettes fill them all in one click. The eyes can be round, big or sleepy.
 
 <!-- PETS-SHOTS -->
 

@@ -328,8 +328,9 @@ notes.
       denies goes back to running with no alert; a turn ended by an API error stops showing
       running.
 26. **Multipart guard (security):** a multipart body is only ever the firmware upload, and only
-    while an update is open. The gadget reads each request's whole header block (up to 2 KB, over
-    several TCP segments) before deciding. From a computer on the same network, with no update
+    while an update is open. The gadget holds each connection (without blocking) until its whole
+    header block is here (up to 2 KB, over several TCP segments) and only then decides; a small
+    body (up to 1536 B) is waited for at most 350 ms. From a computer on the same network, with no update
     open (no code on the screen), check each answer, and that the gadget keeps running (no
     reboot, the screen does not stall):
     - `curl -i -F x=1 http://<ip>/update` → `400 {"error":"update not open"}`;
@@ -341,8 +342,16 @@ notes.
       with `head -c 3000` → `431 {"error":"headers too large"}`, never a crash;
     - `curl -i -H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)" -H 'Content-Type: application/json' -d '{}' http://<ip>/settings-unlock`
       → the page's normal answer (not 400/431): large headers are fine up to 2 KB;
-    - `(printf 'POST /settings HTTP/1.1\r\nHost: x\r\n'; sleep 2) | nc <ip> 80` → `400 {"error":"incomplete headers"}`
-      within about 1 s.
+    - `(printf 'POST /settings HTTP/1.1\r\nHost: x\r\n'; sleep 8) | nc <ip> 80` (a header block
+      that never completes) → no reply: the server drops the connection after 5 s, or within
+      about 30 ms when another client has data (reload the settings page meanwhile: it answers
+      at once);
+    - `(printf 'POST /settings HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: 500\r\n\r\n{'; sleep 2) | nc <ip> 80`
+      (a small body that stalls) → `408` after about 350 ms;
+    - a POST to `/settings` with `Content-Length: 20000` → `413 {"error":"too large"}`, and the same
+      to `/api/state` without a valid token → `401`, both before the body is read;
+    - when the gadget has no heap left for the read-ahead buffer (hard to force by hand; covered by
+      the native tests) it answers `503 busy` rather than failing.
     Then the real browsers, whose headers often span 2-3 segments: save the settings page and
     join a Wi-Fi from the setup portal with desktop Chrome or Edge, Firefox, and a phone (iOS
     captive sheet, Android Chrome); both update paths work inside the window: `/miblo:update`
@@ -361,3 +370,12 @@ notes.
     itself (LittleFS) is not in the native tests: this check covers it. Pairing and removing a
     computer are saved before the reply: when that save fails the gadget answers `503 busy` and
     nothing changes (the pairing code stays valid; `/miblo:pair` resends it).
+28. **Stalled requests (security):** from a computer on the same network, open 60 connections
+    that send half a request line or half a header block and stop, 60 that send nothing, and 20
+    each that send full headers and then stall on a small (`Content-Length: 500`) or a large
+    (`Content-Length: 20000`) body. Meanwhile keep a session running and reload the settings page:
+    the screen, the alerts, the bridge's snapshots and the page keep answering (well under a
+    second), and the gadget never restarts. The incomplete and silent connections get no reply
+    (dropped after 5 s, sooner while other clients are active); each stalled small body gets `408`;
+    each large body gets `413` (to `/api/state` without a valid token, `401`) before it is read. With
+    the settings page loading while the bridge sends snapshots, `/miblo:status` shows no send errors.

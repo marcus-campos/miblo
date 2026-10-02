@@ -15,4 +15,15 @@ void writePublicInfo(JsonObject doc, const char* id, bool paired, int proto) {
   doc["proto"] = proto;
 }
 
+void writeSystemInfo(JsonObject doc, const SystemStats& s) {
+  doc["cpu"] = s.cpu;
+  doc["mhz"] = s.mhz;
+  doc["ramUsed"] = s.ramUsed;
+  doc["ram"] = s.ram;
+  doc["fw"] = s.fw;
+  doc["fwMax"] = s.fwMax;
+  doc["fsUsed"] = s.fsUsed;
+  doc["fs"] = s.fs;
+}
+
 }  // namespace miblo

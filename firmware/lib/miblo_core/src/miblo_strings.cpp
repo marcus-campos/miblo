@@ -188,9 +188,9 @@ static const char kEn[] MIBLO_ROM =
     "System\0"  // WebSystem
     "Processing\0"  // WebCpu
     "Memory (RAM)\0"  // WebRam
-    "Storage\0"  // WebStorage
+    "Program (firmware)\0"  // WebProgram
     "%s in use · %s free of %s\0"  // WebInUse
-    "Firmware %s · data %s\0"  // WebFwRoom
+    "Data\0"  // WebData
     "Paired computers\0"  // WebComputers
     "Remove\0"  // WebRemove
     "Remove %s? It stops updating this Miblo until it is paired again with /miblo:pair.\0"  // WebRemoveConfirm
@@ -198,6 +198,8 @@ static const char kEn[] MIBLO_ROM =
     "active now\0"  // WebActiveNow
     "seen %s ago\0"  // WebSeenAgo
     "not seen since the Miblo started\0"  // WebNotSeen
+    "Rename\0"  // WebRename
+    "Empty: the computer's own name\0"  // WebRenameHint
     "Check the highlighted field\0"  // WebCheckField
     "Code to change settings\0"  // CodeSettings
     "To change settings, type the code shown on the gadget screen.\0"  // WebUnlock
@@ -462,9 +464,9 @@ static const char kPtBR[] MIBLO_ROM =
     "Sistema\0"  // WebSystem
     "Processamento\0"  // WebCpu
     "Memória (RAM)\0"  // WebRam
-    "Armazenamento\0"  // WebStorage
+    "Programa (firmware)\0"  // WebProgram
     "%s em uso · %s livres de %s\0"  // WebInUse
-    "Firmware %s · dados %s\0"  // WebFwRoom
+    "Dados\0"  // WebData
     "Computadores pareados\0"  // WebComputers
     "Remover\0"  // WebRemove
     "Remover %s? Ele deixa de atualizar este Miblo até ser pareado de novo com /miblo:pair.\0"  // WebRemoveConfirm
@@ -472,6 +474,8 @@ static const char kPtBR[] MIBLO_ROM =
     "ativo agora\0"  // WebActiveNow
     "visto há %s\0"  // WebSeenAgo
     "sem contato desde que o Miblo ligou\0"  // WebNotSeen
+    "Renomear\0"  // WebRename
+    "Vazio: o nome do próprio computador\0"  // WebRenameHint
     "Confira o campo destacado\0"  // WebCheckField
     "Código para mudar as configurações\0"  // CodeSettings
     "Para mudar as configurações, digite o código que aparece na tela do aparelho.\0"  // WebUnlock
@@ -736,9 +740,9 @@ static const char kPtPT[] MIBLO_ROM =
     "Sistema\0"  // WebSystem
     "Processamento\0"  // WebCpu
     "Memória (RAM)\0"  // WebRam
-    "Armazenamento\0"  // WebStorage
+    "Programa (firmware)\0"  // WebProgram
     "%s em uso · %s livres de %s\0"  // WebInUse
-    "Firmware %s · dados %s\0"  // WebFwRoom
+    "Dados\0"  // WebData
     "Computadores emparelhados\0"  // WebComputers
     "Remover\0"  // WebRemove
     "Remover %s? Deixa de atualizar este Miblo até ser emparelhado de novo com /miblo:pair.\0"  // WebRemoveConfirm
@@ -746,6 +750,8 @@ static const char kPtPT[] MIBLO_ROM =
     "ativo agora\0"  // WebActiveNow
     "visto há %s\0"  // WebSeenAgo
     "sem contacto desde que o Miblo ligou\0"  // WebNotSeen
+    "Mudar o nome\0"  // WebRename
+    "Vazio: o nome do próprio computador\0"  // WebRenameHint
     "Verifique o campo destacado\0"  // WebCheckField
     "Código para alterar as definições\0"  // CodeSettings
     "Para alterar as definições, introduza o código no ecrã do aparelho.\0"  // WebUnlock
@@ -1010,9 +1016,9 @@ static const char kEs[] MIBLO_ROM =
     "Sistema\0"  // WebSystem
     "Procesamiento\0"  // WebCpu
     "Memoria (RAM)\0"  // WebRam
-    "Almacenamiento\0"  // WebStorage
+    "Programa (firmware)\0"  // WebProgram
     "%s en uso · %s libres de %s\0"  // WebInUse
-    "Firmware %s · datos %s\0"  // WebFwRoom
+    "Datos\0"  // WebData
     "Equipos emparejados\0"  // WebComputers
     "Quitar\0"  // WebRemove
     "¿Quitar %s? Dejará de actualizar este Miblo hasta que se empareje de nuevo con /miblo:pair.\0"  // WebRemoveConfirm
@@ -1020,6 +1026,8 @@ static const char kEs[] MIBLO_ROM =
     "activo ahora\0"  // WebActiveNow
     "visto hace %s\0"  // WebSeenAgo
     "sin contacto desde que el Miblo se encendió\0"  // WebNotSeen
+    "Renombrar\0"  // WebRename
+    "Vacío: el nombre propio del equipo\0"  // WebRenameHint
     "Revisa el campo resaltado\0"  // WebCheckField
     "Código para cambiar los ajustes\0"  // CodeSettings
     "Para cambiar los ajustes, escribe el código que aparece en la pantalla.\0"  // WebUnlock
@@ -1284,9 +1292,9 @@ static const char kFr[] MIBLO_ROM =
     "Système\0"  // WebSystem
     "Processeur\0"  // WebCpu
     "Mémoire (RAM)\0"  // WebRam
-    "Stockage\0"  // WebStorage
+    "Programme (firmware)\0"  // WebProgram
     "%s utilisés · %s libres sur %s\0"  // WebInUse
-    "Firmware %s · données %s\0"  // WebFwRoom
+    "Données\0"  // WebData
     "Ordinateurs associés\0"  // WebComputers
     "Retirer\0"  // WebRemove
     "Retirer %s ? Il ne mettra plus ce Miblo à jour jusqu'à un nouvel appairage avec /miblo:pair.\0"  // WebRemoveConfirm
@@ -1294,6 +1302,8 @@ static const char kFr[] MIBLO_ROM =
     "actif maintenant\0"  // WebActiveNow
     "vu il y a %s\0"  // WebSeenAgo
     "pas vu depuis le démarrage du Miblo\0"  // WebNotSeen
+    "Renommer\0"  // WebRename
+    "Vide : le nom de l'ordinateur\0"  // WebRenameHint
     "Vérifiez le champ en surbrillance\0"  // WebCheckField
     "Code pour modifier les réglages\0"  // CodeSettings
     "Pour modifier les réglages, saisissez le code affiché à l'écran.\0"  // WebUnlock
@@ -1558,9 +1568,9 @@ static const char kIt[] MIBLO_ROM =
     "Sistema\0"  // WebSystem
     "Elaborazione\0"  // WebCpu
     "Memoria (RAM)\0"  // WebRam
-    "Archiviazione\0"  // WebStorage
+    "Programma (firmware)\0"  // WebProgram
     "%s in uso · %s liberi su %s\0"  // WebInUse
-    "Firmware %s · dati %s\0"  // WebFwRoom
+    "Dati\0"  // WebData
     "Computer associati\0"  // WebComputers
     "Rimuovi\0"  // WebRemove
     "Rimuovere %s? Smetterà di aggiornare questo Miblo finché non verrà associato di nuovo con /miblo:pair.\0"  // WebRemoveConfirm
@@ -1568,6 +1578,8 @@ static const char kIt[] MIBLO_ROM =
     "attivo ora\0"  // WebActiveNow
     "visto %s fa\0"  // WebSeenAgo
     "non visto dall'accensione del Miblo\0"  // WebNotSeen
+    "Rinomina\0"  // WebRename
+    "Vuoto: il nome del computer\0"  // WebRenameHint
     "Controlla il campo evidenziato\0"  // WebCheckField
     "Codice per cambiare le impostazioni\0"  // CodeSettings
     "Per cambiare le impostazioni, digita il codice mostrato sullo schermo.\0"  // WebUnlock
@@ -1832,9 +1844,9 @@ static const char kDe[] MIBLO_ROM =
     "System\0"  // WebSystem
     "Prozessor\0"  // WebCpu
     "Arbeitsspeicher (RAM)\0"  // WebRam
-    "Speicherplatz\0"  // WebStorage
+    "Programm (Firmware)\0"  // WebProgram
     "%s belegt · %s frei von %s\0"  // WebInUse
-    "Firmware %s · Daten %s\0"  // WebFwRoom
+    "Daten\0"  // WebData
     "Gekoppelte Computer\0"  // WebComputers
     "Entfernen\0"  // WebRemove
     "%s entfernen? Er aktualisiert diesen Miblo erst wieder nach erneutem Koppeln mit /miblo:pair.\0"  // WebRemoveConfirm
@@ -1842,6 +1854,8 @@ static const char kDe[] MIBLO_ROM =
     "gerade aktiv\0"  // WebActiveNow
     "vor %s gesehen\0"  // WebSeenAgo
     "seit dem Start des Miblo nicht gesehen\0"  // WebNotSeen
+    "Umbenennen\0"  // WebRename
+    "Leer: der eigene Name des Computers\0"  // WebRenameHint
     "Prüfe das markierte Feld\0"  // WebCheckField
     "Code zum Ändern der Einstellungen\0"  // CodeSettings
     "Zum Ändern der Einstellungen den Code auf dem Bildschirm eingeben.\0"  // WebUnlock
@@ -2106,9 +2120,9 @@ static const char kRu[] MIBLO_ROM =
     "Система\0"  // WebSystem
     "Процессор\0"  // WebCpu
     "Память (RAM)\0"  // WebRam
-    "Хранилище\0"  // WebStorage
+    "Программа (прошивка)\0"  // WebProgram
     "занято %s · свободно %s из %s\0"  // WebInUse
-    "Прошивка %s · данные %s\0"  // WebFwRoom
+    "Данные\0"  // WebData
     "Подключённые компьютеры\0"  // WebComputers
     "Удалить\0"  // WebRemove
     "Удалить %s? Он перестанет обновлять этот Miblo, пока его снова не подключат через /miblo:pair.\0"  // WebRemoveConfirm
@@ -2116,6 +2130,8 @@ static const char kRu[] MIBLO_ROM =
     "активен сейчас\0"  // WebActiveNow
     "был %s назад\0"  // WebSeenAgo
     "не на связи с запуска Miblo\0"  // WebNotSeen
+    "Переименовать\0"  // WebRename
+    "Пусто: имя самого компьютера\0"  // WebRenameHint
     "Проверьте выделенное поле\0"  // WebCheckField
     "Код для изменения настроек\0"  // CodeSettings
     "Чтобы изменить настройки, введите код с экрана устройства.\0"  // WebUnlock
@@ -2380,9 +2396,9 @@ static const char kZh[] MIBLO_ROM =
     "系统\0"  // WebSystem
     "处理器\0"  // WebCpu
     "内存 (RAM)\0"  // WebRam
-    "存储\0"  // WebStorage
+    "程序（固件）\0"  // WebProgram
     "已用 %s · 可用 %s / 共 %s\0"  // WebInUse
-    "固件 %s · 数据 %s\0"  // WebFwRoom
+    "数据\0"  // WebData
     "已配对的电脑\0"  // WebComputers
     "移除\0"  // WebRemove
     "移除 %s？在用 /miblo:pair 重新配对之前，它将不再更新此 Miblo。\0"  // WebRemoveConfirm
@@ -2390,6 +2406,8 @@ static const char kZh[] MIBLO_ROM =
     "当前活跃\0"  // WebActiveNow
     "%s前活跃\0"  // WebSeenAgo
     "Miblo 启动后未连接\0"  // WebNotSeen
+    "重命名\0"  // WebRename
+    "留空：使用电脑自己的名称\0"  // WebRenameHint
     "请检查标出的字段\0"  // WebCheckField
     "修改设置的验证码\0"  // CodeSettings
     "要修改设置, 请输入屏幕上显示的验证码.\0"  // WebUnlock

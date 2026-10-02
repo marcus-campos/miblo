@@ -1,4 +1,5 @@
 #pragma once
+#include <ArduinoJson.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -85,7 +86,8 @@ class PairingGuard {
 
 struct TokenEntry {
   char token[33];
-  char host[33];
+  char host[33];  // the label the settings page shows: the computer's host name, or the user's
+  bool custom;    // the user named it (settings page): snapshots no longer relabel it
   uint32_t order;  // higher = more recent
 };
 
@@ -104,6 +106,26 @@ class TokenStore {
   // The settings page's list: remove the computer at place i, only if that place still holds
   // `host` (the list may have changed since the page read it). The others keep their tokens.
   bool remove(uint8_t i, const char* host);
+  // The settings page names a computer: place i, only if it still holds `host` (as remove()).
+  // `name` follows a gadget name's rules (<= 20 characters, no control characters, fits the
+  // label); "" hands the label back to the computer (automatic: its next snapshot names it).
+  enum class RenameResult : uint8_t { Ok, Changed, BadName };
+  RenameResult rename(uint8_t i, const char* host, const char* name);
+  // A snapshot from computer i says its host name: an automatic label follows it (cut to 20
+  // characters, like the pairing's). true when the label changed; the change is in RAM until
+  // saveDue() says to store it.
+  bool autoLabel(uint8_t i, const char* host);
+  // Automatic labels are stored at most once a minute (flash wear): true when one changed and
+  // the last save is a minute old (or none yet). saved() after storing.
+  static constexpr uint32_t kAutoSaveGapMs = 60000;
+  bool saveDue(uint32_t nowMs) const {
+    return dirty_ && (!savedOnce_ || nowMs - savedAtMs_ >= kAutoSaveGapMs);
+  }
+  void saved(uint32_t nowMs) {
+    dirty_ = false;
+    savedOnce_ = true;
+    savedAtMs_ = nowMs;
+  }
   // When each computer's token last came in (millis(); since boot, never stored).
   void seen(uint8_t i, uint32_t nowMs) {
     if (i < n_) seenMs_[i] = nowMs, seenSet_ |= (uint8_t)(1u << i);
@@ -116,7 +138,15 @@ class TokenStore {
   uint8_t n_ = 0;
   uint32_t seenMs_[kMax] = {};
   uint8_t seenSet_ = 0;  // bit i: entry i has been seen since boot
+  bool dirty_ = false;      // an automatic label changed and is not stored yet
+  bool savedOnce_ = false;
+  uint32_t savedAtMs_ = 0;
 };
+
+// pairs.json: {"pairs":[{"token","host","order","c":true (custom label only)}]}. Reading skips an
+// entry without a 32-character token; a file from before the custom flag loads as automatic.
+void tokensToJson(const TokenStore& tokens, JsonObject out);
+void tokensFromJson(JsonObjectConst in, TokenStore& tokens);
 
 // Physical presence code: when opening the /update gate (POST /update/open) or requesting a
 // factory reset from the browser, the screen shows a 4-digit code, valid for 5 min; the POST

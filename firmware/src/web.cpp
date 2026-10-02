@@ -5,6 +5,7 @@
 #include "app.h"
 #include "board.h"
 #include "context.h"
+#include "miblo_info.h"
 #include "miblo_snapshot.h"
 #include "platform/platform.h"
 #include "miblo_tz.h"
@@ -498,16 +499,24 @@ static void appendJsonForScript(String& out, const JsonDocument& doc) {
 // the settings, name and version come from /settings-secret.
 // The System panel (settings > Advanced): while it is open, the load, RAM and storage are read
 // once a second; the last minute of load and RAM is kept in the page (never stored) and drawn as
-// two small graphs, newest on the right.
+// two small graphs, newest on the right. Storage is two bars: the program (the firmware against
+// the largest one the flash layout takes) and the data (the filesystem).
+// The paired computers' card: read once the page is unlocked, then every 30 s (not while a label
+// is being edited); each one can be renamed (inline) or removed.
 static const char kSysJs[] PROGMEM =
     "const SY={cpu:[],ram:[]};let SYT=null;"
-    "const kb=n=>n>=1048576?(n/1048576).toFixed(1)+' MB':Math.round(n/1024)+' KB';"
+    // KB until it rounds to 1020 KB, then MB: the program's 1019.98 KB room reads "1.0 MB" and
+    // the 1000 KB filesystem stays "1000 KB".
+    "const kb=n=>{const k=Math.round(n/1024);return k>=1020?(n/1048576).toFixed(1)+' MB':k+' KB';};"
     "const fmt=(s,...a)=>{let i=0;return s.replace(/%s/g,()=>a[i++]);};"
     "function spark(id,a,c){if(!a.length)return;const W=59,x0=W-(a.length-1);"
     "const p=a.map((v,i)=>(x0+i)+','+(20-Math.min(100,v)/5).toFixed(2)).join(' ');"
     "$(id).innerHTML=[5,10,15].map(y=>'<line x1=\"0\" x2=\"59\" y1=\"'+y+'\" y2=\"'+y+'\" stroke=\"#26262c\" "
     "stroke-width=\"1\" stroke-dasharray=\"3 3\" vector-effect=\"non-scaling-stroke\"/>').join('')+'<polygon points=\"'+x0+',20 '+p+' '+W+',20\" fill=\"'+c+'33\"/>'"
     "+'<polyline points=\"'+p+'\" fill=\"none\" stroke=\"'+c+'\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';}"
+    // A storage bar (#<b>) and its "83% in use · 170 KB free of 1.0 MB" (#<v>); total 0: unknown.
+    "function bar(b,v,u,t){const p=t?Math.min(100,Math.round(u*100/t)):0;$(b).style.width=p+'%';"
+    "$(v).textContent=t?fmt(T.inuse,p+'%',kb(Math.max(0,t-u)),kb(t)):'--';}"
     "async function sys(){const r=await fetch('/settings-system',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
     "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
     "const ram=s.ram?Math.round(s.ramUsed*100/s.ram):0;"
@@ -516,29 +525,49 @@ static const char kSysJs[] PROGMEM =
     "$('ramv').textContent=fmt(T.inuse,ram+'%',kb(s.ram-s.ramUsed),kb(s.ram));"
     "spark('cpug',SY.cpu,'#f5a524');spark('ramg',SY.ram,'#60a5fa');"
     "$('cpun').textContent=s.cpu+'%';$('ramn').textContent=ram+'%';"
-    // Storage: the whole flash chip; what is in use is the firmware and the data (settings, pairings).
-    "const su=s.fw+s.fsUsed,sp=s.chip?Math.round(su*100/s.chip):0;$('fsb').style.width=sp+'%';"
-    "$('fsv').textContent=fmt(T.inuse,sp+'%',kb(Math.max(0,s.chip-su)),kb(s.chip));"
-    "$('fwv').textContent=fmt(T.fwroom,kb(s.fw),kb(s.fsUsed));}"
-    // The paired computers: host name, "active now" / "seen 5 min ago", and Remove. The computer
-    // that opened the page through /miblo:settings is marked (it puts its host name after #me=).
+    "bar('fwb','fwv',s.fw,s.fwMax);bar('fsb','fsv',s.fsUsed,s.fs);}"
+    // The paired computers: label, "active now" / "seen 5 min ago", Rename and Remove. The computer
+    // that opened the page through /miblo:settings is marked (it puts its host name after #me=);
+    // once renamed here, this browser remembers the new label for it (miblo_me).
     "const ME=(()=>{try{return decodeURIComponent((location.hash.match(/me=([^&]*)/)||[])[1]||'').slice(0,32)}catch(e){return ''}})();"
+    "let MEL=null;try{MEL=JSON.parse(localStorage.getItem('miblo_me')||'null')}catch(e){}"
+    "const isMe=c=>!!ME&&(c.host===ME||!!MEL&&MEL.h===ME&&c.host===MEL.l);"
     "const esc=s=>String(s).replace(/[&<>\"]/g,c=>'&#'+c.charCodeAt(0)+';');"
     "const dur=s=>s<3600?Math.max(1,Math.round(s/60))+' min':s<86400?Math.round(s/3600)+' h':Math.round(s/86400)+' d';"
-    "async function pcs(){const r=await fetch('/settings-computers',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
-    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
+    "let PCE=false;"  // a label is being edited: the list is not redrawn under it
+    "async function pcs(){if(!$('pcs'))return;"
+    "const r=await fetch('/settings-computers',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
+    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;PCE=false;"
     "$('pcs').innerHTML=s.list.map(c=>'<div class=\"pc\"><div><b>'+esc(c.host||'?')+'</b>'"
-    "+(ME&&c.host===ME?' <span class=\"me\">('+esc(T.me)+')</span>':'')+'<br><span class=\"m\">'"
+    "+(isMe(c)?' <span class=\"me\">('+esc(T.me)+')</span>':'')+'<br><span class=\"m\">'"
     "+esc(c.ago<0?T.nos:c.ago<60?T.now:fmt(T.ago,dur(c.ago)))+'</span></div>'"
+    "+'<button class=\"s\" data-e=\"'+c.i+'\">'+esc(T.rn)+'</button>'"
     "+'<button class=\"s\" data-i=\"'+c.i+'\">'+esc(T.rm)+'</button></div>').join('');"
-    "for(const b of $('pcs').querySelectorAll('button')){const c=s.list[Number(b.dataset.i)];"
+    "for(const b of $('pcs').querySelectorAll('button[data-e]'))b.onclick=()=>ren(b,s.list[Number(b.dataset.e)]);"
+    "for(const b of $('pcs').querySelectorAll('button[data-i]')){const c=s.list[Number(b.dataset.i)];"
     "b.onclick=async()=>{if(!confirm(fmt(T.rmq,c.host||'?')))return;"
+    // The place and the label shown: a list that changed meanwhile never loses the wrong one.
     "const q=await areq('/settings-computer-remove',JSON.stringify({i:c.i,host:c.host}));"
     // The last one gone: the gadget is unpaired again and the page reloads open, as before pairing.
     "const j=q&&q.ok?await q.json().catch(()=>({})):{};if(j.left===0){location.reload();return;}pcs();};}}"
+    // Rename inline: the label becomes a field (a gadget name's rules: up to 20 characters, no
+    // control characters); Enter or Save stores it, Escape cancels, empty gives the label back to
+    // the computer (its host name, from its next update).
+    "function ren(b,c){if(PCE)return;PCE=true;const x=document.createElement('input');"
+    "x.maxLength=20;x.autocomplete='off';x.value=c.host||'';x.placeholder=T.rnh;"
+    "b.parentElement.querySelector('b').replaceWith(x);x.focus();b.textContent=T.save;"
+    "const go=async()=>{const v=x.value.trim();x.classList.remove('bad');"
+    "if([...v].length>20||/[\\x00-\\x1f\\x7f]/.test(v)){x.classList.add('bad');return;}"
+    "const q=await areq('/settings-computer-rename',JSON.stringify({i:c.i,host:c.host,name:v})).catch(()=>null);"
+    "if(q&&q.status===400){x.classList.add('bad');return;}"
+    "if(q&&q.ok&&v&&isMe(c)){MEL={h:ME,l:v};try{localStorage.setItem('miblo_me',JSON.stringify(MEL))}catch(e){}}"
+    "pcs();};"
+    // Its own Enter: the page's Enter (save the settings) must not see it.
+    "b.onclick=go;x.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')go();else if(e.key==='Escape')pcs();};}"
+    "setInterval(()=>{if(SEC&&!PCE&&!document.hidden)pcs();},30000);"
     // One read at a time (a slow answer never piles requests up), only while the panel is open.
     "function tick(){SYT=null;sys().finally(()=>{if($('adv').open)SYT=setTimeout(tick,1000);});}"
-    "$('adv').addEventListener('toggle',()=>{if($('adv').open){pcs();if(!SYT)tick();}"
+    "$('adv').addEventListener('toggle',()=>{if($('adv').open){if(!SYT)tick();}"
     "else{clearTimeout(SYT);SYT=null;}});";
 
 static const char kSetJs[] PROGMEM =
@@ -587,7 +616,9 @@ static const char kSetJs[] PROGMEM =
     "$('m').textContent=T.ver+' '+FW+' \\u00b7 '+T.pc.replace('%u',s.paired);"
     "$('ub').hidden=true;$('all').hidden=false;tz();dep();rv();pd();}"
     "$('owner').value=s.owner||'';"
-    "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
+    "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;"
+    // Unlocked: the paired computers' card (kSysJs).
+    "pcs();}"
     "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
     // data-if="id": shown while that checkbox is on (a select: while it is not "0" or empty);
     // "a|b": while any of them is; data-if="id:value": while that select has it (or one of "a|b").
@@ -939,6 +970,13 @@ static void settingsPage() {
   out += F("</div>");
   pageFlush(out);
 
+  // The paired computers (kSysJs fills it once the page is unlocked): none before pairing.
+  if (!open) {
+    out += F("<div class=\"c\"><h2>");
+    text(out, lang, S::WebComputers);
+    out += F("</h2><div id=\"pcs\"><p class=\"m\">...</p></div></div>");
+  }
+
   // Advanced (collapsed): the live System panel, firmware, pairing code, factory reset.
   out += F("<details class=\"c\" id=\"adv\"><summary>");
   text(out, lang, S::WebAdvanced);
@@ -951,11 +989,11 @@ static void settingsPage() {
   text(out, lang, S::WebRam);
   out += F("<span class=\"m\" id=\"ramv\">--</span></div><div class=\"gr\"><svg id=\"ramg\" viewBox=\"0 0 59 20\" "
            "preserveAspectRatio=\"none\"></svg><i>100%</i><i>50%</i><i>0%</i><b id=\"ramn\"></b></div><div class=\"t\">");
-  text(out, lang, S::WebStorage);
-  out += F("<span class=\"m\" id=\"fsv\">--</span></div><div class=\"mb\"><i id=\"fsb\"></i></div>"
-           "<p class=\"m\" id=\"fwv\"></p></div><h2>");
-  text(out, lang, S::WebComputers);
-  out += F("</h2><div id=\"pcs\"><p class=\"m\">...</p></div><h2>");
+  // Storage, in two parts: the program (firmware) and the data (settings, pairings, notes).
+  text(out, lang, S::WebProgram);
+  out += F("<span class=\"m\" id=\"fwv\">--</span></div><div class=\"mb\"><i id=\"fwb\"></i></div><div class=\"t\">");
+  text(out, lang, S::WebData);
+  out += F("<span class=\"m\" id=\"fsv\">--</span></div><div class=\"mb\"><i id=\"fsb\"></i></div></div><h2>");
   text(out, lang, S::WebFirmware);
   out += F("</h2><button class=\"s\" onclick=\"chk()\">");
   text(out, lang, S::WebCheckUpdates);
@@ -1002,8 +1040,10 @@ static void settingsPage() {
   txt["pc"] = tr(lang, S::WebPairedCount);
   txt["again"] = tr(lang, S::WebTryAgain);
   txt["inuse"] = tr(lang, S::WebInUse);
-  txt["fwroom"] = tr(lang, S::WebFwRoom);
   txt["rm"] = tr(lang, S::WebRemove);
+  txt["rn"] = tr(lang, S::WebRename);
+  txt["rnh"] = tr(lang, S::WebRenameHint);
+  txt["save"] = tr(lang, S::WebSave);
   txt["rmq"] = tr(lang, S::WebRemoveConfirm);
   txt["me"] = tr(lang, S::WebThisComputer);
   txt["now"] = tr(lang, S::WebActiveNow);
@@ -1109,7 +1149,7 @@ static void handleSettingsSecret() {
 }
 
 // GET /settings-system: the settings page's System panel, read once a second while it is open:
-// processing load, RAM in use, and storage. For whoever may see the settings (a web session, a
+// processing load, RAM in use, and storage (program and data: miblo::writeSystemInfo). For whoever may see the settings (a web session, a
 // paired computer, or anyone before pairing, as the page itself).
 static void handleSettingsSystem() {
   if (ctx.tokens.count() > 0 && !webAuthorized()) {
@@ -1124,13 +1164,19 @@ static void handleSettingsSystem() {
     fsAtMs = now;
   }
   const uint32_t heap = freeHeap(), ram = ramTotal();
-  char out[224];
-  snprintf_P(out, sizeof(out),
-             PSTR("{\"cpu\":%u,\"mhz\":%u,\"ramUsed\":%lu,\"ram\":%lu,\"fw\":%lu,\"otaRoom\":%lu,"
-                  "\"chip\":%lu,\"fsUsed\":%lu,\"fs\":%lu}"),
-             (unsigned)app::cpuLoad(), (unsigned)ESP.getCpuFreqMHz(), (unsigned long)(heap < ram ? ram - heap : 0),
-             (unsigned long)ram, (unsigned long)ESP.getSketchSize(), (unsigned long)ESP.getFreeSketchSpace(),
-             (unsigned long)flashChipBytes(), (unsigned long)fsUsed, (unsigned long)fsTotal);
+  miblo::SystemStats st{};
+  st.cpu = app::cpuLoad();
+  st.mhz = ESP.getCpuFreqMHz();
+  st.ramUsed = heap < ram ? ram - heap : 0;
+  st.ram = ram;
+  st.fw = ESP.getSketchSize();
+  st.fwMax = MIBLO_FW_MAX_BYTES;
+  st.fsUsed = fsUsed;
+  st.fs = fsTotal;
+  StaticJsonDocument<192> doc;
+  miblo::writeSystemInfo(doc.to<JsonObject>(), st);
+  char out[192];
+  serializeJson(doc, out, sizeof(out));
   sendJson(*srv, 200, out);
 }
 
@@ -1148,6 +1194,7 @@ static void handleSettingsComputers() {
     JsonObject e = list.createNestedObject();
     e["i"] = i;
     e["host"] = (const char*)ctx.tokens.at(i).host;
+    if (ctx.tokens.at(i).custom) e["c"] = true;  // named by the user (else: its host name)
     e["ago"] = ctx.tokens.everSeen(i) ? (long)((now - ctx.tokens.seenAt(i)) / 1000) : -1L;
   }
   String out;
@@ -1177,6 +1224,42 @@ static void handleSettingsComputerRemove() {
   char out[32];
   snprintf_P(out, sizeof(out), PSTR("{\"ok\":true,\"left\":%u}"), (unsigned)ctx.tokens.count());
   sendJson(*srv, 200, out);
+}
+
+// POST /settings-computer-rename {"i":0,"host":"mac","name":"Work laptop"}: name one computer
+// (its place and current label, as for removing). "" gives the label back to the computer: its
+// next snapshot names it again.
+static void handleSettingsComputerRename() {
+  if (!requireJson(*srv)) return;
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
+    return;
+  }
+  if (bodyTooLarge() || srv->arg(F("plain")).length() > 256) {
+    sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
+    return;
+  }
+  StaticJsonDocument<192> doc;
+  if (deserializeJson(doc, srv->arg(F("plain"))) || !doc["i"].is<int>() || !doc["host"].is<const char*>() ||
+      !doc["name"].is<const char*>()) {
+    sendJson(*srv, 400, F("{\"error\":\"bad request\"}"));
+    return;
+  }
+  const int i = doc["i"].as<int>();
+  const auto r = i < 0 || i > 255 ? miblo::TokenStore::RenameResult::Changed
+                                  : ctx.tokens.rename((uint8_t)i, doc["host"].as<const char*>(),
+                                                      doc["name"].as<const char*>());
+  if (r == miblo::TokenStore::RenameResult::BadName) {
+    sendJson(*srv, 400, F("{\"error\":\"invalid\",\"field\":\"name\"}"));
+    return;
+  }
+  if (r == miblo::TokenStore::RenameResult::Changed) {
+    sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
+    return;
+  }
+  storage::saveTokens(ctx.tokens);
+  ctx.tokens.saved(millis());  // an automatic label pending is in this save too
+  sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
 static void handleSettings() {
@@ -1426,6 +1509,7 @@ static const routes::Route kRoutes[] PROGMEM = {
     {"/settings-system", HTTP_GET, handleSettingsSystem},
     {"/settings-computers", HTTP_GET, handleSettingsComputers},
     {"/settings-computer-remove", HTTP_POST, handleSettingsComputerRemove},
+    {"/settings-computer-rename", HTTP_POST, handleSettingsComputerRename},
     {"/api/zones", HTTP_GET, handleZones},
     {"/api/wifi-status", HTTP_GET, handleWifiStatus},
     {"/pair-code", HTTP_POST, handlePairCode},

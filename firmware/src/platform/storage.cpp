@@ -141,31 +141,13 @@ bool loadTokens(miblo::TokenStore& tokens) {
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
-  miblo::TokenEntry entries[miblo::TokenStore::kMax];
-  uint8_t n = 0;
-  for (JsonObjectConst e : doc["pairs"].as<JsonArrayConst>()) {
-    if (n >= miblo::TokenStore::kMax) break;
-    const char* token = e["token"] | "";
-    const char* host = e["host"] | "";
-    if (strlen(token) != 32) continue;
-    strlcpy(entries[n].token, token, sizeof(entries[n].token));
-    strlcpy(entries[n].host, host, sizeof(entries[n].host));
-    entries[n].order = e["order"] | 0;
-    n++;
-  }
-  tokens.restore(entries, n);
+  miblo::tokensFromJson(doc.as<JsonObjectConst>(), tokens);
   return true;
 }
 
 bool saveTokens(const miblo::TokenStore& tokens) {
   DynamicJsonDocument doc(1024);
-  JsonArray arr = doc.createNestedArray("pairs");
-  for (uint8_t i = 0; i < tokens.count(); i++) {
-    JsonObject e = arr.createNestedObject();
-    e["token"] = tokens.at(i).token;
-    e["host"] = tokens.at(i).host;
-    e["order"] = tokens.at(i).order;
-  }
+  miblo::tokensToJson(tokens, doc.to<JsonObject>());
   File f = LittleFS.open(kTokens, "w");
   if (!f) return false;
   bool ok = serializeJson(doc, f) > 0;

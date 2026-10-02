@@ -186,9 +186,9 @@ enum class S : uint16_t {
   WebSystem,            // settings > advanced: the live System panel's heading
   WebCpu,               // System panel: processing load (last minute graph)
   WebRam,               // System panel: RAM in use (last minute graph)
-  WebStorage,           // System panel: storage
+  WebProgram,           // System panel, storage: the program (firmware) bar's label
   WebInUse,             // System panel: "%s in use · %s free of %s" ("66%", "26 KB", "80 KB")
-  WebFwRoom,            // System panel, storage: "Firmware %s · data %s"
+  WebData,              // System panel, storage: the data (filesystem) bar's label
   WebComputers,         // settings > advanced: the paired computers' list heading
   WebRemove,            // computers list: the button that unpairs one
   WebRemoveConfirm,     // computers list: "Remove %s? ..." (%s: its host name)
@@ -196,6 +196,8 @@ enum class S : uint16_t {
   WebActiveNow,         // computers list: its token came in within the last minute
   WebSeenAgo,           // computers list: "seen %s ago" (%s: "5 min", "2 h")
   WebNotSeen,           // computers list: not heard from since the gadget started
+  WebRename,            // computers list: the button that names one
+  WebRenameHint,        // computers list: the rename field's placeholder (empty = automatic label)
   WebCheckField,        // settings: a save was refused; the offending field is highlighted
   CodeSettings,         // PresenceCode screen: "Code to change settings"
   WebUnlock,            // settings page: "Type the code on the gadget screen to change settings"

@@ -4,8 +4,12 @@
 #include <string.h>
 
 #include "miblo_rom.h"
+#include "miblo_utf8.h"
 
 namespace miblo {
+
+// The custom flag sits in the padding before `order`: four pairings cost no more RAM than before.
+static_assert(sizeof(TokenEntry) == 72, "TokenEntry grew");
 
 void formatCode(uint32_t rnd, char out[5]) {
   snprintf(out, 5, "%04u", (unsigned)(rnd % 10000));
@@ -217,6 +221,7 @@ void TokenStore::add(const char* token, const char* host) {
   e.token[sizeof(e.token) - 1] = 0;
   strncpy(e.host, host, sizeof(e.host) - 1);
   e.host[sizeof(e.host) - 1] = 0;
+  e.custom = false;
   e.order = order;
 }
 
@@ -240,6 +245,28 @@ bool TokenStore::remove(uint8_t i, const char* host) {
   seenSet_ = (uint8_t)(low | ((seenSet_ >> (i + 1)) << i));
   n_--;
   e_[n_] = TokenEntry{};
+  return true;
+}
+
+TokenStore::RenameResult TokenStore::rename(uint8_t i, const char* host, const char* name) {
+  if (i >= n_ || !host || strcmp(e_[i].host, host) != 0) return RenameResult::Changed;
+  if (!typedText(name, sizeof(e_[i].host), 20)) return RenameResult::BadName;
+  if (!name[0]) {
+    e_[i].custom = false;  // automatic again: the label stays until the next snapshot
+    return RenameResult::Ok;
+  }
+  strcpy(e_[i].host, name);
+  e_[i].custom = true;
+  return RenameResult::Ok;
+}
+
+bool TokenStore::autoLabel(uint8_t i, const char* host) {
+  if (i >= n_ || e_[i].custom || !host || !host[0]) return false;
+  char label[sizeof(e_[i].host)];
+  utf8Copy(label, sizeof(label), host, 20);
+  if (!typedText(label, sizeof(label), 20) || strcmp(label, e_[i].host) == 0) return false;
+  strcpy(e_[i].host, label);
+  dirty_ = true;
   return true;
 }
 
@@ -334,6 +361,35 @@ bool RateLimiter::allow(uint32_t nowMs) {
 uint8_t RateLimiter::tokens(uint32_t nowMs) {
   refill(nowMs);
   return tokens_;
+}
+
+void tokensToJson(const TokenStore& tokens, JsonObject out) {
+  JsonArray arr = out.createNestedArray("pairs");
+  for (uint8_t i = 0; i < tokens.count(); i++) {
+    const TokenEntry& t = tokens.at(i);
+    JsonObject e = arr.createNestedObject();
+    e["token"] = (const char*)t.token;
+    e["host"] = (const char*)t.host;
+    e["order"] = t.order;
+    if (t.custom) e["c"] = true;
+  }
+}
+
+void tokensFromJson(JsonObjectConst in, TokenStore& tokens) {
+  TokenEntry entries[TokenStore::kMax] = {};
+  uint8_t n = 0;
+  for (JsonObjectConst e : in["pairs"].as<JsonArrayConst>()) {
+    if (n >= TokenStore::kMax) break;
+    const char* token = e["token"] | "";
+    if (strlen(token) != 32) continue;
+    TokenEntry& t = entries[n];
+    memcpy(t.token, token, 33);
+    utf8Copy(t.host, sizeof(t.host), e["host"] | "");
+    t.custom = e["c"] | false;
+    t.order = e["order"] | 0;
+    n++;
+  }
+  tokens.restore(entries, n);
 }
 
 }  // namespace miblo

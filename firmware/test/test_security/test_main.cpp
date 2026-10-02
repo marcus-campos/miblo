@@ -180,6 +180,143 @@ static void test_token_store_remove_and_seen() {
   TEST_ASSERT_FALSE(s.remove(0, "linux"));
 }
 
+// The settings page renames a paired computer: by its place AND its current label (like remove).
+// The new label is the user's (custom): automatic labels from the computer's snapshots no longer
+// replace it. An empty name gives the label back to the computer. Same rules as a gadget name.
+static void test_token_store_rename() {
+  TokenStore s;
+  s.add("t1", "mac");
+  s.add("t2", "pc");
+  TEST_ASSERT_FALSE(s.at(0).custom);
+  TEST_ASSERT_TRUE(s.rename(0, "mac", "Work laptop") == TokenStore::RenameResult::Ok);
+  TEST_ASSERT_EQUAL_STRING("Work laptop", s.at(0).host);
+  TEST_ASSERT_TRUE(s.at(0).custom);
+  TEST_ASSERT_TRUE(s.matches("t1"));  // the token is untouched
+  TEST_ASSERT_TRUE(s.rename(0, "mac", "x") == TokenStore::RenameResult::Changed);  // stale label
+  TEST_ASSERT_TRUE(s.rename(5, "pc", "x") == TokenStore::RenameResult::Changed);
+  TEST_ASSERT_TRUE(s.rename(1, nullptr, "x") == TokenStore::RenameResult::Changed);
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "123456789012345678901") == TokenStore::RenameResult::BadName);  // 21
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "tab\there") == TokenStore::RenameResult::BadName);
+  TEST_ASSERT_TRUE(s.rename(1, "pc", nullptr) == TokenStore::RenameResult::BadName);
+  TEST_ASSERT_EQUAL_STRING("pc", s.at(1).host);
+  TEST_ASSERT_FALSE(s.at(1).custom);
+  // 17 two-byte characters (34 bytes) never fit the 32-byte label: refused, not cut.
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "ééééééééééééééééé") == TokenStore::RenameResult::BadName);
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "Café do João") == TokenStore::RenameResult::Ok);
+  TEST_ASSERT_EQUAL_STRING("Café do João", s.at(1).host);
+  // Removing goes by the current label.
+  TEST_ASSERT_FALSE(s.remove(1, "pc"));
+  TEST_ASSERT_TRUE(s.remove(1, "Café do João"));
+  // Empty: automatic again (the label stays until the computer's next snapshot names it).
+  TEST_ASSERT_TRUE(s.rename(0, "Work laptop", "") == TokenStore::RenameResult::Ok);
+  TEST_ASSERT_FALSE(s.at(0).custom);
+  TEST_ASSERT_EQUAL_STRING("Work laptop", s.at(0).host);
+  TEST_ASSERT_TRUE(s.autoLabel(0, "mac"));
+  TEST_ASSERT_EQUAL_STRING("mac", s.at(0).host);
+  // A new pairing in a place a custom one held is automatic.
+  TEST_ASSERT_TRUE(s.rename(0, "mac", "Mine") == TokenStore::RenameResult::Ok);
+  TEST_ASSERT_TRUE(s.remove(0, "Mine"));
+  s.add("t3", "linux");
+  TEST_ASSERT_FALSE(s.at(0).custom);
+}
+
+// A snapshot names its computer (its host name): an automatic label follows it, a custom one
+// never does. Saved at most once a minute (flash wear), and only when something changed.
+static void test_token_store_auto_label() {
+  TokenStore s;
+  s.add("t1", "old-name");
+  s.add("t2", "pc");
+  TEST_ASSERT_FALSE(s.saveDue(0));
+  TEST_ASSERT_FALSE(s.autoLabel(0, "old-name"));  // same: nothing to do
+  TEST_ASSERT_FALSE(s.autoLabel(0, ""));          // none: kept
+  TEST_ASSERT_FALSE(s.autoLabel(0, nullptr));
+  TEST_ASSERT_FALSE(s.autoLabel(0, "bad\x01name"));
+  TEST_ASSERT_FALSE(s.autoLabel(9, "x"));
+  TEST_ASSERT_FALSE(s.saveDue(0));
+  TEST_ASSERT_TRUE(s.autoLabel(0, "new-name"));
+  TEST_ASSERT_EQUAL_STRING("new-name", s.at(0).host);
+  TEST_ASSERT_TRUE(s.saveDue(1000));  // first save: at once
+  s.saved(1000);
+  TEST_ASSERT_FALSE(s.saveDue(1000));
+  TEST_ASSERT_TRUE(s.autoLabel(1, "pc-2"));
+  TEST_ASSERT_FALSE(s.saveDue(30000));  // within a minute of the last save: waits
+  TEST_ASSERT_TRUE(s.saveDue(61000));
+  s.saved(61000);
+  // A long host name is cut like the pairing's: 20 characters.
+  TEST_ASSERT_TRUE(s.autoLabel(1, "abcdefghijklmnopqrstuvwxyz"));
+  TEST_ASSERT_EQUAL_STRING("abcdefghijklmnopqrst", s.at(1).host);
+  TEST_ASSERT_FALSE(s.autoLabel(1, "abcdefghijklmnopqrstuvwxyz"));  // same once cut
+  // Custom: the snapshot's name is ignored.
+  TEST_ASSERT_TRUE(s.rename(0, "new-name", "Desk") == TokenStore::RenameResult::Ok);
+  TEST_ASSERT_FALSE(s.autoLabel(0, "new-name"));
+  TEST_ASSERT_EQUAL_STRING("Desk", s.at(0).host);
+}
+
+// pairs.json: the custom flag round-trips ("c":true only when set); a file from before it loads
+// every label as automatic; damaged entries are skipped.
+static void test_tokens_json_round_trip() {
+  TokenStore s;
+  s.add("00112233445566778899aabbccddeeff", "mac");
+  s.add("ffeeddccbbaa99887766554433221100", "pc");
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "Living room") == TokenStore::RenameResult::Ok);
+  DynamicJsonDocument doc(1024);
+  tokensToJson(s, doc.to<JsonObject>());
+  TEST_ASSERT_TRUE(doc["pairs"][0]["c"].isNull());
+  TEST_ASSERT_TRUE(doc["pairs"][1]["c"].as<bool>());
+  char text[1024];
+  serializeJson(doc, text, sizeof(text));
+  DynamicJsonDocument back(1024);
+  TEST_ASSERT_FALSE((bool)deserializeJson(back, text));
+  TokenStore r;
+  tokensFromJson(back.as<JsonObjectConst>(), r);
+  TEST_ASSERT_EQUAL_UINT8(2, r.count());
+  TEST_ASSERT_EQUAL_STRING("mac", r.at(0).host);
+  TEST_ASSERT_FALSE(r.at(0).custom);
+  TEST_ASSERT_EQUAL_STRING("Living room", r.at(1).host);
+  TEST_ASSERT_TRUE(r.at(1).custom);
+  TEST_ASSERT_EQUAL_UINT32(s.at(1).order, r.at(1).order);
+  TEST_ASSERT_TRUE(r.matches("ffeeddccbbaa99887766554433221100"));
+
+  const char old[] =
+      "{\"pairs\":[{\"token\":\"00112233445566778899aabbccddeeff\",\"host\":\"mac\",\"order\":3},"
+      "{\"token\":\"short\",\"host\":\"x\",\"order\":4},"
+      "{\"token\":\"ffeeddccbbaa99887766554433221100\",\"host\":\"a-very-long-host-name-from-somewhere-else\",\"order\":5}]}";
+  DynamicJsonDocument od(1024);
+  TEST_ASSERT_FALSE((bool)deserializeJson(od, old));
+  TokenStore o;
+  tokensFromJson(od.as<JsonObjectConst>(), o);
+  TEST_ASSERT_EQUAL_UINT8(2, o.count());
+  TEST_ASSERT_FALSE(o.at(0).custom);
+  TEST_ASSERT_FALSE(o.at(1).custom);
+  TEST_ASSERT_EQUAL_UINT32(5, o.at(1).order);
+  TEST_ASSERT_EQUAL_STRING("a-very-long-host-name-from-somew", o.at(1).host);
+}
+
+// GET /settings-system: what the System panel draws. Program = the firmware against the largest
+// program the flash layout takes (fwMax); Data = the filesystem.
+static void test_system_json_fields() {
+  SystemStats st{};
+  st.cpu = 12;
+  st.mhz = 80;
+  st.ramUsed = 50000;
+  st.ram = 81920;
+  st.fw = 870000;
+  st.fwMax = 1044464;
+  st.fsUsed = 49152;
+  st.fs = 1024000;
+  StaticJsonDocument<256> doc;
+  writeSystemInfo(doc.to<JsonObject>(), st);
+  TEST_ASSERT_EQUAL(8, (int)doc.as<JsonObject>().size());
+  TEST_ASSERT_EQUAL(12, doc["cpu"].as<int>());
+  TEST_ASSERT_EQUAL(80, doc["mhz"].as<int>());
+  TEST_ASSERT_EQUAL_UINT32(50000, doc["ramUsed"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_UINT32(81920, doc["ram"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_UINT32(870000, doc["fw"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_UINT32(1044464, doc["fwMax"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_UINT32(49152, doc["fsUsed"].as<uint32_t>());
+  TEST_ASSERT_EQUAL_UINT32(1024000, doc["fs"].as<uint32_t>());
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
@@ -579,6 +716,10 @@ int main() {
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);
   RUN_TEST(test_token_store_remove_and_seen);
+  RUN_TEST(test_token_store_rename);
+  RUN_TEST(test_token_store_auto_label);
+  RUN_TEST(test_tokens_json_round_trip);
+  RUN_TEST(test_system_json_fields);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_headers_plain_and_complete);
   RUN_TEST(test_headers_incomplete);

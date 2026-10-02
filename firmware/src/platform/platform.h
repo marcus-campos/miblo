@@ -3,6 +3,12 @@
 // compiled today; the ESP32 branch flags where a future board will need adjusting.
 #include <Arduino.h>
 
+// The largest program the flash layout takes (the settings page's "Program" bar): set by the
+// board's env next to its linker script (platformio.ini); 0 = unknown (the bar stays empty).
+#ifndef MIBLO_FW_MAX_BYTES
+#define MIBLO_FW_MAX_BYTES 0
+#endif
+
 #if defined(ESP8266)
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>

@@ -81,9 +81,7 @@ static bool printableUtf8(const char* s) {
 }
 
 // A name typed by a person: <= 20 characters, no control characters.
-static bool personName(const char* s, size_t cap) {
-  return s && strlen(s) < cap && utf8Length(s) <= 20 && printableUtf8(s);
-}
+static bool personName(const char* s, size_t cap) { return typedText(s, cap, 20); }
 
 // An integer from a fixed set of choices (the settings page's selects). Unused slots are -1. No
 // table: a const array would sit in the ESP8266's RAM.

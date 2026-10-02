@@ -27,15 +27,17 @@ static WebServerT* srv = nullptr;
 static void json(int code, const char* s) { web::sendJson(*srv, code, s); }
 static void json(int code, const __FlashStringHelper* s) { web::sendJson(*srv, code, s); }
 
-static bool authorized() {
+// The paired computer behind this request's bearer token: its place in ctx.tokens, -1 if none.
+static int caller() {
   char token[40];
   const String auth = web::requestHeader(*srv, F("Authorization"));  // never the previous request's
-  if (!miblo::bearerToken(auth.c_str(), token, sizeof(token))) return false;
+  if (!miblo::bearerToken(auth.c_str(), token, sizeof(token))) return -1;
   const int i = ctx.tokens.find(token);
-  if (i < 0) return false;
-  ctx.tokens.seen((uint8_t)i, millis());  // the settings page's "active now"
-  return true;
+  if (i >= 0) ctx.tokens.seen((uint8_t)i, millis());  // the settings page's "active now"
+  return i;
 }
+
+static bool authorized() { return caller() >= 0; }
 
 // /api/info "focus.phase".
 static const __FlashStringHelper* focusPhaseName(miblo::FocusPhase p) {
@@ -206,7 +208,8 @@ static void handlePair() {
 }
 
 static void handleState() {
-  if (!authorized()) {
+  const int from = caller();
+  if (from < 0) {
     json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -236,6 +239,9 @@ static void handleState() {
   if (ctx.snap.hasUsage) ctx.usageEverSeen = true;
   ctx.alerts.ingest(ctx.snap, now);
   ctx.runs.observe(ctx.snap);
+  // The settings page's list names each computer by its host name, unless the user named it
+  // (stored at most once a minute by the app loop: TokenStore::saveDue).
+  ctx.tokens.autoLabel((uint8_t)from, ctx.snap.host);
   if (time(nullptr) < 1600000000 && ctx.snap.now > 1600000000) {
     timeval tv{(time_t)ctx.snap.now, 0};  // clock before NTP: use the computer's time
     settimeofday(&tv, nullptr);

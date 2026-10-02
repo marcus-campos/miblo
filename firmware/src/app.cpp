@@ -343,6 +343,10 @@ void loop() {
     storage::writeBootCount(0);
     bootCountCleared = true;
   }
+  if (ctx.tokens.saveDue(now)) {  // a computer's new host name (its automatic label)
+    storage::saveTokens(ctx.tokens);
+    ctx.tokens.saved(now);
+  }
   if (ctx.configChanged) {
     ctx.configChanged = false;
     storage::saveConfig(ctx.cfg);

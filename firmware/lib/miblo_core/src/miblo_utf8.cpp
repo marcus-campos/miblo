@@ -62,4 +62,13 @@ size_t utf8Copy(char* dst, size_t cap, const char* src, size_t maxChars) {
   return used;
 }
 
+bool typedText(const char* s, size_t cap, size_t maxChars) {
+  if (!s) return false;
+  size_t bytes = 0;
+  for (const char* p = s; *p; p++, bytes++) {
+    if ((uint8_t)*p < 0x20 || *p == 0x7F) return false;
+  }
+  return bytes < cap && utf8Length(s) <= maxChars;
+}
+
 }  // namespace miblo

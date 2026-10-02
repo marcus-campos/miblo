@@ -8,6 +8,9 @@ namespace miblo {
 
 static bool isAmber(AlertKind k) { return k == AlertKind::Perm || k == AlertKind::Question; }
 
+static uint16_t tieOf(const char* sid);
+static bool keyBefore(uint32_t since, uint16_t tie, uint32_t since2, uint16_t tie2);
+
 static uint8_t kindRank(AlertKind k) {
   switch (k) {
     case AlertKind::Perm: return 0;
@@ -31,6 +34,7 @@ void AlertSequencer::extendHero(uint32_t ms) {
 
 void AlertSequencer::clear() {
   qn_ = 0;
+  overflow_ = false;
   view_.phase = AlertPhase::None;
 }
 
@@ -77,7 +81,7 @@ void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
     const AlertItem& a = s.alerts[i];
     if (a.id <= maxId_) continue;
     maxId_ = a.id;
-    if (!t_.enabled) continue;
+    if (!t_.enabled || !stillValid(s, a.kind, a.sid)) continue;  // already answered / moved on
     // One queued alert per session and kind family: a newer "finished" replaces an older one
     // still held for that session (it would show twice at the break), a newer "needs you"
     // replaces an older one. Items whose session moved on are dropped to make room.
@@ -90,18 +94,80 @@ void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
         j++;
       }
     }
-    if (qn_ >= kMaxAlerts && isAmber(a.kind)) {
-      // Full (e.g. "finished" alerts held through a focus round): a "needs you" alert is never
-      // dropped; the newest queued "finished" makes room for it.
-      for (uint8_t j = qn_; j-- > 0;) {
-        if (queue_[j].kind == AlertKind::Done) {
-          removeAt(j);
-          break;
+    if (isAmber(a.kind) && (overflow_ || qn_ >= kMaxAlerts)) {
+      // Full (e.g. "finished" alerts held through a focus round): the newest queued "finished"
+      // makes room. Still full (8 sessions already wait on you), or older waits are still to be
+      // queued again: requeue() brings this one back from the snapshot, never dropped.
+      if (!overflow_) {
+        for (uint8_t j = qn_; j-- > 0;) {
+          if (queue_[j].kind == AlertKind::Done) {
+            removeAt(j);
+            break;
+          }
         }
       }
+      if (overflow_ || qn_ >= kMaxAlerts) {
+        const uint32_t since = s.sessions[findSession(s, a.sid)].since;
+        const uint16_t tie = tieOf(a.sid);
+        if (!overflow_ || keyBefore(since, tie, overflowSince_, overflowTie_)) {
+          overflowSince_ = since;
+          overflowTie_ = tie;
+        }
+        overflow_ = true;
+        continue;
+      }
     }
-    if (qn_ >= kMaxAlerts) continue;  // 8 sessions already wait on you: the reminder covers the rest
+    if (qn_ >= kMaxAlerts) continue;  // a "finished" with no room: the hero would be late anyway
     queue_[qn_++] = a;
+  }
+  sortQueue(s);
+}
+
+// Order of the waits for requeue(): when it started, then a hash of the session id (ties in the
+// same second). A collision only means that wait may show once more, never that it is lost.
+static uint16_t tieOf(const char* sid) { return (uint16_t)hashStr(kHashSeed, sid); }
+static bool keyBefore(uint32_t since, uint16_t tie, uint32_t since2, uint16_t tie2) {
+  return since < since2 || (since == since2 && tie < tie2);
+}
+
+// After an overflow, refills the queue from the snapshot with the sessions that wait on the user
+// from the cursor (overflowSince_, overflowTie_) on and are neither queued nor on screen, in
+// that order. When the queue fills up again, the cursor moves to the first wait left out: the
+// ones queued before it are never taken twice, and the waits shown before the overflow started
+// earlier than the cursor.
+void AlertSequencer::requeue(const Snapshot& s) {
+  while (overflow_) {
+    int best = -1;
+    uint16_t bestTie = 0;
+    for (int i = 0; i < s.count; i++) {
+      const SessionRow& r = s.sessions[i];
+      if (r.st != SessionState::Perm && r.st != SessionState::Question) continue;
+      const uint16_t tie = tieOf(r.id);
+      if (keyBefore(r.since, tie, overflowSince_, overflowTie_)) continue;
+      if (view_.phase != AlertPhase::None && strcmp(view_.sid, r.id) == 0) continue;
+      bool queued = false;
+      for (uint8_t j = 0; j < qn_ && !queued; j++) queued = strcmp(queue_[j].sid, r.id) == 0 && isAmber(queue_[j].kind);
+      if (queued) continue;
+      if (best < 0 || keyBefore(r.since, tie, s.sessions[best].since, bestTie)) {
+        best = i;
+        bestTie = tie;
+      }
+    }
+    if (best < 0) {
+      overflow_ = false;  // everyone left out is queued now (or no longer waits)
+      break;
+    }
+    const SessionRow& r = s.sessions[best];
+    if (qn_ >= kMaxAlerts) {  // full again: resume from this one next time
+      overflowSince_ = r.since;
+      overflowTie_ = bestTie;
+      break;
+    }
+    AlertItem& it = queue_[qn_++];
+    it.id = 0;
+    it.kind = r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question;
+    strncpy(it.sid, r.id, sizeof(it.sid) - 1);
+    it.sid[sizeof(it.sid) - 1] = 0;
   }
   sortQueue(s);
 }
@@ -115,13 +181,15 @@ void AlertSequencer::start(AlertKind kind, const char* sid, uint32_t nowMs, uint
   view_.phase = AlertPhase::Flash;
   view_.kind = kind;
   view_.level = level;
-  const uint32_t times = level ? 2 : 1;
-  // Meeting mode: one blink, whatever the level (a level-2 blink is still red on screen).
-  flashLenMs_ = mods_.quietFlash ? kBlinkMs : times * t_.flashMs;
-  heroLenMs_ = times * (isAmber(kind) ? t_.heroPermMs : t_.heroDoneMs);
+  heroLenMs_ = (level ? 2 : 1) * (isAmber(kind) ? t_.heroPermMs : t_.heroDoneMs);
   strncpy(view_.sid, sid, sizeof(view_.sid) - 1);
   view_.sid[sizeof(view_.sid) - 1] = 0;
   view_.phaseStartMs = nowMs;
+}
+
+// Meeting mode: one blink, whatever the level (a level-2 blink is still red on screen).
+uint32_t AlertSequencer::flashLenMs() const {
+  return mods_.quietFlash ? kBlinkMs : (view_.level ? 2 : 1) * t_.flashMs;
 }
 
 // Insistence step for a "needs you" alert starting now (spec 3).
@@ -162,7 +230,7 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
     uint32_t elapsed = nowMs - view_.phaseStartMs;
     if (!stillValid(s, view_.kind, view_.sid)) {
       view_.phase = AlertPhase::None;  // answered/dismissed by usage
-    } else if (view_.phase == AlertPhase::Flash && elapsed >= flashLenMs_) {
+    } else if (view_.phase == AlertPhase::Flash && elapsed >= flashLenMs()) {
       view_.phase = AlertPhase::Hero;
       view_.phaseStartMs = nowMs;
     } else if (view_.phase == AlertPhase::Hero && elapsed >= heroLenMs_) {
@@ -171,6 +239,7 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
   }
 
   if (view_.phase == AlertPhase::None) {
+    if (overflow_) requeue(s);
     // Stale items are dropped; a valid "finished" stays queued while holdDone (focus round),
     // and anything behind it (amber sorts first anyway) may still go.
     uint8_t i = 0;

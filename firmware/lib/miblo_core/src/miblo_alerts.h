@@ -19,8 +19,9 @@ struct AlertTiming {
 
 enum class AlertPhase : uint8_t { None, Flash, Hero };
 
-// Insistence (spec 3): from the 3rd reminder of the same wait twice the blinks and twice the
-// hero time; from the 5th, red blinks. Back to 0 when no session waits any more.
+// Insistence (spec 3): from the 3rd reminder of the same session's wait twice the blinks and
+// twice the hero time; from the 5th, red blinks. Back to 0 when that session stops waiting or
+// the reminders move to another session; an alert from the queue (a new wait) is always plain.
 constexpr uint8_t kInsistLevel1From = 3, kInsistLevel2From = 5;
 constexpr uint32_t kFanfareMs = 8000;  // a long task's "finished" stays this long (spec 6)
 
@@ -39,7 +40,8 @@ struct AlertView {
 };
 
 // Alert queue: deduplicates by `id` (highest id seen so far), amber before blue, and every
-// `reminderMs` repeats flash + hero while a session is still pending.
+// `reminderMs` repeats flash + hero while a session is still pending. A "needs you" alert is
+// never lost: one that finds the queue full is queued again from the snapshot once there is room.
 class AlertSequencer {
  public:
   void setTiming(const AlertTiming& t);
@@ -67,10 +69,12 @@ class AlertSequencer {
   bool amberShown_ = false;
   uint32_t lastAmberEndMs_ = 0;
   bool pendingObserved_ = false;
+  bool overflow_ = false;     // a "needs you" alert found the queue full (see requeue())
+  uint16_t overflowTie_ = 0;  // with overflowSince_: the cursor's tie-break (sid hash)
   uint32_t pendingSinceMs_ = 0;
   uint8_t reminders_ = 0;     // reminders started for remindSid_'s current wait (insistence)
   char remindSid_[9] = {0};   // the session the reminders are about ("" = none)
-  uint32_t flashLenMs_ = 0;   // the running alert's flash length (level, quiet flash)
+  uint32_t overflowSince_ = 0;  // with overflow_: the waits from this one on (since, tie) are not queued
   uint32_t heroLenMs_ = 0;    // the running alert's hero length (level, extendHero)
 
   static bool stillValid(const Snapshot& s, AlertKind kind, const char* sid);
@@ -78,6 +82,8 @@ class AlertSequencer {
   void finish(uint32_t nowMs);
   uint8_t levelNow() const;
   void removeAt(uint8_t i);
+  uint32_t flashLenMs() const;
+  void requeue(const Snapshot& s);
   void sortQueue(const Snapshot& s);
 };
 

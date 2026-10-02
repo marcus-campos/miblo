@@ -149,6 +149,32 @@ static void test_anonymous_alerts_hide_names() {
   TEST_ASSERT_TRUE(drewAny(fc, "deploy prod"));
 }
 
+// The alerted session missing from the snapshot on screen (another paired computer's snapshot, or
+// an alerts-only one): a "needs you" flash and hero still draw, anonymously; "finished" draws
+// nothing, as before.
+static void test_needs_you_without_its_session_row_draws_anonymously() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  fillWaiting("secret-client", "Bash", "deploy prod");
+  RunTracker runs;
+  const screens::Clock clk = testClock();
+  screens::reset();
+  fc.clearLog();
+  screens::flash(Lang::En, AlertKind::Perm, "", 0, 0, false);
+  TEST_ASSERT_TRUE(drewAny(fc, "A session needs you"));
+  screens::reset();
+  fc.clearLog();
+  screens::hero(Lang::En, snap, -1, AlertKind::Question, false, clk, runs, false);
+  TEST_ASSERT_TRUE(drewAny(fc, "A session needs you"));
+  TEST_ASSERT_TRUE(drewAny(fc, "Asked a question"));
+  TEST_ASSERT_FALSE(drewAny(fc, "secret-client"));
+  TEST_ASSERT_FALSE(drewAny(fc, "waiting "));  // unknown: no made-up duration
+  screens::reset();
+  fc.clearLog();
+  screens::hero(Lang::En, snap, -1, AlertKind::Done, false, clk, runs, false);
+  TEST_ASSERT_FALSE(drewAny(fc, "FINISHED"));
+}
+
 // From the 5th reminder the flash blinks red (white text), whatever the kind.
 static void test_level_two_flash_is_red() {
   FakeCanvas fc({240, 240});
@@ -259,6 +285,7 @@ int main() {
   RUN_TEST(test_meeting_survives_a_long_gap);
   RUN_TEST(test_anonymous_alerts_hide_names);
   RUN_TEST(test_level_two_flash_is_red);
+  RUN_TEST(test_needs_you_without_its_session_row_draws_anonymously);
   RUN_TEST(test_meeting_screens_fit_every_language_and_resolution);
   RUN_TEST(test_badge_draws_every_frame);
   RUN_TEST(test_fanfare_fits_every_language_and_resolution);

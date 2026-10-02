@@ -50,7 +50,8 @@ struct AlertView {
 // them after 30 s, a snapshot can be lost), every wait is shown once; the bridge's perm/question
 // records are only used for `lastSeenId`. A wait shown is forgotten when its session shows up
 // again not waiting or with another `since`; a session missing from a snapshot (an alerts-only
-// snapshot, another paired computer's) keeps its entry. Known limits, both accepted: a bridge
+// snapshot, another paired computer's) keeps its entry, and does not cut that wait's flash or
+// hero (the screen draws it without the session's name/tool: AlertView.sid not in the snapshot). Known limits, both accepted: a bridge
 // restart that gives a still-waiting session a new `since` shows it once more; more than
 // kMaxSessions waits across several computers can evict an entry and show that wait again.
 // Booting (or turning alerts on) with sessions already waiting shows each of them once.
@@ -107,6 +108,7 @@ class AlertSequencer {
   void forgetEndedWaits(const Snapshot& s, const uint32_t* keys);
   void markShown(uint32_t key, uint32_t since, const Snapshot& s, const uint32_t* keys);
   int nextUnshownWait(const Snapshot& s, const uint32_t* keys) const;
+  bool onScreenStillValid(const Snapshot& s, const uint32_t* keys) const;
   void sortQueue(const Snapshot& s);
 };
 

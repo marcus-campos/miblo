@@ -186,6 +186,17 @@ int AlertSequencer::nextUnshownWait(const Snapshot& s, const uint32_t* keys) con
   return best;
 }
 
+// The alert on screen goes on? "Finished": while its session is in `s` and done. "Needs you":
+// unless its session is in `s` and out of that wait (answered, or waiting since another time:
+// forgetEndedWaits already dropped the wait from the table). A session missing from `s` (another
+// paired computer's snapshot, an alerts-only one) does not cut it; the screen then draws it
+// anonymously.
+bool AlertSequencer::onScreenStillValid(const Snapshot& s, const uint32_t* keys) const {
+  if (!isAmber(view_.kind)) return stillValid(s, view_.kind, view_.sid);
+  const int i = findSession(s, view_.sid);
+  return i < 0 || (isWaiting(s.sessions[i].st) && shown(keys[i], s.sessions[i].since));
+}
+
 void AlertSequencer::removeAt(uint8_t i) {
   for (uint8_t j = i + 1; j < qn_; j++) queue_[j - 1] = queue_[j];
   qn_--;
@@ -248,7 +259,7 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
 
   if (view_.phase != AlertPhase::None) {
     uint32_t elapsed = nowMs - view_.phaseStartMs;
-    if (!stillValid(s, view_.kind, view_.sid)) {
+    if (!onScreenStillValid(s, keys)) {
       view_.phase = AlertPhase::None;  // answered/dismissed by usage
     } else if (view_.phase == AlertPhase::Flash && elapsed >= flashLenMs_) {
       view_.phase = AlertPhase::Hero;

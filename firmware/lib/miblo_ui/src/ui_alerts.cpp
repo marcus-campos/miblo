@@ -61,7 +61,9 @@ void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs, uint
   const uint16_t lit = red ? color::RED : amber ? color::AMBER : color::FLASH_BLUE;
   const uint16_t bg = on ? lit : color::BG;
   const uint16_t fg = on ? (amber && !red ? color::BLACK : color::WHITE) : (red || amber ? lit : color::BLUE);
-  // Meeting mode: what happened, never which session.
+  // Meeting mode: what happened, never which session. No name (the session is not in the
+  // snapshot on screen, e.g. another computer's): the same wording.
+  if (!name || !name[0]) anonymous = true;
   const char* label = anonymous ? t(lang, amber ? S::ASessionNeedsYou : S::Finished) : name;
   const uint32_t h = hashStr(hashInt(hashInt(hashInt(kHashSeed, amber), on), (uint32_t)red | anonymous << 1), label);
   if (!region(R_BODY, h, 0, 0, X(240), Y(240), bg)) return;
@@ -79,14 +81,18 @@ void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs, uint
 
 void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, const Clock& clk,
           const miblo::RunTracker& runs, bool anonymous) {
-  if (idx < 0 || idx >= s.count) return;
-  const SessionRow& r = s.sessions[idx];
   const bool amber = kind != AlertKind::Done;
+  // A "needs you" whose session is not in this snapshot (another paired computer's, or an
+  // alerts-only one) still draws, anonymously and without the wait's duration; "finished" not.
+  const bool known = idx >= 0 && idx < s.count;
+  if (!known && !amber) return;
+  const SessionRow& r = s.sessions[known ? idx : 0];  // read only when `known`
+  if (!known) anonymous = true;
   char buf[160];
   char tmp[48];
 
   // Only what is displayed goes into the hash (the model/ctx/tokens line is only on "Finished").
-  uint32_t h = hashStr(hashInt(hashInt(kHashSeed, (uint32_t)lang), (uint32_t)kind), r.id);
+  uint32_t h = hashStr(hashInt(hashInt(kHashSeed, (uint32_t)lang), (uint32_t)kind), known ? r.id : "");
   // Meeting mode (anonymous): no name, tool or command at all.
   h = anonymous ? hashInt(h, 1) : hashStr(hashStr(hashStr(h, r.name), discreet ? "" : r.det), r.tool);
   if (!amber) {
@@ -129,7 +135,7 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
     if (amber) {
       C().text(X(12), sub, t(lang, kind == AlertKind::Perm ? S::AskedPermission : S::AskedQuestion), Font::Body,
                color::AMBER, Align::Left, X(216));
-      if (r.tool[0] && !anonymous) {
+      if (!anonymous && r.tool[0]) {
         C().fillRoundRect(X(12), Y(104), X(216), Y(32), Sz(4), color::CMD_BG);
         if (discreet || !r.det[0]) snprintf(buf, sizeof(buf), "%s", r.tool);
         else snprintf(buf, sizeof(buf), "%s: %s", r.tool, r.det);
@@ -148,7 +154,7 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
 
   head.end();
 
-  if (amber) {  // "Waiting for 3m": minute granularity, updated in place
+  if (amber && known) {  // "Waiting for 3m": minute granularity, updated in place
     miblo::formatInState(sessionSince(r, clk), tmp, sizeof(tmp));
     snprintf(buf, sizeof(buf), t(lang, S::WaitingFor), tmp);
     field(R_BODY, kHashSeed, X(12), Y(166), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));

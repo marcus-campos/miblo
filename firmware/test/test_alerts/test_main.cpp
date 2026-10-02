@@ -718,6 +718,111 @@ static void test_new_wait_is_shown_again_and_a_missing_session_is_not_a_new_wait
   TEST_ASSERT_EQUAL_INT(2, fc.flashes[0]);
 }
 
+// Follows one session's alert: whether it flashed, and how long its hero ran in one piece.
+struct HeroWatch {
+  int flashes = 0;
+  uint32_t heroFrom = 0, longestHero = 0;
+  bool inHero = false;
+  AlertPhase lastPhase = AlertPhase::None;
+  uint32_t lastStart = 0;
+  void see(const AlertView& v, const char* sid, uint32_t now) {
+    const bool mine = strcmp(v.sid, sid) == 0 && v.kind != AlertKind::Done;
+    if (mine && v.phase == AlertPhase::Flash && (lastPhase != AlertPhase::Flash || lastStart != v.phaseStartMs)) flashes++;
+    if (mine && v.phase == AlertPhase::Hero && !inHero) {
+      inHero = true;
+      heroFrom = now;
+    }
+    if (inHero && !(mine && v.phase == AlertPhase::Hero)) {
+      inHero = false;
+      if (now - heroFrom > longestHero) longestHero = now - heroFrom;
+    }
+    lastPhase = mine ? v.phase : AlertPhase::None;
+    lastStart = v.phaseStartMs;
+  }
+};
+
+// Two paired computers post their own snapshots in turn (different sessions), reminders off:
+// a snapshot without the alerted session does not cut its flash or hero, and every wait on both
+// computers gets one flash and its full hero.
+static void test_two_computers_every_wait_gets_its_full_hero() {
+  AlertTiming t;
+  t.reminderMs = 0;
+  AlertSequencer q;
+  q.setTiming(t);
+  Snapshot a, b;
+  reset();
+  session("aaaa0001", SessionState::Perm, 100);
+  session("aaaa0002", SessionState::Question, 101);
+  session("aaaa0003", SessionState::Running, 90);
+  a = snap;
+  reset();
+  session("bbbb0001", SessionState::Question, 102);
+  session("bbbb0002", SessionState::Perm, 103);
+  b = snap;
+  const char* ids[] = {"aaaa0001", "aaaa0002", "bbbb0001", "bbbb0002"};
+  HeroWatch w[4];
+  uint32_t now = 0;
+  for (int sec = 0; sec < 300; sec++) {
+    snap = sec % 2 ? b : a;
+    snap.seq = (uint32_t)sec / 2 + 1;  // each bridge its own seq
+    q.ingest(snap, now);
+    for (int k = 0; k < 10; k++, now += 100) {
+      const AlertView& v = q.update(snap, now);
+      for (int i = 0; i < 4; i++) w[i].see(v, ids[i], now);
+    }
+  }
+  for (int i = 0; i < 4; i++) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, w[i].flashes, ids[i]);
+    TEST_ASSERT_TRUE_MESSAGE(w[i].longestHero >= t.heroPermMs, ids[i]);
+  }
+}
+
+// An alerts-only snapshot (the 503 fallback: only the sessions its records name) lands during
+// a hero: the hero runs to its end. The same session present and answered still cuts it.
+static void test_alerts_only_snapshot_mid_hero_does_not_cut_it() {
+  AlertTiming t;
+  t.reminderMs = 0;
+  AlertSequencer q;
+  q.setTiming(t);
+  reset();
+  session("aaaa0001", SessionState::Perm, 100);
+  session("aaaa0002", SessionState::Running, 100);
+  const Snapshot full = snap;
+  q.ingest(snap, 0);
+  q.update(snap, 0);
+  TEST_ASSERT_EQUAL(AlertPhase::Hero, q.update(snap, t.flashMs).phase);
+  reset(2);
+  session("aaaa0002", SessionState::Done, 120);  // only the session a "finished" record names
+  alert(9, AlertKind::Done, "aaaa0002");
+  q.ingest(snap, 3000);
+  TEST_ASSERT_EQUAL(AlertPhase::Hero, q.update(snap, 3000).phase);
+  TEST_ASSERT_EQUAL_STRING("aaaa0001", q.update(snap, 3000).sid);
+  TEST_ASSERT_EQUAL(AlertPhase::Hero, q.update(snap, t.flashMs + t.heroPermMs - 1).phase);
+  const AlertView& end = q.update(snap, t.flashMs + t.heroPermMs);  // over; the "finished" may go next
+  TEST_ASSERT_FALSE(end.phase != AlertPhase::None && strcmp(end.sid, "aaaa0001") == 0);
+  // Present and answered: cut at once.
+  AlertSequencer q2;
+  q2.setTiming(t);
+  snap = full;
+  q2.ingest(snap, 0);
+  q2.update(snap, 0);
+  q2.update(snap, t.flashMs);
+  setState("aaaa0001", SessionState::Running);
+  TEST_ASSERT_EQUAL(AlertPhase::None, q2.update(snap, 3000).phase);
+  // Present, waiting again since another time (a new wait): the old alert is cut, the new one
+  // starts.
+  AlertSequencer q3;
+  q3.setTiming(t);
+  snap = full;
+  q3.ingest(snap, 0);
+  q3.update(snap, 0);
+  q3.update(snap, t.flashMs);
+  snap.sessions[0].since = 140;
+  const AlertView& v = q3.update(snap, 3000);
+  TEST_ASSERT_EQUAL(AlertPhase::Flash, v.phase);
+  TEST_ASSERT_EQUAL_UINT32(3000, v.phaseStartMs);
+}
+
 // ---- Randomized bridge + gadget model (adapted from the round-2 review harness) ----
 // The bridge side models the plugin: sessions change state (`since` = when), every entry into
 // perm/question/done adds an alert record (ids increasing) that lives 30 s; the snapshot sorts
@@ -983,6 +1088,8 @@ int main() {
   RUN_TEST(test_wait_without_any_alert_record_is_still_shown);
   RUN_TEST(test_waits_are_shown_during_focus_with_the_queue_full_of_held_finished);
   RUN_TEST(test_new_wait_is_shown_again_and_a_missing_session_is_not_a_new_wait);
+  RUN_TEST(test_two_computers_every_wait_gets_its_full_hero);
+  RUN_TEST(test_alerts_only_snapshot_mid_hero_does_not_cut_it);
   RUN_TEST(test_randomized_bridge_model_loses_and_duplicates_nothing);
   return UNITY_END();
 }

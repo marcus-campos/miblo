@@ -308,3 +308,47 @@ test('countdown: the gadget without a clock, and an old firmware', async () => {
     }
   } finally { await b.close(); }
 });
+
+const NOW = new Date(2026, 9, 1, 14, 0).getTime();  // Thursday 01/10/2026 14:00, local
+const S = NOW / 1000;
+const status = {
+  today: { usd: 4.2, turns: 47, work: 11520, top: [{ name: 'api-server', work: 6000 }, { name: 'front-app', work: 3120 }] },
+  usage: { h5: { pct: 62, reset: S + 7800, eta: S + 4080 }, d7: { pct: 38, reset: new Date(2026, 9, 4, 8, 40).getTime() / 1000 } },  // Sunday, local
+  sessions: [], devices: [],
+};
+
+test('today', async () => {
+  const r = await run(['today'], deps({ fetchStatus: async () => status, now: () => NOW }));
+  assert.equal(r.code, 0);
+  assert.equal(r.out, [
+    'Today: 47 responses, 3h12 with Claude working, US$ 4.20.',
+    '5h 62% (resets 16:10, at this pace runs out at 15:08) · week 38% (resets Sun 08:40)',
+    'Most work: api-server 1h40, front-app 52 min.',
+    '',
+  ].join('\n'));
+});
+
+test('today with one session, no cost and no limits; names from the bridge are sanitized', async () => {
+  const one = { today: { turns: 1, work: 300, top: [{ name: 'api', work: 300 }] }, usage: null };
+  const r = await run(['today'], deps({ fetchStatus: async () => one, now: () => NOW }));
+  assert.equal(r.out, 'Today: 1 response, 5 min with Claude working.\nNo limits yet: link the status line with /miblo:link-statusline.\n');
+  const evil = { today: { turns: 2, work: 600, top: [{ name: 'a\u001b]0;x\u0007b', work: 400 }, { name: 'c', work: 200 }] } };
+  assert.match((await run(['today'], deps({ fetchStatus: async () => evil, now: () => NOW }))).out, /Most work: a \]0;x b 7 min, c 3 min\./);
+});
+
+test('limits without a forecast, and without the bridge', async () => {
+  const noEta = { ...status, usage: { h5: { pct: 10, reset: S + 7800 } } };
+  const r = await run(['limits'], deps({ fetchStatus: async () => noEta, now: () => NOW }));
+  assert.equal(r.out, '5h 10% (resets 16:10)\n');
+  assert.doesNotMatch(r.out, /runs out/);
+  // A forecast past the reset, or already gone, is not shown.
+  const late = { usage: { h5: { pct: 70, reset: S + 600, eta: S + 900 } } };
+  assert.doesNotMatch((await run(['limits'], deps({ fetchStatus: async () => late, now: () => NOW }))).out, /runs out/);
+  const gone = { usage: { h5: { pct: 70, reset: S + 600, eta: S - 60 } } };
+  assert.doesNotMatch((await run(['limits'], deps({ fetchStatus: async () => gone, now: () => NOW }))).out, /runs out/);
+  assert.match((await run(['limits'], deps({ fetchStatus: async () => ({ usage: null }), now: () => NOW }))).out, /No limits yet: link the status line/);
+  const stopped = await run(['limits'], deps());
+  assert.equal(stopped.code, 0);
+  assert.match(stopped.out, /bridge isn't running/);
+  assert.match((await run(['today'], deps())).out, /bridge isn't running/);
+});

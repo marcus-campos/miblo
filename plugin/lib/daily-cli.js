@@ -2,6 +2,7 @@
 // (they talk to every paired gadget, or only `--id <id>`) and today/limits (they read the bridge).
 // Every argument is validated here exactly as the firmware validates it, before any request.
 import { cleanId, cleanName } from './mdns.js';
+import { isReducedInfo } from './device-client.js';
 
 const ok = (out) => ({ code: 0, out: out + '\n' });
 const fail = (code, out) => ({ code, out: out + '\n' });
@@ -174,7 +175,7 @@ async function focusStatuses(targets, client) {
     if (r.err) return { label: r.label, err: r.err };
     const info = r.reply;
     // A gadget that dropped this computer answers only {id, paired, proto}.
-    if (info.paired === true && info.fw === undefined && info.name === undefined) return { label: r.label, err: { status: 401 } };
+    if (isReducedInfo(info)) return { label: r.label, err: { status: 401 } };
     if (!info.focus || typeof info.focus !== 'object') return { label: r.label, err: { status: 404 } };
     return { label: r.label, line: focusLine(r.label, info.focus) };
   });
@@ -487,7 +488,7 @@ async function countdown(args, { store, client, now }) {
     for (const r of results) {
       const info = r.reply;
       if (r.err) { lines.push(problemLine(r.label, r.err)); continue; }
-      if (info.paired === true && info.fw === undefined && info.name === undefined) { lines.push(problemLine(r.label, { status: 401 })); continue; }
+      if (isReducedInfo(info)) { lines.push(problemLine(r.label, { status: 401 })); continue; }
       if (typeof info.countdown !== 'string') { lines.push(problemLine(r.label, { status: 404 })); continue; }
       any = true;
       const label = printable(info.countdown, LABEL.chars);
@@ -506,7 +507,62 @@ async function countdown(args, { store, client, now }) {
   return summarize(results, (n) => (body.off ? `Countdown off on ${n}.` : `Countdown on ${n}: "${body.label}" on ${parsed.shown}.`));
 }
 
-export const DAILY_COMMANDS = { focus, meeting, find, timer, say, remind, countdown };
+// ---- today / limits: read from the running bridge (GET /status) ----
+const NO_BRIDGE = "The bridge isn't running (it starts with Claude Code activity): nothing to show yet.";
+const NO_LIMITS = 'No limits yet: link the status line with /miblo:link-statusline.';
+
+// An epoch (seconds) -> "16:42" when it falls today on this computer, else "Thu 09:00".
+export function clockText(epochSec, nowMs) {
+  const t = new Date(epochSec * 1000);
+  const n = new Date(nowMs);
+  const hhmm = `${pad2(t.getHours())}:${pad2(t.getMinutes())}`;
+  const sameDay = t.getFullYear() === n.getFullYear() && t.getMonth() === n.getMonth() && t.getDate() === n.getDate();
+  return sameDay ? hhmm : `${WEEKDAY[t.getDay()]} ${hhmm}`;
+}
+
+const validEpoch = (v) => Number.isFinite(v) && v > 0;
+
+// The bridge's `usage` -> "5h 62% (resets 16:42, at this pace runs out at 15:40) · week 38% (resets Thu 09:00)",
+// or null when there is none.
+export function limitsLine(usage, nowMs) {
+  const nowSec = nowMs / 1000;
+  const part = (w, name, withEta) => {
+    if (!w || !Number.isFinite(Number(w.pct))) return null;
+    const notes = [];
+    const reset = Number(w.reset);
+    if (validEpoch(reset) && reset > nowSec) notes.push(`resets ${clockText(reset, nowMs)}`);
+    const eta = Number(w.eta);
+    if (withEta && validEpoch(eta) && eta > nowSec && !(validEpoch(reset) && eta >= reset)) {
+      notes.push(`at this pace runs out at ${clockText(eta, nowMs)}`);
+    }
+    return `${name} ${Math.round(Number(w.pct))}%${notes.length ? ` (${notes.join(', ')})` : ''}`;
+  };
+  const parts = [part(usage?.h5, '5h', true), part(usage?.d7, 'week', false)].filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+async function today(args, { fetchStatus, now }) {
+  if (args.length) return fail(2, 'Usage: today');
+  const st = await fetchStatus();
+  if (!st) return ok(NO_BRIDGE);
+  const t = st.today ?? {};
+  const turns = Math.max(0, Math.floor(Number(t.turns) || 0));
+  const parts = [`${turns} response${turns === 1 ? '' : 's'}`, `${durationText(Number(t.work) || 0)} with Claude working`];
+  if (Number.isFinite(Number(t.usd)) && t.usd !== null) parts.push(`US$ ${Number(t.usd).toFixed(2)}`);
+  const lines = [`Today: ${parts.join(', ')}.`, limitsLine(st.usage, now()) ?? NO_LIMITS];
+  const top = Array.isArray(t.top) ? t.top.filter((x) => printable(x?.name, 40) && Number(x?.work) > 0).slice(0, 3) : [];
+  if (top.length >= 2) lines.push(`Most work: ${top.map((x) => `${printable(x.name, 40)} ${durationText(Number(x.work))}`).join(', ')}.`);
+  return ok(lines.join('\n'));
+}
+
+async function limits(args, { fetchStatus, now }) {
+  if (args.length) return fail(2, 'Usage: limits');
+  const st = await fetchStatus();
+  if (!st) return ok(NO_BRIDGE);
+  return ok(limitsLine(st.usage, now()) ?? NO_LIMITS);
+}
+
+export const DAILY_COMMANDS = { focus, meeting, find, timer, say, remind, countdown, today, limits };
 
 // The daily-life lines of miblo.js USAGE.
 export const DAILY_USAGE = [
@@ -517,4 +573,6 @@ export const DAILY_USAGE = [
   '  say <text...> [--min N] | say off  [--id <id>]',
   '  remind [<minutes>|<HH:MM>|every day <HH:MM>|weekdays <HH:MM> <text...>] | remind off [N]  [--id <id>]',
   '  countdown <label...> <DD/MM[/YYYY]> | countdown off | countdown  [--id <id>]',
+  '  today',
+  '  limits',
 ];

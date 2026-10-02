@@ -1,10 +1,13 @@
 #include <ArduinoJson.h>
 #include <string.h>
 
+#include <algorithm>
 #include <string>
 #include <unity.h>
 
+#include "../support/fake_canvas.h"
 #include "miblo_desknotes.h"
+#include "ui_screens.h"
 
 void setUp() {}
 void tearDown() {}
@@ -568,6 +571,129 @@ static void test_saved_notes_round_trip_and_garbage() {
   TEST_ASSERT_EQUAL_INT(0, list.size());
 }
 
+// ---- Task 13: the screens ----
+
+static const ui::ScreenSpec kSpecs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+static const char* const kW40 = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW";
+static const char* const kHanzi15 =
+    "\xE4\xB8\x80\xE4\xB8\x8B\xE4\xB8\x8A\xE4\xB8\xAD\xE5\xA4\xA7\xE5\xB0\x8F\xE5\xA4\xA9\xE5\x9C\xB0\xE4\xBA\xBA"
+    "\xE5\xB1\xB1\xE6\xB0\xB4\xE7\x81\xAB\xE6\x9C\xA8\xE6\x97\xA5\xE6\x9C\x88";
+
+static screens::Clock noteClock() {
+  screens::Clock c{};
+  c.valid = true;
+  strcpy(c.hhmm, "14:32");
+  c.epoch = 1790616720;
+  return c;
+}
+
+// Every screen, every language, every resolution: inside the panel.
+static void test_note_screens_fit_any_resolution() {
+  const char* const texts[] = {kW40, kHanzi15, "volto em 10 min", "a b c d e f g h i j k l m n o p q r s t"};
+  const miblo::NoteKind kinds[] = {miblo::NoteKind::Say, miblo::NoteKind::Reminder, miblo::NoteKind::Alarm,
+                                   miblo::NoteKind::Timer};
+  for (const auto& sp : kSpecs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    for (uint8_t l = 0; l < (uint8_t)miblo::Lang::Count; l++) {
+      const miblo::Lang L = (miblo::Lang)l;
+      for (miblo::NoteKind k : kinds) {
+        for (const char* t : texts) {
+          screens::reset();
+          fc.clearLog();
+          screens::note(L, k, t, noteClock(), 1000);
+          TEST_ASSERT_TRUE(fc.calls > 0);
+        }
+      }
+      for (uint32_t left : {180u * M, 90u * M, 0u}) {
+        screens::reset();
+        fc.clearLog();
+        screens::timer(L, noteClock(), left, 180 * M, 1000);
+        TEST_ASSERT_TRUE(fc.calls > 0);
+      }
+      screens::reset();
+      fc.clearLog();
+      screens::findMe(L, "http://192.168.100.200/", 600);
+      TEST_ASSERT_TRUE(fc.calls > 0);
+      TEST_ASSERT_TRUE(fc.drew("192.168.100.200"));
+    }
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  }
+}
+
+// What the sign shows, without the clock.
+static std::string signText(const FakeCanvas& fc, int* lines = nullptr) {
+  std::string all;
+  int n = 0;
+  for (const auto& t : fc.texts) {
+    if (t == "14:32") continue;
+    all += t;
+    n++;
+  }
+  if (lines) *lines = n;
+  return all;
+}
+
+static std::string withoutSpaces(std::string s) {
+  s.erase(std::remove(s.begin(), s.end(), ' '), s.end());
+  return s;
+}
+
+// The longest texts are wrapped, never cut: every character is on the sign.
+static void test_long_texts_wrap_whole() {
+  for (const auto& sp : kSpecs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    for (const char* t : {kW40, kHanzi15, "review the PR before the 1:1 at 4 today!"}) {
+      screens::reset();
+      fc.clearLog();
+      screens::note(miblo::Lang::En, miblo::NoteKind::Reminder, t, noteClock(), 1000);
+      int lines = 0;
+      TEST_ASSERT_EQUAL_STRING(withoutSpaces(t).c_str(), withoutSpaces(signText(fc, &lines)).c_str());
+      TEST_ASSERT_TRUE(lines >= 1 && lines <= 4);
+    }
+  }
+  // A short one: one line, in the big font.
+  FakeCanvas fc(kSpecs[0]);
+  screens::bind(fc);
+  screens::reset();
+  fc.clearLog();
+  screens::note(miblo::Lang::En, miblo::NoteKind::Say, "back in 10 min", noteClock(), 1000);
+  int lines = 0;
+  TEST_ASSERT_EQUAL_STRING("back in 10 min", signText(fc, &lines).c_str());
+  TEST_ASSERT_EQUAL_INT(1, lines);
+  TEST_ASSERT_EQUAL(ui::Font::Title, fc.fontOf("back in 10 min"));
+  // The timer's note says "Time's up!", whatever the text.
+  screens::reset();
+  fc.clearLog();
+  screens::note(miblo::Lang::En, miblo::NoteKind::Timer, "", noteClock(), 1000);
+  TEST_ASSERT_TRUE(fc.drew("Time's up!"));
+}
+
+// Nothing is redrawn while nothing changes; the timer only touches its pieces once a second.
+static void test_note_screens_redraw_only_what_changes() {
+  FakeCanvas fc(kSpecs[0]);
+  screens::bind(fc);
+  screens::reset();
+  screens::note(miblo::Lang::En, miblo::NoteKind::Alarm, "daily", noteClock(), 1000);
+  fc.clearLog();
+  screens::note(miblo::Lang::En, miblo::NoteKind::Alarm, "daily", noteClock(), 1500);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  screens::reset();
+  screens::timer(miblo::Lang::En, noteClock(), 10 * M, 10 * M, 1000);
+  fc.clearLog();
+  screens::timer(miblo::Lang::En, noteClock(), 10 * M - 300, 10 * M, 1300);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  screens::timer(miblo::Lang::En, noteClock(), 10 * M - 1300, 10 * M, 2300);
+  TEST_ASSERT_TRUE(fc.calls > 0);
+  TEST_ASSERT_TRUE(fc.drew("9:59"));
+  screens::reset();
+  screens::findMe(miblo::Lang::En, "http://10.0.0.2/", 100);
+  fc.clearLog();
+  screens::findMe(miblo::Lang::En, "http://10.0.0.2/", 200);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+}
+
 // RAM is tight on the ESP8266 (the notes live in the global context): every text once, nothing more.
 static void test_the_state_stays_small() { TEST_ASSERT_LESS_OR_EQUAL_size_t(552, sizeof(miblo::DeskNotes)); }
 
@@ -593,6 +719,9 @@ int main() {
   RUN_TEST(test_reminder_wrap_and_gap);
   RUN_TEST(test_alarm_days_and_minutes);
   RUN_TEST(test_saved_notes_round_trip_and_garbage);
+  RUN_TEST(test_note_screens_fit_any_resolution);
+  RUN_TEST(test_long_texts_wrap_whole);
+  RUN_TEST(test_note_screens_redraw_only_what_changes);
   RUN_TEST(test_the_state_stays_small);
   return UNITY_END();
 }

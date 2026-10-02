@@ -97,6 +97,7 @@
 <!-- daily:rhythm -->
 
 <!-- daily:notes -->
+- **Notes on the desk:** `/miblo:say` puts a message on the screen for whoever walks by (the cat holds it on a sign; in pet mode it rides on the pet's card), for 30 minutes or as long as you choose. `/miblo:remind` sets a reminder in N minutes or at HH:MM, or a recurring alarm every day or on weekdays (up to 4 of each; recurring alarms are saved on the gadget and survive a restart). When one comes due the screen pulses and the cat holds it up for 5 minutes or until `/miblo:remind off`. `/miblo:timer` shows a big countdown with an hourglass, `/miblo:countdown` puts "release in 3 days" on the Desk (saved), and `/miblo:find` makes the gadget wave for 10 seconds with a QR code for its settings page. Messages and reminders take up to 40 characters.
 
 <!-- daily:cues -->
 

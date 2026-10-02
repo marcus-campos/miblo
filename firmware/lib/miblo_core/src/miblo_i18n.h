@@ -136,10 +136,7 @@ enum class S : uint16_t {
   WebBlueScheduled,     // settings: blue light filter option "on a schedule"
   WebBlueFrom,          // settings: blue light filter schedule start time
   WebBlueTo,            // settings: blue light filter schedule end time
-  WebBlueLevel,         // settings: blue light filter strength (a select)
-  WebBlueLight,         // settings: strength option "light"
-  WebBlueMedium,        // settings: strength option "medium"
-  WebBlueStrong,        // settings: strength option "strong"
+  WebBlueLevel,         // settings: blue light filter strength (a 1..100 % slider)
   LimitFreed,           // "limit freed" screen band: the 5h window reset after real use
   RunsOutIn,            // burn-rate projection: "runs out in %s"
   TodayTitle,           // daily summary header

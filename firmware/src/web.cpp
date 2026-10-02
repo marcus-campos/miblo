@@ -645,7 +645,7 @@ static const char kSetJs[] PROGMEM =
     "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','blueFilter','blueFrom','blueTo','blueLevel','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
+    "'nightBrightness','blueFilter','blueFrom','blueTo','blueStrength','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
     "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','focusQuiet','endOfDay','weekly','workFrom','workTo',"
     "'tz2','tz2Label','deskQr']){let v=val(k);if(k==='tz'&&!v||k==='tz2'&&!$('tz2').dataset.f)continue;"
     // A select whose values are numbers (mascot, delays, levels…) sends a number.
@@ -908,12 +908,8 @@ static void settingsPage() {
   out += F("<input id=\"blueFrom\" type=\"time\" required></div><div>");
   label(out, lang, S::WebBlueTo, F("blueTo"));
   out += F("<input id=\"blueTo\" type=\"time\" required></div></div></div>");
-  label(out, lang, S::WebBlueLevel, F("blueLevel"));
-  out += F("<select id=\"blueLevel\">");
-  option(out, lang, F("1"), S::WebBlueLight);
-  option(out, lang, F("2"), S::WebBlueMedium);
-  option(out, lang, F("3"), S::WebBlueStrong);
-  out += F("</select></div></div>");
+  slider(out, lang, S::WebBlueLevel, F("blueStrength"), 1);
+  out += F("</div></div>");
   pageFlush(out);
 
   // About you.

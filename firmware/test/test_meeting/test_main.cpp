@@ -5,6 +5,7 @@
 #include <unity.h>
 
 #include "../support/fake_canvas.h"
+#include "miblo_alerts.h"
 #include "miblo_meeting.h"
 #include "ui_screens.h"
 
@@ -213,6 +214,45 @@ static void test_badge_draws_every_frame() {
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
 }
 
+// The fanfare: a long name, a long duration, every language and resolution; confetti, the cat
+// and the line all drawn.
+static void test_fanfare_fits_every_language_and_resolution() {
+  const char* names[] = {"WWWWWWWWWWWWWWWWWWWW", "app-mobile", ""};
+  const uint32_t durs[] = {23 * 60, 9 * 3600 + 59 * 60};
+  for (const auto& sp : kSpecs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      for (const char* name : names) {
+        for (uint32_t dur : durs) {
+          FakeCanvas fc(sp);
+          screens::bind(fc);
+          screens::reset();
+          for (uint32_t ms = 0; ms < kFanfareMs; ms += 299) screens::fanfare((Lang)l, name, dur, ms);
+          TEST_ASSERT_TRUE(fc.calls > 50);
+          TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+        }
+      }
+    }
+  }
+}
+
+static void test_fanfare_says_who_and_how_long() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  screens::fanfare(Lang::En, "app-mobile", 23 * 60, 0);
+  TEST_ASSERT_TRUE(fc.drew("app-mobile"));
+  TEST_ASSERT_TRUE(fc.drew("23min"));
+  fc.clearLog();
+  screens::reset();
+  screens::fanfare(Lang::En, "", 23 * 60, 0);  // meeting mode: no name
+  TEST_ASSERT_TRUE(fc.drew("Finished after 23min"));
+  // The cat hops: up and down frames draw it again; the text does not change.
+  fc.clearLog();
+  screens::fanfare(Lang::En, "", 23 * 60, 300);
+  TEST_ASSERT_FALSE(fc.drew("Finished"));
+  TEST_ASSERT_TRUE(fc.calls > 0);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_meeting_mode_times_out_and_handles_requests);
@@ -221,5 +261,7 @@ int main() {
   RUN_TEST(test_level_two_flash_is_red);
   RUN_TEST(test_meeting_screens_fit_every_language_and_resolution);
   RUN_TEST(test_badge_draws_every_frame);
+  RUN_TEST(test_fanfare_fits_every_language_and_resolution);
+  RUN_TEST(test_fanfare_says_who_and_how_long);
   return UNITY_END();
 }

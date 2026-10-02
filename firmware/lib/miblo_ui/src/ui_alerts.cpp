@@ -169,12 +169,45 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
   }
 }
 
-// Stub (daily-life foundation): track B draws it.
+// Long task fanfare (kFanfareMs, in place of the "finished" hero): confetti along the top and the
+// bottom, the mascot hopping, and "app-mobile finished after 23min" in green, big enough to read
+// from across the room. `name` "" (meeting mode): "Finished after 23min" (minutes, as the spec
+// shows them: easier to read from afar than "23:07").
 void fanfare(Lang lang, const char* name, uint32_t durSec, uint32_t ms) {
-  (void)lang;
-  (void)name;
-  (void)durSec;
-  (void)ms;
+  confettiBands(ms / 250);
+  MascotLook k = deskLook(DeskMood::Celebrate, true, ms);
+  k.dy = (ms % 600) < 300 ? -6 : 0;  // a hop every 600 ms (two looks: the cat redraws 3x a second)
+  deskCat(R_BODY, X(120), Y(76), 38, k);
+
+  char took[24], line[128];
+  miblo::formatCountdown(durSec, took, sizeof(took));
+  if (name && name[0]) snprintf(line, sizeof(line), t(lang, S::FinishedAfter), name, took);
+  else snprintf(line, sizeof(line), t(lang, S::FinishedAfterAnon), took);
+  if (!region(R_LIMITS, hashStr(hashInt(kHashSeed + 91, (uint32_t)lang), line), 0, Y(120), X(240), Y(94))) return;
+  // The title font on up to three lines (balanced two when they fit), else two lines a size down.
+  const int maxW = X(228);
+  char a[96], first[96];
+  const char* b;
+  if (split2(line, Font::Title, maxW, a, sizeof(a), &b)) {
+    centred2(line, Font::Title, color::GREEN, Y(160), Y(28), maxW);
+    return;
+  }
+  // Three lines: the longest first line that fits, then the rest balanced on two.
+  int cut = -1;
+  for (int i = 0; line[i]; i++) {
+    if (line[i] != ' ') continue;
+    snprintf(first, sizeof(first), "%.*s", i, line);
+    if (C().textWidth(first, Font::Title) <= maxW) cut = i;
+    else break;
+  }
+  if (cut > 0 && split2(line + cut + 1, Font::Title, maxW, a, sizeof(a), &b) && b[0]) {
+    snprintf(first, sizeof(first), "%.*s", cut, line);
+    C().text(X(120), Y(146), first, Font::Title, color::GREEN, Align::Center, maxW);
+    C().text(X(120), Y(174), a, Font::Title, color::GREEN, Align::Center, maxW);
+    C().text(X(120), Y(202), b, Font::Title, color::GREEN, Align::Center, maxW);
+    return;
+  }
+  centred2(line, Font::BodyBold, color::GREEN, Y(160), Y(28), maxW);
 }
 
 // A tie, the knot at (cx, top): knot, blade and tip, in violet.

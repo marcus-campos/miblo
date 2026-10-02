@@ -178,6 +178,13 @@ notes.
       as long, the 5th blinks red (white text). Answer it, then let a new wait start: its
       reminders are back to normal. With "Insist more on long waits" off, every reminder looks
       the same.
+    - **Long task fanfare:** set the fanfare to 3 min on the settings page and give Claude a task
+      that runs more than 3 minutes: when it finishes, confetti, the hopping mascot and
+      "<project> finished after 4min" (in green) stay for 8 seconds, then the screen goes back.
+      A response under 3 minutes shows the normal "finished" alert. In meeting mode the line
+      reads "Finished after ..." with no name. During a focus round ("only what needs you"
+      on), the fanfare waits and shows when the break starts. With the fanfare off, a long task
+      ends with the normal alert.
 
 <!-- daily:rhythm -->
 

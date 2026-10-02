@@ -66,6 +66,15 @@ void renderAlerts(miblo::Lang L) {
   // Insistence: from the 5th reminder of the same wait the flash blinks red.
   attention();
   { Shot s; screens::flash(L, AlertKind::Perm, "checkout", 0, 2); save(s, "52-insist-red"); }
+
+  // Long task fanfare: app-mobile ran for 23 minutes (in a meeting: no name, and the badge).
+  { Shot s; screens::fanfare(L, "app-mobile", 23 * 60 + 7, 650); save(s, "53-fanfare"); }
+  {
+    Shot s;
+    screens::fanfare(L, "", 23 * 60 + 7, 650);
+    screens::meetingBadge(L);
+    save(s, "53-fanfare-meeting");
+  }
 }
 
 }  // namespace shots

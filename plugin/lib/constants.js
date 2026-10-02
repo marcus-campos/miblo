@@ -11,6 +11,7 @@ export const LEGACY_MAX_SESSIONS = 8;  // a gadget that does not report its caps
 export const NAME_LEN = 20;
 export const DET_LEN = 32;
 export const MODEL_LEN = 12;
+export const MAX_ALERTS = 8;        // the gadget keeps the first 8 (kMaxAlerts); more only cost bytes
 export const SNAPSHOT_MAX_BYTES = 6144;
 export const LEGACY_SNAPSHOT_MAX_BYTES = 3072;
 export const ALERT_TTL_MS = 30_000;

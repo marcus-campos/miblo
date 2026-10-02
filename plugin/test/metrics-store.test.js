@@ -34,6 +34,21 @@ test('per-session model, ctx and tokens', () => {
   assert.equal(store.forSession('zzz'), undefined);
 });
 
+// The gadget prints ctx as a percentage from an int16: anything else (NaN, 1e9, -3) is clamped or
+// null, never garbage on screen (found by test/fuzz.test.js).
+test('ctx is a whole percentage, 0..100, or null', () => {
+  const store = new MetricsStore({ now: () => 0 });
+  const ctxOf = (v) => {
+    store.ingest({ session_id: 'a', context_window: { used_percentage: v } });
+    return store.forSession('a').ctx;
+  };
+  assert.equal(ctxOf(1e9), 100);
+  assert.equal(ctxOf(-3), 0);
+  assert.equal(ctxOf(NaN), null);
+  assert.equal(ctxOf(Infinity), null);
+  assert.equal(ctxOf(41.6), 42);
+});
+
 test('null used_percentage becomes null ctx', () => {
   const { store } = setup();
   store.ingest({ session_id: 'a', context_window: { used_percentage: null } });

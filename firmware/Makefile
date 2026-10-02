@@ -16,6 +16,12 @@
 #                                   drawn on the computer with the gadget's own code and fonts
 #   make screenshots LANGS="en es"  other languages (default: en pt-BR)
 #   make check-margins              every screen in every language keeps 3 px from the edges (CI)
+#   make asan                       every native test suite under AddressSanitizer + UBSan
+#   make fuzz                       every host fuzz target, FUZZ_ITERS (default 200000) inputs each,
+#                                   with ASan + UBSan (tools/fuzz/README.md; FUZZ_TARGET=snapshot for one)
+#   make fuzz-repro FUZZ_TARGET=snapshot FILE=.pio/fuzz/out/crash-snapshot-123.bin   replay a crash
+#   make validate                   asan + fuzz + the plugin's fuzz tests (the pre-release audit)
+#   make validate-clean             delete the sanitizer/fuzz build output (.pio/native_asan, .pio/fuzz)
 #   make animations                 looping clips of the desk mascot, disconnected and alerts, as
 #                                   mp4 (960x960) + gif (480x480) in dist/animations/<lang>/ (needs ffmpeg)
 #   make animations LANGS="en es"   other languages (default: en pt-BR)
@@ -75,7 +81,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: asan fuzz fuzz-build fuzz-repro validate validate-clean help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -192,3 +198,35 @@ check-margins:
 	@if [ -x .venv/bin/pio ]; then .venv/bin/pio run -e screenshots; else pio run -e screenshots; fi
 	rm -rf .pio/margins
 	.pio/build/screenshots/program --check .pio/margins en pt-BR pt-PT es fr it de ru zh
+
+# ---- Validation harness (sanitizers + fuzzing; tools/fuzz/README.md) ----
+PIO         := $(if $(wildcard .venv/bin/pio),.venv/bin/pio,pio)
+FUZZ_ITERS  ?= 200000
+FUZZ_SEED   ?= 1
+FUZZ_TARGET ?= all
+FILE        ?=
+PLUGIN_FUZZ_SCALE ?= 20
+include tools/fuzz/fuzz.mk
+
+asan:
+	$(PIO) test -e native_asan
+
+fuzz-build: $(FUZZ_BIN)
+
+fuzz: $(FUZZ_BIN)
+	@mkdir -p $(FUZZ_DIR)/out
+	$(FUZZ_BIN) $(FUZZ_TARGET) -n $(FUZZ_ITERS) -seed $(FUZZ_SEED) -corpus tools/fuzz/corpus -out $(FUZZ_DIR)/out
+	@if [ "$(FUZZ_TARGET)" = all ] || [ "$(FUZZ_TARGET)" = snapshot ]; then \
+	  echo "snapshot again, seeded with ../fixtures/snapshots (seed $$(( $(FUZZ_SEED) + 1 ))):"; \
+	  $(FUZZ_BIN) snapshot -n $(FUZZ_ITERS) -seed $$(( $(FUZZ_SEED) + 1 )) -corpus tools/fuzz/corpus \
+	    -seeds ../fixtures/snapshots -out $(FUZZ_DIR)/out; fi
+
+fuzz-repro: $(FUZZ_BIN)
+	@[ -n "$(FILE)" ] || { echo "FILE=path/to/crash-....bin is required" >&2; exit 2; }
+	$(FUZZ_BIN) $(FUZZ_TARGET) -repro $(FILE)
+
+validate: asan fuzz
+	cd ../plugin && MIBLO_FUZZ_SCALE=$(PLUGIN_FUZZ_SCALE) node --test --test-reporter=spec test/fuzz.test.js
+
+validate-clean:
+	rm -rf .pio/build/native_asan .pio/fuzz

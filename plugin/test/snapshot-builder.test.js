@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
-import { buildSnapshot } from '../lib/snapshot-builder.js';
+import { buildSnapshot, trimSnapshot } from '../lib/snapshot-builder.js';
 
 const NOW = 1_790_600_000_000;
 
@@ -120,6 +120,21 @@ test('alerting sessions are kept over quiet working ones when trimming', () => {
   assert.ok(ids.includes('ask2'), 'question session shown');
   // Every alert points at a session that is actually present, so the gadget can name it.
   for (const a of s.alerts) assert.ok(ids.includes(a.sid), `alert ${a.sid} has its session`);
+});
+
+// The gadget keeps at most 8 alerts (kMaxAlerts) and refuses a snapshot over its byte cap: many
+// sessions asking at once must not turn every snapshot into one it refuses (found by
+// test/fuzz.test.js). The first 8 are the ones the gadget would have kept anyway.
+test('alerts are capped at what the gadget keeps, so the snapshot stays within its size', () => {
+  const { tracker, snap } = world();
+  for (let i = 0; i < 300; i++) {
+    tracker.handle({ session_id: `session-with-a-long-id-${i}`, hook_event_name: 'PermissionRequest', cwd: `/w/p${i}`, tool_name: 'Bash', tool_input: { command: 'x' } });
+  }
+  const s = snap();
+  assert.equal(s.alerts.length, 8);
+  assert.deepEqual(s.alerts.map((a) => a.id), tracker.alerts().slice(0, 8).map((a) => a.id));
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 6144);
+  assert.ok(Buffer.byteLength(JSON.stringify(trimSnapshot(s, 8, 3072))) <= 3072);
 });
 
 // eta is always sent with a 5-hour window, 0 = no forecast: the gadget then knows the bridge

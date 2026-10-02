@@ -102,7 +102,9 @@ def subset_font(data, chars):
 
     Layout: 23-byte header (glyph count at 0; offsets of 'A', 'a' and the Unicode table at
     17..22, big endian, relative to byte 23), then glyph records [encoding, size, bits...]
-    ended by [0, 0], then the Unicode table ([0, 4, 0xFF, 0xFF] = empty).
+    ended by [0, 0], then the Unicode table ([0, 4, 0xFF, 0xFF] = empty) and its glyph list,
+    ended by [0, 0] like every u8g2 font (the second 0 is the C string's own NUL). Without it a
+    lookup of any code point >= 256 reads one byte past the array (found by make fuzz).
     """
     keep = {ord(c) for c in chars}
     glyphs, p = [], 23
@@ -116,7 +118,7 @@ def subset_font(data, chars):
     header[0] = len(glyphs)
     header[17:21] = b"\0\0\0\0"  # no 'A'/'a' shortcuts: lookups scan from the first glyph
     header[21], header[22] = uni >> 8, uni & 0xFF
-    return bytes(header) + body + b"\0\4\377\377"
+    return bytes(header) + body + b"\0\4\377\377\0"
 
 
 def gb2312_chars():

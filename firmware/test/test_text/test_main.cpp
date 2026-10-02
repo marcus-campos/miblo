@@ -1,3 +1,4 @@
+#include <math.h>
 #include <unity.h>
 
 #include "miblo_format.h"
@@ -110,6 +111,11 @@ static void test_format_clock_and_usd() {
   TEST_ASSERT_EQUAL_STRING("$4.80", b);
   formatUsd(0.004f, b, sizeof(b));
   TEST_ASSERT_EQUAL_STRING("$0.00", b);
+  // Never undefined: NaN is 0, and a value past what fits in uint32 cents is capped.
+  formatUsd(NAN, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("$0.00", b);
+  formatUsd(1e12f, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("$42949672.95", b);
 }
 
 // The big timers ("18:42", "1:05:09").

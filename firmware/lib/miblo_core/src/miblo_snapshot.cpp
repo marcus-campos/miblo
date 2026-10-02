@@ -48,9 +48,10 @@ static void copyStr(char* dst, size_t cap, JsonVariantConst v, size_t maxChars) 
 }
 
 // A cost: finite and >= 0, else 0 (a negative, NaN or overflowing number from a bad bridge).
+// Below $10M: the screens turn usd * 100 into a uint32 (cents, hashes), which must not overflow.
 static float money(JsonVariantConst v) {
   const float f = v.as<float>();
-  return f > 0 && f < 1e9f ? f : 0;
+  return f > 0 && f < 1e7f ? f : 0;
 }
 
 static uint8_t clampPct(JsonVariantConst v) {

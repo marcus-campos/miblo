@@ -1,4 +1,4 @@
-import { MAX_SESSIONS, NAME_LEN, DET_LEN, MODEL_LEN, PROTOCOL_VERSION, SNAPSHOT_MAX_BYTES } from './constants.js';
+import { MAX_ALERTS, MAX_SESSIONS, NAME_LEN, DET_LEN, MODEL_LEN, PROTOCOL_VERSION, SNAPSHOT_MAX_BYTES } from './constants.js';
 
 const cut = (s, n) => {
   const chars = Array.from(String(s ?? ''));
@@ -48,7 +48,8 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest,
     ...(week ? { week } : {}),
     sessions: rows.slice(0, MAX_SESSIONS),
     more: Math.max(0, rows.length - MAX_SESSIONS),
-    alerts: tracker.alerts().map((a) => ({ id: a.id, kind: a.kind, sid: shortId(a.sid) })),
+    // Unbounded, many sessions asking at once would push the snapshot past the gadget's byte cap.
+    alerts: tracker.alerts().slice(0, MAX_ALERTS).map((a) => ({ id: a.id, kind: a.kind, sid: shortId(a.sid) })),
     ...(latest ? { latest } : {}),
   };
 

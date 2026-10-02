@@ -30,6 +30,7 @@ firmware/.pio/
 firmware/.venv/
 firmware/dist/
 *.bin
+!firmware/tools/fuzz/corpus/**/*.bin
 *.elf
 *.map
 

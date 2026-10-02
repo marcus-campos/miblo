@@ -237,6 +237,15 @@ static void test_costs_are_clamped() {
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(ok, strlen(ok), s));
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.25f, s.todayUsd);
   TEST_ASSERT_FLOAT_WITHIN(0.001f, 31.5f, s.week.usd);
+  // Over the cents a uint32 holds (~$42.9M): the screens turn usd * 100 into an integer, which
+  // would be undefined behaviour (found by make fuzz). Such a cost is not a real one: 0.
+  char big[] = "{\"v\":1,\"today\":{\"usd\":99999999},\"week\":{\"usd\":5e8}}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(big, strlen(big), s));
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, s.todayUsd);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, s.week.usd);
+  char top[] = "{\"v\":1,\"today\":{\"usd\":9999999}}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(top, strlen(top), s));
+  TEST_ASSERT_FLOAT_WITHIN(1.0f, 9999999.0f, s.todayUsd);
 }
 
 int main() {

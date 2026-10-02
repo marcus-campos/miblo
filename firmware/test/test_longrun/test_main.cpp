@@ -210,6 +210,7 @@ class Sim {
   struct Due {
     uint32_t dueMs;
     uint64_t dueSim;
+    bool at;  // "at HH:MM": follows the local clock, up to kAtSlackMs either side of dueMs
   };
   std::map<std::string, Due> remPending_;  // reminders not fired yet
   std::set<std::string> remFired_;
@@ -452,7 +453,7 @@ class Sim {
         const std::string t = newText('R');
         const unsigned in = 1 + rng_.below(rng_.below(4) ? 90 : 1440);
         snprintf(body, sizeof(body), "{\"in\":%u,\"text\":\"%s\"}", in, t.c_str());
-        if (call(remind, body) == 200) noteReminder(t, ms_ + in * 60000u, simMs_ + in * 60000ull);
+        if (call(remind, body) == 200) noteReminder(t, ms_ + in * 60000u, simMs_ + in * 60000ull, false);
         break;
       }
       case 7: {  // a reminder at HH:MM
@@ -463,7 +464,7 @@ class Sim {
         if (call(remind, body) == 200) {
           int ahead = (int)at - now;
           if (ahead <= 0) ahead += 1440;
-          noteReminder(t, ms_ + (uint32_t)ahead * 60000u, simMs_ + (uint64_t)ahead * 60000u);
+          noteReminder(t, ms_ + (uint32_t)ahead * 60000u, simMs_ + (uint64_t)ahead * 60000u, true);
         }
         break;
       }
@@ -534,7 +535,7 @@ class Sim {
     return remindRequest(s.notes_, b, s.ms_, s.minuteNow(), out, bad);
   }
 
-  void noteReminder(const std::string& t, uint32_t dueMs, uint64_t dueSim) {
+  void noteReminder(const std::string& t, uint32_t dueMs, uint64_t dueSim, bool at) {
     if (lastId_ < 1 || lastId_ > kMaxReminders) {
       v.add("a reminder got an alarm id", simMs_);
       return;
@@ -543,7 +544,7 @@ class Sim {
     if (!idText_[lastId_].empty() && remPending_.count(idText_[lastId_]))
       v.add("a pending reminder was overwritten", simMs_);
     idText_[lastId_] = t;
-    remPending_[t] = Due{dueMs, dueSim};
+    remPending_[t] = Due{dueMs, dueSim, at};
   }
 
   // ---------------- one frame of app.cpp ----------------
@@ -725,7 +726,8 @@ class Sim {
       auto it = remPending_.find(text);
       if (remFired_.count(text)) v.add("a reminder fired twice", simMs_);
       else if (it == remPending_.end()) v.add("an unknown or deleted reminder fired", simMs_);
-      else if ((int32_t)(ms_ - it->second.dueMs) < 0) v.add("a reminder fired early", simMs_);
+      else if ((int32_t)(ms_ - it->second.dueMs) < (it->second.at ? -(int32_t)kAtSlackMs : 0))
+        v.add("a reminder fired early", simMs_);
       if (it != remPending_.end()) remPending_.erase(it);
       remFired_.insert(text);
     } else if (k == NoteKind::Alarm) {
@@ -869,7 +871,8 @@ class Sim {
   void checkLost() {
     if (st.frames % 64) return;
     for (auto it = remPending_.begin(); it != remPending_.end();) {
-      if (simMs_ > it->second.dueSim + (kMaxReminders + kMaxAlarms + 2) * (uint64_t)kHeldMs + 60000) {
+      const uint64_t slack = it->second.at ? kAtSlackMs : 0;
+      if (simMs_ > it->second.dueSim + slack + (kMaxReminders + kMaxAlarms + 2) * (uint64_t)kHeldMs + 60000) {
         v.add(("reminder " + it->first + " never fired").c_str(), simMs_);
         it = remPending_.erase(it);
       } else {

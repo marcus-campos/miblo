@@ -505,10 +505,141 @@ static void test_alarm_days_and_minutes() {
   TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1, sun, 0, 23 * 60 + 59));
   TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(2, sun2, 0, 23 * 60 + 59));  // a week later
   TEST_ASSERT_TRUE(n.dismiss());
-  // Two minutes late is too late (the loop never stalls that long without a reboot).
+  // More than kAlarmCatchUpMin late is too late: skipped that day.
   TEST_ASSERT_EQUAL_UINT8(6, n.addAlarm(600, 0x7F, "late"));
-  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(3, sun2, 0, 602));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(3, sun2, 0, 600 + miblo::kAlarmCatchUpMin + 1));
   TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(4, sun2, 0, 599));
+}
+
+// ---- a missed alarm minute: fired late (up to kAlarmCatchUpMin), once; never hours late ----
+static const uint32_t kMon = 2026 * 400 + 10 * 32 + 5;
+
+// The clock arrives late (NTP after the alarm's minute): within the window it fires, once.
+static void test_alarm_fires_late_when_the_clock_comes_late() {
+  miblo::DeskNotes n;
+  n.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000, 0, 0, -1));             // no clock yet
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(2000, kMon, 1, 7 * 60 + 20));  // 20 min late
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(3000, kMon, 1, 7 * 60 + 21));
+  // Exactly kAlarmCatchUpMin late still fires; one more minute does not.
+  miblo::DeskNotes edge;
+  edge.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, edge.update(1000, kMon, 1, 7 * 60 + miblo::kAlarmCatchUpMin));
+  miblo::DeskNotes late;
+  late.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, late.update(1000, kMon, 1, 7 * 60 + miblo::kAlarmCatchUpMin + 1));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, late.update(2000, kMon, 1, 8 * 60));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, late.update(3000, kMon + 1, 2, 7 * 60));  // tomorrow as usual
+}
+
+// A long outage (back at 13:00): a 07:00 alarm does not go off at lunch.
+static void test_alarm_skipped_after_a_long_outage() {
+  miblo::DeskNotes n;
+  n.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000, kMon, 1, 13 * 60));
+  // Nor after a loop that stood still for hours with the clock known on both sides.
+  miblo::DeskNotes s;
+  s.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, s.update(1000, kMon, 1, 6 * 60));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, s.update(1000 + 7 * 60 * M, kMon, 1, 13 * 60));
+}
+
+// The loop stalls 90 s across the alarm's minute (or 3 min): it fires on the next frame.
+static void test_alarm_fires_after_a_loop_stall() {
+  miblo::DeskNotes n;
+  n.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000, kMon, 1, 6 * 60 + 59));  // 06:59:45
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(91000, kMon, 1, 7 * 60 + 1));  // 07:01:15
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(92000, kMon, 1, 7 * 60 + 1));
+  miblo::DeskNotes m;
+  m.addAlarm(7 * 60, 0x7F, "wake");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, m.update(1000, kMon, 1, 6 * 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, m.update(1000 + 3 * M, kMon, 1, 7 * 60 + 2));
+}
+
+// Spring forward: 01:59 -> 03:00. An alarm at 02:00 or 02:30 (minutes that don't exist that day)
+// fires at 03:00; the clock jumped, no time went by.
+static void test_alarm_in_the_spring_forward_gap_fires_at_three() {
+  miblo::DeskNotes n;
+  n.addAlarm(2 * 60, 0x7F, "two");
+  n.addAlarm(2 * 60 + 30, 0x7F, "half past two");
+  n.addAlarm(60 + 30, 0x7F, "half past one");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(1000, kMon, 1, 60 + 30));
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 29 * M, kMon, 1, 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(1000 + 30 * M, kMon, 1, 3 * 60));  // 03:00
+  TEST_ASSERT_EQUAL_STRING("two", n.heldText(1000 + 30 * M));
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(1000 + 30 * M + 1, kMon, 1, 3 * 60));
+  TEST_ASSERT_EQUAL_STRING("half past two", n.heldText(1000 + 30 * M + 1));
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 31 * M, kMon, 1, 3 * 60 + 1));
+}
+
+// Fall back: 01:59 -> 01:00, so 01:30 comes twice. The alarm fires the first time only.
+static void test_alarm_fires_once_when_the_clock_falls_back() {
+  miblo::DeskNotes n;
+  n.addAlarm(60 + 30, 0x7F, "once");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(1000, kMon, 1, 60 + 30));
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 29 * M, kMon, 1, 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 30 * M, kMon, 1, 60));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 60 * M, kMon, 1, 60 + 30));
+}
+
+// The catch-up never crosses midnight: a 23:50 alarm missed until 00:05 waits for its next day.
+static void test_alarm_catch_up_stays_within_its_day() {
+  miblo::DeskNotes n;
+  n.addAlarm(23 * 60 + 50, 0x7F, "late night");
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000, kMon, 1, 23 * 60 + 40));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(1000 + 25 * M, kMon + 1, 2, 5));
+}
+
+// "at HH:MM" one-off reminders follow the local clock too: across a DST change in the next 24 h
+// they still go off at that local time, never an hour early or late, and once.
+static void test_one_off_at_follows_the_local_clock_across_dst() {
+  const char* bad = nullptr;
+  // Spring forward at 02:00: "at 08:00" set at 00:30 is 6.5 h of real time away, not 7.5.
+  miblo::DeskNotes spring;
+  TEST_ASSERT_EQUAL_INT(200, remind(spring, "{\"at\":\"08:00\",\"text\":\"x\"}", 0, 30, &bad));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, spring.update(M, kMon, 1, 31));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, spring.update(89 * M, kMon, 1, 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, spring.update(90 * M, kMon, 1, 3 * 60));          // 03:00
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, spring.update(389 * M, kMon, 1, 7 * 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Reminder, spring.update(390 * M, kMon, 1, 8 * 60));   // 08:00 local
+  // Fall back at 02:00: "at 08:00" set at 00:30 is 8.5 h of real time away.
+  miblo::DeskNotes fall;
+  TEST_ASSERT_EQUAL_INT(200, remind(fall, "{\"at\":\"08:00\",\"text\":\"x\"}", 0, 30, &bad));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, fall.update(89 * M, kMon, 1, 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, fall.update(90 * M, kMon, 1, 60));                // 01:00 again
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, fall.update(450 * M, kMon, 1, 7 * 60));           // 7.5 h: 07:00
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, fall.update(509 * M, kMon, 1, 7 * 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Reminder, fall.update(510 * M, kMon, 1, 8 * 60));     // 08:00 local
+  TEST_ASSERT_TRUE(fall.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, fall.update(511 * M, kMon, 1, 8 * 60 + 1));
+  // The clock lost later on: it falls back to the real-time delay it was given.
+  miblo::DeskNotes lost;
+  TEST_ASSERT_EQUAL_INT(200, remind(lost, "{\"at\":\"08:00\",\"text\":\"x\"}", 0, 7 * 60, &bad));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, lost.update(60 * M - 1, 0, 0, -1));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Reminder, lost.update(60 * M, 0, 0, -1));
+  // Set at 08:10 for 08:00: tomorrow, not now (today's 08:00 is within the catch-up window).
+  miblo::DeskNotes tomorrow;
+  TEST_ASSERT_EQUAL_INT(200, remind(tomorrow, "{\"at\":\"08:00\",\"text\":\"x\"}", 0, 8 * 60 + 10, &bad));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, tomorrow.update(M, kMon, 1, 8 * 60 + 11));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Reminder, tomorrow.update((24 * 60 - 10) * M, kMon + 1, 2, 8 * 60));
+}
+
+// A loop stall past a one-off reminder: it shows on the next frame, once.
+static void test_one_off_after_a_loop_stall() {
+  miblo::DeskNotes n;
+  const char* bad = nullptr;
+  TEST_ASSERT_EQUAL_INT(200, remind(n, "{\"at\":\"07:00\",\"text\":\"x\"}", 0, 6 * 60 + 58, &bad));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(M + 45000, kMon, 1, 6 * 60 + 59));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Reminder, n.update(M + 135000, kMon, 1, 7 * 60 + 1));  // 90 s stall
+  TEST_ASSERT_TRUE(n.dismiss());
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(4 * M, kMon, 1, 7 * 60 + 2));
 }
 
 // /notes.json: what is saved, and that anything odd in it never breaks the rest.
@@ -781,7 +912,7 @@ static void test_list_fits_the_device_reply() {
 }
 
 // RAM is tight on the ESP8266 (the notes live in the global context): every text once, nothing more.
-static void test_the_state_stays_small() { TEST_ASSERT_LESS_OR_EQUAL_size_t(552, sizeof(miblo::DeskNotes)); }
+static void test_the_state_stays_small() { TEST_ASSERT_LESS_OR_EQUAL_size_t(576, sizeof(miblo::DeskNotes)); }
 
 int main() {
   UNITY_BEGIN();
@@ -810,6 +941,14 @@ int main() {
   RUN_TEST(test_note_screens_redraw_only_what_changes);
   RUN_TEST(test_no_ghosts_after_a_wrap);
   RUN_TEST(test_alarm_fired_survives_a_reboot);
+  RUN_TEST(test_alarm_fires_late_when_the_clock_comes_late);
+  RUN_TEST(test_alarm_skipped_after_a_long_outage);
+  RUN_TEST(test_alarm_fires_after_a_loop_stall);
+  RUN_TEST(test_alarm_in_the_spring_forward_gap_fires_at_three);
+  RUN_TEST(test_alarm_fires_once_when_the_clock_falls_back);
+  RUN_TEST(test_alarm_catch_up_stays_within_its_day);
+  RUN_TEST(test_one_off_at_follows_the_local_clock_across_dst);
+  RUN_TEST(test_one_off_after_a_loop_stall);
   RUN_TEST(test_embedded_nul_is_refused);
   RUN_TEST(test_list_fits_the_device_reply);
   RUN_TEST(test_the_state_stays_small);

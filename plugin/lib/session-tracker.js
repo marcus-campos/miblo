@@ -17,6 +17,9 @@ export const WAIT_AGENTS = '_wait_agents';
 export const WAIT_TASKS = '_wait_tasks';
 // Reserved activity tool while Claude Code compacts the conversation (det empty).
 export const COMPACT = '_compact';
+// permBy of a permission prompt whose owner is unknown (a permission_prompt Notification without
+// agent_id while subagents run): the next event of the main thread or of any subagent clears it.
+const ANY_AGENT = '*';
 
 export function pidAlive(pid) {
   if (!pid) return true;
@@ -62,6 +65,12 @@ export class SessionTracker {
     if (evt.pid !== undefined && evt.pid !== null) s.pid = evt.pid;
 
     const agentId = typeof evt.agent_id === 'string' && evt.agent_id ? evt.agent_id : null;
+    if (name === 'Notification' && evt.notification_type === 'permission_prompt') {
+      this.#permPrompt(s, agentId, evt.tool_name);
+      if (s.tool !== activity[0] || s.det !== activity[1]) s.cmdLive = false;
+      this.#markTool(s, activity, false);
+      return created || JSON.stringify(s) !== before;
+    }
     if (name === 'SubagentStart' || name === 'SubagentStop' || agentId) {
       this.#subagentEvent(s, name, agentId, evt);
       // A subagent that changes the activity shown (its permission prompt) replaces the main
@@ -222,11 +231,40 @@ export class SessionTracker {
       Object.assign(s, describeTool(evt.tool_name, evt.tool_input));
       s.permBy = agentId;
       this.#enter(s, 'perm');
-    } else if (s.st === 'perm' && s.permBy === agentId) {
+    } else if (s.st === 'perm' && (s.permBy === agentId || s.permBy === ANY_AGENT)) {
       s.permBy = null;
       this.#enter(s, 'running');
       if (s.waiting) Object.assign(s, this.#waitDet.get(s.id) ?? { tool: WAIT_AGENTS, det: '' });
     }
+  }
+
+  // Claude Code shows a permission prompt (permission_prompt Notification). Auto mode's classifier
+  // can escalate a call to the user without a PermissionRequest reaching the hooks, so this alone
+  // raises perm; when the PermissionRequest does come too (before or after), the session is
+  // already in perm and alerts once. The notification names no command: the activity shown stays
+  // the last known one unless the message named another tool. It never touches s.waiting: the
+  // prompt may well come from a subagent while the main agent waits.
+  #permPrompt(s, agentId, tool) {
+    if (agentId) {
+      let w = this.#workers.get(s.id);
+      if (!w) this.#workers.set(s.id, (w = new Map()));
+      w.set(agentId, this.now());
+    }
+    if (s.st === 'perm') {
+      if (agentId && s.permBy === ANY_AGENT) s.permBy = agentId;
+      return;
+    }
+    if (typeof tool === 'string' && tool && tool !== s.tool) {
+      s.tool = tool;
+      s.det = '';
+    } else if (!tool && s.tool.startsWith('_')) {
+      // A reserved activity (waiting on agents, compacting) is not the tool asking.
+      s.tool = '';
+      s.det = '';
+    }
+    // Without agent_id the prompt is the main thread's unless subagents are running.
+    s.permBy = agentId ?? (this.#liveWorkers(s.id) ? ANY_AGENT : null);
+    this.#enter(s, 'perm');
   }
 
   // Structured activity for the background work a Stop waits on, or null if none:

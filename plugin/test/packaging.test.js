@@ -25,7 +25,7 @@ test('every tracked event runs hook.js asynchronously', () => {
     assert.ok(h, ev);
     assert.equal(h.async, true, ev);
   }
-  assert.equal(hooks.Notification[0].matcher, 'elicitation_dialog');
+  assert.equal(hooks.Notification[0].matcher, 'elicitation_dialog|permission_prompt');
   const onboard = hooks.SessionStart.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/onboard.js'));
   assert.ok(onboard);
   assert.notEqual(onboard.async, true);

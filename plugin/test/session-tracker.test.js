@@ -153,6 +153,8 @@ test('events without session_id or with unknown names are ignored', () => {
   ev('s1', 'SessionStart');
   assert.equal(ev('s1', 'SubagentStop'), false);
   assert.equal(ev('s1', 'Notification', { notification_type: 'idle_prompt' }), false);
+  assert.equal(ev('s1', 'Notification', { notification_type: 'agent_needs_input' }), false);
+  assert.equal(tracker.sessions()[0].st, 'idle');
 });
 
 test('sawStart is true only for sessions whose SessionStart was handled', () => {
@@ -502,4 +504,112 @@ test('cmdLive never outlives the shell command (Esc, a new prompt, a subagent as
   ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm run build' } });
   ev('PreToolUse', { agent_id: 'ag2', tool_name: 'Read', tool_input: {} });
   assert.equal(tr.sessions()[0].cmdLive, true);
+});
+
+// Claude Code's permission_prompt Notification: the prompt is on screen. Auto mode's classifier
+// can ask the user without a PermissionRequest reaching the hooks, so it alone must raise perm.
+const permNote = (extra = {}) => ({ notification_type: 'permission_prompt', ...extra });
+
+test('a main-thread permission_prompt Notification raises perm with one alert, keeping the activity', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm run deploy' } });
+  assert.equal(ev('s1', 'Notification', permNote({ tool_name: 'Bash' })), true);
+  let [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['perm', 'Bash', 'npm run deploy']);
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
+  // Repeated: no second alert.
+  ev('s1', 'Notification', permNote());
+  assert.equal(tracker.alerts().length, 1);
+  // The tool proceeds.
+  ev('s1', 'PostToolUse', { tool_name: 'Bash', tool_input: {} });
+  [s] = tracker.sessions();
+  assert.equal(s.st, 'running');
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('a permission_prompt naming another tool shows that tool without the stale detail', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/w/a.js' } });
+  ev('s1', 'Notification', permNote({ tool_name: 'WebFetch' }));
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['perm', 'WebFetch', '']);
+});
+
+test('a permission_prompt never shows a reserved wait activity as the tool', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'Notification', permNote());
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['perm', '', '']);
+});
+
+test('a subagent permission_prompt raises perm; that agent\'s next PreToolUse clears it', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'PreToolUse', { ...agent('a1'), tool_name: 'Bash', tool_input: { command: 'make' } });
+  ev('s1', 'Notification', permNote({ ...agent('a1'), tool_name: 'Bash' }));
+  let [s] = tracker.sessions();
+  assert.equal(s.st, 'perm');
+  assert.equal(s.tool, 'Bash');
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
+  ev('s1', 'PreToolUse', { ...agent('a2'), tool_name: 'Read', tool_input: {} });
+  assert.equal(tracker.sessions()[0].st, 'perm');
+  ev('s1', 'PreToolUse', { ...agent('a1'), tool_name: 'Bash', tool_input: { command: 'make' } });
+  [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['running', '_wait_agents', '1']);
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('a permission_prompt without agent_id while a subagent works keeps the main wait, cleared by any next event', () => {
+  // The live bug: a subagent's classifier-escalated Bash, only the Notification arrives.
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'PreToolUse', { ...agent('a1'), tool_name: 'Bash', tool_input: { command: 'rm -rf dist' } });
+  ev('s1', 'Notification', permNote({ tool_name: 'Bash' }));
+  let [s] = tracker.sessions();
+  assert.equal(s.st, 'perm');
+  assert.equal(s.waiting, true);
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm']);
+  ev('s1', 'PostToolUse', { ...agent('a1'), tool_name: 'Bash', tool_input: {} });
+  [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['running', '_wait_agents', '1']);
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('PermissionRequest then its permission_prompt Notification alert once and keep the owner', () => {
+  for (const who of [{}, agent('a1')]) {
+    const { tracker, ev } = setup();
+    ev('s1', 'SubagentStart', agent('a1'));
+    ev('s1', 'PermissionRequest', { ...who, tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+    ev('s1', 'Notification', permNote({ tool_name: 'Bash' }));
+    let [s] = tracker.sessions();
+    assert.deepEqual([s.st, s.tool, s.det], ['perm', 'Bash', 'rm -rf build']);
+    assert.equal(tracker.alerts().length, 1);
+    // Another subagent's activity does not clear a prompt whose owner is known.
+    ev('s1', 'PreToolUse', { ...agent('a2'), tool_name: 'Read', tool_input: {} });
+    assert.equal(tracker.sessions()[0].st, 'perm');
+  }
+});
+
+test('a permission_prompt Notification then its PermissionRequest alert once', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'Notification', permNote({ tool_name: 'Bash' }));
+  ev('s1', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['perm', 'Bash', 'rm -rf build']);
+  assert.equal(tracker.alerts().length, 1);
+});
+
+test('Stop and UserPromptSubmit leave a permission_prompt perm', () => {
+  for (const [name, st] of [['Stop', 'done'], ['UserPromptSubmit', 'running']]) {
+    const { tracker, ev } = setup();
+    ev('s1', 'Notification', permNote());
+    ev('s1', name);
+    assert.equal(tracker.sessions()[0].st, st, name);
+  }
 });

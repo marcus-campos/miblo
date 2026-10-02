@@ -16,6 +16,8 @@ const PERM_TOOL = {
   worker_permission_prompt: /\bneeds permission for ([A-Za-z][\w-]{0,63})$/,
 };
 
+const NOTE_TYPE = /^[A-Za-z0-9_.:-]{1,64}$/;
+
 export const POLL_EVERY_MS = 100;
 export const POLL_MAX_MS = 1500;
 const DOWN_MAX_MS = 500;
@@ -24,6 +26,9 @@ export function pickEvent(raw) {
   const evt = raw && typeof raw === 'object' ? raw : {};
   const out = {};
   for (const k of TOP_FIELDS) if (typeof evt[k] === 'string') out[k] = evt[k];
+  // Any notification type is forwarded (the bridge reads unknown ones by name), but only as a
+  // short identifier, never free text.
+  if (out.notification_type !== undefined && !NOTE_TYPE.test(out.notification_type)) delete out.notification_type;
   const toolIn = out.hook_event_name === 'Notification' && Object.hasOwn(PERM_TOOL, out.notification_type)
     ? PERM_TOOL[out.notification_type] : null;
   if (toolIn && !out.tool_name && typeof evt.message === 'string') {

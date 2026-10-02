@@ -844,3 +844,72 @@ test('thousands of sessions are handled quickly', () => {
   assert.equal(tracker.sessions().length, 200);
   assert.ok(performance.now() - t0 < 1000);
 });
+
+test('an unknown Notification type degrades by its name: permission is perm, a prompt-like name is a question', () => {
+  for (const [type, st] of [['sandbox_permission_prompt', 'perm'], ['network_approval_dialog', 'question'],
+    ['team_question', 'question'], ['mcp_elicitation_form', 'question'], ['worker_needs_input', 'question'],
+    ['Plan_Approval', 'question'], ['tool_PERMISSION_needed', 'perm']]) {
+    const { tracker, ev } = setup();
+    ev('s1', 'SessionStart');
+    assert.equal(ev('s1', 'Notification', { notification_type: type }), true, type);
+    assert.equal(tracker.sessions()[0].st, st, type);
+    assert.deepEqual(tracker.alerts().map((a) => a.kind), [st], type);
+  }
+});
+
+test('an unknown prompt-like Notification follows the one-alert and late-notification rules', () => {
+  // A second prompt while one is shown does not alert again.
+  let { tracker, clock, ev } = setup();
+  ev('s1', 'Notification', { notification_type: 'permission_prompt' });
+  ev('s1', 'Notification', { notification_type: 'future_permission_prompt' });
+  assert.equal(tracker.alerts().length, 1);
+  // A late one naming the tool just answered does not raise perm again.
+  ({ tracker, clock, ev } = setup());
+  ev('s1', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'make' } });
+  ev('s1', 'PostToolUse', { tool_name: 'Bash', tool_input: {} });
+  clock.advance(500);
+  ev('s1', 'Notification', { notification_type: 'future_permission_prompt', tool_name: 'Bash' });
+  assert.equal(tracker.sessions()[0].st, 'running');
+  assert.deepEqual(tracker.alerts(), []);
+  // The next main-thread event clears it like a known one.
+  ({ tracker, clock, ev } = setup());
+  ev('s1', 'Notification', { notification_type: 'future_dialog' });
+  assert.equal(tracker.sessions()[0].st, 'question');
+  ev('s1', 'PreToolUse', { tool_name: 'Read', tool_input: {} });
+  assert.equal(tracker.sessions()[0].st, 'running');
+});
+
+test('unknown Notification types without a prompt-like name and known ignored ones change nothing', () => {
+  const { tracker, ev } = setup();
+  for (const type of ['idle_prompt', 'auth_success', 'agent_completed', 'push_notification', 'computer_use_enter',
+    'computer_use_exit', 'quota_auto_resume_fired', 'model_refusal_fallback', 'update_available', 'brand_new_thing', '', undefined]) {
+    assert.equal(ev('s1', 'Notification', { notification_type: type }), false, String(type));
+    assert.equal(ev('s1', 'Notification', { notification_type: type, agent_id: 'a1' }), false, String(type));
+  }
+  // None of them created a session.
+  assert.deepEqual(tracker.sessions(), []);
+  // On a waiting session they leave the wait alone.
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  const before = JSON.stringify(tracker.sessions());
+  assert.equal(ev('s1', 'Notification', { notification_type: 'idle_prompt' }), false);
+  assert.equal(ev('s1', 'Notification', { notification_type: 'brand_new_thing', agent_id: 'a9' }), false);
+  assert.equal(JSON.stringify(tracker.sessions()), before);
+  assert.equal(tracker.sessions()[0].waiting, true);
+});
+
+test('unknown hook events never create a session nor change one', () => {
+  const { tracker, ev } = setup();
+  for (const name of ['FutureEvent', 'TeammateIdle', 'PostToolBatch', '', undefined, 42, 'constructor', '__proto__']) {
+    assert.equal(ev('s1', name), false, String(name));
+    assert.equal(ev('s1', name, { agent_id: 'a1', tool_name: 'Bash', pid: 7 }), false, String(name));
+  }
+  assert.deepEqual(tracker.sessions(), []);
+  assert.equal(tracker.hasActive(), false);
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  const before = JSON.stringify(tracker.sessions());
+  assert.equal(ev('s1', 'FutureEvent', { pid: 99 }), false);
+  assert.equal(ev('s1', 'FutureEvent', agent('a1')), false);
+  assert.equal(JSON.stringify(tracker.sessions()), before);
+});

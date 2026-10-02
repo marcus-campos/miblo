@@ -26,8 +26,10 @@ test('every tracked event runs hook.js asynchronously', () => {
     assert.ok(h, ev);
     assert.equal(h.async, true, ev);
   }
-  assert.equal(hooks.Notification[0].matcher,
-    'permission_prompt|worker_permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input');
+  // Notification runs for every type, so a future prompt type still reaches the tracker (which
+  // classifies unknown types by name); prompts are rare, so the extra processes are cheap.
+  assert.equal(hooks.Notification.length, 1);
+  assert.ok(!('matcher' in hooks.Notification[0]) || hooks.Notification[0].matcher === '*');
   // Every registration spawns a hook process: nothing the tracker ignores is registered.
   assert.deepEqual(Object.keys(hooks).sort(), [...EVENTS].sort());
   const onboard = hooks.SessionStart.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/onboard.js'));

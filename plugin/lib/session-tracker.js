@@ -22,8 +22,9 @@ export const COMPACT = '_compact';
 // waits): the next event of the main thread or of any subagent clears it.
 const ANY_AGENT = '*';
 
-// What each Claude Code hook event / Notification type does here. Only the ones handled are
-// registered in hooks/hooks.json: every registration spawns a hook process.
+// What each Claude Code hook event / Notification type does here. Every event registered in
+// hooks/hooks.json is handled (each registration spawns a hook process); Notification is
+// registered for all types, so a type added by a later Claude Code still gets a sensible reading.
 //   perm ("needs you"): PermissionRequest; Notification permission_prompt, worker_permission_prompt
 //     (auto mode's classifier and agent-team workers can prompt without a PermissionRequest).
 //   question: PreToolUse AskUserQuestion; Elicitation; Notification elicitation_dialog,
@@ -34,12 +35,33 @@ const ANY_AGENT = '*';
 //     background work will wake the agent again.
 //   bookkeeping: SessionStart, SessionEnd, SubagentStart, SubagentStop, PostCompact.
 //   ignored on purpose: Notification idle_prompt, auth_success, agent_completed, push_notification,
-//     computer_use_enter/exit, quota_auto_resume_*, model_refusal_fallback; events PostToolBatch,
-//     UserPromptExpansion, Pre/PostModelSwitch, Setup, TeammateIdle, TaskCreated, TaskCompleted,
-//     ConfigChange, WorktreeCreate/Remove, InstructionsLoaded, CwdChanged, FileChanged,
-//     DirectoryAdded, MessageDisplay.
+//     computer_use_enter/exit, quota_auto_resume_*, model_refusal_fallback.
+//   unknown Notification types, by name: one containing "permission" is perm; one containing
+//     "input", "dialog", "question", "elicitation" or "approval" is a question; any other is
+//     ignored. They follow the same one-alert-per-prompt and clearing rules as the known ones.
+//   unknown events (PostToolBatch, UserPromptExpansion, Pre/PostModelSwitch, Setup, TeammateIdle,
+//     TaskCreated, TaskCompleted, ConfigChange, WorktreeCreate/Remove, InstructionsLoaded,
+//     CwdChanged, FileChanged, DirectoryAdded, MessageDisplay, any later one) and ignored
+//     notifications change nothing: no state change and no session created from them.
+const EVENTS = new Set(['SessionStart', 'SessionEnd', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest',
+  'PermissionDenied', 'PostToolUse', 'PostToolUseFailure', 'Notification', 'Elicitation', 'ElicitationResult',
+  'SubagentStart', 'SubagentStop', 'Stop', 'StopFailure', 'PreCompact', 'PostCompact']);
 const PERM_NOTES = new Set(['permission_prompt', 'worker_permission_prompt']);
 const QUESTION_NOTES = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
+const IGNORED_NOTES = new Set(['idle_prompt', 'auth_success', 'agent_completed', 'push_notification',
+  'computer_use_enter', 'computer_use_exit', 'model_refusal_fallback']);
+const QUESTION_WORDS = /input|dialog|question|elicitation|approval/;
+
+// The prompt kind ('perm' | 'question') a Notification type shows, or null when it shows none.
+export function noteKind(type) {
+  if (typeof type !== 'string' || !type) return null;
+  if (PERM_NOTES.has(type)) return 'perm';
+  if (QUESTION_NOTES.has(type)) return 'question';
+  if (IGNORED_NOTES.has(type) || type.startsWith('quota_auto_resume_')) return null;
+  const t = type.toLowerCase();
+  if (t.includes('permission')) return 'perm';
+  return QUESTION_WORDS.test(t) ? 'question' : null;
+}
 const ASKING = new Set(['perm', 'question']);
 // A prompt notification can reach the bridge after the prompt was answered (hooks run async):
 // one of the same kind naming the same tool this soon after the session left that state is that
@@ -94,6 +116,11 @@ export class SessionTracker {
     const id = evt?.session_id;
     if (!id) return false;
     const name = evt.hook_event_name;
+    // An event this tracker does not know (a later Claude Code's, a misconfigured hooks.json) or a
+    // notification that shows no prompt changes nothing, not even the session list.
+    if (typeof name !== 'string' || !EVENTS.has(name)) return false;
+    const ask = name === 'Notification' ? noteKind(evt.notification_type) : name === 'Elicitation' ? 'question' : null;
+    if (name === 'Notification' && !ask) return false;
     if (name === 'SessionEnd') return this.#remove(id);
 
     const created = !this.#sessions.has(id);
@@ -106,8 +133,6 @@ export class SessionTracker {
     const agentId = typeof evt.agent_id === 'string' && evt.agent_id ? evt.agent_id : null;
     // Prompts on screen and their answer never touch s.waiting: they may well be a subagent's
     // while the main agent waits on it.
-    const note = name === 'Notification' ? evt.notification_type : null;
-    const ask = PERM_NOTES.has(note) ? 'perm' : QUESTION_NOTES.has(note) || name === 'Elicitation' ? 'question' : null;
     if (ask || name === 'ElicitationResult') {
       if (ask) this.#prompt(s, ask, agentId, evt.tool_name);
       else if (s.st === 'question') this.#answered(s);

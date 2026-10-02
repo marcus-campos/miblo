@@ -190,3 +190,12 @@ test('pickEvent takes only the tool from a worker_permission_prompt message', ()
   assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for Bash' }), { ...base, tool_name: 'Bash' });
   assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for rm -rf secret' }), base);
 });
+
+test('pickEvent forwards an unknown notification_type but never its message', () => {
+  const base = { session_id: 's', hook_event_name: 'Notification', notification_type: 'future_permission_prompt' };
+  assert.deepEqual(pickEvent({ ...base, message: 'Claude needs your permission to use Bash', title: 'secret' }), base);
+  // Only a short identifier-like type is forwarded.
+  for (const bad of ['x'.repeat(65), 'has spaces in it', 'a\nb', '']) {
+    assert.deepEqual(pickEvent({ ...base, notification_type: bad }), { session_id: 's', hook_event_name: 'Notification' }, bad);
+  }
+});

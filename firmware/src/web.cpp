@@ -197,6 +197,15 @@ Lang pageLang(WebServerT& server) {
 }
 
 void pageStart(String& out, Lang lang, const char* title) {
+  // L3: the pages' scripts and styles are inline (hence 'unsafe-inline'); nothing loads from
+  // elsewhere, the only outside request is the settings page's check for a newer release on
+  // GitHub, and no other site may frame a page (clickjacking Save, Remove or Rename).
+  srv->sendHeader(F("Content-Security-Policy"),
+                  F("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data:; connect-src 'self' https://api.github.com; frame-ancestors 'none'; "
+                    "base-uri 'none'; form-action 'self'"));
+  srv->sendHeader(F("X-Frame-Options"), F("DENY"));
+  srv->sendHeader(F("X-Content-Type-Options"), F("nosniff"));
   srv->setContentLength(CONTENT_LENGTH_UNKNOWN);
   srv->send(200, F("text/html; charset=utf-8"), "");
   out.reserve(kPageChunk + 256);

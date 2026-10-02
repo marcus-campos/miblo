@@ -22,11 +22,12 @@ void AlertSequencer::setTiming(const AlertTiming& t) {
   if (!t_.enabled) clear();
 }
 
-// Stub (daily-life foundation): track B implements it (kept, not used yet).
+// Read on every start (flash/hero lengths, level) and every dequeue (holdDone).
 void AlertSequencer::setModifiers(const AlertModifiers& m) { mods_ = m; }
 
-// Stub (daily-life foundation): track B implements it.
-void AlertSequencer::extendHero(uint32_t ms) { (void)ms; }
+void AlertSequencer::extendHero(uint32_t ms) {
+  if (view_.phase == AlertPhase::Hero && ms > heroLenMs_) heroLenMs_ = ms;
+}
 
 void AlertSequencer::clear() {
   qn_ = 0;
@@ -82,12 +83,23 @@ void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
   sortQueue(s);
 }
 
-void AlertSequencer::start(AlertKind kind, const char* sid, uint32_t nowMs) {
+void AlertSequencer::start(AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level) {
   view_.phase = AlertPhase::Flash;
   view_.kind = kind;
+  view_.level = level;
+  const uint32_t times = level ? 2 : 1;
+  // Meeting mode: one blink, whatever the level (a level-2 blink is still red on screen).
+  flashLenMs_ = mods_.quietFlash ? kBlinkMs : times * t_.flashMs;
+  heroLenMs_ = times * (isAmber(kind) ? t_.heroPermMs : t_.heroDoneMs);
   strncpy(view_.sid, sid, sizeof(view_.sid) - 1);
   view_.sid[sizeof(view_.sid) - 1] = 0;
   view_.phaseStartMs = nowMs;
+}
+
+// Insistence step for a "needs you" alert starting now (spec 3).
+uint8_t AlertSequencer::levelNow() const {
+  if (!mods_.insist) return 0;
+  return reminders_ >= kInsistLevel2From ? 2 : reminders_ >= kInsistLevel1From ? 1 : 0;
 }
 
 void AlertSequencer::finish(uint32_t nowMs) {
@@ -105,6 +117,7 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
     pendingSinceMs_ = nowMs;
   } else if (!pending) {
     pendingObserved_ = false;
+    reminders_ = 0;  // nobody waits any more: insistence starts over
   }
   if (!t_.enabled) {
     view_.phase = AlertPhase::None;
@@ -115,22 +128,29 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
     uint32_t elapsed = nowMs - view_.phaseStartMs;
     if (!stillValid(s, view_.kind, view_.sid)) {
       view_.phase = AlertPhase::None;  // answered/dismissed by usage
-    } else if (view_.phase == AlertPhase::Flash && elapsed >= t_.flashMs) {
+    } else if (view_.phase == AlertPhase::Flash && elapsed >= flashLenMs_) {
       view_.phase = AlertPhase::Hero;
       view_.phaseStartMs = nowMs;
-    } else if (view_.phase == AlertPhase::Hero &&
-               elapsed >= (isAmber(view_.kind) ? t_.heroPermMs : t_.heroDoneMs)) {
+    } else if (view_.phase == AlertPhase::Hero && elapsed >= heroLenMs_) {
       finish(nowMs);
     }
   }
 
   if (view_.phase == AlertPhase::None) {
-    while (qn_ > 0) {
-      AlertItem next = queue_[0];
-      for (int i = 1; i < qn_; i++) queue_[i - 1] = queue_[i];
+    // Stale items are dropped; a valid "finished" stays queued while holdDone (focus round),
+    // and anything behind it (amber sorts first anyway) may still go.
+    uint8_t i = 0;
+    while (i < qn_) {
+      const AlertItem next = queue_[i];
+      const bool valid = stillValid(s, next.kind, next.sid);
+      if (valid && next.kind == AlertKind::Done && mods_.holdDone) {
+        i++;
+        continue;
+      }
+      for (uint8_t j = i + 1; j < qn_; j++) queue_[j - 1] = queue_[j];
       qn_--;
-      if (stillValid(s, next.kind, next.sid)) {
-        start(next.kind, next.sid, nowMs);
+      if (valid) {
+        start(next.kind, next.sid, nowMs, isAmber(next.kind) ? levelNow() : 0);
         return view_;
       }
     }
@@ -141,7 +161,8 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
         int h = selectHero(s, false);
         if (h >= 0) {
           const SessionRow& r = s.sessions[h];
-          start(r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs);
+          if (reminders_ < 255) reminders_++;
+          start(r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs, levelNow());
         }
       }
     }

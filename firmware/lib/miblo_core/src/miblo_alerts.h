@@ -68,10 +68,14 @@ class AlertSequencer {
   uint32_t lastAmberEndMs_ = 0;
   bool pendingObserved_ = false;
   uint32_t pendingSinceMs_ = 0;
+  uint8_t reminders_ = 0;     // reminders started during the current wait (insistence)
+  uint32_t flashLenMs_ = 0;   // the running alert's flash length (level, quiet flash)
+  uint32_t heroLenMs_ = 0;    // the running alert's hero length (level, extendHero)
 
   static bool stillValid(const Snapshot& s, AlertKind kind, const char* sid);
-  void start(AlertKind kind, const char* sid, uint32_t nowMs);
+  void start(AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level);
   void finish(uint32_t nowMs);
+  uint8_t levelNow() const;
   void sortQueue(const Snapshot& s);
 };
 

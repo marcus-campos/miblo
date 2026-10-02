@@ -72,7 +72,8 @@ export class MetricsStore {
     const cw = sl.context_window ?? {};
     const cur = {
       model: String(sl.model?.display_name ?? ''),
-      ctx: typeof cw.used_percentage === 'number' ? Math.round(cw.used_percentage) : null,
+      // A whole percentage the gadget can print (it reads an int16): clamped, NaN/Infinity null.
+      ctx: Number.isFinite(cw.used_percentage) ? Math.max(0, Math.min(100, Math.round(cw.used_percentage))) : null,
       tokIn: num(cw.total_input_tokens),
       tokOut: num(cw.total_output_tokens),
       usd: num(sl.cost?.total_cost_usd),

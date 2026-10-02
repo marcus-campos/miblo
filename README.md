@@ -164,11 +164,21 @@
 
 ### Pets
 
-*Coming in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **12 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog, the Miblo alien or **Riff**, an original rocker with a spiky mohawk, a studded collar and a guitar-pick earring, who plays air guitar when a long task ends.
+*New in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **12 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog, the Miblo alien or **Riff**, an original rocker with a spiky mohawk, a studded collar and a guitar-pick earring, who plays air guitar when a long task ends.
 
 Then make it yours, one colour part at a time: body, outline, inner detail, nose or beak, face lines, eyes and accent. Each part is "Auto" (the Miblo colour look, the default) or any RGB colour you pick, and preset palettes fill them all in one click. The eyes can be round, big or sleepy.
 
-<!-- PETS-SHOTS -->
+<p align="center">
+  <img src="docs/media/pets-lineup.png" width="480" alt="The 12 pets: cat, duck, bug, daemon, robot, mug, penguin, crab, owl, dog, alien and Riff">
+  <br><sub>The 12 pets</sub>
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/pet-riff-colors.png" width="300" alt="Riff in the four preset colours with round, big and sleepy eyes, and in four custom colour sets"><br><sub>Riff: the four presets with round, big and sleepy eyes; bottom row, custom colours</sub></td>
+    <td align="center"><img src="docs/media/pet-dog-dress.png" width="300" alt="The dog in special-day hats, glasses, a tie and focus headphones"><br><sub>Every pet dresses up: special-day hats, glasses, the meeting tie, focus headphones</sub></td>
+  </tr>
+</table>
 
 ### Looks and special days
 

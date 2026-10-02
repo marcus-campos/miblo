@@ -1223,7 +1223,7 @@ static void handleSettingsComputerRemove() {
     sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
     return;
   }
-  storage::saveTokens(ctx.tokens);
+  ctx.tokensSave.request(millis());  // saved by the app loop (retried if it fails)
   char out[32];
   snprintf_P(out, sizeof(out), PSTR("{\"ok\":true,\"left\":%u}"), (unsigned)ctx.tokens.count());
   sendJson(*srv, 200, out);
@@ -1260,8 +1260,7 @@ static void handleSettingsComputerRename() {
     sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
     return;
   }
-  storage::saveTokens(ctx.tokens);
-  ctx.tokens.saved(millis());  // an automatic label pending is in this save too
+  ctx.tokensSave.request(millis());  // saved by the app loop, with any automatic label pending
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 

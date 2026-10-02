@@ -59,10 +59,16 @@ export function pidAlive(pid) {
   }
 }
 
+// Hard caps against a local process posting endless distinct ids (the gadget shows at most 20).
+const MAX_SESSIONS = 200;
+const MAX_WORKERS = 64;
+
 const baseName = (cwd) => String(cwd ?? '').split(/[\\/]/).filter(Boolean).pop() || 'session';
 
 export class SessionTracker {
   #sessions = new Map();
+  // Names in use by tracked sessions, so a new session finds a free one without a scan.
+  #names = new Set();
   #alerts = [];
   #nextAlertId = 1;
   #started = new Set();
@@ -241,9 +247,10 @@ export class SessionTracker {
     let s = this.#sessions.get(id);
     if (!s) {
       const base = baseName(cwd);
-      const taken = new Set([...this.#sessions.values()].map((x) => x.name));
+      if (this.#sessions.size >= MAX_SESSIONS) this.#evictOne();
       let name = base;
-      for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
+      for (let n = 2; this.#names.has(name); n++) name = `${base} ${n}`;
+      this.#names.add(name);
       s = { id, name, st: 'idle', since: this.now(), tool: '', det: '', toolSince: this.now(), cmdLive: false, pid: null, waiting: false, askBy: null };
       this.#sessions.set(id, s);
     }
@@ -262,9 +269,7 @@ export class SessionTracker {
     }
     // Claude Code's own internal agents report an empty agent_type.
     if (name === 'SubagentStart' && evt.agent_type === '') return;
-    let w = this.#workers.get(s.id);
-    if (!w) this.#workers.set(s.id, (w = new Map()));
-    w.set(agentId, this.now());
+    this.#trackWorker(s.id, agentId);
     if (name === 'PermissionRequest') {
       Object.assign(s, describeTool(evt.tool_name, evt.tool_input));
       this.#setAskBy(s, agentId);
@@ -303,9 +308,7 @@ export class SessionTracker {
   // one unless it named another tool.
   #prompt(s, kind, agentId, tool) {
     if (agentId) {
-      let w = this.#workers.get(s.id);
-      if (!w) this.#workers.set(s.id, (w = new Map()));
-      w.set(agentId, this.now());
+      this.#trackWorker(s.id, agentId);
     }
     if (ASKING.has(s.st)) {
       if (agentId && s.askBy === ANY_AGENT) this.#setAskBy(s, agentId);
@@ -355,6 +358,28 @@ export class SessionTracker {
     if (trigger === 'manual' && s.st === 'running') this.#enter(s, 'idle');
   }
 
+  // Notes a subagent event; the map stays in least-recently-active order, capped at MAX_WORKERS.
+  #trackWorker(sid, agentId) {
+    let w = this.#workers.get(sid);
+    if (!w) this.#workers.set(sid, (w = new Map()));
+    w.delete(agentId);
+    w.set(agentId, this.now());
+    while (w.size > MAX_WORKERS) w.delete(w.keys().next().value);
+  }
+
+  // Makes room for a new session: the least recently active one that is not asking or running,
+  // else the least recently active overall.
+  #evictOne() {
+    let idle = null;
+    let any = null;
+    for (const s of this.#sessions.values()) {
+      const at = this.#lastSeen.get(s.id) ?? 0;
+      if (!any || at < any.at) any = { id: s.id, at };
+      if (!ASKING.has(s.st) && s.st !== 'running' && (!idle || at < idle.at)) idle = { id: s.id, at };
+    }
+    this.#remove((idle ?? any).id);
+  }
+
   // Drops workers silent for WORKER_TTL_MS and returns how many are left.
   #liveWorkers(sid) {
     const w = this.#workers.get(sid);
@@ -384,6 +409,7 @@ export class SessionTracker {
     this.#askTool.delete(id);
     this.#lastSeen.delete(id);
     this.#alerts = this.#alerts.filter((a) => a.sid !== id);
+    this.#names.delete(this.#sessions.get(id)?.name);
     return this.#sessions.delete(id);
   }
 }

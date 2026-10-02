@@ -789,3 +789,58 @@ test('PostToolUseFailure clears a perm raised by a notification', () => {
     assert.deepEqual(tracker.alerts(), []);
   }
 });
+
+test('sessions are capped at 200; active ones survive, idle evicted oldest first', () => {
+  const { tracker, clock, ev } = setup();
+  ev('run', 'UserPromptSubmit');
+  clock.advance(1);
+  ev('perm', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'ls' } });
+  for (let i = 0; i < 300; i++) {
+    clock.advance(1);
+    ev(`idle${i}`, 'SessionStart');
+  }
+  const ids = tracker.sessions().map((s) => s.id);
+  assert.equal(ids.length, 200);
+  assert.ok(ids.includes('run') && ids.includes('perm'));
+  assert.ok(!ids.includes('idle0') && !ids.includes('idle99'));
+  assert.ok(ids.includes('idle299') && ids.includes('idle102'));
+  assert.ok(!ids.includes('idle101'));
+});
+
+test('when every session is active the least recently active one is evicted', () => {
+  const { tracker, clock, ev } = setup();
+  for (let i = 0; i < 200; i++) {
+    clock.advance(1);
+    ev(`r${i}`, 'UserPromptSubmit');
+  }
+  clock.advance(1);
+  ev('r0', 'PreToolUse', { tool_name: 'Bash', tool_input: { command: 'ls' } });
+  clock.advance(1);
+  ev('new', 'UserPromptSubmit');
+  const ids = tracker.sessions().map((s) => s.id);
+  assert.equal(ids.length, 200);
+  assert.ok(ids.includes('r0') && ids.includes('new'));
+  assert.ok(!ids.includes('r1'));
+});
+
+test('subagents are capped at 64 per session, oldest evicted', () => {
+  const { tracker, clock, ev } = setup();
+  ev('s1', 'SessionStart');
+  for (let i = 0; i < 100; i++) {
+    clock.advance(1);
+    ev('s1', 'SubagentStart', { agent_id: `a${i}`, agent_type: 'x' });
+  }
+  // Stopping the newest 64 leaves nothing only if exactly those were tracked.
+  for (let i = 36; i < 100; i++) ev('s1', 'SubagentStop', { agent_id: `a${i}` });
+  ev('s1', 'Stop');
+  assert.equal(tracker.sessions()[0].waiting, false);
+  assert.equal(tracker.sessions()[0].st, 'done');
+});
+
+test('thousands of sessions are handled quickly', () => {
+  const { tracker, ev } = setup();
+  const t0 = performance.now();
+  for (let i = 0; i < 5000; i++) ev(`p${i}`, 'SessionStart');
+  assert.equal(tracker.sessions().length, 200);
+  assert.ok(performance.now() - t0 < 1000);
+});

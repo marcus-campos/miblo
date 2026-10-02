@@ -9,6 +9,9 @@ namespace miblo {
 
 static bool leap(uint16_t y) { return y % 4 == 0 && (y % 100 != 0 || y % 400 == 0); }
 
+// Day 256 of the year: Sep 13, or Sep 12 in a leap year.
+static bool programmersDay(const Date& d) { return d.month == 9 && d.day == (leap(d.year) ? 12 : 13); }
+
 static bool isBirthday(const char* mmdd, const Date& d) {
   uint8_t m, day;
   if (!parseMonthDay(mmdd, m, day)) return false;
@@ -31,6 +34,12 @@ Occasion occasionOn(const Config& cfg, const Date& d) {
   if ((d.month == 12 && d.day == 31) || (d.month == 1 && d.day == 1)) return Occasion::NewYear;
   if (d.month == 12 && d.day >= 20 && d.day <= 26) return Occasion::Christmas;
   if (d.month == 10 && d.day >= 29) return Occasion::Halloween;
+  const Date e = easterSunday(d.year);
+  if (d.month == e.month && d.day == e.day) return Occasion::Easter;
+  if (d.month == 2 && d.day == 14) return Occasion::Valentine;
+  if (programmersDay(d)) return Occasion::ProgrammersDay;
+  // Last of all: a date with an accessory always wins over the black cat.
+  if (d.day == 13 && weekdayOf(d) == 5) return Occasion::Friday13;
   return Occasion::None;
 }
 
@@ -41,11 +50,10 @@ Accessory accessoryFor(Occasion o) {
     case Occasion::NewYear:
     case Occasion::MibloBirthday:
     case Occasion::OwnerBirthday: return Accessory::PartyHat;
-    // Stub (daily-life foundation): track F dresses these up.
-    case Occasion::Valentine:
-    case Occasion::Easter:
-    case Occasion::ProgrammersDay:
-    case Occasion::Friday13:
+    case Occasion::Easter: return Accessory::BunnyEars;
+    case Occasion::Valentine: return Accessory::Hearts;
+    case Occasion::ProgrammersDay: return Accessory::Glasses;
+    case Occasion::Friday13:  // no hat: the black cat is the joke
     case Occasion::None: break;
   }
   return Accessory::None;
@@ -74,11 +82,10 @@ void Greeter::update(uint32_t nowMs, bool active, bool timeKnown, const Date& to
     case Occasion::Christmas:
       if (today.day == 25) g = Greeting::Christmas;
       break;
-    case Occasion::Halloween:
-    // Stub (daily-life foundation): track F greets on these.
+    case Occasion::ProgrammersDay: g = Greeting::ProgrammersDay; break;
+    case Occasion::Halloween:  // the look only
     case Occasion::Valentine:
     case Occasion::Easter:
-    case Occasion::ProgrammersDay:
     case Occasion::Friday13:
     case Occasion::None: break;
   }
@@ -96,7 +103,7 @@ Greeting Greeter::showing(uint32_t nowMs) const {
 
 bool greetingIsParty(Greeting g) {
   return g == Greeting::OwnerBirthday || g == Greeting::MibloBirthday || g == Greeting::NewYear ||
-         g == Greeting::Christmas;
+         g == Greeting::Christmas || g == Greeting::ProgrammersDay;
 }
 
 void greetingLines(Lang lang, Greeting g, const char* owner, const char* self, char* line1, size_t cap1, char* line2,
@@ -133,25 +140,46 @@ void greetingLines(Lang lang, Greeting g, const char* owner, const char* self, c
       if (named) snprintf(line1, cap1, "%s", owner);
       tr(lang, S::HappyNewYear, line2, cap2);
       break;
-    case Greeting::ProgrammersDay:  // Stub (daily-life foundation): track F implements it.
+    case Greeting::ProgrammersDay:
+      if (named) snprintf(line1, cap1, "%s", owner);
+      tr(lang, S::HappyProgrammersDay, line2, cap2);
+      break;
     case Greeting::None: break;
   }
 }
 
-// Stub (daily-life foundation): track F implements it.
-Date easterSunday(uint16_t year) { return Date{year, 4, 1}; }
-
-// Stub (daily-life foundation): track F implements it.
-uint8_t weekdayOf(const Date& d) {
-  (void)d;
-  return 0;
+// Anonymous Gregorian algorithm (Meeus/Jones/Butcher), integers only.
+Date easterSunday(uint16_t year) {
+  const int y = year;
+  const int a = y % 19, b = y / 100, c = y % 100;
+  const int d = b / 4, e = b % 4, f = (b + 8) / 25, g = (b - f + 1) / 3;
+  const int h = (19 * a + b - d - g + 15) % 30;
+  const int i = c / 4, k = c % 4;
+  const int l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const int m = (a + 11 * h + 22 * l) / 451;
+  const int month = (h + l - 7 * m + 114) / 31;
+  const int day = (h + l - 7 * m + 114) % 31 + 1;
+  return Date{year, (uint8_t)month, (uint8_t)day};
 }
 
-// Stub (daily-life foundation): track F implements it.
+// Zeller's congruence (Sakamoto's method needs a month table, which would sit in RAM on the
+// ESP8266).
+uint8_t weekdayOf(const Date& d) {
+  int m = d.month, y = d.year;
+  if (m < 3) {
+    m += 12;
+    y -= 1;
+  }
+  const int h = (d.day + 13 * (m + 1) / 5 + y + y / 4 - y / 100 + y / 400) % 7;  // 0 = Saturday
+  return (uint8_t)((h + 6) % 7);
+}
+
+// Pet mode time, not wall time: the first crossing comes after kPasserbyEveryMs of pet mode.
 bool passerbyAt(uint32_t petMs, uint32_t* atMs) {
-  (void)petMs;
-  if (atMs) *atMs = 0;
-  return false;
+  const uint32_t into = petMs % kPasserbyEveryMs;
+  const bool on = petMs >= kPasserbyEveryMs && into < kPasserbyMs;
+  if (atMs) *atMs = on ? into : 0;
+  return on;
 }
 
 }  // namespace miblo

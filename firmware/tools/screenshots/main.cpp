@@ -297,11 +297,19 @@ void renderAll(Lang L) {
   { Shot s; screens::hero(L, snap, 0, AlertKind::Perm, false, clk, runs); save(s, "11-alert-permission"); }
   { Shot s; screens::hero(L, snap, 1, AlertKind::Question, false, clk, runs); save(s, "12-alert-question"); }
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "13-overview-needs-you"); }
+  // Meeting mode: the same screen with no session names or tools (app.cpp also sets discreet).
+  screens::setAnonymous(true);
+  screens::setMascotTie(true);
+  { Shot s; screens::overview(L, snap, pager, 0, clk, true); save(s, "13-overview-needs-you-meeting"); }
+  screens::setAnonymous(false);
+  screens::setMascotTie(false);
 
   working();
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "14-overview-working"); }
-  // "worker" has been running `npm test` for 1:42: the time runs beside the command.
+  // "worker" has been running `npm test` for 1:42: the time runs beside the command. It has been
+  // working for a bit longer than that ("2m"), not the "<1m" of the plain shot.
   snap.sessions[1].ts = gNow - 102;
+  snap.sessions[1].since = gNow - 150;
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "14-overview-working-long-command"); }
   snap.sessions[1].ts = 0;
   landingFinished(runs);

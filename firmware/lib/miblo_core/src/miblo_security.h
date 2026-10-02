@@ -17,9 +17,28 @@ bool bearerToken(const char* header, char* out, size_t cap);
 void tokenTag(const char* token, char out[9]);
 // Constant-time comparison (doesn't leak the length of the matching prefix).
 bool constantTimeEquals(const char* a, const char* b);
-// Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
-// first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
-bool findContentLength(const char* headers, size_t len, uint32_t& out);
+// A request's Content-Length, judged exactly as ESP8266WebServer will read it, or refused.
+//
+// The server takes the LAST Content-Length line, String::trim()s its value (isspace: also \v and
+// \f) and converts it with toInt() (atol) into a uint32_t: "-1" becomes 0xFFFFFFFF, "+60000"
+// 60000, "1e3" 1. Any scanner that reads the value differently lets a request past the body
+// guards (size, heap, the read-ahead's body wait) and into the server's blocking, unbounded body
+// read. So the only values accepted are the ones where every reading agrees:
+//   Ok    every Content-Length line holds, after the server's trim, 1..10 ASCII digits worth at
+//         most 2^31 - 1, and they all hold the same number (`out`).
+//   Bad   one of them does not (sign, inner blank, empty, hex, exponent, overflow, other bytes), or
+//         two disagree: the request must be refused (400) before the server reads it.
+//   None  no Content-Length line.
+// Lines are split at '\n', a value ends at its first '\r' (the server reads a line up to '\r',
+// then skips to '\n': each of its header lines starts where one of these does, and a value that
+// is plain digits here is the same number to atol there). Case-insensitive name, no blank before
+// the ':' (as the server's equalsIgnoreCase).
+enum class LengthVerdict : uint8_t { None, Ok, Bad };
+// Over the lines in p[0..end) (unterminated last line ignored).
+LengthVerdict scanContentLength(const char* p, size_t end, uint32_t& out);
+// Over raw header bytes starting at the first header line (not NUL-terminated), up to the blank
+// line that ends the block (or the last complete line in `len` when it has not all arrived).
+LengthVerdict readContentLength(const char* headers, size_t len, uint32_t& out);
 
 // What ESP8266WebServer will make of a request's header block, judged from raw header bytes (the
 // first TCP segment, or the block read ahead: miblo_headers.h). The scan follows the server's own reading
@@ -43,15 +62,65 @@ enum class HeaderVerdict : uint8_t { Plain, Multipart, BadMultipart, Incomplete,
 constexpr size_t kMaxBoundary = 70;  // RFC 2046
 HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundary = nullptr, size_t cap = 0);
 
-// Escalating brute-force lockout shared by PairingGuard and PresenceGate: the 5th failure in a
-// row locks for 60 s, each further lockout doubles it (capped at 1 h). Only success() ends the
-// escalation. Call update() regularly (the app does, every frame) so a lockout from long ago can
-// never look active again when the 32-bit millisecond clock wraps (~49.7 days).
+// DNS rebinding and cross-site requests (M1). A web page cannot read the gadget's replies, but
+// one whose own name was rebound to the gadget's IP can: its requests then carry the attacker's
+// name in Host. So a request is served only when its Host is
+//   - absent or empty (a browser always sends one);
+//   - an IP literal: dotted-quad IPv4, or a bracketed IPv6;
+//   - the gadget's id (its mDNS name and DHCP host name, "miblo-4f2a"), alone ("miblo-4f2a", from
+//     a router's DNS) or followed by a domain ("miblo-4f2a.local", "miblo-4f2a.fritz.box"): an
+//     attacker would have to know the id, which only goes out on the LAN;
+// each with an optional ":port" and trailing dot, case-insensitive. The setup AP (captive portal)
+// is the caller's exception: there any Host is answered (and redirected).
+bool hostAllowed(const char* host, const char* id);
+// An Origin header (sent by browsers on cross-origin requests and on every POST): absent, or
+// "http://" + an allowed host (hostAllowed), nothing after it. "null", https and anything else are
+// another site.
+bool originAllowed(const char* origin, const char* id);
+
+// What an EscalatingLockout keeps across a restart (RTC memory on the device: it survives a reset
+// or a crash, not a power cut). Plain data; restore() checks every field.
+struct LockoutState {
+  uint32_t lockMs;       // the current/last lockout's length (escalation), 0 = none yet
+  uint32_t remainingMs;  // of the lockout in force, 0 = none
+  uint8_t failures;
+  uint8_t reserved[3];
+};
+
+// The whole Host/Origin decision for one request (the hook, web.cpp foreignRequest). `*Present`:
+// the header is there (its value may be nullptr when it did not fit: refused, never "absent").
+// `pairedBearer`: the request carries a bearer token of a paired computer; a rebinding page
+// cannot know one, so the plugin keeps working through a custom DNS alias (Pi-hole, a router
+// alias, Tailscale MagicDNS). A browser (the pages, the web session) needs the IP or <id>.local.
+enum class HostVerdict : uint8_t { Ok, WrongHost, WrongOrigin };
+HostVerdict judgeHost(const char* host, bool hostPresent, const char* origin, bool originPresent, bool pairedBearer,
+                      const char* id);
+// Whether an Accept header asks for HTML (a browser navigating), case-insensitive.
+bool acceptsHtml(const char* accept);
+// The full refusal for a wrong Host/Origin, written into out: `status` ("421 Misdirected
+// Request"), then for a browser (html) a language-neutral page linking to http://<ip>/ (no link
+// when ip is empty or not a dotted IPv4), else {"error":"wrong host"}. Returns its length, 0 if
+// it does not fit in cap (never cut).
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html);
+
+// Escalating brute-force lockout behind PairingGuard and each PresenceGate purpose (M2). The 5th
+// failure in a row locks for 60 s; from then on every 3rd failure locks again, each lockout twice
+// as long as the last, up to 24 h. Only success() ends the escalation. Call update() regularly (the
+// app does, every frame) so a lockout from long ago can never look active again when the 32-bit
+// millisecond clock wraps (~49.7 days).
+//
+// Against a 4-digit code (10^4 values): reaching the 24 h cap takes 5 + 3 x 11 = 38 guesses over
+// ~34 h (60 s + 2 + 4 ... + 1024 min); from then on 3 guesses a day. A 50 % chance needs ~5000
+// guesses against a fixed code (the pairing code, which changes only when a pairing succeeds):
+// ~4.5 years; against a code drawn afresh each time (the presence codes) ~6900 guesses, ~6.3
+// years. (Before: 5 guesses an hour after a 1 h cap, 50 % in ~42 days.) The counters are kept
+// across a reset (RTC memory), so a crash or a reboot does not give fresh guesses either.
 class EscalatingLockout {
  public:
-  static constexpr uint8_t kMaxFailures = 5;
+  static constexpr uint8_t kMaxFailures = 5;   // before the first lockout
+  static constexpr uint8_t kNextFailures = 3;  // before each further one
   static constexpr uint32_t kBaseMs = 60000;
-  static constexpr uint32_t kMaxMs = 3600000;
+  static constexpr uint32_t kMaxMs = 86400000;  // 24 h
 
   bool locked(uint32_t nowMs) const { return remainingMs(nowMs) > 0; }
   uint32_t remainingMs(uint32_t nowMs) const;
@@ -61,16 +130,21 @@ class EscalatingLockout {
     failures_ = 0;
     lockMs_ = 0;
   }
+  LockoutState save(uint32_t nowMs) const;
+  // Takes a saved state back as of nowMs (a lockout in force runs its full remaining time again:
+  // the time the unit was off is unknown). A state out of range is ignored.
+  void restore(const LockoutState& s, uint32_t nowMs);
 
  private:
   uint8_t failures_ = 0;
   bool locked_ = false;  // a lockout is in force (cleared by update() once it expires)
   uint32_t lockMs_ = 0;  // duration of the current/last lockout, kept for escalation; 0 = none
   uint32_t lockedAtMs_ = 0;
+  uint32_t lockLenMs_ = 0;  // this lockout's length (lockMs_, or less after a restore)
 };
 
-// Pairing code: 5 wrong codes in a row lock pairing out (EscalatingLockout: 60 s doubling up to
-// 1 h, cleared by a correct code). The app rotates the code after each successful pairing.
+// Pairing code: wrong codes lock pairing out (EscalatingLockout: 60 s doubling up to 24 h,
+// cleared by a correct code). The app rotates the code after each successful pairing.
 class PairingGuard {
  public:
   enum class Result : uint8_t { Ok, BadCode, Locked };
@@ -82,6 +156,7 @@ class PairingGuard {
   Result check(const char* code, uint32_t nowMs);
   uint32_t lockRemainingMs(uint32_t nowMs) const { return lock_.remainingMs(nowMs); }
   void update(uint32_t nowMs) { lock_.update(nowMs); }
+  EscalatingLockout& lockout() { return lock_; }
 
  private:
   char code_[5] = "0000";
@@ -166,43 +241,65 @@ class TokenStore {
 void tokensToJson(const TokenStore& tokens, JsonObject out);
 void tokensFromJson(JsonObjectConst in, TokenStore& tokens);
 
-// Physical presence code: when opening the /update gate (POST /update/open) or requesting a
-// factory reset from the browser, the screen shows a 4-digit code, valid for 5 min; the POST
-// needs it. Brute-force lockout (EscalatingLockout, survives re-opens): failures accumulate across
-// re-opens (a new code does not grant fresh guesses); on the 5th the gate closes and refuses to
-// open again for 60 s, doubling on each further lockout (capped at 1 h). Only a correct code
-// resets the failures and the escalation.
+// GET /api/challenge?n=<nonce>&t=<tag> (M3): lets a computer check that an address answers as
+// the gadget it paired with BEFORE it sends its token there (the plugin follows a gadget that moved,
+// found again by mDNS, which any LAN host can answer). Contract (plugin/lib/relocation.js):
+//   n    exactly 32 lowercase hex characters (a fresh random nonce)
+//   t    exactly 8 lowercase hex characters: tokenTag() of the caller's token
+//   200  {"id":"<device id>","mac":"<64 lowercase hex>"}, mac = HMAC-SHA256(key = the token's 32
+//        ASCII characters, message = the 32 nonce characters immediately followed by the id)
+//   400  n or t malformed;  403  no paired token has that tag (never 404: that means a firmware
+//        without the route, which the plugin treats differently);  429  over the rate limit.
+// Only someone holding the token can compute the mac, and the token never travels. Every stored
+// token's tag is compared and a mac is always computed (a dummy key when none matches), so the
+// time does not tell a known tag from an unknown one.
+enum class ChallengeResult : uint8_t { Ok, BadRequest, UnknownTag };
+ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
+                                char macHex[65]);
+
+// Physical presence code: when opening the /update gate (POST /update/open), requesting a factory
+// reset, unlocking the settings page or joining a network from the portal, the screen shows a
+// 4-digit code, valid for 5 min; the POST needs it. Each purpose has its own brute-force lockout
+// (EscalatingLockout, L2): a stranger guessing the settings code cannot keep the owner from
+// updating, resetting or moving the unit's Wi-Fi. Failures accumulate across re-opens (a new code
+// does not grant fresh guesses); a lockout closes the gate and its purpose cannot open again until
+// it ends. Only a correct code for that purpose resets its failures and escalation.
 class PresenceGate {
  public:
   enum class Purpose : uint8_t { Update, Reset, Settings, Wifi };
+  static constexpr uint8_t kPurposes = 4;
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
   static constexpr uint32_t kLockMaxMs = EscalatingLockout::kMaxMs;
 
-  // false (and nothing changes) while locked out, or while a code for another purpose is still
-  // active (busyFor): nobody can replace a code the owner is reading off the screen. For the same
-  // purpose an active code is kept as it is (same code, same timer). The owner can always ask
-  // again once it expires (kTtlMs) or after it was used (close()).
+  // false (and nothing changes) while that purpose is locked out, or while a code for another
+  // purpose is still active (busyFor): nobody can replace a code the owner is reading off the
+  // screen. For the same purpose an active code is kept as it is (same code, same timer). The owner
+  // can always ask again once it expires (kTtlMs) or after it was used (close()).
   bool open(Purpose p, const char* code4, uint32_t nowMs);
   bool busyFor(Purpose p, uint32_t nowMs) const { return active(nowMs) && p != purpose_; }
-  bool locked(uint32_t nowMs) const { return lock_.locked(nowMs); }
-  uint32_t lockRemainingMs(uint32_t nowMs) const { return lock_.remainingMs(nowMs); }
-  // Clears an expired lockout (see EscalatingLockout::update).
-  void update(uint32_t nowMs) { lock_.update(nowMs); }
+  bool locked(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].locked(nowMs); }
+  uint32_t lockRemainingMs(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].remainingMs(nowMs); }
+  // Clears expired lockouts (see EscalatingLockout::update).
+  void update(uint32_t nowMs) {
+    for (auto& l : lock_) l.update(nowMs);
+  }
   bool active(uint32_t nowMs) const;
   Purpose purpose() const { return purpose_; }
   const char* code() const { return code_; }
   uint32_t remainingMs(uint32_t nowMs) const;
   bool check(Purpose p, const char* code, uint32_t nowMs);
   void close() { open_ = false; }
+  EscalatingLockout& lockout(Purpose p) { return lock_[idx(p)]; }
 
  private:
+  static uint8_t idx(Purpose p) { return (uint8_t)p < kPurposes ? (uint8_t)p : 0; }
   bool open_ = false;
   Purpose purpose_ = Purpose::Update;
   char code_[5] = "";
   uint32_t openedAtMs_ = 0;
-  EscalatingLockout lock_;
+  EscalatingLockout lock_[kPurposes];
 };
 
 // Does OTA (/update) need the on-screen presence code? It does NOT only for a unit that was NEVER

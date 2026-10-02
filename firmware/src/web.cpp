@@ -144,8 +144,8 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
   char code[5];
   miblo::formatCode(hwRandom(), code);
   if (ctx.presence.open(p, code, nowMs)) return true;
-  if (ctx.presence.locked(nowMs)) {
-    sendLocked(server, ctx.presence.lockRemainingMs(nowMs));
+  if (ctx.presence.locked(p, nowMs)) {
+    sendLocked(server, ctx.presence.lockRemainingMs(p, nowMs));
   } else {  // another purpose's code is on the screen: never replaced, retry once it is gone
     char out[48];
     snprintf_P(out, sizeof(out), PSTR("{\"error\":\"busy\",\"retryAfter\":%u}"),
@@ -187,7 +187,15 @@ Lang pageLang(WebServerT& server) {
   const Lang browser = miblo::negotiateLang(requestHeader(server, F("Accept-Language")).c_str());
   bool store = false;
   const Lang l = miblo::pageLanguage(ctx.tokens.count() > 0, ctx.cfg.langSet, ctx.cfg.lang, browser, store);
-  if (store) {
+  // An anonymous page view stores the language at most once an hour (L1: anyone on the LAN could
+  // otherwise make the unit write its flash by alternating Accept-Language); in between the page
+  // is still drawn in the browser's language.
+  static bool storedOnce = false;
+  static uint32_t storedAtMs = 0;
+  const uint32_t now = millis();
+  if (store && (!storedOnce || now - storedAtMs >= 3600000u)) {
+    storedOnce = true;
+    storedAtMs = now;
     ctx.cfg.lang = l;
     ctx.configChanged = true;
   }
@@ -195,6 +203,15 @@ Lang pageLang(WebServerT& server) {
 }
 
 void pageStart(String& out, Lang lang, const char* title) {
+  // L3: the pages' scripts and styles are inline (hence 'unsafe-inline'); nothing loads from
+  // elsewhere, the only outside request is the settings page's check for a newer release on
+  // GitHub, and no other site may frame a page (clickjacking Save, Remove or Rename).
+  srv->sendHeader(F("Content-Security-Policy"),
+                  F("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                    "img-src 'self' data:; connect-src 'self' https://api.github.com; frame-ancestors 'none'; "
+                    "base-uri 'none'; form-action 'self'"));
+  srv->sendHeader(F("X-Frame-Options"), F("DENY"));
+  srv->sendHeader(F("X-Content-Type-Options"), F("nosniff"));
   srv->setContentLength(CONTENT_LENGTH_UNKNOWN);
   srv->send(200, F("text/html; charset=utf-8"), "");
   out.reserve(kPageChunk + 256);
@@ -208,15 +225,39 @@ void pageStart(String& out, Lang lang, const char* title) {
   out += F("</style></head><body>");
 }
 
+// How long one piece of a response may go without any progress before the connection is given
+// up. The core's sendContent() copies a piece out through the piece's own Stream, and gives up
+// after that stream's getTimeout() without progress -- the Stream default, 1 s. It then still
+// writes the chunk's closing "\r\n": the browser gets a chunk shorter than its size line, i.e. a
+// silently corrupt page. On Wi-Fi a lost segment with two segments in flight waits for lwIP's
+// retransmit timer (~1-1.5 s), so one retransmit was enough. 5 s outlasts a few retransmits.
+static constexpr uint32_t kPieceTimeoutMs = 5000;
+
+// Sends one piece of the current response (RAM or PROGMEM, no copy) and makes sure it went out
+// whole; if not, the connection is closed: a page that fails to load beats a page broken in
+// the middle. Later pieces on the closed connection fail at once (nothing can be written).
+//
+// Success is read from the piece's getLastSendReport(), which sendSize() sets: Success only when
+// every requested byte was written. NOT from streamRemaining(): StreamConstPtr returns its total
+// size there, whatever has been consumed, so it is never 0 after a send -- that check (an earlier
+// attempt) closed every page right after its first piece.
+static void sendPiece(const char* data, size_t len) {
+  if (!len) return;  // a zero-length chunk would end the response
+  StreamConstPtr piece(data, len);  // detects a flash pointer by itself (read via pgm_read)
+  piece.setTimeout(kPieceTimeoutMs);
+  srv->sendContent(&piece, len);  // HEAD: sends nothing and leaves the report at Success
+  if (piece.getLastSendReport() != Stream::Report::Success) srv->client().stop();
+}
+
 void pageFlush(String& out, bool force) {
   if (!out.length() || (!force && out.length() < kPageChunk)) return;
-  srv->sendContent(out);
+  sendPiece(out.c_str(), out.length());
   out.remove(0);  // keeps the reserved buffer for the next chunk
 }
 
 void pageSendP(String& out, PGM_P blob) {
   pageFlush(out, true);
-  srv->sendContent_P(blob);
+  sendPiece(blob, strlen_P(blob));
 }
 
 void pageEnd(String& out) {
@@ -459,9 +500,9 @@ static void handleWifi() {
     // A configured unit's open setup AP: only someone who can read its screen moves it.
     const Lang lang = pageLang(*srv);
     const uint32_t now = millis();
-    if (ctx.presence.locked(now)) {
+    if (ctx.presence.locked(miblo::PresenceGate::Purpose::Wifi, now)) {
       char b[16];
-      snprintf_P(b, sizeof(b), PSTR(" (%u s)"), (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      snprintf_P(b, sizeof(b), PSTR(" (%u s)"), (unsigned)((ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Wifi, now) + 999) / 1000));
       messagePage(lang, tr(lang, S::WebFailed) + b);
       return;
     }
@@ -1168,8 +1209,8 @@ static void handleSettingsCode() {
 static void handleSettingsUnlock() {
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
-  if (ctx.presence.locked(now)) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+  if (ctx.presence.locked(miblo::PresenceGate::Purpose::Settings, now)) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Settings, now));
     return;
   }
   // The page sends {"code":"1234"} as JSON (a ?code= argument also works).
@@ -1182,7 +1223,7 @@ static void handleSettingsUnlock() {
   }
   if (!code[0]) strlcpy(code, srv->arg(F("code")).c_str(), sizeof(code));
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, code, now)) {
-    if (ctx.presence.locked(now)) sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    if (ctx.presence.locked(miblo::PresenceGate::Purpose::Settings, now)) sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Settings, now));
     else sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
     return;
   }
@@ -1390,14 +1431,14 @@ static void handleZones() {
   while (names.next()) {
     const size_t len = strlen(names.name);
     if (n + len + 1 > sizeof(buf)) {
-      srv->sendContent(buf, n);
+      sendPiece(buf, n);
       n = 0;
     }
     memcpy(buf + n, names.name, len);
     n += len;
     buf[n++] = '\n';
   }
-  if (n) srv->sendContent(buf, n);
+  if (n) sendPiece(buf, n);
 }
 
 static void handleRoot() {
@@ -1443,8 +1484,8 @@ static void handleResetCode() {
 
 static void handleFactoryReset() {
   if (!requireJson(*srv)) return;
-  if (ctx.presence.locked(millis())) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(millis()));
+  if (ctx.presence.locked(miblo::PresenceGate::Purpose::Reset, millis())) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Reset, millis()));
     return;
   }
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Reset, srv->arg(F("code")).c_str(), millis())) {
@@ -1523,14 +1564,54 @@ static PGM_P largeBodyRefusal(LookaheadClient* client, const String& url) {
   return PSTR("401 Unauthorized");
 }
 
+// M1: a request for another name than the gadget's (DNS rebinding: a web page whose own name now
+// points at the gadget), or from another site's page (Origin), is refused before anything is read
+// or done: 421 / 403 (miblo::judgeHost). A paired computer's bearer token skips the check (a page
+// cannot know one), so the plugin works through a custom DNS alias; a browser must use the IP or
+// <id>.local, and one that used another name gets a small page linking to the IP. The setup AP
+// answers any Host (its captive portal redirects them). The header block is complete here (the
+// read-ahead holds a request until it is, lookahead_client.h). True when refused (and answered).
+static bool refuseForeign(LookaheadClient* client) {
+  if (net::apActive() && client->localIP() == WiFi.softAPIP()) return false;
+  const char* p = client->peekBuffer();
+  const size_t n = client->peekAvailable();
+  char host[72];
+  char origin[72];
+  bool hostPresent = false, originPresent = false;
+  const bool hostFound = miblo::findHeader(p, n, "host", host, sizeof(host), &hostPresent);
+  const bool originFound = miblo::findHeader(p, n, "origin", origin, sizeof(origin), &originPresent);
+  bool paired = false;
+  {
+    char auth[56];
+    char token[40];
+    paired = miblo::findHeader(p, n, "authorization", auth, sizeof(auth)) &&
+             miblo::bearerToken(auth, token, sizeof(token)) && ctx.tokens.find(token) >= 0;
+  }
+  const miblo::HostVerdict v = miblo::judgeHost(hostFound ? host : nullptr, hostPresent, originFound ? origin : nullptr,
+                                                originPresent, paired, ctx.ident.id);
+  if (v == miblo::HostVerdict::Ok) return false;
+  char accept[96];
+  const bool html = miblo::findHeader(p, n, "accept", accept, sizeof(accept)) && miblo::acceptsHtml(accept);
+  char status[28];
+  strncpy_P(status, v == miblo::HostVerdict::WrongHost ? PSTR("421 Misdirected Request") : PSTR("403 Forbidden"),
+            sizeof(status) - 1);
+  status[sizeof(status) - 1] = 0;
+  const String ip = net::connected() ? WiFi.localIP().toString() : String();
+  char out[384];
+  if (miblo::wrongHostReply(out, sizeof(out), status, ip.c_str(), html)) client->print(out);
+  return true;
+}
+
 static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
                                               WebServerT::ContentTypeFunction) {
   using miblo::BodyAction;
-  if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
-    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the server parses no body for these
-  }
   // The server passes its own connection, whose type is WebServerT::ClientType.
   auto* client = static_cast<LookaheadClient*>(wifiClient);
+  if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
+    // The server parses no body for these.
+    if (refuseForeign(client)) return WebServerT::CLIENT_MUST_STOP;
+    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
+  }
   static const char kBad[] PROGMEM = "400 Bad Request";
   miblo::HeaderVerdict verdict = miblo::checkRequestHeaders(client->peekBuffer(), client->peekAvailable());
   if (verdict == miblo::HeaderVerdict::Incomplete) {
@@ -1545,13 +1626,20 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
     if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
     verdict = client->aheadVerdict();
   }
+  if (refuseForeign(client)) return WebServerT::CLIENT_MUST_STOP;
+  // H1: a Content-Length the server would read differently from what the guards below judge
+  // ("-1", "+60000", duplicates that disagree) is refused before the server reads anything. The
+  // read-ahead (lookahead_client.h) already refuses it; this is the same rule at the hook.
+  uint32_t len = 0;
+  const miblo::LengthVerdict lengthVerdict = miblo::readContentLength(client->peekBuffer(), client->peekAvailable(), len);
+  if (lengthVerdict == miblo::LengthVerdict::Bad) return refuse(client, kBad, PSTR("{\"error\":\"bad length\"}"));
   const uint32_t now = millis();
   const bool multipart =
       verdict == miblo::HeaderVerdict::Multipart || verdict == miblo::HeaderVerdict::BadMultipart;
   const bool isUpload = method == F("POST") && url == F("/update");
   const bool armed = multipart && isUpload && ota::uploadArmed(*client);
   WebServerT::ClientFuture refused;
-  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(now))) {
+  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(miblo::PresenceGate::Purpose::Update, now))) {
     case BodyAction::Continue:
       return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the firmware upload, streamed to flash
     case BodyAction::NotOpen:
@@ -1559,7 +1647,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
       break;
     case BodyAction::Locked:  // too many wrong codes: say so, as the upload itself would
       refused = refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
-                       (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+                       (unsigned)((ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Update, now) + 999) / 1000));
       break;
     case BodyAction::BadBoundary:
       refused = refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
@@ -1587,8 +1675,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
   }
   if (refused != WebServerT::CLIENT_REQUEST_CAN_CONTINUE) return refused;
   // The header block is now complete in peekBuffer() (in place, or the read-ahead bytes).
-  uint32_t len = 0;
-  const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);
+  const bool haveLen = lengthVerdict == miblo::LengthVerdict::Ok;
   if (haveLen && len > kMaxPostBody) {
     return refuse(client, PSTR("413 Payload Too Large"), PSTR("{\"error\":\"too large\"}"));
   }

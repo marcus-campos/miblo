@@ -1,11 +1,17 @@
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unity.h>
 
+#include <string>
+
 #include <ArduinoJson.h>
 
+#include "miblo_headers.h"
 #include "miblo_info.h"
 #include "miblo_security.h"
+#include "miblo_sha256.h"
 
 using namespace miblo;
 
@@ -67,30 +73,41 @@ static void test_success_resets_failure_count() {
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("1234", 0));
 }
 
-static void failPairing(PairingGuard& g, uint32_t nowMs) {
-  for (int i = 0; i < 5; i++) TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", nowMs));
+// Wrong codes until a lockout starts: 5 the first time, 3 for each further one. Returns how many.
+static int failPairing(PairingGuard& g, uint32_t nowMs) {
+  int n = 0;
+  while (g.lockRemainingMs(nowMs) == 0 && n < 10) {
+    TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", nowMs));
+    n++;
+  }
+  return n;
 }
 
 static void test_pairing_lockout_escalates_and_success_clears() {
   PairingGuard g;
   g.setCode("4827");
-  failPairing(g, 0);  // 1st lockout: 60 s
+  TEST_ASSERT_EQUAL(5, failPairing(g, 0));  // 1st lockout: 60 s, after 5 wrong codes
   TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(0));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 59999));
-  failPairing(g, 60000);  // 2nd lockout: 120 s
+  TEST_ASSERT_EQUAL(3, failPairing(g, 60000));  // 2nd lockout: 120 s, after 3 more
   TEST_ASSERT_EQUAL_UINT32(120000, g.lockRemainingMs(60000));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 179999));
-  failPairing(g, 180000);  // 3rd lockout: 240 s
+  TEST_ASSERT_EQUAL(3, failPairing(g, 180000));  // 3rd lockout: 240 s
   TEST_ASSERT_EQUAL_UINT32(240000, g.lockRemainingMs(180000));
-  // Keep failing: the lockout caps at 1 h.
+  // Keep failing: the lockout caps at 24 h, reached after 38 guesses over ~34 h.
   uint32_t t = 420000;
-  for (int i = 0; i < 6; i++) {
-    failPairing(g, t);
+  int guesses = 11;
+  while (g.lockRemainingMs(t) < EscalatingLockout::kMaxMs) {
     t += g.lockRemainingMs(t);
+    guesses += failPairing(g, t);
   }
-  failPairing(g, t);
-  TEST_ASSERT_EQUAL_UINT32(3600000, g.lockRemainingMs(t));
-  t += 3600000;
+  TEST_ASSERT_EQUAL(38, guesses);
+  TEST_ASSERT_EQUAL_UINT32(86400000, g.lockRemainingMs(t));
+  TEST_ASSERT_TRUE(t < 35u * 3600000u);
+  t += 86400000;
+  TEST_ASSERT_EQUAL(3, failPairing(g, t));  // from then on: 3 guesses a day
+  TEST_ASSERT_EQUAL_UINT32(86400000, g.lockRemainingMs(t));
+  t += 86400000;
   // A correct code clears the escalation: the next lockout is back to 60 s.
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", t));
   failPairing(g, t);
@@ -418,25 +435,237 @@ static void test_token_tag() {
   TEST_ASSERT_EQUAL_STRING("cbf29ce4", tag);
 }
 
+// M1: DNS rebinding. A page on attacker.example that rebinds its name to the gadget's IP sends
+// "Host: attacker.example"; only the gadget's own names and IP literals are served.
+static void test_host_policy() {
+  const char* id = "miblo-4f2a";
+  TEST_ASSERT_TRUE(hostAllowed(nullptr, id));  // no Host (an HTTP/1.0 tool): no browser sends that
+  TEST_ASSERT_TRUE(hostAllowed("", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("10.0.0.7:8080", id));
+  TEST_ASSERT_TRUE(hostAllowed("[fe80::1]", id));
+  TEST_ASSERT_TRUE(hostAllowed("[fe80::1]:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local", id));
+  TEST_ASSERT_TRUE(hostAllowed("MIBLO-4F2A.LOCAL.", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a", id));            // the router's DNS (DHCP host name)
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.fritz.box", id));  // ... with its domain
+  TEST_ASSERT_FALSE(hostAllowed("attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("attacker.example:80", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2b.local", id));     // another unit's name
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a0.local", id));
+  TEST_ASSERT_FALSE(hostAllowed("xmiblo-4f2a.local", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0.41.attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0.256", id));
+  TEST_ASSERT_FALSE(hostAllowed("1.2.3.4:x", id));
+  TEST_ASSERT_FALSE(hostAllowed("[fe80::1", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.local:80:80", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a..local", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.local/x", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", ""));  // no id yet: IP literals are still fine
+  TEST_ASSERT_FALSE(hostAllowed(".local", ""));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", nullptr));
+  // Origin: absent (same-origin GET, curl, the plugin) or http:// one of those hosts.
+  TEST_ASSERT_TRUE(originAllowed(nullptr, id));
+  TEST_ASSERT_TRUE(originAllowed("", id));
+  TEST_ASSERT_TRUE(originAllowed("http://192.168.0.41", id));
+  TEST_ASSERT_TRUE(originAllowed("http://miblo-4f2a.local", id));
+  TEST_ASSERT_TRUE(originAllowed("HTTP://miblo-4f2a.local:80", id));
+  TEST_ASSERT_FALSE(originAllowed("http://attacker.example", id));
+  TEST_ASSERT_FALSE(originAllowed("https://192.168.0.41", id));
+  TEST_ASSERT_FALSE(originAllowed("null", id));
+  TEST_ASSERT_FALSE(originAllowed("http://", id));
+  TEST_ASSERT_FALSE(originAllowed("http://192.168.0.41/x", id));
+}
+
+static void hex(const uint8_t* b, size_t n, char* out) {
+  for (size_t i = 0; i < n; i++) sprintf(out + i * 2, "%02x", b[i]);
+}
+
+static void test_sha256_and_hmac() {
+  uint8_t d[32];
+  char h[65];
+  Sha256 s;
+  s.update("abc", 3);
+  s.finish(d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", h);
+  s.reset();
+  const char* two = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";  // 2 blocks
+  s.update(two, strlen(two));
+  s.finish(d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", h);
+  // RFC 4231 test case 2, and case 6 (a key longer than a block).
+  hmacSha256((const uint8_t*)"Jefe", 4, "what do ya want ", 16, "for nothing?", 12, d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", h);
+  uint8_t key[131];
+  memset(key, 0xaa, sizeof(key));
+  const char* msg = "Test Using Larger Than Block-Size Key - Hash Key First";
+  hmacSha256(key, sizeof(key), msg, strlen(msg), "", 0, d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54", h);
+}
+
+// M3: the plugin's mirror (plugin/lib/relocation.js tokenTag + challengeMac) gives these same
+// values: the contract is pinned on both sides.
+static void test_address_challenge() {
+  TokenStore ts;
+  ts.add("ffeeddccbbaa99887766554433221100", "other");
+  ts.add("00112233445566778899aabbccddeeff", "mac");
+  char tag[9];
+  tokenTag("00112233445566778899aabbccddeeff", tag);
+  TEST_ASSERT_EQUAL_STRING("de18ad43", tag);
+  char mac[65];
+  const char* nonce = "0123456789abcdef0123456789abcdef";
+  TEST_ASSERT_EQUAL(ChallengeResult::Ok, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL_STRING("719d917eb19b57d6af19069d9887a9708f2f767439c8e952881c7f954c96fe85", mac);
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(ts, nonce, "00000000", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL_STRING("", mac);  // nothing computed with the dummy key ever leaves
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, "0123", "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest,
+                    answerChallenge(ts, "0123456789ABCDEF0123456789abcdef", "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad4", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad43x", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nullptr, "de18ad43", "miblo-4f2a", mac));
+  TokenStore none;
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(none, nonce, "de18ad43", "miblo-4f2a", mac));
+}
+
+// A paired computer's token proves it is no rebinding page (a page cannot know it): the plugin
+// keeps working through a custom DNS alias (Pi-hole, router alias, MagicDNS). Everyone else, the
+// web session and the pages included, needs the IP or the gadget's own name.
+static void test_host_verdict() {
+  const char* id = "miblo-4f2a";
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("192.168.0.41", true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost(nullptr, false, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongHost, judgeHost("miblo.home.arpa", true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("miblo.home.arpa", true, nullptr, false, true, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("desk.tail1234.ts.net", true, "http://x.example", true, true, id));
+  // Present but too long to read: never taken as absent.
+  TEST_ASSERT_EQUAL(HostVerdict::WrongHost, judgeHost(nullptr, true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongOrigin,
+                    judgeHost("192.168.0.41", true, "http://attacker.example", true, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongOrigin, judgeHost("192.168.0.41", true, nullptr, true, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("192.168.0.41", true, "http://192.168.0.41", true, false, id));
+}
+
+// A browser refused for its Host gets a small page linking to the gadget's IP; API callers JSON.
+static void test_wrong_host_reply() {
+  TEST_ASSERT_TRUE(acceptsHtml("text/html,application/xhtml+xml,*/*;q=0.8"));
+  TEST_ASSERT_TRUE(acceptsHtml("TEXT/HTML"));
+  TEST_ASSERT_FALSE(acceptsHtml("application/json"));
+  TEST_ASSERT_FALSE(acceptsHtml("*/*"));
+  TEST_ASSERT_FALSE(acceptsHtml(nullptr));
+  char out[400];
+  size_t n = wrongHostReply(out, sizeof(out), "421 Misdirected Request", "192.168.0.41", true);
+  TEST_ASSERT_EQUAL(strlen(out), n);
+  TEST_ASSERT_NOT_NULL(strstr(out, "HTTP/1.1 421 Misdirected Request\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: text/html; charset=utf-8\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "<a href=\"http://192.168.0.41/\">http://192.168.0.41/</a>"));
+  const char* body = strstr(out, "\r\n\r\n") + 4;
+  char cl[40];
+  snprintf(cl, sizeof(cl), "Content-Length: %u\r\n", (unsigned)strlen(body));
+  TEST_ASSERT_NOT_NULL(strstr(out, cl));
+  n = wrongHostReply(out, sizeof(out), "403 Forbidden", "192.168.0.41", false);
+  TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: application/json\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "\r\n\r\n{\"error\":\"wrong host\"}"));
+  // No IP to offer (not connected): the page still says where to go, without a link.
+  wrongHostReply(out, sizeof(out), "421 Misdirected Request", "", true);
+  TEST_ASSERT_NULL(strstr(out, "<a "));
+  TEST_ASSERT_EQUAL(0, wrongHostReply(out, 20, "421 Misdirected Request", "192.168.0.41", true));  // never cut
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h1, sizeof(h1) - 1, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::Ok, readContentLength(h1, sizeof(h1) - 1, n));
   TEST_ASSERT_EQUAL_UINT32(5000, n);
-  const char h2[] = "Content-Length: 99999999999\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h2, sizeof(h2) - 1, n));
-  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, n);  // saturates
   const char h3[] = "Host: x\r\n\r\nContent-Length: 9";  // after the blank line: body, not a header
-  TEST_ASSERT_FALSE(findContentLength(h3, sizeof(h3) - 1, n));
-  const char h4[] = "Content-Length: 12";  // truncated buffer: parse only what is there
-  TEST_ASSERT_TRUE(findContentLength(h4, 17, n));
-  TEST_ASSERT_EQUAL_UINT32(1, n);
-  TEST_ASSERT_FALSE(findContentLength("Content-Length: x\r\n", 19, n));
-  TEST_ASSERT_FALSE(findContentLength("X-Content-Length: 5\r\n", 21, n));
-  // Duplicates: the core honours the last one, so the check uses the largest of them.
-  const char h5[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 90000\r\nContent-Length: 20\r\n\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h5, sizeof(h5) - 1, n));
-  TEST_ASSERT_EQUAL_UINT32(90000, n);
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength(h3, sizeof(h3) - 1, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength("\r\n", 2, n));  // no headers at all
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength("Content-Length: x\r\n\r\n", 21, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength("X-Content-Length: 5\r\n\r\n", 23, n));
+  // Duplicates: the same value is fine; different values cannot be judged (the server keeps the
+  // last one) and are refused.
+  const char h5[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 010\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Ok, readContentLength(h5, sizeof(h5) - 1, n));
+  TEST_ASSERT_EQUAL_UINT32(10, n);
+  const char h6[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 90000\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength(h6, sizeof(h6) - 1, n));
+  // A bare '\n' then '\r' line is not the end for the server (it reads lines up to '\r').
+  const char h7[] = "X: y\n\r\nContent-Length: -1\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength(h7, sizeof(h7) - 1, n));
+}
+
+// What ESP8266WebServer does with a Content-Length value: String::trim() (isspace), then toInt()
+// (atol), stored in a uint32_t.
+static long long serverAtol(const std::string& v) {
+  size_t a = 0, b = v.size();
+  while (a < b && isspace((unsigned char)v[a])) a++;
+  while (b > a && isspace((unsigned char)v[b - 1])) b--;
+  return atoll(v.substr(a, b - a).c_str());
+}
+static uint32_t serverLength(const std::string& v) { return (uint32_t)serverAtol(v); }
+
+static bool plainDigits(const std::string& v) {
+  size_t a = 0, b = v.size();
+  while (a < b && isspace((unsigned char)v[a])) a++;
+  while (b > a && isspace((unsigned char)v[b - 1])) b--;
+  if (a == b) return false;
+  for (size_t i = a; i < b; i++)
+    if (v[i] < '0' || v[i] > '9') return false;
+  return true;
+}
+
+// Differential: whenever the scanner accepts a value, the server reads the very same length; any
+// value that is not plain digits (after the server's trim) is refused, so no request can carry a
+// length the guards did not see (the H1 bypass was "-1", "+60000", "\v60000").
+static void checkAgainstServer(const std::string& v) {
+  const std::string h = "Host: x\r\nContent-Length:" + v + "\r\n\r\n";
+  uint32_t n = 12345;
+  const LengthVerdict got = readContentLength(h.data(), h.size(), n);
+  char what[96];
+  snprintf(what, sizeof(what), "value [%s]", v.c_str());
+  TEST_ASSERT_NOT_EQUAL_MESSAGE((int)LengthVerdict::None, (int)got, what);
+  if (got == LengthVerdict::Ok) {
+    TEST_ASSERT_TRUE_MESSAGE(plainDigits(v), what);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(serverLength(v), n, what);
+  } else {
+    // Refused: either not plain digits, or too large to be worth judging (over 2^31 - 1).
+    TEST_ASSERT_TRUE_MESSAGE(!plainDigits(v) || serverAtol(v) > 0x7FFFFFFF || v.size() > 10, what);
+  }
+  // The read-ahead's scanner (starting at the request line) agrees.
+  const std::string req = "POST /x HTTP/1.1\r\n" + h;
+  const size_t body = requestBodyLength(req.data(), req.size());
+  if (got == LengthVerdict::Ok) TEST_ASSERT_EQUAL_UINT32_MESSAGE(n, (uint32_t)body, what);
+  TEST_ASSERT_EQUAL_MESSAGE((int)got, (int)requestLengthVerdict(req.data(), req.size()), what);
+}
+
+static void test_content_length_matches_the_server() {
+  static const char* const kValues[] = {
+      " 0",       " 5000",     "-1",         "+60000",       "\v60000",       " 0060000 ",   "1e3",
+      "",         " ",         "\t",         " 12 34",       "0x10",          "60000abc",    "\f60000",
+      " 60000\v", "2147483647", "2147483648", "4294967295",   "4294967296",    "99999999999", "18446744073709551617",
+      " -0",      "+0",        " \t 7 \t ",  "00000000000000000001", "١٢", "5\x01",
+  };
+  for (const char* v : kValues) checkAgainstServer(v);
+  // Random values over a hostile alphabet.
+  static const char kAlpha[] = "0123456789+- \t\v\fxe.";
+  uint32_t seed = 12345;
+  for (int k = 0; k < 20000; k++) {
+    std::string v;
+    seed = seed * 1103515245u + 12345u;
+    const int len = (int)((seed >> 16) % 14);
+    for (int i = 0; i < len; i++) {
+      seed = seed * 1103515245u + 12345u;
+      v += kAlpha[(seed >> 16) % (sizeof(kAlpha) - 1)];
+    }
+    checkAgainstServer(v);
+  }
 }
 
 // checkRequestHeaders: raw header bytes as ESP8266WebServer will read them (lines end at '\r',
@@ -561,13 +790,18 @@ static void test_presence_failures_survive_reopen() {
   PresenceGate g;
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "1111", 0));
   for (int i = 0; i < 4; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 10));
-  TEST_ASSERT_FALSE(g.locked(10));
-  g.close();  // (closed, e.g. by a success elsewhere): a new code, same failures
-  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "2222", 20));
-  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", 30));
-  TEST_ASSERT_TRUE(g.locked(30));
-  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(30));
-  TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "3333", 40));  // 429 path
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Reset, 10));
+  g.close();  // (closed, e.g. expired): a new code, same failures
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "2222", 20));
+  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 30));
+  TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Reset, 30));
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(PresenceGate::Purpose::Reset, 30));
+  TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "3333", 40));  // 429 path
+  // L2: each purpose has its own lockout: the owner can still update, unlock settings, move Wi-Fi.
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, 40));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Settings, 40));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "4444", 40));
+  TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "4444", 50));
   // A correct code clears the accumulated failures.
   PresenceGate h;
   h.open(PresenceGate::Purpose::Update, "1234", 0);
@@ -575,7 +809,7 @@ static void test_presence_failures_survive_reopen() {
   TEST_ASSERT_TRUE(h.check(PresenceGate::Purpose::Update, "1234", 0));
   h.open(PresenceGate::Purpose::Update, "1234", 0);
   for (int i = 0; i < 4; i++) h.check(PresenceGate::Purpose::Update, "0000", 0);
-  TEST_ASSERT_FALSE(h.locked(0));
+  TEST_ASSERT_FALSE(h.locked(PresenceGate::Purpose::Update, 0));
 }
 
 // The lockout is honoured across a clock wrap, and an expired one never comes back ~49.7 days
@@ -585,13 +819,13 @@ static void test_presence_lockout_clock_wrap() {
   const uint32_t t0 = 0xFFFFF000u;  // 4096 ms before the wrap
   g.open(PresenceGate::Purpose::Update, "1234", t0);
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t0);
-  TEST_ASSERT_TRUE(g.locked(0x00000100u));  // wrapped, 4352 ms later: still locked
-  TEST_ASSERT_EQUAL_UINT32(60000 - 4352, g.lockRemainingMs(0x00000100u));
+  TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, 0x00000100u));  // wrapped, 4352 ms later: still locked
+  TEST_ASSERT_EQUAL_UINT32(60000 - 4352, g.lockRemainingMs(PresenceGate::Purpose::Update, 0x00000100u));
   const uint32_t expired = t0 + 60000;
   g.update(expired);  // the app calls this every frame
-  TEST_ASSERT_FALSE(g.locked(expired));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, expired));
   const uint32_t phantom = t0 + 10;  // same low bits one full wrap (2^32 ms) later
-  TEST_ASSERT_FALSE(g.locked(phantom));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, phantom));
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", phantom));
 }
 
@@ -604,34 +838,70 @@ static void test_presence_lockout_escalates() {
     TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
     for (int i = 0; i < 5; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", t));
     TEST_ASSERT_FALSE(g.active(t));
-    TEST_ASSERT_TRUE(g.locked(t));
-    TEST_ASSERT_EQUAL_UINT32(lock, g.lockRemainingMs(t));
-    TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "5555", t + 1));  // re-open refused
+    TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, t));
+    TEST_ASSERT_EQUAL_UINT32(lock, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
+    TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "5555", t + 1));  // re-open refused
     TEST_ASSERT_FALSE(g.active(t + 1));
     t += lock - 1;
-    TEST_ASSERT_TRUE(g.locked(t));
+    TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, t));
     t += 1;
-    TEST_ASSERT_FALSE(g.locked(t));
+    TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, t));
   }
   // A correct code resets the escalation back to 60 s.
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "1234", t));
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(t));
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
 }
 
-static void test_presence_lockout_caps_at_one_hour() {
+static void test_presence_lockout_caps_at_one_day() {
   PresenceGate g;
   uint32_t t = 0;
-  for (int round = 0; round < 10; round++) {
+  for (int round = 0; round < 12; round++) {
     TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
     for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-    t += g.lockRemainingMs(t);
+    t += g.lockRemainingMs(PresenceGate::Purpose::Update, t);
   }
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kLockMaxMs, g.lockRemainingMs(t));
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kLockMaxMs, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
+  TEST_ASSERT_EQUAL_UINT32(86400000, PresenceGate::kLockMaxMs);
+}
+
+// M2: the counters survive a restart (RTC memory): a reboot gives no fresh guesses.
+static void test_lockout_survives_restore() {
+  PairingGuard g;
+  g.setCode("4827");
+  failPairing(g, 0);
+  for (int i = 0; i < 2; i++) g.check("0000", 70000);  // 2 of the next 3
+  const LockoutState s = g.lockout().save(70000);
+  TEST_ASSERT_EQUAL_UINT32(60000, s.lockMs);
+  TEST_ASSERT_EQUAL(2, s.failures);
+  PairingGuard after;  // the new boot
+  after.setCode("4827");
+  after.lockout().restore(s, 5);
+  TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, after.check("0000", 10));  // the 3rd: locks
+  TEST_ASSERT_EQUAL_UINT32(120000, after.lockRemainingMs(10));
+  // A lockout in force restarts with its remaining time.
+  const LockoutState locked = after.lockout().save(20010);
+  TEST_ASSERT_EQUAL_UINT32(100000, locked.remainingMs);
+  PairingGuard again;
+  again.setCode("4827");
+  again.lockout().restore(locked, 1000);
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, again.check("4827", 100999));
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, again.check("4827", 101000));
+  // Garbage (a cold boot's RTC memory) is ignored.
+  PairingGuard cold;
+  LockoutState junk{};
+  junk.lockMs = 0xFFFFFFFFu;
+  junk.remainingMs = 5;
+  cold.lockout().restore(junk, 0);
+  TEST_ASSERT_EQUAL_UINT32(0, cold.lockRemainingMs(1));
+  junk.lockMs = 60000;
+  junk.remainingMs = 70000;
+  cold.lockout().restore(junk, 0);
+  TEST_ASSERT_EQUAL_UINT32(0, cold.lockRemainingMs(1));
 }
 
 static void test_presence_gate() {
@@ -765,7 +1035,7 @@ static void test_presence_code_never_replaced_while_active() {
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "2222", 1000));  // busy
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "3333", 1000));
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Wifi, "4444", 1000));
-  TEST_ASSERT_FALSE(g.locked(1000));  // busy is not a lockout
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, 1000));  // busy is not a lockout
   TEST_ASSERT_TRUE(g.purpose() == PresenceGate::Purpose::Settings);
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Settings, "5555", 2000));  // same purpose: kept
   TEST_ASSERT_EQUAL_STRING("1111", g.code());
@@ -825,7 +1095,13 @@ int main() {
   RUN_TEST(test_tokens_json_round_trip);
   RUN_TEST(test_system_json_fields);
   RUN_TEST(test_token_tag);
+  RUN_TEST(test_host_policy);
+  RUN_TEST(test_sha256_and_hmac);
+  RUN_TEST(test_address_challenge);
+  RUN_TEST(test_host_verdict);
+  RUN_TEST(test_wrong_host_reply);
   RUN_TEST(test_find_content_length);
+  RUN_TEST(test_content_length_matches_the_server);
   RUN_TEST(test_headers_plain_and_complete);
   RUN_TEST(test_headers_incomplete);
   RUN_TEST(test_headers_multipart_boundary);
@@ -834,7 +1110,8 @@ int main() {
   RUN_TEST(test_headers_bad_multipart);
   RUN_TEST(test_headers_garbage);
   RUN_TEST(test_presence_lockout_escalates);
-  RUN_TEST(test_presence_lockout_caps_at_one_hour);
+  RUN_TEST(test_presence_lockout_caps_at_one_day);
+  RUN_TEST(test_lockout_survives_restore);
   RUN_TEST(test_presence_failures_survive_reopen);
   RUN_TEST(test_presence_lockout_clock_wrap);
   RUN_TEST(test_ota_code_required);

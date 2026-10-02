@@ -56,6 +56,33 @@ static void test_success_resets_backoff() {
   TEST_ASSERT_TRUE(r.due(101 * M));
 }
 
+// L1: a stream of changes (an API client in a loop, anonymous page views) is written at most once
+// every kMinGapMs, and the last change is never lost: it is in the next write.
+static void test_successful_saves_are_spaced() {
+  SaveRetry r;
+  r.request(1000);
+  TEST_ASSERT_TRUE(r.due(1000));  // the first change: at once
+  r.succeeded(1000);
+  r.request(1200);  // the next, 200 ms later: waits for the gap
+  TEST_ASSERT_FALSE(r.due(1200));
+  TEST_ASSERT_FALSE(r.due(1000 + SaveRetry::kMinGapMs - 1));
+  r.request(3000);  // more changes meanwhile: still one write, at the same time
+  TEST_ASSERT_TRUE(r.due(1000 + SaveRetry::kMinGapMs));
+  r.succeeded(1000 + SaveRetry::kMinGapMs);
+  TEST_ASSERT_FALSE(r.pending());
+  // Long after the last write: at once again.
+  r.request(100000);
+  TEST_ASSERT_TRUE(r.due(100000));
+  TEST_ASSERT_TRUE(SaveRetry::kMinGapMs >= 2000);
+  // Across the clock's wrap.
+  SaveRetry w;
+  w.request(0xFFFFFF00u);
+  w.succeeded(0xFFFFFF00u);
+  w.request(0x00000010u);
+  TEST_ASSERT_FALSE(w.due(0x00000010u));
+  TEST_ASSERT_TRUE(w.due(0xFFFFFF00u + SaveRetry::kMinGapMs));
+}
+
 // A change while a failed save waits is tried a minute after that failure at the latest, never
 // sooner: a stream of changes on a failing flash is at most one attempt a minute.
 static void test_change_during_backoff_is_rate_limited() {
@@ -113,6 +140,7 @@ int main() {
   RUN_TEST(test_request_is_due_at_once_and_success_clears);
   RUN_TEST(test_backoff_doubles_up_to_an_hour);
   RUN_TEST(test_success_resets_backoff);
+  RUN_TEST(test_successful_saves_are_spaced);
   RUN_TEST(test_change_during_backoff_is_rate_limited);
   RUN_TEST(test_change_long_after_failure_on_hourly_backoff);
   RUN_TEST(test_change_never_delays_a_retry);

@@ -17,6 +17,7 @@
 #include "miblo_wellness.h"
 #include "miblo_zone.h"
 #include "platform/friends_net.h"
+#include "platform/lockouts.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
 #include "platform/ota.h"
@@ -65,7 +66,7 @@ static miblo::SaveRetry configSave;  // config.json
 // One save attempt's outcome on its schedule.
 static void saved(miblo::SaveRetry& r, bool ok, uint32_t now, const __FlashStringHelper* what) {
   if (ok) {
-    r.succeeded();
+    r.succeeded(now);  // the next write waits SaveRetry::kMinGapMs (flash wear)
     return;
   }
   Serial.print(what);
@@ -335,6 +336,7 @@ void setup() {
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
+  lockouts::restore(millis());  // a reset never hands out fresh code guesses (M2)
 
   bootMs = millis();
   net::begin(bootMs);
@@ -389,9 +391,16 @@ void loop() {
     delay(300);  // let the HTTP response go out
     storage::factoryReset();
   }
-  if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) ESP.restart();
+  if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) {
+    // A change still waiting for its spaced write (SaveRetry::kMinGapMs) is not lost.
+    if (configSave.pending()) storage::saveConfig(ctx.cfg);
+    if (notesSave.pending()) storage::saveNotes(ctx.notes);
+    if (ctx.tokensSave.pending()) storage::saveTokens(ctx.tokens);  // a pairing or a rename
+    ESP.restart();
+  }
   ctx.presence.update(now);  // expire old brute-force lockouts before the clock can wrap
   ctx.pairing.update(now);
+  lockouts::persist(now);    // and keep them across a reset (RTC memory)
   if (ctx.showPairCode && now - ctx.pairCodeAtMs >= miblo::kPairCodeScreenMs) ctx.showPairCode = false;
 
   if (now - lastFrameMs < 100) {  // ~10 frames/s; in between, a pause (the Wi-Fi stack runs in it)

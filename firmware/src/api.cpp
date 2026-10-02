@@ -169,6 +169,9 @@ static void handleInfo() {
 }
 
 static void handlePair() {
+  // application/json only: a web page can only send it after a CORS preflight the gadget never
+  // approves, so no other site can spend the owner's pairing attempts (M1).
+  if (!web::requireJson(*srv)) return;
   StaticJsonDocument<256> doc;
   if (deserializeJson(doc, srv->arg(F("plain")))) {
     json(400, F("{\"error\":\"bad json\"}"));
@@ -468,7 +471,34 @@ static void handleFind() {
   });
 }
 
+// GET /api/challenge?n=<32 lowercase hex nonce>&t=<8 lowercase hex tokenTag>, no Authorization:
+// {"id","mac"} with mac = hex HMAC-SHA256(key = the token, message = n || id). 400 malformed, 403
+// unknown tag (never 404, which tells the plugin the firmware predates the route), 429 over the
+// limit. The full contract is at miblo::answerChallenge (miblo_security.h). The plugin checks a
+// gadget found again at a new address with it before sending its token there (M3).
+static void handleChallenge() {
+  if (!ctx.challengeReqs.allow(millis())) {
+    json(429, F("{\"error\":\"slow down\"}"));
+    return;
+  }
+  char mac[65];
+  switch (miblo::answerChallenge(ctx.tokens, srv->arg(F("n")).c_str(), srv->arg(F("t")).c_str(), ctx.ident.id, mac)) {
+    case miblo::ChallengeResult::BadRequest:
+      json(400, F("{\"error\":\"bad challenge\"}"));
+      return;
+    case miblo::ChallengeResult::UnknownTag:
+      json(403, F("{\"error\":\"unknown\"}"));
+      return;
+    case miblo::ChallengeResult::Ok:
+      break;
+  }
+  char out[112];
+  snprintf_P(out, sizeof(out), PSTR("{\"id\":\"%s\",\"mac\":\"%s\"}"), ctx.ident.id, mac);
+  json(200, out);
+}
+
 static const routes::Route kRoutes[] PROGMEM = {
+    {"/api/challenge", HTTP_GET, handleChallenge},
     {"/api/info", HTTP_GET, handleInfo},        {"/api/pair", HTTP_POST, handlePair},
     {"/api/state", HTTP_POST, handleState},     {"/api/config", HTTP_POST, handleConfig},
     {"/api/reset", HTTP_POST, handleReset},     {"/api/demo", HTTP_POST, handleDemo},

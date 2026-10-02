@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "miblo_rom.h"
+#include "miblo_sha256.h"
 #include "miblo_utf8.h"
 
 namespace miblo {
@@ -52,38 +53,57 @@ bool constantTimeEquals(const char* a, const char* b) {
 
 static char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
 
-bool findContentLength(const char* headers, size_t len, uint32_t& out) {
-  static const char kName[] MIBLO_ROM = "content-length:";
-  const size_t nameLen = sizeof(kName) - 1;
-  bool found = false;
-  size_t i = 0;
-  while (i < len) {
-    if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
-    bool match = len - i > nameLen;
-    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == (char)mibloRomByte(kName + k);
-    if (match) {
-      size_t j = i + nameLen;
-      while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
-      uint64_t v = 0;
-      size_t digits = 0;
-      while (j < len && headers[j] >= '0' && headers[j] <= '9') {
-        v = v * 10 + (uint64_t)(headers[j] - '0');
-        if (v > 0xFFFFFFFFull) v = 0xFFFFFFFFull;  // saturate: "huge" is all callers need
-        j++;
-        digits++;
-      }
-      if (digits == 0) return false;  // malformed: let the server's own parser deal with it
-      if (!found || (uint32_t)v > out) out = (uint32_t)v;  // duplicates: keep the largest
-      found = true;
-    }
-    while (i < len && headers[i] != '\n') i++;  // next line
-    i++;
-  }
-  return found;
-}
-
 // The characters String::trim() removes (isspace in the C locale).
 static bool blank(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; }
+
+LengthVerdict scanContentLength(const char* p, size_t end, uint32_t& out) {
+  static const char kName[] MIBLO_ROM = "content-length:";
+  const size_t nameLen = sizeof(kName) - 1;
+  constexpr uint32_t kMaxLength = 0x7FFFFFFFu;  // atol's range on the device (32-bit long)
+  bool found = false;
+  out = 0;
+  if (!p) return LengthVerdict::None;
+  for (size_t line = 0; line < end;) {
+    size_t eol = line;
+    while (eol < end && p[eol] != '\n') eol++;
+    if (eol >= end) break;  // unterminated: not a line yet
+    bool match = eol - line >= nameLen;
+    for (size_t k = 0; match && k < nameLen; k++) match = lower(p[line + k]) == (char)mibloRomByte(kName + k);
+    if (match) {
+      size_t a = line + nameLen, b = a;
+      while (b < eol && p[b] != '\r') b++;  // the server's value ends at the first '\r'
+      while (a < b && blank(p[a])) a++;
+      while (b > a && blank(p[b - 1])) b--;
+      if (a == b || b - a > 10) return LengthVerdict::Bad;  // empty, or more digits than 2^31 - 1 has
+      uint64_t v = 0;
+      for (size_t i = a; i < b; i++) {
+        if (p[i] < '0' || p[i] > '9') return LengthVerdict::Bad;
+        v = v * 10 + (uint64_t)(p[i] - '0');
+      }
+      if (v > kMaxLength) return LengthVerdict::Bad;
+      if (found && (uint32_t)v != out) return LengthVerdict::Bad;  // duplicates must agree
+      out = (uint32_t)v;
+      found = true;
+    }
+    line = eol + 1;
+  }
+  return found ? LengthVerdict::Ok : LengthVerdict::None;
+}
+
+LengthVerdict readContentLength(const char* headers, size_t len, uint32_t& out) {
+  size_t end = len;
+  if (headers && len >= 2 && headers[0] == '\r' && headers[1] == '\n') {
+    end = 2;  // no header lines at all
+  } else if (headers) {
+    for (size_t i = 3; i < len; i++) {
+      if (headers[i] == '\n' && headers[i - 1] == '\r' && headers[i - 2] == '\n' && headers[i - 3] == '\r') {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  return scanContentLength(headers, end, out);
+}
 
 // Case-insensitive compare of `n` bytes at `p` with a lowercase literal kept in flash.
 static bool matchesLower(const char* p, const char* romLower, size_t n) {
@@ -173,6 +193,147 @@ HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundar
   return v;
 }
 
+namespace {
+bool isDigit(char c) { return c >= '0' && c <= '9'; }
+bool isLabelChar(char c) { return isDigit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-'; }
+
+// Dotted-quad IPv4 in p[0..n): four 0..255 parts of 1..3 digits.
+bool ipv4Literal(const char* p, size_t n) {
+  size_t i = 0;
+  for (int part = 0; part < 4; part++) {
+    if (part && (i >= n || p[i++] != '.')) return false;
+    unsigned v = 0;
+    size_t digits = 0;
+    while (i < n && isDigit(p[i]) && digits < 4) v = v * 10 + (unsigned)(p[i++] - '0'), digits++;
+    if (digits == 0 || digits > 3 || v > 255) return false;
+  }
+  return i == n;
+}
+
+// "[...]" with only hex digits, ':' and '.' inside.
+bool ipv6Literal(const char* p, size_t n) {
+  if (n < 3 || p[0] != '[' || p[n - 1] != ']') return false;
+  for (size_t i = 1; i + 1 < n; i++) {
+    const char c = lower(p[i]);
+    if (!(isDigit(c) || (c >= 'a' && c <= 'f') || c == ':' || c == '.')) return false;
+  }
+  return true;
+}
+
+// p[0..n) is `id`, alone or followed by "." and dot-separated non-empty labels.
+bool ownName(const char* p, size_t n, const char* id) {
+  const size_t idLen = id ? strlen(id) : 0;
+  if (!idLen || n < idLen) return false;
+  for (size_t k = 0; k < idLen; k++)
+    if (lower(p[k]) != lower(id[k])) return false;
+  if (n == idLen) return true;
+  if (p[idLen] != '.') return false;
+  size_t label = 0;
+  for (size_t i = idLen + 1; i < n; i++) {
+    if (p[i] == '.') {
+      if (!label) return false;
+      label = 0;
+    } else if (isLabelChar(p[i])) {
+      label++;
+    } else {
+      return false;
+    }
+  }
+  return label > 0;
+}
+
+bool hostSpan(const char* p, size_t n, const char* id) {
+  if (n == 0) return false;
+  // ":port" (1..5 digits), never inside a bracketed IPv6 literal.
+  size_t colon = n;
+  for (size_t i = n; i > 0; i--) {
+    if (p[i - 1] == ':' || p[i - 1] == ']') {
+      if (p[i - 1] == ':') colon = i - 1;
+      break;
+    }
+  }
+  if (colon < n) {
+    const size_t digits = n - colon - 1;
+    if (digits == 0 || digits > 5) return false;
+    for (size_t i = colon + 1; i < n; i++)
+      if (!isDigit(p[i])) return false;
+    n = colon;
+  }
+  if (n && p[n - 1] == '.') n--;  // a fully qualified name's trailing dot
+  return ipv4Literal(p, n) || ipv6Literal(p, n) || ownName(p, n, id);
+}
+}  // namespace
+
+bool hostAllowed(const char* host, const char* id) {
+  if (!host || !host[0]) return true;
+  return hostSpan(host, strlen(host), id);
+}
+
+bool originAllowed(const char* origin, const char* id) {
+  if (!origin || !origin[0]) return true;
+  static const char kScheme[] MIBLO_ROM = "http://";
+  const size_t schemeLen = sizeof(kScheme) - 1;
+  const size_t n = strlen(origin);
+  if (n <= schemeLen || !matchesLower(origin, kScheme, schemeLen)) return false;
+  return hostSpan(origin + schemeLen, n - schemeLen, id);
+}
+
+HostVerdict judgeHost(const char* host, bool hostPresent, const char* origin, bool originPresent, bool pairedBearer,
+                      const char* id) {
+  if (pairedBearer) return HostVerdict::Ok;
+  if (hostPresent && (!host || !hostAllowed(host, id))) return HostVerdict::WrongHost;
+  if (originPresent && (!origin || !originAllowed(origin, id))) return HostVerdict::WrongOrigin;
+  return HostVerdict::Ok;
+}
+
+bool acceptsHtml(const char* accept) {
+  static const char kHtml[] MIBLO_ROM = "text/html";
+  const size_t n = sizeof(kHtml) - 1;
+  if (!accept) return false;
+  for (const char* p = accept; strlen(p) >= n; p++) {
+    if (matchesLower(p, kHtml, n)) return true;
+  }
+  return false;
+}
+
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html) {
+  // Formats kept in flash (MIBLO_ROM), copied to the stack only for this call.
+  static const char kLinkPage[] MIBLO_ROM =
+      "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+      "<title>Miblo</title><p>Miblo: <a href=\"http://%s/\">http://%s/</a></p>";
+  static const char kPlainPage[] MIBLO_ROM = "<!doctype html><meta charset=\"utf-8\"><title>Miblo</title><p>Miblo</p>";
+  static const char kJson[] MIBLO_ROM = "{\"error\":\"wrong host\"}";
+  static const char kHead[] MIBLO_ROM =
+      "HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\n"
+      "Content-Length: %u\r\n\r\n%s";
+  static const char kHtmlType[] MIBLO_ROM = "text/html; charset=utf-8";
+  static const char kJsonType[] MIBLO_ROM = "application/json";
+  char fmt[sizeof(kLinkPage)];
+  char body[200];
+  if (html) {
+    const size_t ipLen = ip ? strlen(ip) : 0;
+    const bool link = ipLen > 0 && ipLen <= 15 && ipv4Literal(ip, ipLen);
+    if (link) {
+      mibloRomCopy(fmt, kLinkPage, sizeof(kLinkPage));
+      snprintf(body, sizeof(body), fmt, ip, ip);
+    } else {
+      mibloRomCopy(body, kPlainPage, sizeof(kPlainPage));
+    }
+  } else {
+    mibloRomCopy(body, kJson, sizeof(kJson));
+  }
+  char type[sizeof(kHtmlType)];
+  if (html) mibloRomCopy(type, kHtmlType, sizeof(kHtmlType));
+  else mibloRomCopy(type, kJsonType, sizeof(kJsonType));
+  mibloRomCopy(fmt, kHead, sizeof(kHead));
+  const int n = snprintf(out, cap, fmt, status, type, (unsigned)strlen(body), body);
+  if (n < 0 || (size_t)n >= cap) {
+    if (cap) out[0] = 0;
+    return 0;
+  }
+  return (size_t)n;
+}
+
 void PairingGuard::setCode(const char* code4) {
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;
@@ -181,7 +342,7 @@ void PairingGuard::setCode(const char* code4) {
 uint32_t EscalatingLockout::remainingMs(uint32_t nowMs) const {
   if (!locked_) return 0;
   const uint32_t elapsed = nowMs - lockedAtMs_;
-  return elapsed >= lockMs_ ? 0 : lockMs_ - elapsed;
+  return elapsed >= lockLenMs_ ? 0 : lockLenMs_ - elapsed;
 }
 
 void EscalatingLockout::update(uint32_t nowMs) {
@@ -189,12 +350,31 @@ void EscalatingLockout::update(uint32_t nowMs) {
 }
 
 bool EscalatingLockout::fail(uint32_t nowMs) {
-  if (++failures_ < kMaxFailures) return false;
+  if (++failures_ < (lockMs_ == 0 ? kMaxFailures : kNextFailures)) return false;
   failures_ = 0;
   lockMs_ = lockMs_ == 0 ? kBaseMs : (lockMs_ >= kMaxMs / 2 ? kMaxMs : lockMs_ * 2);
+  lockLenMs_ = lockMs_;
   lockedAtMs_ = nowMs;
   locked_ = true;
   return true;
+}
+
+LockoutState EscalatingLockout::save(uint32_t nowMs) const {
+  LockoutState s{};
+  s.lockMs = lockMs_;
+  s.remainingMs = remainingMs(nowMs);
+  s.failures = failures_;
+  return s;
+}
+
+void EscalatingLockout::restore(const LockoutState& s, uint32_t nowMs) {
+  if (s.lockMs > kMaxMs || s.remainingMs > s.lockMs || s.failures >= kMaxFailures) return;
+  if (s.lockMs && s.lockMs < kBaseMs) return;
+  lockMs_ = s.lockMs;
+  failures_ = s.failures;
+  locked_ = s.remainingMs > 0;
+  lockLenMs_ = s.remainingMs;
+  lockedAtMs_ = nowMs;
 }
 
 PairingGuard::Result PairingGuard::check(const char* code, uint32_t nowMs) {
@@ -333,9 +513,49 @@ void TokenStore::restore(const TokenEntry* entries, uint8_t n) {
   for (uint8_t i = 0; i < n_; i++) e_[i] = entries[i];
 }
 
+namespace {
+bool lowerHex(const char* s, size_t n) {
+  if (!s || strlen(s) != n) return false;
+  for (size_t i = 0; i < n; i++) {
+    if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) return false;
+  }
+  return true;
+}
+}  // namespace
+
+ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
+                                char macHex[65]) {
+  macHex[0] = 0;
+  if (!lowerHex(nonce, 32) || !lowerHex(tag, 8) || !id) return ChallengeResult::BadRequest;
+  char dummy[33];  // on the stack: a const table would sit in RAM for good
+  memset(dummy, '0', 32);
+  dummy[32] = 0;
+  const char* key = dummy;
+  bool known = false;
+  for (uint8_t i = 0; i < tokens.count(); i++) {  // every entry: the time never tells which matched
+    char t[9];
+    tokenTag(tokens.at(i).token, t);
+    if (constantTimeEquals(t, tag) && !known) {
+      key = tokens.at(i).token;
+      known = true;
+    }
+  }
+  uint8_t mac[32];
+  hmacSha256(reinterpret_cast<const uint8_t*>(key), strlen(key), nonce, 32, id, strlen(id), mac);
+  if (!known) return ChallengeResult::UnknownTag;
+  auto hex = [](int v) { return (char)(v < 10 ? '0' + v : 'a' + v - 10); };
+  for (int i = 0; i < 32; i++) {
+    macHex[i * 2] = hex(mac[i] >> 4);
+    macHex[i * 2 + 1] = hex(mac[i] & 15);
+  }
+  macHex[64] = 0;
+  return ChallengeResult::Ok;
+}
+
 bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {
-  lock_.update(nowMs);
-  if (lock_.locked(nowMs)) return false;
+  EscalatingLockout& lock = lock_[idx(p)];
+  lock.update(nowMs);
+  if (lock.locked(nowMs)) return false;
   if (active(nowMs)) return p == purpose_;  // never replace a code that is on the screen
   open_ = true;
   purpose_ = p;
@@ -355,13 +575,14 @@ uint32_t PresenceGate::remainingMs(uint32_t nowMs) const {
 }
 
 bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
-  lock_.update(nowMs);
-  if (lock_.locked(nowMs) || !active(nowMs) || p != purpose_) return false;
+  EscalatingLockout& lock = lock_[idx(p)];
+  lock.update(nowMs);
+  if (lock.locked(nowMs) || !active(nowMs) || p != purpose_) return false;
   if (code && constantTimeEquals(code, code_)) {
-    lock_.success();  // a correct code ends the escalation
+    lock.success();  // a correct code ends the escalation
     return true;
   }
-  if (lock_.fail(nowMs)) open_ = false;
+  if (lock.fail(nowMs)) open_ = false;
   return false;
 }
 

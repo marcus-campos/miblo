@@ -15,7 +15,11 @@
 // (miblo::kBodyHoldMax) is read by the server itself, admitted only for a paired computer's
 // snapshot (web.cpp largeBodyRefusal). Holding the body in the non-blocking state too was tried
 // and dropped: a request whose body was one segment behind its headers (the bridge's snapshots)
-// fell to the 30 ms rule whenever a page was loading. See miblo_headers.h pollRequest. Re-armed
+// fell to the 30 ms rule whenever a page was loading. A header block that spans segments is read
+// into a 2 KB heap buffer; when the heap cannot spare it (platform.h heapLowForRequest, checked
+// before allocating so a fragmented heap is not even tried) the request is answered 503
+// {"error":"busy"} at once, which the plugin retries, rather than left waiting silently until the
+// server drops it. See miblo_headers.h pollRequest. Re-armed
 // after each request (routes.cpp, the not-found handler), since a connection may carry a second one.
 //
 // Why (2): the server's request hook (web.cpp limitPostBody) must judge the whole header block before
@@ -29,6 +33,8 @@
 #include <memory>
 
 #include "miblo_headers.h"
+
+inline bool heapLowForRequest(uint32_t needBytes);  // platform.h, after this file
 
 class LookaheadClient : public WiFiClient {
  public:
@@ -116,7 +122,8 @@ class LookaheadClient : public WiFiClient {
   };
 
   // True once the request is ready for the server (Why (1) above). One that can never be (no
-  // header block within the buffer, a small body that does not come) is answered and closed here.
+  // header block within the buffer, a small body that does not come, no heap for the buffer) is
+  // answered and closed here.
   bool releaseRequest() {
     Source src{*this};
     miblo::RequestReadiness r = miblo::RequestReadiness::Waiting;
@@ -125,7 +132,10 @@ class LookaheadClient : public WiFiClient {
     if (!ahead_.pending()) {
       r = miblo::requestInPlace(WiFiClient::peekBuffer(), WiFiClient::peekAvailable(), src, miblo::kBodyWaitMs);
     }
-    if (r == miblo::RequestReadiness::Waiting) r = miblo::pollRequest(ahead_, src, miblo::kBodyWaitMs);
+    if (r == miblo::RequestReadiness::Waiting) {
+      const bool heapLow = !ahead_.allocated() && heapLowForRequest(miblo::HeaderBuffer::kCap);
+      r = miblo::pollRequest(ahead_, src, miblo::kBodyWaitMs, heapLow);
+    }
     switch (r) {
       case miblo::RequestReadiness::Ready:
         held_ = false;
@@ -142,13 +152,26 @@ class LookaheadClient : public WiFiClient {
         refuse(kReply, sizeof(kReply) - 1);
         return false;
       }
+      case miblo::RequestReadiness::NoMemory: {  // the plugin retries a 503 busy
+        static const char kReply[] PROGMEM =
+            "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
+            "Content-Length: 16\r\n\r\n{\"error\":\"busy\"}";
+        static_assert(sizeof("{\"error\":\"busy\"}") - 1 == 16, "Content-Length");
+        refuse(kReply, sizeof(kReply) - 1);
+        return false;
+      }
+      case miblo::RequestReadiness::BadLength: {  // H1: a length the server would read otherwise
+        static const char kReply[] PROGMEM =
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        refuse(kReply, sizeof(kReply) - 1);
+        return false;
+      }
       case miblo::RequestReadiness::Closed:
         // Not stop(): its flush can wait up to 300 ms in the loop. Reporting no data is enough,
         // the server drops the connection itself.
         ahead_.clear();
         return false;
       case miblo::RequestReadiness::Waiting:
-      case miblo::RequestReadiness::NoMemory:
         break;
     }
     return false;

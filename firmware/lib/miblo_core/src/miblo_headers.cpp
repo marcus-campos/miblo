@@ -109,42 +109,39 @@ bool lowerIs(const char* p, const char* word, size_t n) {
   return true;
 }
 
-// The body length the server will read: the largest Content-Length in the block (0 if none).
-// Saturates instead of overflowing.
-size_t contentLength(const char* p, size_t end) {
-  static const char kName[] = "content-length:";
-  const size_t kLen = sizeof(kName) - 1;
-  size_t best = 0;
-  for (size_t line = 0; line < end;) {
-    size_t eol = line;
-    while (eol < end && p[eol] != '\n') eol++;
-    if (eol - line > kLen && lowerIs(p + line, kName, kLen)) {
-      size_t i = line + kLen;
-      while (i < eol && (p[i] == ' ' || p[i] == '\t')) i++;
-      size_t v = 0;
-      for (; i < eol && p[i] >= '0' && p[i] <= '9'; i++) v = v > 100000000 ? v : v * 10 + (size_t)(p[i] - '0');
-      if (v > best) best = v;
-    }
-    line = eol + 1;
-  }
-  return best;
-}
-
 }  // namespace
 
 size_t requestBodyLength(const char* p, size_t n) {
   const size_t end = p ? headerBlockEnd(p, n) : 0;
-  return end ? contentLength(p, end) : 0;
+  if (!end) return 0;
+  uint32_t len = 0;
+  switch (scanContentLength(p, end, len)) {
+    case LengthVerdict::Ok:
+      return len;
+    case LengthVerdict::Bad:
+      return SIZE_MAX;  // never "small": the guards refuse it (requestLengthVerdict)
+    case LengthVerdict::None:
+      break;
+  }
+  return 0;
 }
 
-bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap) {
+LengthVerdict requestLengthVerdict(const char* p, size_t n) {
+  const size_t end = p ? headerBlockEnd(p, n) : 0;
+  uint32_t len = 0;
+  return end ? scanContentLength(p, end, len) : LengthVerdict::None;
+}
+
+bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap, bool* present) {
   const size_t end = p ? headerBlockEnd(p, n) : 0;
   const size_t nameLen = strlen(lowerName);
   bool found = false;
+  if (present) *present = false;
   for (size_t line = 0; line < end;) {
     size_t eol = line;
     while (eol < end && p[eol] != '\n') eol++;
     if (eol - line > nameLen && p[line + nameLen] == ':' && lowerIs(p + line, lowerName, nameLen)) {
+      if (present) *present = true;
       size_t a = line + nameLen + 1, b = eol;
       while (a < b && (p[a] == ' ' || p[a] == '\t')) a++;
       while (b > a && (p[b - 1] == '\r' || p[b - 1] == ' ' || p[b - 1] == '\t')) b--;
@@ -166,10 +163,16 @@ namespace {
 // Body bytes beyond p[0..n) (which starts with a header block ending at `end`) the request still
 // needs: 0 when all here, or when the body is larger than kBodyHoldMax (not held back).
 size_t bodyToCome(const char* p, size_t end, size_t n) {
-  const size_t body = contentLength(p, end);
-  if (body > kBodyHoldMax) return 0;
+  uint32_t body = 0;
+  if (scanContentLength(p, end, body) != LengthVerdict::Ok || body > kBodyHoldMax) return 0;
   const size_t have = n - end;
   return have >= body ? 0 : body - have;
+}
+
+// The readiness of a complete header block p[0..end) whose body may still be coming.
+RequestReadiness blockReady(const char* p, size_t end, size_t n, ByteSource& src, size_t unread, uint32_t bodyWaitMs) {
+  if (requestLengthVerdict(p, end) == LengthVerdict::Bad) return RequestReadiness::BadLength;
+  return waitForBytes(src, unread + bodyToCome(p, end, n), bodyWaitMs);
 }
 }  // namespace
 
@@ -186,16 +189,17 @@ RequestReadiness waitForBytes(ByteSource& src, size_t want, uint32_t budgetMs) {
 RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32_t bodyWaitMs) {
   const size_t end = p ? headerBlockEnd(p, n) : 0;
   if (!end) return RequestReadiness::Waiting;
-  return waitForBytes(src, n + bodyToCome(p, end, n), bodyWaitMs);
+  return blockReady(p, end, n, src, n, bodyWaitMs);
 }
 
-RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs) {
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs, bool heapLow) {
   for (;;) {
     const size_t end = headerBlockEnd(buf.data(), buf.pending());
-    if (end) return waitForBytes(src, bodyToCome(buf.data(), end, buf.pending()), bodyWaitMs);
+    if (end) return blockReady(buf.data(), end, buf.pending(), src, 0, bodyWaitMs);
     if (buf.pending() >= HeaderBuffer::kCap) return RequestReadiness::TooLarge;
     const size_t avail = src.available();
     if (!avail) return src.connected() ? RequestReadiness::Waiting : RequestReadiness::Closed;
+    if (heapLow && !buf.allocated()) return RequestReadiness::NoMemory;
     size_t room;
     char* tail = buf.reserveTail(room);
     if (!tail) return RequestReadiness::NoMemory;

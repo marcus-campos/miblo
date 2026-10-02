@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <string.h>
 
+#include "lockouts.h"
 #include "platform.h"
 
 namespace storage {
@@ -207,6 +208,7 @@ void factoryReset() {
   LittleFS.remove(kBoot);
   LittleFS.remove(kNotes);
   LittleFS.remove(kNotesTmp);
+  lockouts::clear();  // the code lockouts start over with the unit (reboots keep them)
   WiFi.persistent(true);
 #if defined(ESP8266)
   WiFi.disconnect(true);  // with persistent(true), erases the SSID/password saved in the SDK

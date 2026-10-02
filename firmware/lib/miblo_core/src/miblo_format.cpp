@@ -76,9 +76,10 @@ void formatHHMM(int hour, int minute, char* out, size_t cap) {
 }
 
 void formatUsd(float usd, char* out, size_t cap) {
-  if (usd < 0) usd = 0;
-  unsigned cents = (unsigned)(usd * 100.0f + 0.5f);
-  snprintf(out, cap, "$%u.%02u", cents / 100, cents % 100);
+  // NaN and negatives are 0; past what uint32 cents hold, capped (the conversion would be UB).
+  const float c = usd > 0 ? usd * 100.0f + 0.5f : 0.0f;
+  const uint32_t cents = c < 4294967295.0f ? (uint32_t)c : 4294967295u;
+  snprintf(out, cap, "$%u.%02u", (unsigned)(cents / 100), (unsigned)(cents % 100));
 }
 
 int compareVersions(const char* a, const char* b) {

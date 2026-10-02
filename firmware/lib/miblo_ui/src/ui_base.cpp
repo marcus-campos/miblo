@@ -37,6 +37,8 @@ void reset() {
 
 bool dirty(uint8_t id, uint32_t hash) { return g_cache.changed(id, hash); }
 
+bool drawn(uint8_t id) { return g_cache.drawn(id); }
+
 bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg) {
   if (!dirty(id, hash)) return false;
   g_canvas->fillRect(x, y, w, h, bg);

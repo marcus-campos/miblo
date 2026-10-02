@@ -79,6 +79,8 @@ class RegionCache {
   static constexpr uint8_t kRegions = 24;
   // true (and remembers it) if the region's content changed since the last draw.
   bool changed(uint8_t region, uint32_t hash);
+  // true if the region holds a draw since the last invalidate().
+  bool drawn(uint8_t region) const { return region < kRegions && valid_[region]; }
   void invalidate();
 
  private:

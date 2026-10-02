@@ -8,6 +8,35 @@ namespace miblo {
 
 static bool isAmber(AlertKind k) { return k == AlertKind::Perm || k == AlertKind::Question; }
 
+static bool isWaiting(SessionState st) { return st == SessionState::Perm || st == SessionState::Question; }
+
+static uint32_t fnv1a(const char* str) {
+  uint32_t h = 2166136261u;
+  for (const char* p = str; *p; p++) h = (h ^ (uint8_t)*p) * 16777619u;
+  return h;
+}
+
+// A session's key in the shown-waits table: the bridge's short ids are 8 hex digits, read as a
+// number (exact); anything else (tests, a future id format) gets a 32-bit FNV-1a hash.
+static uint32_t sessionKey(const char* sid) {
+  uint32_t v = 0;
+  int n = 0;
+  for (; sid[n] && n < 9; n++) {
+    const char c = sid[n];
+    const int d = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : -1;
+    if (d < 0) break;
+    v = (v << 4) | (uint32_t)d;
+  }
+  if (n == 8 && sid[8] == 0) return v;
+  return fnv1a(sid);
+}
+
+// 16-bit tag of the computer that sent `s` ("" for old plugins without `host`).
+static uint16_t hostTag(const Snapshot& s) {
+  const uint32_t h = fnv1a(s.host);
+  return (uint16_t)(h ^ (h >> 16));
+}
+
 static uint8_t kindRank(AlertKind k) {
   switch (k) {
     case AlertKind::Perm: return 0;
@@ -22,27 +51,49 @@ void AlertSequencer::setTiming(const AlertTiming& t) {
   if (!t_.enabled) clear();
 }
 
-// Stub (daily-life foundation): track B implements it (kept, not used yet).
+// Read on every start (flash/hero lengths, level) and every dequeue (holdDone).
 void AlertSequencer::setModifiers(const AlertModifiers& m) { mods_ = m; }
 
-// Stub (daily-life foundation): track B implements it.
-void AlertSequencer::extendHero(uint32_t ms) { (void)ms; }
+void AlertSequencer::extendHero(uint32_t ms) {
+  if (view_.phase == AlertPhase::Hero && ms > heroLenMs_) heroLenMs_ = ms;
+}
 
 void AlertSequencer::clear() {
   qn_ = 0;
   view_.phase = AlertPhase::None;
 }
 
-bool AlertSequencer::stillValid(const Snapshot& s, AlertKind kind, const char* sid) {
-  int i = findSession(s, sid);
-  if (i < 0) return false;
-  SessionState st = s.sessions[i].st;
-  switch (kind) {
-    case AlertKind::Perm: return st == SessionState::Perm;
-    case AlertKind::Question: return st == SessionState::Question;
-    case AlertKind::Done: return st == SessionState::Done;
+// A "finished" goes on while its session is in `s` and done, or missing from another computer's
+// snapshot (`host` = the computer it came from).
+bool AlertSequencer::doneStillValid(const Snapshot& s, const char* sid, uint16_t host) {
+  const int i = findSession(s, sid);
+  if (i < 0) return hostTag(s) != host;
+  return s.sessions[i].st == SessionState::Done;
+}
+
+// The entry of the computer that sent `s`, moved to the front (most recently heard); a new
+// computer takes a free slot or the least recently heard one's.
+// No `host` (an older plugin's alerts-only snapshot, or an old plugin altogether):
+// the computer heard last, which is the only one for an old plugin.
+AlertSequencer::HostSeq& AlertSequencer::hostOf(const Snapshot& s) {
+  const uint32_t h = fnv1a(s.host);
+  uint8_t i = 0;
+  if (s.host[0] || hostN_ == 0) {
+    while (i < hostN_ && hosts_[i].host != h) i++;
   }
-  return false;
+  HostSeq e = {h, s.seq, 0};
+  if (i < hostN_) {
+    e = hosts_[i];
+    if (s.seq < e.lastSeq) e.maxId = 0;  // that bridge restarted: its ids start over from 1
+    e.lastSeq = s.seq;
+  } else if (hostN_ < kMaxHosts) {
+    i = hostN_++;
+  } else {
+    i = kMaxHosts - 1;
+  }
+  for (; i > 0; i--) hosts_[i] = hosts_[i - 1];
+  hosts_[0] = e;
+  return hosts_[0];
 }
 
 void AlertSequencer::sortQueue(const Snapshot& s) {
@@ -69,25 +120,141 @@ void AlertSequencer::sortQueue(const Snapshot& s) {
 
 void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
   (void)nowMs;
-  if (haveSeq_ && s.seq < lastSeq_) maxId_ = 0;  // the bridge restarted: ids start over from 1
-  haveSeq_ = true;
-  lastSeq_ = s.seq;
+  HostSeq& from = hostOf(s);
+  const uint16_t tag = hostTag(s);
   for (int i = 0; i < s.alertCount; i++) {
     const AlertItem& a = s.alerts[i];
-    if (a.id <= maxId_) continue;
-    maxId_ = a.id;
-    if (!t_.enabled || qn_ >= kMaxAlerts) continue;
-    queue_[qn_++] = a;
+    if (a.id <= from.maxId) continue;
+    from.maxId = a.id;
+    // "Needs you" comes from the session list (update()), never from these records: a record
+    // can be cut, expire or arrive late, the session list cannot.
+    if (!t_.enabled || isAmber(a.kind)) continue;
+    // One queued "finished" per session: a newer one replaces an older one still held for that
+    // session (it would show twice at the break). Items whose session moved on make room.
+    for (uint8_t j = 0; j < qn_;) {
+      const AlertItem& o = queue_[j];
+      if (strcmp(o.sid, a.sid) == 0 || !doneStillValid(s, o.sid, o.host)) {
+        removeAt(j);
+      } else {
+        j++;
+      }
+    }
+    if (qn_ >= kMaxAlerts) continue;  // 8 "finished" already held: the overview shows the rest
+    queue_[qn_] = a;
+    queue_[qn_++].host = tag;
   }
   sortQueue(s);
 }
 
-void AlertSequencer::start(AlertKind kind, const char* sid, uint32_t nowMs) {
+bool AlertSequencer::shown(uint32_t key, uint32_t since) const {
+  for (uint8_t j = 0; j < shownN_; j++) {
+    if (shownKey_[j] == key && shownSince_[j] == since) return true;
+  }
+  return false;
+}
+
+// Drops the shown waits whose session is in `s` but no longer in that wait (answered, or waiting
+// again since another time). A session absent from `s` keeps its entry: an alerts-only snapshot
+// or another paired computer's snapshot does not end a wait.
+void AlertSequencer::forgetEndedWaits(const Snapshot& s, const uint32_t* keys) {
+  for (uint8_t j = 0; j < shownN_;) {
+    bool ended = false;
+    for (int i = 0; i < s.count; i++) {
+      if (keys[i] != shownKey_[j]) continue;
+      ended = !isWaiting(s.sessions[i].st) || s.sessions[i].since != shownSince_[j];
+      break;
+    }
+    if (ended) {
+      shownN_--;
+      shownKey_[j] = shownKey_[shownN_];
+      shownSince_[j] = shownSince_[shownN_];
+    } else {
+      j++;
+    }
+  }
+}
+
+void AlertSequencer::markShown(uint32_t key, uint32_t since, const Snapshot& s, const uint32_t* keys) {
+  if (shown(key, since)) return;
+  if (shownN_ >= kMaxSessions) {
+    // Full: every entry whose session is in `s` is one of its waits (forgetEndedWaits ran), and
+    // `s` has at most kMaxSessions sessions, one of them this new wait: at least one entry
+    // belongs to a session not in `s`. The oldest such wait gives up its place.
+    int victim = -1;
+    for (uint8_t j = 0; j < shownN_; j++) {
+      bool present = false;
+      for (int i = 0; i < s.count && !present; i++) present = keys[i] == shownKey_[j];
+      if (!present && (victim < 0 || shownSince_[j] < shownSince_[victim])) victim = j;
+    }
+    if (victim < 0) victim = 0;  // unreachable (see above); never write past the table
+    shownN_--;
+    shownKey_[victim] = shownKey_[shownN_];
+    shownSince_[victim] = shownSince_[shownN_];
+  }
+  shownKey_[shownN_] = key;
+  shownSince_[shownN_] = since;
+  shownN_++;
+}
+
+// The wait to show next: not shown yet, the oldest first (Perm before Question within the same
+// second); -1 = none. Oldest first, not every Perm first: with many sessions a stream of new
+// permissions must not keep an older question off the screen.
+int AlertSequencer::nextUnshownWait(const Snapshot& s, const uint32_t* keys) const {
+  int best = -1;
+  for (int i = 0; i < s.count; i++) {
+    const SessionRow& r = s.sessions[i];
+    if (!isWaiting(r.st) || shown(keys[i], r.since)) continue;
+    if (best < 0) {
+      best = i;
+      continue;
+    }
+    const SessionRow& b = s.sessions[best];
+    if (r.since != b.since ? r.since < b.since
+                           : r.st != b.st ? r.st == SessionState::Perm : keys[i] < keys[best]) {
+      best = i;
+    }
+  }
+  return best;
+}
+
+// The alert on screen goes on? "Finished": see doneStillValid. "Needs you":
+// unless its session is in `s` and out of that wait (answered, or waiting since another time:
+// forgetEndedWaits already dropped the wait from the table). A session missing from `s` (another
+// paired computer's snapshot, an alerts-only one) does not cut it; the screen then keeps what it
+// drew, or draws alertName().
+bool AlertSequencer::onScreenStillValid(const Snapshot& s, const uint32_t* keys) const {
+  if (!isAmber(view_.kind)) return doneStillValid(s, view_.sid, viewHost_);
+  const int i = findSession(s, view_.sid);
+  return i < 0 || (isWaiting(s.sessions[i].st) && shown(keys[i], s.sessions[i].since));
+}
+
+void AlertSequencer::removeAt(uint8_t i) {
+  for (uint8_t j = i + 1; j < qn_; j++) queue_[j - 1] = queue_[j];
+  qn_--;
+}
+
+void AlertSequencer::start(const Snapshot& s, AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level,
+                           uint16_t host) {
+  const int row = findSession(s, sid);
+  strncpy(name_, row >= 0 ? s.sessions[row].name : "", sizeof(name_) - 1);
+  name_[sizeof(name_) - 1] = 0;
+  viewHost_ = host;
   view_.phase = AlertPhase::Flash;
   view_.kind = kind;
+  view_.level = level;
+  const uint32_t times = level ? 2 : 1;
+  // Meeting mode: one blink, whatever the level (a level-2 blink is still red on screen).
+  flashLenMs_ = mods_.quietFlash ? kBlinkMs : times * t_.flashMs;
+  heroLenMs_ = times * (isAmber(kind) ? t_.heroPermMs : t_.heroDoneMs);
   strncpy(view_.sid, sid, sizeof(view_.sid) - 1);
   view_.sid[sizeof(view_.sid) - 1] = 0;
   view_.phaseStartMs = nowMs;
+}
+
+// Insistence step for a "needs you" alert starting now (spec 3).
+uint8_t AlertSequencer::levelNow() const {
+  if (!mods_.insist) return 0;
+  return reminders_ >= kInsistLevel2From ? 2 : reminders_ >= kInsistLevel1From ? 1 : 0;
 }
 
 void AlertSequencer::finish(uint32_t nowMs) {
@@ -106,31 +273,60 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
   } else if (!pending) {
     pendingObserved_ = false;
   }
+  if (remindSid_[0]) {  // the session being reminded stopped waiting: insistence starts over
+    const int i = findSession(s, remindSid_);
+    if (i < 0 || (s.sessions[i].st != SessionState::Perm && s.sessions[i].st != SessionState::Question)) {
+      reminders_ = 0;
+      remindSid_[0] = 0;
+    }
+  }
+  uint32_t keys[kMaxSessions];
+  for (int i = 0; i < s.count; i++) keys[i] = sessionKey(s.sessions[i].id);
+  forgetEndedWaits(s, keys);
   if (!t_.enabled) {
+    // Alerts off: the waits going on now count as dealt with; turning alerts on later does not
+    // replay them.
+    for (int i = 0; i < s.count; i++) {
+      if (isWaiting(s.sessions[i].st)) markShown(keys[i], s.sessions[i].since, s, keys);
+    }
     view_.phase = AlertPhase::None;
     return view_;
   }
 
   if (view_.phase != AlertPhase::None) {
     uint32_t elapsed = nowMs - view_.phaseStartMs;
-    if (!stillValid(s, view_.kind, view_.sid)) {
+    if (!onScreenStillValid(s, keys)) {
       view_.phase = AlertPhase::None;  // answered/dismissed by usage
-    } else if (view_.phase == AlertPhase::Flash && elapsed >= t_.flashMs) {
+    } else if (view_.phase == AlertPhase::Flash && elapsed >= flashLenMs_) {
       view_.phase = AlertPhase::Hero;
       view_.phaseStartMs = nowMs;
-    } else if (view_.phase == AlertPhase::Hero &&
-               elapsed >= (isAmber(view_.kind) ? t_.heroPermMs : t_.heroDoneMs)) {
+    } else if (view_.phase == AlertPhase::Hero && elapsed >= heroLenMs_) {
       finish(nowMs);
     }
   }
 
   if (view_.phase == AlertPhase::None) {
-    while (qn_ > 0) {
-      AlertItem next = queue_[0];
-      for (int i = 1; i < qn_; i++) queue_[i - 1] = queue_[i];
-      qn_--;
-      if (stillValid(s, next.kind, next.sid)) {
-        start(next.kind, next.sid, nowMs);
+    // A wait not shown yet goes first, straight from the session list (never held by focus).
+    const int w = nextUnshownWait(s, keys);
+    if (w >= 0) {
+      const SessionRow& r = s.sessions[w];
+      markShown(keys[w], r.since, s, keys);
+      start(s, r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs, 0, hostTag(s));
+      return view_;  // a new alert: plain, whatever came before
+    }
+    // Stale items are dropped; a valid "finished" stays queued while holdDone (focus round),
+    // and anything behind it (amber sorts first anyway) may still go.
+    uint8_t i = 0;
+    while (i < qn_) {
+      const AlertItem next = queue_[i];
+      const bool valid = doneStillValid(s, next.sid, next.host);
+      if (valid && next.kind == AlertKind::Done && mods_.holdDone) {
+        i++;
+        continue;
+      }
+      removeAt(i);
+      if (valid) {
+        start(s, next.kind, next.sid, nowMs, 0, next.host);  // a new alert: plain, whatever came before
         return view_;
       }
     }
@@ -141,7 +337,14 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
         int h = selectHero(s, false);
         if (h >= 0) {
           const SessionRow& r = s.sessions[h];
-          start(r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs);
+          if (strcmp(remindSid_, r.id) != 0) {  // reminding another session: its own count
+            reminders_ = 0;
+            strncpy(remindSid_, r.id, sizeof(remindSid_) - 1);
+            remindSid_[sizeof(remindSid_) - 1] = 0;
+          }
+          if (reminders_ < 255) reminders_++;
+          start(s, r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs, levelNow(),
+                hostTag(s));
         }
       }
     }

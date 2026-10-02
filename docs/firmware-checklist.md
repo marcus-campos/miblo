@@ -178,6 +178,25 @@ notes.
       rounds, left).
 
 <!-- daily:alerts -->
+    - **Meeting mode:** with a session waiting for permission, run `/miblo:meeting 2`. The
+      screens turn discreet, a tie badge sits in the bottom-right corner (never over a number or
+      the clock: check Overview, Limits, Sessions, Desk and pet mode), and the mascot wears a tie.
+      A new permission flashes once (a single blink) with "A session needs you" and no session
+      name, tool or command on the flash or the alert that follows; a finished response says
+      "Finished after ..." with no name. After 2 minutes everything is back on its own (names,
+      badge and tie gone). `/miblo:meeting off` ends it early; a restart ends it too.
+    - **Insistence:** set the reminder to 1 min on the settings page and leave a permission
+      unanswered: the 1st and 2nd reminders look as usual, the 3rd and 4th blink and stay twice
+      as long, the 5th blinks red (white text). Answer it, then let a new wait start: its
+      reminders are back to normal. With "Insist more on long waits" off, every reminder looks
+      the same.
+    - **Long task fanfare:** set the fanfare to 3 min on the settings page and give Claude a task
+      that runs more than 3 minutes: when it finishes, confetti, the hopping mascot and
+      "<project> finished after 4min" (in green) stay for 8 seconds, then the screen goes back.
+      A response under 3 minutes shows the normal "finished" alert. In meeting mode the line
+      reads "Finished after ..." with no name. During a focus round ("only what needs you"
+      on), the fanfare waits and shows when the break starts. With the fanfare off, a long task
+      ends with the normal alert.
 
     - **Break:** on the settings page set "Break after long work" to 60 min; keep a session running for an hour
       (pauses under 10 min are fine). The mascot stretches and "How about a 5 min break?" shows for

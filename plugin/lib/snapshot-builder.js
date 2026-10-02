@@ -82,7 +82,8 @@ export function alertOnlySnapshot(snapshot) {
     .map((s) => ({ id: s.id, name: s.name, st: s.st, tool: s.tool, det: s.det, since: s.since }));
   const dropped = (snapshot.sessions ?? []).length - kept.length;
   return {
-    v: snapshot.v, seq: snapshot.seq, now: snapshot.now, usage: snapshot.usage ?? null,
+    // `host`: the gadget keeps the alert ids of each computer apart (several can be paired).
+    v: snapshot.v, seq: snapshot.seq, now: snapshot.now, host: snapshot.host, usage: snapshot.usage ?? null,
     sessions: kept, more: (snapshot.more ?? 0) + Math.max(0, dropped), alerts,
   };
 }

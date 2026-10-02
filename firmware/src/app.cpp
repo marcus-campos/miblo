@@ -224,9 +224,10 @@ static int minuteOfDay() {
 // board when it changes.
 static void updateBacklight(int minute) {
   if (displayOff) return;  // stays dark until the panel wakes
-  // A strong cue lights the screen up (never more than twice the night brightness at night).
-  const uint8_t want = cue.active(millis()) != miblo::CueKind::None ? miblo::cueBrightness(ctx.cfg, minute)
-                                                                       : miblo::brightnessAt(ctx.cfg, minute);
+  // A strong cue lights the screen up (never more than twice the night brightness at night), only
+  // while its pulses are on screen: an alert that interrupts it shows at the normal brightness.
+  const bool cueOn = cue.active(millis()) != miblo::CueKind::None && current == ScreenId::Cue;
+  const uint8_t want = cueOn ? miblo::cueBrightness(ctx.cfg, minute) : miblo::brightnessAt(ctx.cfg, minute);
   if (want == backlight) return;
   backlight = want;
   board::setBacklight(want);
@@ -725,7 +726,7 @@ void loop() {
   const bool overlays = (miblo::dailyMayReplace(screen) || screen >= ScreenId::Focus || screen == ScreenId::AlertHero) &&
                         screen != ScreenId::Cue;
   const miblo::FrameColor fc =
-      overlays && ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch) : miblo::FrameColor::None;
+      overlays && ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now) : miblo::FrameColor::None;
   if (overlays && fc == miblo::FrameColor::None && frameShown != miblo::FrameColor::None) {
     firstFrame = true;  // the frame went away: redraw the screen under it next frame
   }

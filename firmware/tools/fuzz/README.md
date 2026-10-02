@@ -10,6 +10,7 @@ from `firmware/`.
 | `make fuzz FUZZ_TARGET=daily FUZZ_ITERS=1000000` | One target, more iterations. |
 | `make fuzz-repro FUZZ_TARGET=screens FILE=.pio/fuzz/out/crash-screens-2661.bin` | Replays a saved input with the sanitizer report. |
 | `make validate` | `asan`, then `fuzz`, then the plugin fuzz tests at scale 20 (`PLUGIN_FUZZ_SCALE`). |
+| `MIBLO_LONGRUN_DAYS=61 MIBLO_LONGRUN_SEEDS=8 pio test -e native_asan -f test_longrun` | Long-run stability: every daily-life module driven together over 61 simulated days per seed (random sessions and alerts, API commands, late NTP, clock jumps and DST, Wi-Fi drops, stalls, two millis() wraps or reboots). The suite runs 3 days x 4 seeds; see `test/test_longrun`. |
 | `make validate-clean` | Deletes the build output (`.pio/build/native_asan`, `.pio/fuzz`), about 25 MB. |
 
 `.pio/fuzz/miblo_fuzz list` prints the targets. Run it directly for more options:

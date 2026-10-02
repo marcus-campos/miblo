@@ -7,11 +7,15 @@ import crypto from 'node:crypto';
 export const MAX_TOKENS = 4;
 export const MAX_BAD_CODES = 5;
 export const LOCKOUT_MS = 60_000;
+export const OTA_WINDOW_MS = 300_000;  // PresenceGate::kTtlMs
 
 // OTA (src/platform/ota.cpp): POST /update/open (JSON) opens the presence gate and shows
 // `otaCode` on screen ({ok, codeRequired}); multipart POST /update?code=XXXX with a "firmware"
 // part answers "OK", then the unit "reboots" (drops connections for `rebootMs`) and comes back
 // with the version parsed from the uploaded file name. 5 wrong codes lock OTA for 60 s.
+// The upload window: a multipart POST /update is refused with 400 {"error":"update not open"}
+// (429 while locked) unless POST /update/open ran within the last 5 minutes (src/web.cpp,
+// limitPostBody + ota::uploadArmed), with or without a code.
 export function startFakeDevice({
   id = 'miblo-4f2a', name = 'Miblo-4F2A', code = '4827', now = () => Date.now(),
   fw = '0.0.0-fake', board = 'geekmagic_ultra', otaCode = '1234', otaCodeRequired = true, rebootMs = 30,
@@ -19,16 +23,21 @@ export function startFakeDevice({
   otherCodeSec = 0,  // another purpose's code is on the screen for this long: /update/open is busy
   legacy = false,  // a firmware before the daily-life routes: they answer 404, /api/info lacks their fields
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
+  busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
+  busyPath = null,
+  resetUploads = 0,  // the next `resetUploads` POST /update are reset (RST) before the body is read,
+  // as the firmware's hook does when it refuses an upload it cannot answer in time
 } = {}) {
   const state = {
     token: null, tokens: [...tokens], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
-    fw, gateOpen: false, otaBadCodes: 0, otaLockedUntil: 0, uploads: [], rebooting: false,
+    fw, gateOpen: false, gateOpenedAt: 0, otaBadCodes: 0, otaLockedUntil: 0, uploads: [], rebooting: false,
     // Daily life: the last accepted body of each route (null = never), plus what the gadget keeps.
     focus: null, focusSince: 0, meeting: null, meetingUntil: 0, say: null, timer: null, timerUntil: 0,
     countdown: null, countdownDate: '', countdownLabel: '', finds: 0,
     reminders: [],  // [{id, dueAt} one-off (ids 1..4) | {id, at, days} recurring (ids 5..8), with text]
     lastRemind: null, held: false,  // held: the cat holds a reminder now (POST {dismiss:true} clears it)
     clockKnown,
+    busyLeft: busy, busyPath, busyHits: 0, resetUploadsLeft: resetUploads,  // busyHits: requests refused with 503
   };
   const readRaw = (req) =>
     new Promise((resolve) => {
@@ -102,9 +111,19 @@ export function startFakeDevice({
 
   const server = http.createServer(async (req, res) => {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (req.method === 'POST' && /^\/update(\?|$)/.test(req.url) && state.resetUploadsLeft > 0) {
+      state.resetUploadsLeft -= 1;
+      return req.socket.resetAndDestroy();
+    }
     const raw = req.method === 'POST' ? await readRaw(req) : null;
     if (state.rebooting) return req.socket.destroy();
     const url = new URL(req.url, 'http://x');
+    // Low on memory: the firmware refuses before doing anything (src/api.cpp, src/web.cpp).
+    if (state.busyLeft > 0 && (!state.busyPath || url.pathname === state.busyPath)) {
+      state.busyLeft -= 1;
+      state.busyHits += 1;
+      return send(503, { error: 'busy' });
+    }
     if (req.method === 'POST' && url.pathname === '/update/open') return otaOpen(req, send);
     if (req.method === 'POST' && url.pathname === '/update') return otaUpload(req, res, url, raw, send);
     const body = raw ? asJson(raw) : null;
@@ -328,17 +347,27 @@ export function startFakeDevice({
 
   function otaOpen(req, send) {
     if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) return send(415, { error: 'json only' });
-    if (!otaCodeRequired) return send(200, { ok: true, codeRequired: false });
+    if (!otaCodeRequired) {
+      state.gateOpen = true;
+      state.gateOpenedAt = now();
+      return send(200, { ok: true, codeRequired: false });
+    }
     if (otaLocked(send)) return undefined;
     // A code for another purpose on the screen is never replaced (PresenceGate::busyFor).
     if (otherCodeSec > 0) return send(429, { error: 'busy', retryAfter: otherCodeSec });
+    if (!uploadWindowOpen()) state.gateOpenedAt = now();  // an active code keeps its timer
     state.gateOpen = true;
     return send(200, { ok: true, codeRequired: true });
   }
 
+  function uploadWindowOpen() {
+    return state.gateOpen && now() - state.gateOpenedAt < OTA_WINDOW_MS;
+  }
+
   function otaUpload(req, res, url, raw, send) {
     if (otaLocked(send)) return undefined;
-    if (otaCodeRequired && (!state.gateOpen || url.searchParams.get('code') !== otaCode)) {
+    if (!uploadWindowOpen()) return send(400, { error: 'update not open' });
+    if (otaCodeRequired && url.searchParams.get('code') !== otaCode) {
       state.otaBadCodes += 1;
       if (state.otaBadCodes >= MAX_BAD_CODES) {
         state.otaBadCodes = 0;

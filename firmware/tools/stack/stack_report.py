@@ -14,6 +14,10 @@ from the compiler; indirect calls are resolved by rule (below), so the numbers a
   - TFT_eSPI/TFT_eSprite virtuals for TftCanvas, LittleFS's file implementation for fs::File,
     WiFiClient/Stream virtuals for the web server and Print.
 Precompiled SDK/lwIP code has no call graph: add ~300-600 B under a send (tcp_write/ip_output).
+  - the daily-life lambdas (api.cpp handleX() -> dailyRoute(DailyHandler)) for dailyRoute.
+Frames the compiler marks "dynamic" (VLAs) get the bound from DYNAMIC_BOUNDS added; one with no
+known bound is printed as a WARNING (counted with its fixed part only). Recursion is cut: each
+function counts once per chain, the same whatever order the graph is walked in.
 """
 import os
 import re
@@ -26,33 +30,53 @@ NODE_RE = re.compile(r'node: \{ title: "([^"]+)" label: "([^\n"]*)\\n[^"]*\\n(\d
 EDGE_RE = re.compile(r'edge: \{ sourcename: "([^"]+)" targetname: "([^"]+)"')
 NEVER = re.compile(r'__assert_func|panic|postmortem|abort')
 
+# Variable-size frames (VLA/alloca) reachable from loop(): the bytes each adds at most on top of
+# what the compiler reports, from the source. A dynamic frame missing here is printed as a WARNING.
+DYNAMIC_BOUNDS = [
+    (r'TFT_eSPI::pushImage\(', 480, 'uint16_t lineBuf[dw]: dw clipped to the 240 px panel'),
+    (r'Stream::SendGenericRegular\(', 64, 'char temp[w]: w <= Stream::temporaryStackBufferSize (64)'),
+    (r'^qrcode_initBytes$', 272, 'LOCK_VERSION=3 (29x29), inlined: codewords 71 + function grid 106 + ECC 71 + 15 + 2'),
+    (r'^void setTZ\(', 48, 'tzram[strlen(rule) + 1]: the rule is net.cpp applyTimezone() char[48]'),
+    (r'^umm_info_safe_printf_P$', 80, 'ram_buf[strlen(fmt) + 1]: umm_malloc formats are <= 68 bytes'),
+    (r'::_parseForm\(', 80, 'fastBoundary[boundary + 5]: web.cpp limitPostBody admits a multipart body only with a boundary <= 70 characters (RFC 2046)'),
+]
+
 
 class Graph:
     def __init__(self, build):
         self.nodes = {}  # title -> (own bytes, readable name)
+        self.dynamic = set()  # titles whose frame GCC marks "dynamic" (a VLA or alloca): own bytes are a minimum
         self.edges = {}  # title -> set(target titles)
         for root, _, files in os.walk(build):
-            for f in files:
+            for f in sorted(files):
                 if f.endswith('.ci'):
                     self._load(os.path.join(root, f))
         self.by_mangled = {}
         for t in self.nodes:
             self.by_mangled.setdefault(t.split(':')[-1], []).append(t)
-        self.best = {}
-        self.onstack = set()
         self.rules = []
+        self.extra = {}  # title -> bytes added to a dynamic frame (its known bound)
+        self._succ = {}
+        self._depth = None
 
     def _load(self, path):
         txt = open(path, errors='replace').read()
         for m in NODE_RE.finditer(txt):
             t, name, b = m.group(1), m.group(2), int(m.group(3))
+            if not re.search(r'\w', name):  # a function defined through a macro: no usable label
+                name = t
             if t not in self.nodes or self.nodes[t][0] < b:
                 self.nodes[t] = (b, name)
+            if 'dynamic' in m.group(4):
+                self.dynamic.add(t)
         for m in EDGE_RE.finditer(txt):
             self.edges.setdefault(m.group(1), set()).add(m.group(2))
 
     def name(self, t):
         return self.nodes[t][1] if t in self.nodes else t
+
+    def own(self, t):
+        return (self.nodes[t][0] if t in self.nodes else 0) + self.extra.get(t, 0)
 
     def resolve(self, t):
         return [t] if t in self.nodes else self.by_mangled.get(t.split(':')[-1], [])
@@ -68,30 +92,123 @@ class Graph:
                 return targets
         return set()  # unknown indirect call: not counted
 
+    def succ(self, t):
+        """What t calls: direct calls, and its indirect calls resolved by the rules (sorted)."""
+        if t not in self._succ:
+            targets = set()
+            for e in self.edges.get(t, ()):
+                if e == '__indirect_call':
+                    targets |= self.candidates(t)
+                elif not NEVER.search(e):
+                    targets.update(self.resolve(e))
+            self._succ[t] = sorted(targets)
+        return self._succ[t]
+
+    def reachable(self, root):
+        seen, todo = set(), [root]
+        while todo:
+            t = todo.pop()
+            if t not in seen:
+                seen.add(t)
+                todo.extend(self.succ(t))
+        return seen
+
     def depth(self, t):
-        """(bytes, [(title, own bytes)...]) of the deepest chain from t; recursion is cut."""
-        if t in self.best:
-            return self.best[t]
-        if t in self.onstack:
-            return (0, [])
-        self.onstack.add(t)
-        targets = set()
-        for e in self.edges.get(t, ()):
-            if e == '__indirect_call':
-                targets |= self.candidates(t)
-            elif not NEVER.search(e):
-                targets.update(self.resolve(e))
+        """(bytes, [(title, own bytes)...]) of the deepest chain from t; recursion is cut.
+
+        The call graph is split into strongly connected components (Tarjan), walked sinks first,
+        so a function's depth never depends on where the walk came from. Inside a recursive
+        component each entry gets its own DFS (successors in a fixed order) whose back edges are
+        the recursion cut: every chain counts each function at most once."""
+        if self._depth is None:
+            self._depth = {}
+            for comp in self._components():
+                self._solve(comp)
+        return self._depth[t]
+
+    def _components(self):
+        """Tarjan's SCCs (iterative), in reverse topological order: callees before callers."""
+        index, low, on, stack, out = {}, {}, set(), [], []
+        counter = [0]
+        for root in sorted(self.nodes):
+            if root in index:
+                continue
+            index[root] = low[root] = counter[0]
+            counter[0] += 1
+            stack.append(root)
+            on.add(root)
+            work = [(root, iter(self.succ(root)))]
+            while work:
+                v, it = work[-1]
+                for w in it:
+                    if w not in index:
+                        index[w] = low[w] = counter[0]
+                        counter[0] += 1
+                        stack.append(w)
+                        on.add(w)
+                        work.append((w, iter(self.succ(w))))
+                        break
+                    if w in on:
+                        low[v] = min(low[v], index[w])
+                else:
+                    work.pop()
+                    if work:
+                        low[work[-1][0]] = min(low[work[-1][0]], low[v])
+                    if low[v] == index[v]:
+                        comp = []
+                        while True:
+                            w = stack.pop()
+                            on.discard(w)
+                            comp.append(w)
+                            if w == v:
+                                break
+                        out.append(sorted(comp))
+        return out
+
+    def _best_outside(self, v, comp):
         worst = (0, [])
-        for x in targets:
-            if x != t:
-                d = self.depth(x)
-                if d[0] > worst[0]:
-                    worst = d
-        self.onstack.discard(t)
-        own = self.nodes[t][0] if t in self.nodes else 0
-        res = (own + worst[0], [(t, own)] + worst[1])
-        self.best[t] = res
-        return res
+        for x in self.succ(v):
+            if x not in comp and self._depth[x][0] > worst[0]:
+                worst = self._depth[x]
+        return worst
+
+    def _solve(self, comp):
+        members = set(comp)
+        if len(comp) == 1:
+            v = comp[0]
+            tail = self._best_outside(v, members)  # a call to itself is cut
+            self._depth[v] = (self.own(v) + tail[0], [(v, self.own(v))] + tail[1])
+            return
+        outside = {v: self._best_outside(v, members) for v in comp}
+        for entry in comp:
+            # DFS from the entry: tree, forward and cross edges stay, back edges (the recursion)
+            # go; the longest path over what is left (a DAG) is the deepest chain.
+            order, state, keep = [], {entry: 1}, {}
+            work = [(entry, iter([x for x in self.succ(entry) if x in members]))]
+            keep[entry] = []
+            while work:
+                v, it = work[-1]
+                for w in it:
+                    if w not in state:
+                        state[w] = 1
+                        keep[v].append(w)
+                        keep[w] = []
+                        work.append((w, iter([x for x in self.succ(w) if x in members])))
+                        break
+                    if state[w] == 2:
+                        keep[v].append(w)  # forward or cross edge: no cycle
+                else:
+                    work.pop()
+                    state[v] = 2
+                    order.append(v)
+            best = {}
+            for v in order:  # postorder: every kept successor is done first
+                worst = outside[v]
+                for w in keep[v]:
+                    if best[w][0] > worst[0]:
+                        worst = best[w]
+                best[v] = (self.own(v) + worst[0], [(v, self.own(v))] + worst[1])
+            self._depth[entry] = best[entry]
 
 
 def route_functions(fw):
@@ -105,6 +222,13 @@ def route_functions(fw):
                 if g:
                     names.add('%s::%s' % (ns, g))
     return names
+
+
+def daily_handlers(fw):
+    """api.cpp's daily-life routes: each handleX() passes a captureless lambda to dailyRoute(),
+    which calls it through a DailyHandler pointer. -> the handleX names."""
+    txt = open(os.path.join(fw, 'src/api.cpp')).read()
+    return set(re.findall(r'static void (handle\w+)\(\) \{\s*dailyRoute\(\[', txt))
 
 
 def short(g, t, n=48):
@@ -137,9 +261,19 @@ def main():
         routes |= g.matching(r'(^|[^\w:])' + re.escape(fn) + r'\(')
     tft_canvas = g.matching(r'^virtual \S+ TftCanvas::')
     wrap_canvas = g.matching(r'^virtual \S+ (screens::GuardCanvas|ui::ShiftCanvas)::')
+    shift_canvas = g.matching(r'^virtual \S+ ui::ShiftCanvas::')
     tft = g.matching(r'^virtual \S+ (TFT_eSPI|TFT_eSprite|U8g2_for_TFT_eSPI)::')
     net_io = g.matching(r'^virtual \S+ (WiFiClient|StreamString|S2Stream|StreamConstPtr|StreamNull|HardwareSerial)::')
     file_io = g.matching(r'^virtual \S+ (fs::File|littlefs_impl::LittleFSFileImpl|StreamConstPtr|S2Stream|StreamString)::')
+
+    daily = set()
+    for fn in sorted(daily_handlers(fw)):
+        found = g.matching(r'api::%s\(\)::<lambda\(.*>::_FUN\(' % fn)
+        if not found:
+            sys.exit('DailyHandler of api::%s not in the call graph' % fn)
+        daily |= found
+    if not daily:
+        sys.exit('no DailyHandler lambdas found in src/api.cpp')
 
     def leaf(s):
         return set(t for t in s if '__indirect_call' not in g.edges.get(t, ()))
@@ -149,7 +283,11 @@ def main():
         (r'TableHandler::upload', g.matching(r'^void ota::upload\(')),
         (r'::_handleRequest\(', g.matching(r'TableHandler::handle\(') | g.matching(r'^web::begin.*<lambda')),
         (r'::_parseForm\(', g.matching(r'TableHandler::upload\(')),
-        (r'(GuardCanvas|ShiftCanvas)::', tft_canvas | wrap_canvas),
+        # The request hook (web.cpp, server.addHook), called through a std::function.
+        (r'::_parseRequest\(', g.matching(r'web::limitPostBody\(')),
+        # The wrappers' layering (app.cpp, ui_daily_state.cpp): GuardCanvas > ShiftCanvas > TftCanvas.
+        (r'GuardCanvas::', shift_canvas | tft_canvas),
+        (r'ShiftCanvas::', tft_canvas),
         (r'TftCanvas::', tft),
         (r'^\S+ (TFT_|U8g2)|TFT_eS', leaf(tft)),
         (r'screens::|ui::', tft_canvas | wrap_canvas),
@@ -157,6 +295,7 @@ def main():
         (r'^virtual \S+ littlefs_impl', set()),
         (r'^virtual \S+ fs::', g.matching(r'^virtual \S+ littlefs_impl::LittleFSFileImpl::')),
         (r'storage::|fs::|ArduinoJson.*(File|Stream)|MD5|Updater', file_io),
+        (r'api::dailyRoute\(', daily | net_io),
         (r'^virtual ', leaf(net_io)),
         (r'Stream|Print|String|WiFiClient|web::|api::|ota::|ArduinoJson|ESP8266WebServerTemplate', net_io),
     ]
@@ -174,6 +313,16 @@ def main():
     request = one(r'::_handleRequest\(')
     table = one(r'TableHandler::handle\(')
     base = g.nodes[wrapper][0] + g.nodes[one(r'^void loop\(\)$')][0] + g.nodes[app][0]
+
+    # Frames GCC marks "dynamic" (a VLA or alloca) report only their fixed part. Those reachable
+    # from loop() get their known bound added (DYNAMIC_BOUNDS); any other is flagged.
+    unbounded = []
+    for t in sorted(g.reachable(wrapper) & g.dynamic, key=g.name):
+        bound = next((b for rx, b, _ in DYNAMIC_BOUNDS if re.search(rx, g.name(t))), None)
+        if bound is None:
+            unbounded.append(t)
+        else:
+            g.extra[t] = bound
 
     rows = []
     for e in g.edges.get(frame, ()):
@@ -194,6 +343,11 @@ def main():
     for d, label, x in rows[:top]:
         tail = ' > '.join(short(g, t, 26) for t, b in g.depth(x)[1][1:8] if b >= 64)
         print('%6d  %-56s %s' % (d, label[:56], tail))
+    for t in sorted(g.extra, key=g.name):
+        print('dynamic frame: %s counted as %d + %d bytes' % (short(g, t, 70), g.nodes[t][0], g.extra[t]))
+    for t in unbounded:
+        print('WARNING: dynamic frame with no known bound (only its fixed %d bytes counted): %s'
+              % (g.nodes[t][0], g.name(t)[:110]))
     for rx in chains:
         for t in sorted(g.matching(rx)):
             d = g.depth(t)

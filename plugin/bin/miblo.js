@@ -4,7 +4,7 @@ import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion } from '../lib/constants.js';
-import { DeviceClient, isReducedInfo } from '../lib/device-client.js';
+import { DeviceClient, busyLine, isBusy, isReducedInfo } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
@@ -173,8 +173,8 @@ async function rotate(args, store, client) {
         if (isReducedInfo(info)) lines.push(`${label}: no longer accepts this pairing (run /miblo:pair again)`);
         else if (typeof info?.rotate !== 'boolean') lines.push(`${label}: rotation not supported by this firmware (update it)`);
         else lines.push(`${label}: rotation ${describeRotation(info)}`);
-      } catch {
-        lines.push(`${label}: offline`);
+      } catch (e) {
+        lines.push(isBusy(e) ? `${label}: busy right now — try again in a moment` : `${label}: offline`);
       }
     }
     return ok(lines.join('\n'));
@@ -199,7 +199,7 @@ async function rotate(args, store, client) {
       } else if (e.status === 400) {
         problems.push(`${label} does not support rotation yet (update its firmware).`);
       } else {
-        problems.push(`${label} is offline.`);
+        problems.push(isBusy(e) ? busyLine(label) : `${label} is offline.`);
       }
     }
   }
@@ -276,8 +276,8 @@ async function night(args, store, client) {
         if (isReducedInfo(info)) lines.push(`${label}: no longer accepts this pairing (run /miblo:pair again)`);
         else if (typeof info?.night !== 'boolean') lines.push(`${label}: night mode not supported by this firmware (update it)`);
         else lines.push(`${label}: night mode ${describeNight(info)}`);
-      } catch {
-        lines.push(`${label}: offline`);
+      } catch (e) {
+        lines.push(isBusy(e) ? `${label}: busy right now — try again in a moment` : `${label}: offline`);
       }
     }
     return ok(lines.join('\n'));
@@ -300,7 +300,7 @@ async function night(args, store, client) {
       } else if (e.status === 400) {
         problems.push(`${label} does not support night mode yet (update its firmware).`);
       } else {
-        problems.push(`${label} is offline.`);
+        problems.push(isBusy(e) ? busyLine(label) : `${label} is offline.`);
       }
     }
   }
@@ -372,6 +372,7 @@ async function rename(args, store, client) {
     }
     if (e.status === 400) return fail(1, `${oldLabel} does not support renaming yet (update its firmware).`);
     if (e.status === 401) return fail(1, `${oldLabel} no longer accepts this pairing: run /miblo:pair again.`);
+    if (isBusy(e)) return fail(1, busyLine(oldLabel));
     return fail(1, `Could not reach ${oldLabel}.`);
   }
   let name = parsed.name;
@@ -458,6 +459,7 @@ async function owner(args, store, client) {
     if (field === 'birthday') return fail(2, `${label} rejected the birthday: use a real day, DD/MM or MM-DD.`);
     if (e.status === 400) return fail(1, `${label} does not support names and birthdays yet (update its firmware).`);
     if (e.status === 401) return fail(1, `${label} no longer accepts this pairing: run /miblo:pair again.`);
+    if (isBusy(e)) return fail(1, busyLine(label));
     return fail(1, `Could not reach ${label}.`);
   }
   const knows = [];
@@ -501,7 +503,7 @@ async function demo(args, store, client) {
     } catch (e) {
       if (e.status === 404) problems.push(`${label} does not support the demo yet (update its firmware with /miblo:update).`);
       else if (e.status === 401) problems.push(`${label} no longer knows this computer (run /miblo:pair again).`);
-      else problems.push(`${label} is offline.`);
+      else problems.push(isBusy(e) ? busyLine(label) : `${label} is offline.`);
     }
   }
   const what = minutes ? `Demo on for ${minutes} min` : 'Demo off';
@@ -532,7 +534,17 @@ export async function run(argv, deps) {
         // hold a token: read it again once paired; if that fails, use its id-derived name.
         const first = (await client.info(addr)) ?? {};
         if (!cleanId(first.id)) return fail(1, `The device at ${cleanAddr(addr)} did not report a valid id.`);
-        const token = await client.pair(addr, code, hostname);
+        let token;
+        try {
+          token = await client.pair(addr, code, hostname);
+        } catch (e) {
+          // No answer at all: the gadget may have paired and rotated its code (the reply was
+          // lost), so it is not resent; a fresh code tells which.
+          if (!e.status) {
+            return fail(1, `No answer from the Miblo gadget at ${cleanAddr(addr)} while pairing. If it now says it is paired, show a new pairing code on it and pair again.`);
+          }
+          throw e;
+        }
         let full = first;
         if (isReducedInfo(first)) {
           try { full = { ...((await client.info(addr, token)) ?? {}), id: first.id }; } catch { /* best-effort */ }
@@ -556,6 +568,7 @@ export async function run(argv, deps) {
           return fail(2, `Too many wrong codes. Try again in ${secs} s.`);
         }
         if (e.status === 403) return fail(2, 'Wrong pairing code.');
+        if (isBusy(e)) return fail(1, busyLine(`The Miblo gadget at ${cleanAddr(addr)}`));
         return fail(1, `Could not reach a Miblo gadget at ${addr}.`);
       }
     }
@@ -583,15 +596,17 @@ export async function run(argv, deps) {
       if (!MODES.includes(mode)) return fail(2, `Mode must be one of: ${MODES.join(', ')}.`);
       const targets = store.list().filter((d) => !id || d.id === id);
       let done = 0;
+      const busy = [];
       for (const d of targets) {
         try {
           await client.setConfig(d.addr, d.token, { mode });
           done++;
-        } catch {
-          // gadget offline: reflected in the count
+        } catch (e) {
+          // gadget offline: reflected in the count; a busy one is named
+          if (isBusy(e)) busy.push(busyLine(cleanName(d.name)));
         }
       }
-      return ok(`Mode set to ${mode} on ${done} gadget(s).`);
+      return ok([`Mode set to ${mode} on ${done} gadget(s).`, ...busy].join('\n'));
     }
     case 'rotate':
       return rotate(args, store, client);
@@ -610,7 +625,8 @@ export async function run(argv, deps) {
       if (!d) return fail(2, `No paired gadget with id ${cleanId(args[0])}.`);
       try {
         await client.reset(d.addr, d.token);
-      } catch {
+      } catch (e) {
+        if (isBusy(e)) return fail(1, busyLine(cleanName(d.name)));
         return fail(1, `Could not reach ${cleanName(d.name)}.`);
       }
       store.remove(d.id);

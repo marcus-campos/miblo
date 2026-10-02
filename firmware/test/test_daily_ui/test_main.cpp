@@ -1,4 +1,4 @@
-// Foundation-owned screens of daily life: the waiting mark that keeps "needs you" visible over
+// Screens shared by all of daily life: the waiting mark that keeps "needs you" visible over
 // every daily full screen.
 #include <unity.h>
 

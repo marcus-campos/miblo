@@ -118,7 +118,7 @@ const char* DeskNotes::saying(uint32_t nowMs) const {
 
 // ---- reminders and alarms ----
 
-uint8_t DeskNotes::addReminder(uint32_t dueMs, const char* text) {
+uint8_t DeskNotes::addReminder(uint32_t dueMs, uint16_t atMinute, const char* text) {
   char clean[kNoteBytes];
   if (!cleanText(text, clean, sizeof(clean), kNoteChars)) return 0;
   uint8_t slot = kMaxReminders;
@@ -133,20 +133,21 @@ uint8_t DeskNotes::addReminder(uint32_t dueMs, const char* text) {
   }
   if (slot == kMaxReminders) return 0;
   rem_[slot].dueMs = dueMs;
+  rem_[slot].atMinute = atMinute;
   memcpy(rem_[slot].text, clean, sizeof(clean));
   return slot + 1;
 }
 
 uint8_t DeskNotes::remindIn(uint16_t minutes, const char* text, uint32_t nowMs) {
   if (!minutes || minutes > 1440) return 0;
-  return addReminder(nowMs + minutes * kMinMs, text);
+  return addReminder(nowMs + minutes * kMinMs, kNotAt, text);
 }
 
 uint8_t DeskNotes::remindAt(uint16_t minute, int nowMinute, const char* text, uint32_t nowMs) {
   if (minute >= 1440 || nowMinute < 0 || nowMinute >= 1440) return 0;
   int ahead = (int)minute - nowMinute;
   if (ahead <= 0) ahead += 1440;  // this minute or earlier: tomorrow
-  return addReminder(nowMs + (uint32_t)ahead * kMinMs, text);
+  return addReminder(nowMs + (uint32_t)ahead * kMinMs, minute, text);
 }
 
 uint8_t DeskNotes::addAlarm(uint16_t minute, uint8_t days, const char* text) {
@@ -265,6 +266,23 @@ uint32_t DeskNotes::findElapsed(uint32_t nowMs) const { return nowMs - findStart
 
 // ---- every frame ----
 
+bool DeskNotes::reached(uint16_t target, uint32_t nowMs, uint32_t dayKey, int minute) const {
+  const int late = minute - (int)target;
+  if (late < 0) return false;
+  if (late <= kAlarmCatchUpMin) return true;
+  // Further on the clock than the window, but it got there by jumping (spring forward) or over a
+  // short stall: the frame before was earlier the same day, little real time ago.
+  return prevDay_ == dayKey && prevMinute_ >= 0 && prevMinute_ < (int)target &&
+         nowMs - prevMs_ <= (uint32_t)kAlarmCatchUpMin * kMinMs;
+}
+
+bool DeskNotes::reminderDue(const Reminder& r, uint32_t nowMs, uint32_t dayKey, int minute) const {
+  const int32_t early = (int32_t)(r.dueMs - nowMs);  // > 0: before the real-time delay
+  if (r.atMinute == kNotAt || !dayKey || minute < 0) return early <= 0;
+  if (early < -(int32_t)kAtSlackMs) return true;  // the clock never showed it in time
+  return early <= (int32_t)kAtSlackMs && reached(r.atMinute, nowMs, dayKey, minute);
+}
+
 NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int minute) {
   // Whatever ran out is forgotten, so it never comes back when millis() comes round again.
   if (finding_ && nowMs - findStartMs_ >= kFindMs) finding_ = false;
@@ -274,18 +292,29 @@ NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int
     timerLenMs_ = 0;
     due_ |= kDueTimer;
   }
-  // Alarms only with the local time known: at their minute, or the one after it when the loop
-  // missed it; once per day.
-  if (dayKey && minute >= 0 && weekday < 7) {
+  // Alarms only with the local time known: at their minute, or late within the catch-up window
+  // (kAlarmCatchUpMin); once per day.
+  const bool clock = dayKey && minute >= 0 && minute < 1440;
+  if (clock && weekday < 7) {
     for (uint8_t i = 0; i < kMaxAlarms; i++) {
       Alarm& a = alarms_[i];
-      const int late = minute - (int)a.minute;
-      if (!(a.days >> weekday & 1) || late < 0 || late > 1 || a.lastDay == (uint16_t)dayKey) continue;
+      if (!(a.days >> weekday & 1) || a.lastDay == (uint16_t)dayKey || !reached(a.minute, nowMs, dayKey, minute)) continue;
       a.lastDay = (uint16_t)dayKey;
       due_ |= 1u << i;
-      dirty_ = true;  // saved, so a reboot in the next minute does not fire it again
+      dirty_ = true;  // saved, so a reboot later that day does not fire it again
     }
   }
+  const NoteKind fired = next(nowMs, clock ? dayKey : 0, minute);
+  if (clock) {  // after next(): the one-off reminders compare with the frame before this one
+    prevMs_ = nowMs;
+    prevDay_ = dayKey;
+    prevMinute_ = (int16_t)minute;
+  }
+  return fired;
+}
+
+// What shows now: the timer, then the most overdue one-off reminder, then a due alarm.
+NoteKind DeskNotes::next(uint32_t nowMs, uint32_t dayKey, int minute) {
   // One thing at a time: what came due while the cat held something waits for it to go.
   if (heldKind_ != NoteKind::None) return NoteKind::None;
   if (due_ & kDueTimer) {
@@ -296,7 +325,7 @@ NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int
   // The most overdue one-off reminder.
   uint8_t pick = kMaxReminders;
   for (uint8_t i = 0; i < kMaxReminders; i++) {
-    if (!rem_[i].text[0] || (int32_t)(nowMs - rem_[i].dueMs) < 0) continue;
+    if (!rem_[i].text[0] || !reminderDue(rem_[i], nowMs, dayKey, minute)) continue;
     if (pick == kMaxReminders || (int32_t)(rem_[pick].dueMs - rem_[i].dueMs) > 0) pick = i;
   }
   if (pick < kMaxReminders) {

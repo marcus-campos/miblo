@@ -128,7 +128,7 @@ static void test_focus_screen_stays_on_screen() {
                        9000);
       }
     TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
-    TEST_ASSERT_TRUE(fc.texts.size() > 0 && fc.arcs.size() > 0);  // fails with the stub (reset() alone draws)
+    TEST_ASSERT_TRUE(fc.texts.size() > 0 && fc.arcs.size() > 0);  // the screen draws its texts and ring, not just the reset
   }
 }
 

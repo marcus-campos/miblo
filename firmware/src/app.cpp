@@ -37,6 +37,7 @@ static bool bootCountCleared = false;
 static uint8_t hardResetRemaining = 0;  // > 0: show the quick-boot countdown for the first 10 s
 static bool bootAnimDone = false;
 static ScreenId current = ScreenId::Boot;
+static bool cueScreen = false;  // this frame's screen is the cue's pulse (set before drawing)
 static bool firstFrame = true;
 static Lang drawnLang = Lang::En;
 static uint32_t lastFrameMs = 0;
@@ -229,7 +230,7 @@ static void updateBacklight(int minute) {
   if (displayOff) return;  // stays dark until the panel wakes
   // A strong cue lights the screen up (never more than twice the night brightness at night), only
   // while its pulses are on screen: an alert that interrupts it shows at the normal brightness.
-  const bool cueOn = cue.active(millis()) != miblo::CueKind::None && current == ScreenId::Cue;
+  const bool cueOn = cue.active(millis()) != miblo::CueKind::None && cueScreen;
   const uint8_t want = cueOn ? miblo::cueBrightness(ctx.cfg, minute) : miblo::brightnessAt(ctx.cfg, minute);
   if (want == backlight) return;
   backlight = want;
@@ -436,7 +437,6 @@ static void __attribute__((noinline)) frame(uint32_t now) {
     firstFrame = true;
   }
 
-  updateBacklight(minuteNow);
   updateWarmth(minuteNow);
   // Before the first snapshot ctx.snap is all zeros (parseSnapshot only writes it on success).
   const miblo::AlertView& alert = ctx.alerts.update(ctx.snap, now);
@@ -560,10 +560,11 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   // meeting, pet mode, timer, note or cue.
   const bool plainScreen = screen == ScreenId::Main || screen == ScreenId::Desk || screen == ScreenId::Summary ||
                            screen == ScreenId::Disconnected;
-  const bool quietDesk = plainScreen && alert.phase == miblo::AlertPhase::None &&
+  // A session waiting keeps the Overview's attention view (a stale one while away does not count).
+  const bool quietDesk = plainScreen && (away || counts.pending == 0) && alert.phase == miblo::AlertPhase::None &&
                          di.focus == miblo::FocusPhase::Off && !ctx.meeting.on() && !di.timer &&
                          di.held == miblo::NoteKind::None && !di.say && di.cue == miblo::CueKind::None && !di.find;
-  dayEnd.update(now, ctx.cfg, dayKey, weekday, minuteNow, counts.running > 0, quietDesk);
+  dayEnd.update(now, ctx.cfg, dayKey, weekday, minuteNow, counts.running > 0, ctx.hasSnapshot, quietDesk);
   weekly.update(now, ctx.cfg.weekly, dayKey, weekday, minuteNow, counts.running > 0, ctx.snap.week.present,
                 quietDesk);
   di.dayEnd = dayEnd.showing(now);
@@ -577,6 +578,8 @@ static void __attribute__((noinline)) frame(uint32_t now) {
                 miblo::passerbyAt(now - roamSinceMs, &passAt);
   di.screen = screen;
   screen = miblo::dailyScreen(di);
+  cueScreen = screen == ScreenId::Cue;
+  updateBacklight(minuteNow);  // after the screen is known: the cue's boost starts and ends with it
   updateDailyLook(minuteNow, day, timeKnown, clockNow().epoch, now);
 
   // The panel stays on while a /miblo:say note is up (it is meant for passers-by).
@@ -752,11 +755,13 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   }
 
   // Overlays, every frame, only over the ordinary and daily-life screens and the alert hero:
-  // never over setup, codes, updates, the alert flash or the full-screen pulse.
+  // never over setup, codes, updates, the alert flash or the full-screen pulse. The status frame
+  // stays off while the computer is away: its snapshot (a prompt left open) is stale.
   const bool overlays = (miblo::dailyMayReplace(screen) || screen >= ScreenId::Focus || screen == ScreenId::AlertHero) &&
                         screen != ScreenId::Cue;
-  const miblo::FrameColor fc =
-      overlays && ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now) : miblo::FrameColor::None;
+  const miblo::FrameColor fc = overlays && ctx.cfg.frame && !away
+                                   ? miblo::frameColorFor(ctx.snap, clk.epoch ? clk.epoch : ctx.snap.now)
+                                   : miblo::FrameColor::None;
   if (overlays && fc == miblo::FrameColor::None && frameShown != miblo::FrameColor::None) {
     firstFrame = true;  // the frame went away: redraw the screen under it next frame
   }

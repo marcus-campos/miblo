@@ -171,6 +171,36 @@ test('wrong code returns 2 and keeps the update open for a retry', async () => {
   } finally { await t.close(); }
 });
 
+test('a send after the upload window closed (5 min) says to open it again; nothing is flashed', async () => {
+  for (const otaCodeRequired of [true, false]) {
+    let now = 0;
+    const t = await setup({ device: { now: () => now, otaCodeRequired } });
+    try {
+      await t.cli('open', 'miblo-0000');
+      now += 300_000;
+      const late = await t.cli('send', 'miblo-0000', '1234');
+      assert.equal(late.code, 2, late.out);
+      assert.match(late.out, /update window on Miblo-0000 closed.*update open/);
+      assert.equal(t.dev.state.uploads.length, 0);
+      assert.equal(t.dev.state.otaBadCodes, 0);  // not a wrong code
+      await t.cli('open', 'miblo-0000');
+      assert.equal((await t.cli('send', 'miblo-0000', '1234')).code, 0);
+    } finally { await t.close(); }
+  }
+});
+
+test('a gadget that resets the upload right away (window closed, locked) says why and to run /miblo:update again', async () => {
+  const t = await setup({ device: { resetUploads: 1 } });
+  try {
+    await t.cli('open', 'miblo-0000');
+    const r = await t.cli('send', 'miblo-0000', '1234');
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /Miblo-0000 stopped the upload: the update window may have closed or the gadget is locked after wrong codes — run \/miblo:update again\./);
+    assert.equal(t.dev.state.uploads.length, 0);
+    assert.equal((await t.cli('send', 'miblo-0000', '1234')).code, 0);  // still pending: a retry works
+  } finally { await t.close(); }
+});
+
 test('lockout after repeated wrong codes reports retryAfter (on send and on open)', async () => {
   let now = 0;
   const t = await setup({ device: { now: () => now } });
@@ -300,5 +330,29 @@ test('open while another code is on the gadget screen says so (busy), not "wrong
     assert.equal(o.code, 2);
     assert.match(o.out, /Another code is on the gadget screen\. Try again in 240 s\./);
     assert.doesNotMatch(o.out, /wrong codes/);
+  } finally { await t.close(); }
+});
+
+test('a busy gadget (503) is reported busy by update and check, not unreachable', async () => {
+  const t = await setup({ device: { busy: Infinity } });
+  try {
+    const o = await run(['update', 'open', 'miblo-0000'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, sleep: async () => {} } });
+    assert.equal(o.code, 1);
+    assert.match(o.out, /Miblo-0000 is busy right now — try again in a moment\./);
+    const c = await run(['update', 'check'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, sleep: async () => {} } });
+    const row = JSON.parse(c.out).devices[0];
+    assert.equal(row.online, true);
+    assert.equal(row.busy, true);
+    assert.equal(row.needsUpdate, null);
+  } finally { await t.close(); }
+});
+
+test('update retries a gadget busy for a moment', async () => {
+  const t = await setup({ device: { busy: 2, busyPath: '/api/info' } });
+  try {
+    const delays = [];
+    const c = await run(['update', 'check'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, pluginVersion: '0.2.2', sleep: async (ms) => { delays.push(ms); } } });
+    assert.equal(JSON.parse(c.out).devices[0].fw, '0.2.1');
+    assert.deepEqual(delays, [400, 800]);
   } finally { await t.close(); }
 });

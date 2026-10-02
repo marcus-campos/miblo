@@ -287,7 +287,7 @@ ui::Canvas& waitingGuard(ui::Canvas& inner);
 // Call after the overlays that follow the mark in the same frame (state frame, meeting badge):
 // what they drew over the band is not the screen covering it, so it must not trigger a repaint.
 void waitingOverlaysDrawn();
-// Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp, track F).
+// Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp).
 enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384 };
 
 }  // namespace screens

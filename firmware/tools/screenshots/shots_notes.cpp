@@ -1,4 +1,4 @@
-// Screenshots of track D's screens (see shots.h): the cat holding a message, a reminder, an
+// Screenshots of the desk note screens (see shots.h): the cat holding a message, a reminder, an
 // alarm and "Time's up!", the timer, find; and the longest texts a sign must hold.
 #include "shots.h"
 

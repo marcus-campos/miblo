@@ -1,7 +1,7 @@
 #pragma once
-// What the screenshot tool's per-track files share (main.cpp defines it): the sample snapshot and
-// its builders, the clock, and Shot/save() to draw and write one PNG. Each daily-life track draws
-// its screens in its own shots_<track>.cpp, called at the end of main.cpp's renderAll().
+// What the screenshot tool's per-feature files share (main.cpp defines it): the sample snapshot and
+// its builders, the clock, and Shot/save() to draw and write one PNG. Each daily-life feature draws
+// its screens in its own shots_<feature>.cpp, called at the end of main.cpp's renderAll().
 //
 //   void shots::renderFocus(Lang L) {
 //     shots::working();
@@ -51,14 +51,14 @@ struct Shot {
 // Writes <lang dir>/<name>.png and <name>@4x.png, and checks the margins (make check-margins).
 void save(Shot& s, const std::string& name);
 
-// The foundation's own daily-life overlays (shots_daily.cpp): the waiting mark.
+// The overlays shared by every daily-life screen (shots_daily.cpp): the waiting mark.
 void renderDaily(miblo::Lang L);
-// One per daily-life track (shots_<track>.cpp).
-void renderFocus(miblo::Lang L);      // track A
-void renderAlerts(miblo::Lang L);     // track B
-void renderDayRhythm(miblo::Lang L);  // track C
-void renderNotes(miblo::Lang L);      // track D
-void renderCues(miblo::Lang L);       // track E
-void renderLook(miblo::Lang L);       // track F
+// One per daily-life feature (shots_<feature>.cpp).
+void renderFocus(miblo::Lang L);      // focus (Pomodoro)
+void renderAlerts(miblo::Lang L);     // meeting mode, insistence, fanfare
+void renderDayRhythm(miblo::Lang L);  // wellness, end of the day, Monday recap
+void renderNotes(miblo::Lang L);      // say, reminders, timer, countdown, find
+void renderCues(miblo::Lang L);       // strong cue, status frame
+void renderLook(miblo::Lang L);       // special days, meeting tie, extras
 
 }  // namespace shots

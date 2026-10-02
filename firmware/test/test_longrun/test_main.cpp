@@ -206,11 +206,14 @@ class Sim {
   uint64_t pendingSinceSim_ = 0, lastShownSim_ = 0;
   bool pendingFresh_ = false;
   bool wasPet_ = false, wasAsleep_ = false;
+  bool wasDayEnd_ = false, wasRecap_ = false;
+  Nudge wasNudge_ = Nudge::None;
   uint32_t textN_ = 0;
   std::string idText_[kMaxReminders + kMaxAlarms + 1];  // what each note id holds now
   struct Due {
     uint32_t dueMs;
     uint64_t dueSim;
+    bool at;  // "at HH:MM": follows the local clock, up to kAtSlackMs either side of dueMs
   };
   std::map<std::string, Due> remPending_;  // reminders not fired yet
   std::set<std::string> remFired_;
@@ -455,7 +458,7 @@ class Sim {
         const std::string t = newText('R');
         const unsigned in = 1 + rng_.below(rng_.below(4) ? 90 : 1440);
         snprintf(body, sizeof(body), "{\"in\":%u,\"text\":\"%s\"}", in, t.c_str());
-        if (call(remind, body) == 200) noteReminder(t, ms_ + in * 60000u, simMs_ + in * 60000ull);
+        if (call(remind, body) == 200) noteReminder(t, ms_ + in * 60000u, simMs_ + in * 60000ull, false);
         break;
       }
       case 7: {  // a reminder at HH:MM
@@ -466,7 +469,7 @@ class Sim {
         if (call(remind, body) == 200) {
           int ahead = (int)at - now;
           if (ahead <= 0) ahead += 1440;
-          noteReminder(t, ms_ + (uint32_t)ahead * 60000u, simMs_ + (uint64_t)ahead * 60000u);
+          noteReminder(t, ms_ + (uint32_t)ahead * 60000u, simMs_ + (uint64_t)ahead * 60000u, true);
         }
         break;
       }
@@ -537,7 +540,7 @@ class Sim {
     return remindRequest(s.notes_, b, s.ms_, s.minuteNow(), out, bad);
   }
 
-  void noteReminder(const std::string& t, uint32_t dueMs, uint64_t dueSim) {
+  void noteReminder(const std::string& t, uint32_t dueMs, uint64_t dueSim, bool at) {
     if (lastId_ < 1 || lastId_ > kMaxReminders) {
       v.add("a reminder got an alarm id", simMs_);
       return;
@@ -546,7 +549,7 @@ class Sim {
     if (!idText_[lastId_].empty() && remPending_.count(idText_[lastId_]))
       v.add("a pending reminder was overwritten", simMs_);
     idText_[lastId_] = t;
-    remPending_[t] = Due{dueMs, dueSim};
+    remPending_[t] = Due{dueMs, dueSim, at};
   }
 
   // ---------------- one frame of app.cpp ----------------
@@ -649,16 +652,25 @@ class Sim {
 
     const bool plainScreen = screen == ScreenId::Main || screen == ScreenId::Desk || screen == ScreenId::Summary ||
                              screen == ScreenId::Disconnected;
-    const bool quietDesk = plainScreen && alert.phase == AlertPhase::None && di.focus == FocusPhase::Off &&
-                           !meeting_.on() && !di.timer && di.held == NoteKind::None && !di.say &&
-                           di.cue == CueKind::None && !di.find;
-    dayEnd_.update(ms_, cfg_, dayKey, weekday, minuteNow, counts.running > 0, quietDesk);
+    const bool quietDesk = plainScreen && (away || counts.pending == 0) && alert.phase == AlertPhase::None &&
+                           di.focus == FocusPhase::Off && !meeting_.on() && !di.timer && di.held == NoteKind::None &&
+                           !di.say && di.cue == CueKind::None && !di.find;
+    dayEnd_.update(ms_, cfg_, dayKey, weekday, minuteNow, counts.running > 0, hasSnapshot_, quietDesk);
     weekly_.update(ms_, cfg_.weekly, dayKey, weekday, minuteNow, counts.running > 0, snap_.week.present, quietDesk);
     di.dayEnd = dayEnd_.showing(ms_);
     di.weekRecap = weekly_.showing(ms_);
     wellness_.update(ms_, cfg_, counts.running > 0, inWorkHours(cfg_, weekday, minuteNow),
                      quietDesk && !di.dayEnd && !di.weekRecap);
     di.nudge = wellness_.showing(ms_);
+    // A daily screen that starts never hides a session waiting (with the computer there), and the
+    // day's summary never starts without the day's stats.
+    const bool started = (di.dayEnd && !wasDayEnd_) || (di.weekRecap && !wasRecap_) ||
+                         (di.nudge != Nudge::None && wasNudge_ == Nudge::None);
+    if (started && !away && counts.pending > 0) v.add("a daily screen started over a waiting session", simMs_);
+    if (di.dayEnd && !wasDayEnd_ && !hasSnapshot_) v.add("the day's summary started without a snapshot", simMs_);
+    wasDayEnd_ = di.dayEnd;
+    wasRecap_ = di.weekRecap;
+    wasNudge_ = di.nudge;
     di.screen = screen;
     screen = dailyScreen(di);
     const bool asleep = petLatch_.asleep(cfg_.sleepMin, petMin, ms_) && !di.say;
@@ -734,7 +746,8 @@ class Sim {
       auto it = remPending_.find(text);
       if (remFired_.count(text)) v.add("a reminder fired twice", simMs_);
       else if (it == remPending_.end()) v.add("an unknown or deleted reminder fired", simMs_);
-      else if ((int32_t)(ms_ - it->second.dueMs) < 0) v.add("a reminder fired early", simMs_);
+      else if ((int32_t)(ms_ - it->second.dueMs) < (it->second.at ? -(int32_t)kAtSlackMs : 0))
+        v.add("a reminder fired early", simMs_);
       if (it != remPending_.end()) remPending_.erase(it);
       remFired_.insert(text);
     } else if (k == NoteKind::Alarm) {
@@ -920,7 +933,8 @@ class Sim {
   void checkLost() {
     if (st.frames % 64) return;
     for (auto it = remPending_.begin(); it != remPending_.end();) {
-      if (simMs_ > it->second.dueSim + (kMaxReminders + kMaxAlarms + 2) * (uint64_t)kHeldMs + 60000) {
+      const uint64_t slack = it->second.at ? kAtSlackMs : 0;
+      if (simMs_ > it->second.dueSim + slack + (kMaxReminders + kMaxAlarms + 2) * (uint64_t)kHeldMs + 60000) {
         v.add(("reminder " + it->first + " never fired").c_str(), simMs_);
         it = remPending_.erase(it);
       } else {

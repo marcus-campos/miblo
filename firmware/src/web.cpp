@@ -10,6 +10,7 @@
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
+#include "platform/ota.h"
 #include "platform/routes.h"
 #include "platform/storage.h"
 
@@ -148,9 +149,9 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
 }
 
 // Second layer for the human pages. The server hook installed in begin() refuses most POST
-// bodies over kMaxPostBody before ESP8266WebServer buffers them, but only when Content-Length
-// arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
-// this check enforces the pages' tighter limit and covers what the hook could not see. The
+// bodies over kMaxPostBody before ESP8266WebServer buffers them (from the Content-Length in the
+// header block); by the time a handler runs the body is already in RAM, so this check
+// enforces the pages' tighter limit. The
 // settings page's worst-case save is ~910 B (every field at its longest, CJK names): 1.5 KiB
 // leaves room for the next fields without a large transient copy.
 static constexpr uint32_t kPageBodyMax = 1536;
@@ -1280,38 +1281,117 @@ static bool captiveRedirect() {
 }
 
 #if defined(ESP8266)
-// Best-effort first layer. Runs right after the request line, before ESP8266WebServer reads (and
-// buffers in RAM) a non-multipart POST body. Peeks at the header bytes already received — without
-// consuming them — and refuses bodies over kMaxPostBody (largest Content-Length if duplicated).
-// Only a multipart POST /update (streamed to flash by the upload handler) is exempt.
-// Headers that did not arrive in the first TCP segment are not seen here; the handler checks
-// remain as a second layer.
-static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* client,
-                                                     ESP8266WebServer::ContentTypeFunction) {
-  if (method != F("POST")) return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
-  if (url == F("/update") && miblo::contentTypeIsMultipart(client->peekBuffer(), client->peekAvailable())) {
-    return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+// A reply from the hook, before the server read the headers: JSON body, then the connection
+// closes. `status` and `bodyFmt` are in flash; `bodyFmt` may take one unsigned argument.
+static WebServerT::ClientFuture refuse(WiFiClient* client, PGM_P status, PGM_P bodyFmt, unsigned arg = 0) {
+  char st[28];
+  char body[48];
+  strncpy_P(st, status, sizeof(st) - 1);
+  st[sizeof(st) - 1] = 0;
+  snprintf_P(body, sizeof(body), bodyFmt, arg);
+  char out[176];
+  snprintf_P(out, sizeof(out),
+             PSTR("HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %u\r\n\r\n%s"),
+             st, (unsigned)strlen(body), body);
+  client->print(out);
+  return WebServerT::CLIENT_MUST_STOP;
+}
+
+// First layer for request bodies. Runs right after the request line, before ESP8266WebServer
+// reads the headers.
+//
+// Multipart guard. For POST, PUT, PATCH and DELETE alike the server parses a multipart/... body
+// with _parseForm, which puts `4 + boundary length` bytes on the 4 KB loop stack (a VLA,
+// Parsing-impl.h): a multi-KB boundary from any LAN client crashed the unit. So the hook judges
+// the WHOLE header block first, read the way the server will read it (miblo::checkRequestHeaders;
+// the last Content-Type wins there):
+//   - usually the first TCP segment holds it, judged in place (no copy);
+//   - otherwise (a browser's ~1.1 KB of headers spans 2-3 segments of 536 B) the connection reads
+//     it ahead into a 2 KB heap buffer (LookaheadClient), waiting at most kHeaderWaitMs (1 s), and
+//     replays those bytes to the server unchanged. No complete block within 2 KB → 431; not
+//     within the wait, or the peer closed → 400; no memory for the buffer → 503.
+// A multipart body then passes only as POST /update while an upload window is open
+// (ota::uploadArmed: the update code is active) and with one Content-Type whose boundary is 1..70
+// characters (RFC 2046), else 400 (429 while the update code is locked out). See
+// miblo::decideBody.
+// Residual: anyone on the LAN can open a window (POST /update/open lights the code on the screen
+// for 5 min); the boundary limit is what keeps _parseForm's stack array bounded.
+//
+// Size guard (best effort). Refuses non-multipart bodies over kMaxPostBody (largest Content-Length
+// if duplicated) before the server buffers them in RAM; the handler checks remain as a second
+// layer.
+static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
+                                              WebServerT::ContentTypeFunction) {
+  using miblo::BodyAction;
+  if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
+    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the server parses no body for these
   }
+  // The server passes its own connection, whose type is WebServerT::ClientType.
+  auto* client = static_cast<LookaheadClient*>(wifiClient);
+  static const char kBad[] PROGMEM = "400 Bad Request";
+  miblo::HeaderVerdict verdict = miblo::checkRequestHeaders(client->peekBuffer(), client->peekAvailable());
+  if (verdict == miblo::HeaderVerdict::Incomplete) {
+    if (!client->hasAhead() && heapLowForRequest(miblo::HeaderBuffer::kCap)) {
+      return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
+    }
+    const BodyAction gathered = miblo::decideGather(client->gatherHeaders(miblo::kHeaderWaitMs));
+    if (gathered == BodyAction::HeadersTooLarge) {
+      return refuse(client, PSTR("431 Request Header Fields Too Large"), PSTR("{\"error\":\"headers too large\"}"));
+    }
+    if (gathered == BodyAction::HeadersIncomplete) return refuse(client, kBad, PSTR("{\"error\":\"incomplete headers\"}"));
+    if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
+    verdict = client->aheadVerdict();
+  }
+  const uint32_t now = millis();
+  const bool multipart =
+      verdict == miblo::HeaderVerdict::Multipart || verdict == miblo::HeaderVerdict::BadMultipart;
+  const bool isUpload = method == F("POST") && url == F("/update");
+  const bool armed = multipart && isUpload && ota::uploadArmed(*client);
+  WebServerT::ClientFuture refused;
+  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(now))) {
+    case BodyAction::Continue:
+      return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the firmware upload, streamed to flash
+    case BodyAction::NotOpen:
+      refused = refuse(client, kBad, PSTR("{\"error\":\"update not open\"}"));
+      break;
+    case BodyAction::Locked:  // too many wrong codes: say so, as the upload itself would
+      refused = refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
+                       (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      break;
+    case BodyAction::BadBoundary:
+      refused = refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
+      break;
+    case BodyAction::CheckSize:
+      refused = WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
+      break;
+    default:  // BadRequest (HeadersIncomplete cannot happen with a judged block)
+      refused = refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
+      break;
+  }
+  if (multipart) {
+    // A refused upload: the client is still sending its body. Closing now, with that body unread,
+    // resets the connection and the reply above is usually lost. Linger instead: drop what keeps
+    // coming for up to kLingerMs / kLingerMaxBytes, then the server closes. (WiFiClient has no
+    // half-close to signal the end of the reply earlier; Connection: close and Content-Length
+    // already tell the client.) Bounded: the loop pauses at most ~1 s per refused upload.
+    client->flush();
+    client->discardInput(miblo::kLingerMs, miblo::kLingerMaxBytes);
+    return refused;
+  }
+  if (refused != WebServerT::CLIENT_REQUEST_CAN_CONTINUE) return refused;
+  // The header block is now complete in peekBuffer() (in place, or the read-ahead bytes).
   uint32_t len = 0;
   const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);
   if (haveLen && len > kMaxPostBody) {
-    static const char kReply[] PROGMEM =
-        "HTTP/1.1 413 Payload Too Large\r\nContent-Type: application/json\r\nConnection: close\r\n"
-        "Content-Length: 21\r\n\r\n{\"error\":\"too large\"}";
-    client->print(FPSTR(kReply));
-    return ESP8266WebServer::CLIENT_MUST_STOP;
+    return refuse(client, PSTR("413 Payload Too Large"), PSTR("{\"error\":\"too large\"}"));
   }
   // Before buffering the body in RAM: if that would leave the Wi-Fi stack short, refuse now (503)
   // so the buffering itself can never starve it. The plugin then resends a smaller (alerts-only)
   // snapshot, which fits.
   if (haveLen && len > 512 && heapLowForRequest(len)) {
-    static const char kBusy[] PROGMEM =
-        "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
-        "Content-Length: 16\r\n\r\n{\"error\":\"busy\"}";
-    client->print(FPSTR(kBusy));
-    return ESP8266WebServer::CLIENT_MUST_STOP;
+    return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
   }
-  return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
 }
 #endif
 

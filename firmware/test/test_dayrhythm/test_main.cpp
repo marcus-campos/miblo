@@ -1,4 +1,4 @@
-// Track C: the day's rhythm — wellness nudges, the end of the work day, Monday's recap, the cat's mood.
+// The day's rhythm — wellness nudges, the end of the work day, Monday's recap, the cat's mood.
 #include <string.h>
 #include <unity.h>
 
@@ -129,14 +129,14 @@ static void test_end_of_day_once_after_running_session() {
   c.endOfDay = true;
   miblo::EndOfDay e;
   const uint32_t k = key(2026, 10, 2);  // a Friday
-  e.update(0, c, k, 5, 17 * 60 + 59, false, true);
+  e.update(0, c, k, 5, 17 * 60 + 59, false, true, true);
   TEST_ASSERT_FALSE(e.showing(0));
-  e.update(1000, c, k, 5, 18 * 60, true, true);  // still running: waits
+  e.update(1000, c, k, 5, 18 * 60, true, true, true);  // still running: waits
   TEST_ASSERT_FALSE(e.showing(1000));
-  e.update(2000, c, k, 5, 18 * 60 + 20, false, true);
+  e.update(2000, c, k, 5, 18 * 60 + 20, false, true, true);
   TEST_ASSERT_TRUE(e.showing(2000));
   TEST_ASSERT_FALSE(e.showing(2000 + miblo::EndOfDay::kShowMs));
-  e.update(5000000, c, k, 5, 19 * 60, false, true);
+  e.update(5000000, c, k, 5, 19 * 60, false, true, true);
   TEST_ASSERT_FALSE(e.showing(5000000));  // once per day
   TEST_ASSERT_EQUAL_UINT8(5, e.petMinutes(c, k));
   TEST_ASSERT_EQUAL_UINT8(c.petMin, e.petMinutes(c, key(2026, 10, 3)));
@@ -145,16 +145,16 @@ static void test_end_of_day_once_after_running_session() {
 static void test_end_of_day_rules() {
   miblo::Config c;
   miblo::EndOfDay e;
-  e.update(0, c, key(2026, 10, 2), 5, 19 * 60, false, true);
+  e.update(0, c, key(2026, 10, 2), 5, 19 * 60, false, true, true);
   TEST_ASSERT_FALSE(e.showing(0));  // off by default
   c.endOfDay = true;
-  e.update(0, c, key(2026, 10, 3), 6, 19 * 60, false, true);
+  e.update(0, c, key(2026, 10, 3), 6, 19 * 60, false, true, true);
   TEST_ASSERT_FALSE(e.showing(0));  // Saturday is not a work day
-  e.update(0, c, 0, 5, 19 * 60, false, true);
+  e.update(0, c, 0, 5, 19 * 60, false, true, true);
   TEST_ASSERT_FALSE(e.showing(0));  // time unknown
   miblo::EndOfDay w;
-  w.update(0, c, key(2026, 10, 2), 5, 18 * 60, true, true);
-  w.update(miblo::EndOfDay::kMaxWaitMs, c, key(2026, 10, 2), 5, 19 * 60, true, true);
+  w.update(0, c, key(2026, 10, 2), 5, 18 * 60, true, true, true);
+  w.update(miblo::EndOfDay::kMaxWaitMs, c, key(2026, 10, 2), 5, 19 * 60, true, true, true);
   TEST_ASSERT_TRUE(w.showing(miblo::EndOfDay::kMaxWaitMs));  // waited an hour: shows anyway
 }
 
@@ -167,11 +167,11 @@ static void test_end_of_day_waits_for_allowed_and_wraps() {
   miblo::EndOfDay e;
   const uint32_t k = key(2026, 10, 2);
   const uint32_t t = 0xFFFFFFFFu - 1000;  // shows across the millis() wrap
-  e.update(t, c, k, 5, 18 * 60, false, false);
+  e.update(t, c, k, 5, 18 * 60, false, true, false);
   TEST_ASSERT_FALSE(e.showing(t));
-  e.update(t + 500, c, 0, 5, -1, false, true);  // the clock went away: stays quiet
+  e.update(t + 500, c, 0, 5, -1, false, true, true);  // the clock went away: stays quiet
   TEST_ASSERT_FALSE(e.showing(t + 500));
-  e.update(t + 600, c, k, 5, 18 * 60 + 1, false, true);
+  e.update(t + 600, c, k, 5, 18 * 60 + 1, false, true, true);
   TEST_ASSERT_TRUE(e.showing(t + 600));
   TEST_ASSERT_TRUE(e.showing(t + 600 + miblo::EndOfDay::kShowMs - 1));
   TEST_ASSERT_FALSE(e.showing(t + 600 + miblo::EndOfDay::kShowMs));
@@ -263,13 +263,67 @@ static void test_end_of_day_wait_starts_when_allowed() {
   miblo::EndOfDay e;
   const uint32_t k = key(2026, 10, 2);
   const uint32_t H = 3600000;
-  e.update(0, c, k, 5, 18 * 60, true, false);
-  e.update(2 * H, c, k, 5, 20 * 60, true, true);  // allowed for the first time, still running
-  TEST_ASSERT_FALSE(e.showing(2 * H));
-  e.update(3 * H - 1, c, k, 5, 21 * 60 - 1, true, true);
-  TEST_ASSERT_FALSE(e.showing(3 * H - 1));
-  e.update(3 * H, c, k, 5, 21 * 60, true, true);
-  TEST_ASSERT_TRUE(e.showing(3 * H));
+  const uint32_t half = H / 2;
+  e.update(0, c, k, 5, 18 * 60, true, true, false);
+  e.update(half, c, k, 5, 18 * 60 + 30, true, true, true);  // allowed for the first time, still running
+  TEST_ASSERT_FALSE(e.showing(half));
+  e.update(half + H - 1, c, k, 5, 19 * 60 + 29, true, true, true);
+  TEST_ASSERT_FALSE(e.showing(half + H - 1));
+  e.update(half + H, c, k, 5, 19 * 60 + 30, true, true, true);
+  TEST_ASSERT_TRUE(e.showing(half + H));
+}
+
+// Only in the two hours after workTo: a restart later that evening (an update, a power blip) or
+// plugging the gadget in at night does not bring the day's summary back.
+static void test_end_of_day_only_shortly_after_work() {
+  miblo::Config c;
+  c.endOfDay = true;
+  const uint32_t k = key(2026, 10, 2);
+  miblo::EndOfDay late;
+  late.update(0, c, k, 5, 20 * 60, false, true, true);  // 18:00 + 2 h: too late
+  TEST_ASSERT_FALSE(late.showing(0));
+  late.update(1000, c, k, 5, 23 * 60, false, true, true);
+  TEST_ASSERT_FALSE(late.showing(1000));
+  miblo::EndOfDay edge;
+  edge.update(0, c, k, 5, 20 * 60 - 1, false, true, true);
+  TEST_ASSERT_TRUE(edge.showing(0));
+  // A running session still holding it when the window closes: the summary is skipped.
+  miblo::EndOfDay held;
+  held.update(0, c, k, 5, 19 * 60 + 30, true, true, true);
+  held.update(1800000, c, k, 5, 20 * 60, true, true, true);
+  held.update(1800001, c, k, 5, 20 * 60, false, true, true);
+  TEST_ASSERT_FALSE(held.showing(1800001));
+  // workTo late in the evening: the window ends at midnight.
+  c.workTo = 23 * 60;
+  miblo::EndOfDay night;
+  night.update(0, c, k, 5, 23 * 60 + 59, false, true, true);
+  TEST_ASSERT_TRUE(night.showing(0));
+}
+
+// Without the day's stats (no snapshot since the gadget started) it waits for them; it never
+// shows zeros.
+static void test_end_of_day_needs_the_days_stats() {
+  miblo::Config c;
+  c.endOfDay = true;
+  const uint32_t k = key(2026, 10, 2);
+  miblo::EndOfDay e;
+  e.update(0, c, k, 5, 18 * 60, false, false, true);
+  TEST_ASSERT_FALSE(e.showing(0));
+  e.update(1000, c, k, 5, 18 * 60 + 5, false, true, true);  // the first snapshot arrived
+  TEST_ASSERT_TRUE(e.showing(1000));
+}
+
+// Monday morning only: a restart (or the first snapshot) after noon does not show last week.
+static void test_weekly_recap_only_in_the_morning() {
+  const uint32_t k = key(2026, 10, 5);
+  miblo::WeeklyRecap r;
+  r.update(0, true, k, 1, miblo::WeeklyRecap::kUntil, true, true, true);
+  TEST_ASSERT_FALSE(r.showing(0));
+  r.update(10, true, k, 1, 15 * 60, false, true, true);
+  TEST_ASSERT_FALSE(r.showing(10));
+  miblo::WeeklyRecap q;
+  q.update(0, true, k, 1, miblo::WeeklyRecap::kUntil - 1, false, true, true);
+  TEST_ASSERT_TRUE(q.showing(0));
 }
 
 static void test_weekly_recap_across_the_wrap() {
@@ -417,6 +471,9 @@ int main(int, char**) {
   RUN_TEST(test_break_not_due_in_a_gap);
   RUN_TEST(test_blocked_wait_never_restarts);
   RUN_TEST(test_end_of_day_wait_starts_when_allowed);
+  RUN_TEST(test_end_of_day_only_shortly_after_work);
+  RUN_TEST(test_end_of_day_needs_the_days_stats);
+  RUN_TEST(test_weekly_recap_only_in_the_morning);
   RUN_TEST(test_weekly_recap_across_the_wrap);
   RUN_TEST(test_rhythm_screens_fit_everywhere);
   RUN_TEST(test_nudge_says_what_to_do);

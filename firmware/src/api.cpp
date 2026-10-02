@@ -367,7 +367,8 @@ static void dailyRoute(DailyHandler handle) {
   JsonObject out = reply.to<JsonObject>();
   const char* bad = nullptr;
   const int code = handle(doc.as<JsonObjectConst>(), out, &bad);
-  ctx.lastInteractionMs = millis();  // someone at the desk: wake the screen
+  // Someone at the desk: wake the screen. Only a POST: listing the reminders changes nothing.
+  if (srv->method() == HTTP_POST) ctx.lastInteractionMs = millis();
   if (code == 200) {
     out[F("ok")] = true;
     if (reply.overflowed()) {  // never a partial answer

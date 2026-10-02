@@ -1,4 +1,4 @@
-// Screenshots of track C's screens (see shots.h): the wellness nudges, the end of the work day and
+// Screenshots of the day's rhythm screens (see shots.h): the wellness nudges, the end of the work day and
 // Monday's recap of last week.
 #include "shots.h"
 

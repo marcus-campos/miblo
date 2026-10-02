@@ -1165,8 +1165,8 @@ void roamAwayIcon(int cx, int cy, int& x, int& y, int& w, int& h) {
   signAwayIcon(sc.sx, sc.sy, sc.sw, x, y, w, h);
 }
 
-static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc);   // Task 3 (existing four) + Task 4
-static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc);  // Tasks 5 and 6
+static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc);   // antics played while holding the sign
+static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc);  // antics with the sign put down on the floor
 
 static RoamScene roamScene(uint32_t ms, const MascotLook& base, bool playful) {
   RoamScene sc{};

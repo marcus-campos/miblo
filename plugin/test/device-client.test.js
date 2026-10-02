@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { startFakeDevice } from './fakes/fake-device.js';
-import { DeviceClient } from '../lib/device-client.js';
+import { DeviceClient, isBusy, busyLine } from '../lib/device-client.js';
 
 test('info, pair, push, config and reset against the fake device', async () => {
   const dev = await startFakeDevice();
@@ -55,4 +55,81 @@ test('info sends the pairing token; a paired gadget tells anyone else only its i
   } finally {
     await dev.close();
   }
+});
+
+// ---- 503 busy (heapLowForRequest): refused before anything is done ----
+const quick = (delays) => new DeviceClient({ busyRetryMs: [1, 1], sleep: async (ms) => { delays?.push(ms); } });
+
+test('a busy (503) read is retried twice with a growing backoff', async () => {
+  const dev = await startFakeDevice({ busy: 2 });
+  const delays = [];
+  try {
+    const client = new DeviceClient({ sleep: async (ms) => { delays.push(ms); } });
+    const info = await client.info(dev.addr);
+    assert.equal(info.id, 'miblo-4f2a');
+    assert.equal(dev.state.busyHits, 2);
+    assert.deepEqual(delays, [400, 800]);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('still busy after the retries: rejects with status 503 that isBusy recognises', async () => {
+  const dev = await startFakeDevice({ busy: 10 });
+  try {
+    await assert.rejects(quick().info(dev.addr), (e) => e.status === 503 && isBusy(e));
+    assert.equal(dev.state.busyHits, 3);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('GET /api/remind is retried too', async () => {
+  const dev = await startFakeDevice({ busy: 1, busyPath: '/api/remind' });
+  try {
+    const token = await quick().pair(dev.addr, '4827', 'host');
+    const r = await quick().reminders(dev.addr, token);
+    assert.ok(Array.isArray(r.items));
+    assert.equal(dev.state.busyHits, 1);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair is retried on 503 (refused before the code was checked) and pairs once', async () => {
+  const dev = await startFakeDevice({ busy: 2, busyPath: '/api/pair' });
+  try {
+    const token = await quick().pair(dev.addr, '4827', 'host');
+    assert.equal(token, dev.state.token);
+    assert.equal(dev.state.tokens.length, 1);
+    assert.equal(dev.state.badCodes, 0);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair is never resent after no answer: the code may already be used up', async () => {
+  let calls = 0;
+  const client = new DeviceClient({
+    busyRetryMs: [1, 1], sleep: async () => {},
+    fetchImpl: async () => { calls++; throw new TypeError('fetch failed'); },
+  });
+  await assert.rejects(client.pair('10.0.0.9', '4827', 'host'), (e) => !e.status);
+  assert.equal(calls, 1);
+});
+
+test('a busy write is not retried (the caller decides, e.g. the alerts-only snapshot)', async () => {
+  const dev = await startFakeDevice();
+  try {
+    const token = await quick().pair(dev.addr, '4827', 'host');
+    Object.assign(dev.state, { busyLeft: 1, busyPath: '/api/config' });
+    await assert.rejects(quick().setConfig(dev.addr, token, { mode: 'limits' }), (e) => isBusy(e));
+    assert.equal(dev.state.busyHits, 1);
+  } finally {
+    await dev.close();
+  }
+});
+
+test('busyLine names the gadget', () => {
+  assert.equal(busyLine('Desk'), 'Desk is busy right now — try again in a moment.');
 });

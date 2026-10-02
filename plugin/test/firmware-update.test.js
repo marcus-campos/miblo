@@ -171,6 +171,24 @@ test('wrong code returns 2 and keeps the update open for a retry', async () => {
   } finally { await t.close(); }
 });
 
+test('a send after the upload window closed (5 min) says to open it again; nothing is flashed', async () => {
+  for (const otaCodeRequired of [true, false]) {
+    let now = 0;
+    const t = await setup({ device: { now: () => now, otaCodeRequired } });
+    try {
+      await t.cli('open', 'miblo-0000');
+      now += 300_000;
+      const late = await t.cli('send', 'miblo-0000', '1234');
+      assert.equal(late.code, 2, late.out);
+      assert.match(late.out, /update window on Miblo-0000 closed.*update open/);
+      assert.equal(t.dev.state.uploads.length, 0);
+      assert.equal(t.dev.state.otaBadCodes, 0);  // not a wrong code
+      await t.cli('open', 'miblo-0000');
+      assert.equal((await t.cli('send', 'miblo-0000', '1234')).code, 0);
+    } finally { await t.close(); }
+  }
+});
+
 test('lockout after repeated wrong codes reports retryAfter (on send and on open)', async () => {
   let now = 0;
   const t = await setup({ device: { now: () => now } });

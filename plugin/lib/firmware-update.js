@@ -229,6 +229,9 @@ export class FirmwareUpdater {
     try { data = JSON.parse(text); } catch { /* plain text */ }
     if (res.status === 403) fail(2, 'Wrong code.');
     if (res.status === 429) fail(2, lockedMsg(data));
+    if (res.status === 400 && data?.error === 'update not open') {
+      fail(2, `The update window on ${cleanName(d.name)} closed (it lasts 5 minutes); run \`update open\` again.`);
+    }
     if (isBusy(res)) fail(1, `${busyLine(cleanName(d.name))} Its previous firmware stays in place.`);
     if (!res.ok) fail(1, `Update failed: ${String(text).slice(0, 120) || `HTTP ${res.status}`}. The previous firmware stays in place.`);
 

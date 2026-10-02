@@ -73,6 +73,15 @@ void penguinFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-3 + x, 16 + b, 6, 5, 2, mc.earIn);
 }
 
-const PetDef kPetPenguin MIBLO_ROM = {penguinHead, penguinFront, {0, 0, 0, 0, 6, 14}, 0x3171, color::WHITE};
+// The Tail antic: a short stubby wedge low behind the feet, waddling up and down.
+static void penguinTail(const PetCtx& c) {
+  const int x = c.x, b = c.b, ty = 33 + 2 * petSwing(c) + b;
+  c.d.tri(24 + x, 26 + b, 24 + x, 39 + b, 42 + x, ty, c.mc.line);
+  c.d.tri(25 + x, 28 + b, 25 + x, 37 + b, 40 + x, ty, c.mc.skin);
+}
+
+// Its head is taller than the cat's: the hats a little higher.
+const PetDef kPetPenguin MIBLO_ROM = {penguinHead, penguinFront, {-4, 0, 0, 0, 6, 14}, 0x3171, color::WHITE,
+                                      penguinTail};
 
 }  // namespace screens

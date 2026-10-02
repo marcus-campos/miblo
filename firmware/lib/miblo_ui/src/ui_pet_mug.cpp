@@ -79,6 +79,18 @@ void mugFront(const PetCtx& c) {
   petPaws(c, mugHand);
 }
 
-const PetDef kPetMug MIBLO_ROM = {mugHead, mugFront, {0, 0, 2, 0, 6, 14}, 0x1C90, color::WHITE};
+// The Tail antic: no tail, so the steam curls off to the side into a little heart, rising.
+static void mugTail(const PetCtx& c) {
+  MascotPen& d = c.d;
+  const int f = (c.wag - 1) % 4, x = c.x + petSwing(c), b = c.b;
+  d.circle(18 + x, -38 + b, 1, c.mc.accent);  // the curl off the right wisp
+  d.circle(22 + x, -41 + b, 2, c.mc.accent);
+  const int hy = -38 - f + b;
+  d.circle(26 + x, hy, 3, c.mc.accent);
+  d.circle(32 + x, hy, 3, c.mc.accent);
+  d.tri(23 + x, hy + 1, 35 + x, hy + 1, 29 + x, hy + 7, c.mc.accent);
+}
+
+const PetDef kPetMug MIBLO_ROM = {mugHead, mugFront, {0, 0, 2, 0, 6, 14}, 0x1C90, color::WHITE, mugTail};
 
 }  // namespace screens

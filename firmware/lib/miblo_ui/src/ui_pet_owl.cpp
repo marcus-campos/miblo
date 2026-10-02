@@ -77,10 +77,21 @@ void owlFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-3 + x, 20 + b, 6, 6, 2, mc.earIn);
 }
 
+// The Tail antic: a short fan of tail feathers low behind it, flicking up and down.
+void owlTail(const PetCtx& c) {
+  const int x = c.x, b = c.b, w = 2 * petSwing(c);
+  for (int i = 0; i < 3; i++) {
+    const int tx = 50 - 2 * i + x, ty = 26 + 6 * i + w + b;
+    c.d.tri(30 + x, 30 + b, 30 + x, 38 + b, tx + 1, ty, c.mc.line);
+    c.d.tri(31 + x, 31 + b, 31 + x, 37 + b, tx - 1, ty, c.mc.skin);
+  }
+}
+
 }  // namespace
 
 // Bigger eyes, a little wider apart (glasses follow), headphones out on the wider body; amber
 // eyes, coral feet.
-const PetDef kPetOwl MIBLO_ROM = {owlHead, owlFront, {0, 0, 4, 0, 3, 16}, ui::color::AMBER, ui::color::CORAL};
+const PetDef kPetOwl MIBLO_ROM = {owlHead, owlFront, {0, 0, 4, 0, 3, 16}, ui::color::AMBER, ui::color::CORAL,
+                                  owlTail};
 
 }  // namespace screens

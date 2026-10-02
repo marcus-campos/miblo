@@ -131,7 +131,12 @@ uint32_t mascotPaintHash();
 // `table`: the table edge under the paws (left out when the mascot moves around the screen).
 // `box` false: no background square, so the cat can sit over something drawn first (the pet mode's
 // sign, with the paws on its edge); the caller then clears what the cat leaves behind.
-void deskMascot(int cx, int cy, const MascotLook& look, int half = 64, bool table = true, bool box = true);
+// `wag`: pet mode's Tail antic, its frame + 1 (0: not playing): a pet with its own tail
+// (PetDef::tail, ui_pet.h) draws it beside the box; the cat's is a prop the antic draws.
+void deskMascot(int cx, int cy, const MascotLook& look, int half = 64, bool table = true, bool box = true,
+                uint8_t wag = 0);
+// The current pet draws its own tail for the Tail antic (else the antic draws the cat's).
+bool petWags();
 void qr(const char* payload, int x, int y, int scale);
 
 // ---- system screens ----
@@ -222,13 +227,14 @@ void roamPosition(uint32_t ms, int& cx, int& cy);
 // first, picked up again after): a laptop and a bug, its tail, a stretch, licking a paw, a fly, a
 // ball of yarn, a mug pushed off the edge, a cardboard box, a little keyboard, a laser dot, soap
 // bubbles, a fish snack, a rubber duck, a coffee, a butterfly, a balloon, a paper plane, a fish
-// bowl, a deploy button and its rocket, a cucumber, a blanket.
+// bowl, a deploy button and its rocket, a cucumber, a blanket. Riff alone also plays a guitar
+// solo (Solo: one more in its rounds).
 enum class RoamAntic : uint8_t {
   None, Bat, Spill, Cursor, Nap, Sneeze, Peek, Heart, Glasses, Wave,
   Laptop, Tail, Stretch, Lick, Fly, Yarn, Mug, Box, Keys,
-  Laser, Bubbles, Fish, Duck, Coffee, Butterfly, Balloon, Plane, Bowl, Deploy, Cucumber, Blanket
+  Laser, Bubbles, Fish, Duck, Coffee, Butterfly, Balloon, Plane, Bowl, Deploy, Cucumber, Blanket, Solo
 };
-constexpr uint8_t kAnticCount = 30;
+constexpr uint8_t kAnticCount = 30;  // every pet's (Riff: kAnticCount + 1, with its Solo)
 constexpr uint32_t kAnticEveryMs = 30000;  // one antic at the start of every 30 s (from the second)
 constexpr uint32_t kAnticMs = 9000;        // with the sign in its paws, or playing away from it
 constexpr uint32_t kAnticPutMs = 1500;     // putting the sign down on the floor (or picking it up)
@@ -307,6 +313,7 @@ ui::Canvas& waitingGuard(ui::Canvas& inner);
 // what they drew over the band is not the screen covering it, so it must not trigger a repaint.
 void waitingOverlaysDrawn();
 // Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp).
-enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384 };
+// kGuitar: a little guitar held at the paws (Riff's fanfare and solo; the other pets ignore it).
+enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384, kGuitar = 32768 };
 
 }  // namespace screens

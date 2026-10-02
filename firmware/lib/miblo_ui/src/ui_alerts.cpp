@@ -189,6 +189,11 @@ void fanfare(Lang lang, const char* name, uint32_t durSec, uint32_t ms) {
   confettiBands(ms / 250);
   MascotLook k = deskLook(DeskMood::Celebrate, true, ms);
   k.dy = (ms % 600) < 300 ? -6 : 0;  // a hop every 600 ms (two looks: the cat redraws 3x a second)
+  if (mascotPet() == (uint8_t)miblo::Pet::Riff) {  // Riff rocks out instead: air guitar, headbanging
+    const bool down = (ms % 600) < 300;
+    k = MascotLook{0, (int8_t)(down ? 1 : -4), 0, 0, (ms / 1200) % 2 ? Eyes::Happy : Eyes::Closed,
+                   down ? Paws::Down : Paws::ReachRight, (uint16_t)(kGuitar | kMouthWide)};
+  }
   deskCat(R_BODY, X(120), Y(76), 38, k);
 
   char took[24], line[128];

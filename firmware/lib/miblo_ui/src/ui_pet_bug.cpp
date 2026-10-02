@@ -31,11 +31,14 @@ void bugHead(const PetCtx& c) {
   const PetColors& mc = c.mc;
   const int x = c.x, b = c.b;
   const bool fluffed = c.desk && (c.k.extras & kFluffed);
-  // The antennae (straight up when bristling), round tips in the accent.
+  // The antennae (straight up when bristling), round tips in the accent; the Tail antic waves the
+  // right one to and fro.
+  const int w = petSwing(c);
   for (int s = -1; s <= 1; s += 2) {
-    const int tx = fluffed ? s * 13 : s * 19;
-    stroke(c, s * 9, -20, tx, -37, mc.line);
-    d.circle(tx + x, -37 + b, 3, mc.accent);
+    const int tx = (fluffed ? s * 13 : s * 19) + (s > 0 ? 3 * w : 0);
+    const int ty = -37 + (s > 0 && w ? 2 - (w < 0 ? -w : w) : 0);
+    stroke(c, s * 9, -20, tx, ty, mc.line);
+    d.circle(tx + x, ty + b, 3, mc.accent);
   }
   // The shell: a dome behind the head, split by its seam.
   d.rrect(-39 + x, 1 + b, 78, 39, 20, mc.line);
@@ -95,8 +98,15 @@ void bugFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-2 + x, 11 + b, 4, 5, 2, mc.earIn);
 }
 
+// The Tail antic: swish marks beside the waving antenna's tip (head() waves it).
+void bugTail(const PetCtx& c) {
+  const int s = (c.wag - 1) % 2;
+  c.d.rect(29 + 2 * s + c.x, -44 + 3 * s + c.b, 2, 4, c.mc.accent);
+  c.d.rect(33 + 2 * s + c.x, -38 + 3 * s + c.b, 2, 3, c.mc.accent);
+}
+
 }  // namespace
 
-const PetDef kPetBug MIBLO_ROM = {bugHead, bugFront, {0, -8, 0, -12, -4, 14}, 0x2514, ui::color::RED};
+const PetDef kPetBug MIBLO_ROM = {bugHead, bugFront, {0, -8, 0, -12, -4, 14}, 0x2514, ui::color::RED, bugTail};
 
 }  // namespace screens

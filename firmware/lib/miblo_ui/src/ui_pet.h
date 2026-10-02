@@ -44,6 +44,12 @@
 //    lifted: typing). petPaws() places them where the cat's go; props in antics and visits are
 //    held at those spots.
 //  - PetAnchors: where the shared accessories sit on it (see below; the cat's are all 0).
+//  - tail(c), pet mode's Tail antic only (optional: none = the cat's curl, a prop of the antic):
+//    the pet's own tail, or what it plays with instead, its frame c.wag - 1 (4 a second; it stops
+//    at 2 while it is dizzy). Drawn before head() (behind the pet); head() and front() may move
+//    their own parts with c.wag (0 everywhere else). It may reach beside the box as far as the
+//    cat's tail does: x -64..64, y -48..47, with the antic turning it by k.dx -4..4
+//    (test_ui_look's test_every_pet_wags_its_own_tail). Keep it cheap: a few shapes.
 //
 // To add a pet: the kind in miblo_pet.h (at the end, never renumbered; kPetKinds), its file
 // ui_pet_<name>.cpp, its row in kPets (ui_base.cpp), its name (S::WebPet<Name>, miblo_i18n.h) in
@@ -105,17 +111,20 @@ struct PetCtx {
   int x, b;     // k.dx, k.dy: added to everything that moves with the pet
   bool detail;  // false: the small 48 px mascot (boot), fine details left out
   bool desk;    // the desk mascot (front() is drawn, kFluffed shows)
+  uint8_t wag;  // pet mode's Tail antic: its frame + 1 (0: not playing; see PetDef::tail)
 };
 
 // Where the shared accessories go on a pet, in design units relative to where they sit on the
 // cat (whose head is the rounded box x -32..32, y -20..32, eyes at (+-14, 6), chin at y 29).
 struct PetAnchors {
-  int8_t hatDy;     // hats, bunny ears, hearts: down by this (>= 0: they already reach the box top)
+  int8_t hatDy;     // hats, bunny ears, hearts: down by this; up when < 0 (-4 at most: a hop
+                    // then takes them no higher than the box top, they sink into it a little)
   int8_t phonesDy;  // headphones: down by this
   int8_t phonesDx;  // headphones' cups: outwards by this (the cat's at x +-30..39; <= 8)
   int8_t neckDy;    // the tie: down by this (the cat's knot at y 30)
   int8_t eyeY;      // glasses: the eyes' centre y (the cat's 6)
   int8_t eyeDx;     // glasses: the eyes at x +-eyeDx (the cat's 14); 0: one eye in the middle
+  int8_t darkEyes;  // 1: the eyes sit on something dark (the robot's screen): light glasses rims
 };
 #define MIBLO_CAT_ANCHORS {0, 0, 0, 0, 6, 14}
 // The cat's PetDef fields after its anchors (for pets not drawn yet): green eyes, no accent.
@@ -127,6 +136,7 @@ struct PetDef {
   PetAnchors at;
   uint16_t eye;     // Auto eye colour (the cat's green)
   uint16_t accent;  // Auto accent colour (the pet's own extra; unused by the cat)
+  void (*tail)(const PetCtx& c);  // pet mode's Tail antic (nullptr: the cat's curl), see above
 };
 
 // ---- Shared pieces a pet may reuse (the cat's own) ----
@@ -143,6 +153,8 @@ typedef void (*PetPawFn)(const PetCtx& c, int px, int py, int pw, int ph, int r)
 void petPadPaw(const PetCtx& c, int px, int py, int pw, int ph, int r);
 // Both front paws in k.paws' pose, where the cat's go, drawn with `paw`.
 void petPaws(const PetCtx& c, PetPawFn paw);
+// The Tail antic's swing, -2..2 and back with c.wag (0 when it is not playing), like the cat's.
+int petSwing(const PetCtx& c);
 
 // The cat (ui_pet_cat.cpp): the default and the stand-in for a pet not drawn yet.
 void catHead(const PetCtx& c);

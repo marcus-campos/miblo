@@ -86,6 +86,8 @@ static void test_every_pet_stays_in_its_box() {
       {0, -3, 0, 0, Eyes::Closed, Paws::Lick, (uint16_t)(screens::kTongue | screens::kGrumpy)},
       {0, 0, 0, 3, Eyes::Open, Paws::TapLeft, screens::kCrossEyed},
       {0, 0, 0, 3, Eyes::Wide, Paws::TapRight, 0},
+      {0, -5, 0, 0, Eyes::Closed, Paws::ReachRight, (uint16_t)(screens::kGuitar | screens::kMouthWide)},
+      {0, 1, 0, 0, Eyes::Happy, Paws::Down, screens::kGuitar},
   };
   FakeCanvas fc({240, 240});
   screens::bind(fc);
@@ -118,6 +120,74 @@ static void test_every_pet_stays_in_its_box() {
       }
     }
   }
+}
+
+// Pet mode's Tail antic: every pet but the cat draws its own (the cat's curl is a prop, drawn by
+// the antic), and only then; it stays within the reach the cat's tail has beside it (x -64..64,
+// y -48..47 design units), in the antic's looks (a turn: dx +-4), in every frame.
+static void test_every_pet_wags_its_own_tail() {
+  const MascotLook looks[] = {
+      {0, 0, 3, -2, Eyes::Open, Paws::Down, 0},
+      {-4, 0, 3, 0, Eyes::Wide, Paws::ReachLeft, 0},
+      {4, 0, 3, 0, Eyes::Wide, Paws::ReachRight, 0},
+      {0, 0, 0, 0, Eyes::Dizzy, Paws::Down, screens::kStars},
+  };
+  FakeCanvas fc({96, 72});  // half 36: 0.75 px a unit, the reach exactly
+  screens::bind(fc);
+  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+    screens::MascotPaint p;
+    p.pet = pet;
+    screens::setMascotPaint(p);
+    for (const auto& k : looks) {
+      fc.clearLog();
+      screens::deskMascot(48, 36, k, 36, false, false);
+      const int still = fc.calls;
+      for (uint8_t f = 1; f <= 32; f++) {
+        fc.clearLog();
+        screens::deskMascot(48, 36, k, 36, false, false, f);
+        if (pet == 0) TEST_ASSERT_EQUAL_INT(still, fc.calls);
+        else TEST_ASSERT_TRUE_MESSAGE(fc.calls > still, "a pet's tail antic draws its own tail");
+      }
+    }
+    char msg[32];
+    snprintf(msg, sizeof(msg), "pet %u: tail out of reach", pet);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, msg);
+  }
+}
+
+// Riff's guitar (kGuitar: its fanfare and its solo) is Riff's alone; other pets ignore the flag.
+static void test_only_riff_plays_guitar() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  const MascotLook plain{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
+  MascotLook rock = plain;
+  rock.extras = screens::kGuitar;
+  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+    screens::setMascotPet(pet);
+    fc.clearLog();
+    screens::deskMascot(120, 120, plain, 48, false, true);
+    const int without = fc.calls;
+    fc.clearLog();
+    screens::deskMascot(120, 120, rock, 48, false, true);
+    if (pet == (uint8_t)Pet::Riff) TEST_ASSERT_TRUE(fc.calls > without);
+    else TEST_ASSERT_EQUAL_INT(without, fc.calls);
+  }
+}
+
+// Glasses take light rims where the eyes sit on something dark (the robot's screen); the
+// penguin's hats sit higher (a negative hatDy), on top of its taller head.
+static void test_glasses_and_hats_fit_the_pet() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  const MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+  screens::setMascotAccessory((uint8_t)Accessory::Glasses);
+  screens::setMascotPet((uint8_t)Pet::Robot);
+  screens::deskMascot(120, 120, k, 48, false, true);
+  TEST_ASSERT_EQUAL(ui::color::MUTED, fc.colorAt(120 - 12 - 10, 120 + 4 - 6 + 5));  // a lens' side rim
+  screens::setMascotAccessory((uint8_t)Accessory::SantaHat);
+  screens::setMascotPet((uint8_t)Pet::Penguin);
+  screens::deskMascot(120, 120, k, 48, false, true);
+  TEST_ASSERT_EQUAL(ui::color::WHITE, fc.colorAt(120, 120 - 25));  // the brim, above the cat's
 }
 
 // The pet's colours: Auto slots (every one by default) come from the preset, or from a custom
@@ -276,6 +346,9 @@ int main(int, char**) {
   RUN_TEST(test_every_look_stays_in_its_box);
   RUN_TEST(test_every_pet_stays_in_its_box);
   RUN_TEST(test_pet_colours);
+  RUN_TEST(test_every_pet_wags_its_own_tail);
+  RUN_TEST(test_only_riff_plays_guitar);
+  RUN_TEST(test_glasses_and_hats_fit_the_pet);
   RUN_TEST(test_pieces_are_drawn);
   RUN_TEST(test_tie_and_mood_redraw_the_cat);
   RUN_TEST(test_black_cat_crosses_inside_the_screen);

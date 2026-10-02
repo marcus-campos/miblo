@@ -61,9 +61,18 @@ void dogFront(const PetCtx& c) {
   }
 }
 
+// The Tail antic: a stubby tail up behind it, wagging fast (a side every frame).
+void dogTail(const PetCtx& c) {
+  const int x = c.x, b = c.b, tx = ((c.wag - 1) % 2 ? 48 : 38) + x;
+  c.d.circle(tx, 15 + b, 5, c.mc.line);  // the outline, then the tail over it
+  c.d.tri(26 + x, 20 + b, 30 + x, 38 + b, tx + 2, 13 + b, c.mc.line);
+  c.d.tri(28 + x, 22 + b, 31 + x, 36 + b, tx + 1, 15 + b, c.mc.skin);
+  c.d.circle(tx, 15 + b, 4, c.mc.skin);
+}
+
 }  // namespace
 
 // Brown eyes, a red collar.
-const PetDef kPetDog MIBLO_ROM = {dogHead, dogFront, MIBLO_CAT_ANCHORS, 0xA285, ui::color::RED};
+const PetDef kPetDog MIBLO_ROM = {dogHead, dogFront, MIBLO_CAT_ANCHORS, 0xA285, ui::color::RED, dogTail};
 
 }  // namespace screens

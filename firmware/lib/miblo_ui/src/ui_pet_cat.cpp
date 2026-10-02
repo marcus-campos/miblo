@@ -99,6 +99,12 @@ void petPadPaw(const PetCtx& c, int px, int py, int pw, int ph, int r) {
   for (int t = 1; t <= 2; t++) c.d.rect(px + x + pw * t / 3, py + b + 1, 1, ph / 2, c.mc.line);
 }
 
+int petSwing(const PetCtx& c) {
+  if (!c.wag) return 0;
+  const int f = (c.wag - 1) % 8;
+  return (f < 4 ? f : 8 - f) - 2;
+}
+
 void petPaws(const PetCtx& c, PetPawFn paw) {
   switch (c.k.paws) {
     case Paws::Down:

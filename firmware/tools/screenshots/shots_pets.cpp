@@ -141,7 +141,7 @@ void colors(uint8_t pet, const std::string& name) {
 
 // The first antic of kind `a` from pet mode's start, `into` ms into it (0: none).
 uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
-  for (uint32_t c = 1; c <= 2 * screens::kAnticCount; c++) {
+  for (uint32_t c = 1; c <= 2 * (screens::kAnticCount + 1); c++) {
     const uint32_t t0 = c * screens::kAnticEveryMs;
     if (screens::roamAntic(t0, nullptr) != a) continue;
     return t0 + (screens::anticOnSign(a) ? 0 : screens::kAnticPutMs) + into;
@@ -178,7 +178,13 @@ void renderPets(miblo::Lang L) {
     } kAntics[] = {{screens::RoamAntic::Stretch, 4000, "stretch"},
                    {screens::RoamAntic::Nap, 4000, "nap"},
                    {screens::RoamAntic::Coffee, 4000, "coffee"},
-                   {screens::RoamAntic::Peek, 3750, "peek"}};
+                   {screens::RoamAntic::Peek, 3750, "peek"},
+                   {screens::RoamAntic::Tail, 1000, "tail"},
+                   {screens::RoamAntic::Tail, 2000, "tail-2"},
+                   {screens::RoamAntic::Tail, 4400, "tail-chase"},
+                   {screens::RoamAntic::Tail, 7000, "tail-dizzy"},
+                   {screens::RoamAntic::Solo, 2600, "solo"},
+                   {screens::RoamAntic::Solo, 5000, "solo-2"}};
     for (const auto& a : kAntics) {
       const uint32_t at = anticAt(a.a, a.into);
       if (!at) continue;
@@ -198,6 +204,13 @@ void renderPets(miblo::Lang L) {
       save(s, n + "visit");
     }
     { Shot s; screens::boot(L, 0); save(s, n + "boot"); }
+    if (pet == (uint8_t)miblo::Pet::Riff) {  // its own long-task fanfare: air guitar
+      for (uint32_t ms : {650u, 1500u}) {
+        Shot s;
+        screens::fanfare(L, "app-mobile", 23 * 60 + 7, ms);
+        save(s, n + "fanfare" + (ms == 650 ? "" : "-2"));
+      }
+    }
   }
   plain(0);
 }

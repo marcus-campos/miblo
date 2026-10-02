@@ -730,9 +730,9 @@ void loop() {
     firstFrame = true;  // the frame went away: redraw the screen under it next frame
   }
   frameShown = fc;
-  if (fc != miblo::FrameColor::None) screens::stateFrame(fc);
-  if (overlays && ctx.meeting.on()) screens::meetingBadge(lang);
   // A session waiting for you is never hidden by daily life: an amber mark on the daily screens.
+  // Drawn first: the frame and the badge go over it, and what they draw on its band is ignored
+  // (waitingOverlaysDrawn), so the band repaints only when the screen itself covers it.
   const bool mark = miblo::waitingMarkOn(screen, counts.pending);
   if (mark) {
     const char* name = "";
@@ -750,6 +750,9 @@ void loop() {
     firstFrame = true;  // nobody waits any more: redraw the screen under the band
   }
   markShown = mark;
+  if (fc != miblo::FrameColor::None) screens::stateFrame(fc);
+  if (overlays && ctx.meeting.on()) screens::meetingBadge(lang);
+  screens::waitingOverlaysDrawn();
 }
 
 }  // namespace app

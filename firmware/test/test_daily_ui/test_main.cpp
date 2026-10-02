@@ -70,9 +70,32 @@ static void test_waiting_mark_redraws_only_when_needed() {
   screens::bind(fc);
 }
 
+// The overlays drawn after the mark every frame (the state frame lines, the meeting badge) reach
+// the band too; they are part of the same frame, so they must not make the mark repaint forever.
+static void test_overlays_after_the_mark_do_not_repaint_it() {
+  FakeCanvas fc({240, 240});
+  screens::bind(screens::waitingGuard(fc));
+  screens::reset();
+  for (int frame = 0; frame < 5; frame++) {
+    const int before = fc.calls;
+    screens::waitingMark(miblo::Lang::En, "checkout", 1);
+    const bool painted = fc.calls > before;
+    TEST_ASSERT_TRUE(frame == 0 ? painted : !painted);
+    screens::canvas().fillRect(0, 2, 240, 2, ui::color::AMBER);  // a frame line across the top
+    screens::waitingOverlaysDrawn();
+  }
+  // The screen itself drawing over the band still brings it back.
+  screens::canvas().text(120, 12, "14:32", ui::Font::Body, ui::color::TEXT, ui::Align::Center, 60);
+  const int before = fc.calls;
+  screens::waitingMark(miblo::Lang::En, "checkout", 1);
+  TEST_ASSERT_TRUE(fc.calls > before);
+  screens::bind(fc);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_waiting_mark_is_amber_and_on_screen);
   RUN_TEST(test_waiting_mark_redraws_only_when_needed);
+  RUN_TEST(test_overlays_after_the_mark_do_not_repaint_it);
   return UNITY_END();
 }

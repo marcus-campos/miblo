@@ -122,6 +122,8 @@ static GuardCanvas g_guard;
 static bool g_guarded = false;     // the bound canvas is g_guard
 static uint32_t g_markHash = 0;    // what the band shows
 
+void waitingOverlaysDrawn() { g_guard.takeTouched(); }
+
 ui::Canvas& waitingGuard(ui::Canvas& inner) {
   g_guard.wrap(inner);
   g_guarded = true;

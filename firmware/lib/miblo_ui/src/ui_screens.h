@@ -275,6 +275,9 @@ void waitingMark(Lang lang, const char* name, uint8_t pending);
 // Wraps `inner` (app.cpp binds the result) so the waiting mark knows when anything was drawn under
 // its band. One wrapper for the whole firmware; calling it again rewraps another canvas.
 ui::Canvas& waitingGuard(ui::Canvas& inner);
+// Call after the overlays that follow the mark in the same frame (state frame, meeting badge):
+// what they drew over the band is not the screen covering it, so it must not trigger a repaint.
+void waitingOverlaysDrawn();
 // Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp, track F).
 enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384 };
 

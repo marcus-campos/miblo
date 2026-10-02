@@ -393,6 +393,7 @@ void loop() {
     // A change still waiting for its spaced write (SaveRetry::kMinGapMs) is not lost.
     if (configSave.pending()) storage::saveConfig(ctx.cfg);
     if (notesSave.pending()) storage::saveNotes(ctx.notes);
+    if (ctx.tokensSave.pending()) storage::saveTokens(ctx.tokens);  // a pairing or a rename
     ESP.restart();
   }
   ctx.presence.update(now);  // expire old brute-force lockouts before the clock can wrap

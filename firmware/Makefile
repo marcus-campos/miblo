@@ -22,6 +22,9 @@
 #   make fuzz-repro FUZZ_TARGET=snapshot FILE=.pio/fuzz/out/crash-snapshot-123.bin   replay a crash
 #   make validate                   asan + fuzz + the plugin's fuzz tests (the pre-release audit)
 #   make validate-clean             delete the sanitizer/fuzz build output (.pio/native_asan, .pio/fuzz)
+#   make stack                      worst-case loop() stack (4 KB) through every HTTP handler, screen and
+#                                   save, from the compiler's call graph (tools/stack/stack_report.py);
+#                                   fails over 3 KB. Builds into .pio/stack (make stack-clean deletes it)
 #   make animations                 looping clips of the desk mascot, disconnected and alerts, as
 #                                   mp4 (960x960) + gif (480x480) in dist/animations/<lang>/ (needs ffmpeg)
 #   make animations LANGS="en es"   other languages (default: en pt-BR)
@@ -81,7 +84,7 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: asan fuzz fuzz-build fuzz-repro validate validate-clean help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: asan fuzz fuzz-build fuzz-repro validate validate-clean stack stack-clean help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
@@ -230,3 +233,12 @@ validate: asan fuzz
 
 validate-clean:
 	rm -rf .pio/build/native_asan .pio/fuzz
+
+# The firmware built once more with the compiler's stack and call graph output, apart from the
+# normal build (the flags never reach a release image).
+stack:
+	PLATFORMIO_BUILD_DIR=.pio/stack PLATFORMIO_BUILD_FLAGS="-fstack-usage -fcallgraph-info=su" $(PIO) run -e $(BOARD)
+	$(PYTHON) tools/stack/stack_report.py .pio/stack/$(BOARD)
+
+stack-clean:
+	rm -rf .pio/stack

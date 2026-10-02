@@ -1574,7 +1574,7 @@ static void test_daily_lines_fit_any_resolution() {
       strcpy(snap.sessions[1].det, "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
       screens::reset();
       screens::overview(L, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
-      TEST_ASSERT_TRUE(fc.drew("9:59:59"));
+      TEST_ASSERT_TRUE(fc.drew("9h59"));
       screens::reset();
       screens::sessions(L, snap, pager, 0, clockAt(NOW), false);
       attention();
@@ -1698,8 +1698,183 @@ static void test_pet_sign_countdown() {
   screens::setDeskExtras("", "");
 }
 
+// ---------------- integration fixes ----------------
+
+// Meeting mode (screens::setAnonymous): no project name, tool or command on any screen, whatever
+// the discreet flag says; the state lines stay ("1 WAITING", "permission", "finished 2m ago").
+static void test_anonymous_hides_names_on_every_screen() {
+  static const char* const kSecret[] = {"api-server", "infra", "front-app", "docs", "worker", "search",
+                                        "Bash", "npm", "Header.tsx", "Grep", "migrate"};
+  const ui::ScreenSpec specs[] = {{240, 240}, {170, 320}};
+  screens::setAnonymous(true);
+  for (const auto& sp : specs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      const Lang L = (Lang)l;
+      for (int screen = 0; screen < 9; screen++) {
+        FakeCanvas fc(sp);
+        screens::bind(fc);
+        Pager pager(3, 5000);
+        screens::reset();
+        switch (screen) {
+          case 0: attention(); screens::overview(L, snap, pager, 0, clockAt(NOW), false); break;
+          case 1:
+            working();
+            snap.sessions[1].ts = NOW - 4000;  // a long Bash command
+            screens::overview(L, snap, pager, 0, clockAt(NOW), false);
+            break;
+          case 2: idle(); screens::overview(L, snap, pager, 0, clockAt(NOW), false); break;
+          case 3: attention(); screens::sessions(L, snap, pager, 0, clockAt(NOW), false); break;
+          case 4: working(); screens::sessions(L, snap, pager, 0, clockAt(NOW), false); break;
+          case 5: idle(); screens::summary(L, snap, clockAt(NOW)); break;
+          case 6: idle(); screens::limits(L, snap, clockAt(NOW), NOW + 600); break;
+          case 7: idle(); screens::desk(L, snap, clockAt(NOW), 0, NOW + 600); break;
+          case 8: idle(); screens::roam(L, snap, clockAt(NOW), 0, screens::DeskMood::Calm); break;
+        }
+        TEST_ASSERT_TRUE(fc.texts.size() > 0);
+        for (const char* secret : kSecret) {
+          if (fc.drew(secret)) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "screen %d lang %d drew %s", screen, (int)l, secret);
+            TEST_FAIL_MESSAGE(msg);
+          }
+        }
+        if (screen == 0 && L == Lang::En) TEST_ASSERT_TRUE(fc.drew("2 WAITING"));
+        if (screen == 2 && L == Lang::En) TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
+        if (screen == 8 && L == Lang::En) TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
+      }
+    }
+  }
+  screens::setAnonymous(false);
+  // Off again: the names are back.
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  attention();
+  screens::reset();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false);
+  TEST_ASSERT_TRUE(fc.drew("api-server"));
+  TEST_ASSERT_TRUE(fc.drew("permission · Bash"));
+}
+
+// The Desk's settings QR only when it gets at least 2 px a module (a 1 px QR can't be scanned):
+// on the 170x320 panel the second clock keeps the corner.
+static void test_desk_qr_needs_two_pixel_modules() {
+  idle();
+  screens::setSecondClock("Lisboa", "19:32");
+  screens::setDeskExtras("", "http://192.168.100.200/");
+  {
+    FakeCanvas fc({170, 320});
+    screens::bind(fc);
+    screens::reset();
+    screens::desk(Lang::En, snap, clockAt(NOW), 0);
+    TEST_ASSERT_TRUE(fc.drew("Lisboa"));
+    TEST_ASSERT_TRUE(fc.drew("19:32"));
+    TEST_ASSERT_TRUE(fc.colorAt(165, 6) != ui::color::WHITE);  // no quiet zone in the corner
+  }
+  {
+    FakeCanvas fc({240, 240});
+    screens::bind(fc);
+    screens::reset();
+    screens::desk(Lang::En, snap, clockAt(NOW), 0);
+    TEST_ASSERT_FALSE(fc.drew("Lisboa"));
+    TEST_ASSERT_EQUAL_INT(ui::color::WHITE, fc.colorAt(232, 6));
+  }
+  screens::setSecondClock("", "");
+  screens::setDeskExtras("", "");
+}
+
+// The Limits forecast is never cut (the time would go): when "at this pace, runs out at Fri 15:40"
+// does not fit, the short "runs out ~Fri 15:40" takes its place. Every language, every resolution,
+// today and another day.
+static void test_limits_forecast_never_cut() {
+  setenv("TZ", "<-03>3", 1);
+  tzset();
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      for (uint32_t ahead : {80u * 60u, 26u * 3600u}) {
+        FakeCanvas fc(sp);
+        screens::bind(fc);
+        idle();
+        screens::reset();
+        screens::limits((Lang)l, snap, clockAt(NOW), NOW + ahead);
+        const char* hhmm = ahead < 3600 * 2 ? "15:52" : "16:32";
+        bool found = false;
+        for (size_t i = 0; i < fc.texts.size(); i++) {
+          const std::string& tx = fc.texts[i];
+          // The forecast: the line with its time (at the end, but in Chinese "按当前速度 15:52 用完").
+          if (tx.size() <= 5 || tx.find(hhmm) == std::string::npos) continue;
+          found = true;
+          char msg[96];
+          snprintf(msg, sizeof(msg), "lang %d %dx%d: %s", (int)l, sp.w, sp.h, tx.c_str());
+          TEST_ASSERT_FALSE_MESSAGE(fc.cut[i], msg);
+        }
+        TEST_ASSERT_TRUE(found);
+      }
+    }
+  }
+}
+
+// A long command over an hour: "1h02" (the house format for hours), changing once a minute.
+static void test_long_command_over_an_hour() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  working();
+  snap.sessions[1].ts = NOW - 3725;
+  screens::reset();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("1h02"));
+  TEST_ASSERT_FALSE(fc.drew("1:02:05"));
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW + 1), false, 0);
+  TEST_ASSERT_EQUAL_INT(0, (int)fc.texts.size());  // same minute: nothing redrawn
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW + 60), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("1h03"));
+}
+
+// Calls a frame of a visit makes: our cat alone (walking out to a friend's), or host and guest.
+static int visitCalls(bool both) {
+  FakeCanvas fc({240, 240});
+  fc.layerSupported = false;  // one pass, no strips
+  screens::bind(fc);
+  idle();
+  miblo::VisitView v{};
+  v.role = both ? miblo::VisitRole::Host : miblo::VisitRole::Visitor;
+  strcpy(v.name, "Nina");
+  v.mascot = 1;
+  v.gift = miblo::Gift::Coffee;
+  v.ms = both ? miblo::kVisitArriveMs + 100 : 100;
+  screens::reset();
+  fc.clearLog();
+  screens::visit(Lang::En, snap, clockAt(NOW), v, 0);
+  return fc.calls;
+}
+
+// Friends' cats don't wear our meeting tie or our tired eye bags (they are ours, not theirs);
+// ours come back after the guests are drawn.
+static void test_guests_wear_no_tie_or_eye_bags() {
+  const int alone = visitCalls(false), both = visitCalls(true);
+  screens::setMascotTie(true);
+  screens::setCatMood((uint8_t)miblo::CatMood::Tired);
+  const int aloneDressed = visitCalls(false), bothDressed = visitCalls(true);
+  TEST_ASSERT_TRUE(aloneDressed > alone);
+  // Only our cat changed (dressed guests would add as much again, each).
+  TEST_ASSERT_TRUE(bothDressed - both <= aloneDressed - alone);
+  TEST_ASSERT_TRUE(screens::mascotTie());
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)miblo::CatMood::Tired, screens::catMood());
+  screens::setMascotTie(false);
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_anonymous_hides_names_on_every_screen);
+  RUN_TEST(test_desk_qr_needs_two_pixel_modules);
+  RUN_TEST(test_limits_forecast_never_cut);
+  RUN_TEST(test_long_command_over_an_hour);
+  RUN_TEST(test_guests_wear_no_tie_or_eye_bags);
   RUN_TEST(test_playful_cat_plays_more_often);
   RUN_TEST(test_tired_cat_yawns);
   RUN_TEST(test_desk_countdown_and_qr);

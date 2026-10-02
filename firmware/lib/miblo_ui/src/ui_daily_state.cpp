@@ -9,6 +9,7 @@
 namespace screens {
 
 static bool g_tie = false;
+static bool g_anonymous = false;
 static uint8_t g_mood = 0;
 static char g_label[37] = "";      // second clock: Config::tz2Label's size
 static char g_hhmm[6] = "";        // "23:59"
@@ -17,6 +18,9 @@ static char g_qr[32] = "";         // "http://192.168.100.200/"
 
 void setMascotTie(bool on) { g_tie = on; }
 bool mascotTie() { return g_tie; }
+
+void setAnonymous(bool on) { g_anonymous = on; }
+bool anonymous() { return g_anonymous; }
 
 void setCatMood(uint8_t mood) { g_mood = mood; }
 uint8_t catMood() { return g_mood; }

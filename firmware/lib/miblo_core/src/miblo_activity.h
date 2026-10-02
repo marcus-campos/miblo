@@ -32,6 +32,8 @@ void activityText(Lang lang, const char* tool, const char* det, bool discreet, c
 // Status line for a session, for the lists:
 //   perm → "permission · Bash", question → "question", done → "finished", idle → "idle",
 //   running → activityText(...).
-void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, size_t cap);
+// `anonymous` (meeting mode): no tool name and no command either: "permission", and a running
+// session shows its verb ("Editing"), the background wait or compaction, else "Working".
+void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, size_t cap, bool anonymous = false);
 
 }  // namespace miblo

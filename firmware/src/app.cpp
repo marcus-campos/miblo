@@ -403,8 +403,11 @@ void loop() {
   ctx.alerts.setModifiers({ctx.cfg.insist, ctx.meeting.on(),
                            ctx.focus.phase() == miblo::FocusPhase::Focus && ctx.cfg.focusQuiet});
   const bool discreet = ctx.cfg.discreet || ctx.meeting.on();  // meeting mode hides commands too
-  if (ctx.meeting.on() != screens::mascotTie()) {  // the tie goes on/off every mascot
+  // The tie goes on/off every mascot, and the names off/on every screen: everything is redrawn
+  // (the regions that carry a name hash it, so none keeps a stale one).
+  if (ctx.meeting.on() != screens::mascotTie() || ctx.meeting.on() != screens::anonymous()) {
     screens::setMascotTie(ctx.meeting.on());
+    screens::setAnonymous(ctx.meeting.on());
     firstFrame = true;
   }
 

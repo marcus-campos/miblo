@@ -184,6 +184,31 @@ static void test_session_line() {
   TEST_ASSERT_EQUAL_STRING("Bash", b);
 }
 
+// Anonymous (meeting mode): no tool name and no command, only the state or a generic verb.
+static void test_session_line_anonymous() {
+  SessionRow r{};
+  strcpy(r.tool, "Bash");
+  strcpy(r.det, "npm run migrate");
+  char b[200];
+  r.st = SessionState::Perm;
+  sessionLine(Lang::En, r, false, b, sizeof(b), true);
+  TEST_ASSERT_EQUAL_STRING("permission", b);
+  r.st = SessionState::Running;
+  sessionLine(Lang::En, r, false, b, sizeof(b), true);
+  TEST_ASSERT_EQUAL_STRING("Working", b);
+  strcpy(r.tool, "mcp__github__create_pr");
+  sessionLine(Lang::PtBR, r, false, b, sizeof(b), true);
+  TEST_ASSERT_EQUAL_STRING("Trabalhando", b);
+  strcpy(r.tool, "Edit");
+  strcpy(r.det, "Header.tsx");
+  sessionLine(Lang::En, r, false, b, sizeof(b), true);
+  TEST_ASSERT_EQUAL_STRING("Editing", b);  // a verb names no tool
+  strcpy(r.tool, "_wait_agents");
+  strcpy(r.det, "2");
+  sessionLine(Lang::En, r, false, b, sizeof(b), true);
+  TEST_ASSERT_EQUAL_STRING("Waiting on 2 agents", b);
+}
+
 // The language a web page is drawn in. Before pairing (setup) the automatic mode follows the
 // browser and the gadget keeps it (store = true when it changes); a paired gadget draws the page in
 // the browser's language and never changes or saves anything because of a page view.
@@ -216,5 +241,6 @@ int main() {
   RUN_TEST(test_background_wait_is_localized);
   RUN_TEST(test_compaction_is_localized);
   RUN_TEST(test_session_line);
+  RUN_TEST(test_session_line_anonymous);
   return UNITY_END();
 }

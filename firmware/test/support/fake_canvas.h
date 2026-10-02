@@ -33,6 +33,7 @@ class FakeCanvas : public ui::Canvas {
   // Text: 6 px per character, 10 px tall above the baseline.
   int text(int x, int y, const char* s, ui::Font f, uint16_t, ui::Align a, int maxW) override {
     int w = textWidth(s, ui::Font::Small);
+    cut.push_back(w > maxW);
     if (w > maxW) w = maxW;
     const int left = a == ui::Align::Left ? x : (a == ui::Align::Center ? x - w / 2 : x - w);
     box(left, y - 10, w, 10);
@@ -98,6 +99,7 @@ class FakeCanvas : public ui::Canvas {
     texts.clear();
     fonts.clear();
     textBgs.clear();
+    cut.clear();
     arcs.clear();
     calls = 0;
     layerCalls = 0;
@@ -110,6 +112,7 @@ class FakeCanvas : public ui::Canvas {
   std::vector<std::string> texts;
   std::vector<ui::Font> fonts;
   std::vector<int> textBgs;  // colour under each text (what a transparent font shows around it)
+  std::vector<bool> cut;     // each text was wider than its box (the real canvas ends it with "...")
   std::vector<int> arcs;
   int calls = 0;
   int outOfBounds = 0;

@@ -38,9 +38,12 @@ struct Config {
   uint16_t nightTo = 7 * 60;     // 0..1439, != nightFrom; may be earlier than nightFrom (overnight)
   uint8_t nightBrightness = 10;  // %, 1..100 (never brighter than `brightness`)
   // Blue light filter (warmer colours), on its own schedule, separate from night dimming:
-  // 0 off, 1 always, 2 between blueFrom and blueTo. Strength 1..3 (ui::warmColor).
+  // 0 off, 1 always, 2 between blueFrom and blueTo. Strength 1..100 % (ui::warmGains); the
+  // default is the old "medium" level. Saved with its nearest old level too ("blueLevel" 1..3,
+  // what firmware before the slider reads); a config with only blueLevel loads at that level's
+  // strength (blueStrengthForLevel).
   uint8_t blueFilter = 0;
-  uint8_t blueLevel = 2;
+  uint8_t blueStrength = 63;
   uint16_t blueFrom = 21 * 60;   // local minute of the day, 0..1439
   uint16_t blueTo = 7 * 60;      // 0..1439, != blueFrom; may be earlier than blueFrom (overnight)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
@@ -101,7 +104,11 @@ RotationTiming rotationTiming(const Config& cfg);
 // night mode then). In the night window it is min(nightBrightness, brightness).
 bool nightActive(const Config& cfg, int minuteOfDay);
 uint8_t brightnessAt(const Config& cfg, int minuteOfDay);
-// Blue light filter strength for the local time (0 = none): blueLevel when the filter is always
+// The blue light filter's old three strengths (blueLevel 1..3, a select before the slider) as the
+// 1..100 % strengths with exactly their colours (31, 63, 100), and back: the nearest old level.
+uint8_t blueStrengthForLevel(uint8_t level);
+uint8_t blueLevelForStrength(uint8_t strength);
+// Blue light filter strength for the local time (0 = none): blueStrength when the filter is always
 // on, or scheduled and inside [blueFrom, blueTo). An unknown time (-1) is never inside a schedule.
 uint8_t warmthAt(const Config& cfg, int minuteOfDay);
 

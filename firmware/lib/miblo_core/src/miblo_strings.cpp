@@ -139,9 +139,6 @@ static const char kEn[] MIBLO_ROM =
     "Starts at\0"  // WebBlueFrom
     "Ends at\0"  // WebBlueTo
     "Strength\0"  // WebBlueLevel
-    "Low\0"  // WebBlueLight
-    "Medium\0"  // WebBlueMedium
-    "High\0"  // WebBlueStrong
     "LIMIT FREED\0"  // LimitFreed
     "runs out in %s\0"  // RunsOutIn
     "TODAY\0"  // TodayTitle
@@ -415,9 +412,6 @@ static const char kPtBR[] MIBLO_ROM =
     "Começa às\0"  // WebBlueFrom
     "Termina às\0"  // WebBlueTo
     "Intensidade\0"  // WebBlueLevel
-    "Leve\0"  // WebBlueLight
-    "Média\0"  // WebBlueMedium
-    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERADO\0"  // LimitFreed
     "acaba em %s\0"  // RunsOutIn
     "HOJE\0"  // TodayTitle
@@ -691,9 +685,6 @@ static const char kPtPT[] MIBLO_ROM =
     "Começa às\0"  // WebBlueFrom
     "Termina às\0"  // WebBlueTo
     "Intensidade\0"  // WebBlueLevel
-    "Leve\0"  // WebBlueLight
-    "Média\0"  // WebBlueMedium
-    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERTADO\0"  // LimitFreed
     "acaba em %s\0"  // RunsOutIn
     "HOJE\0"  // TodayTitle
@@ -967,9 +958,6 @@ static const char kEs[] MIBLO_ROM =
     "Empieza a las\0"  // WebBlueFrom
     "Termina a las\0"  // WebBlueTo
     "Intensidad\0"  // WebBlueLevel
-    "Suave\0"  // WebBlueLight
-    "Media\0"  // WebBlueMedium
-    "Fuerte\0"  // WebBlueStrong
     "LÍMITE LIBERADO\0"  // LimitFreed
     "se agota en %s\0"  // RunsOutIn
     "HOY\0"  // TodayTitle
@@ -1243,9 +1231,6 @@ static const char kFr[] MIBLO_ROM =
     "Début\0"  // WebBlueFrom
     "Fin\0"  // WebBlueTo
     "Intensité\0"  // WebBlueLevel
-    "Légère\0"  // WebBlueLight
-    "Moyenne\0"  // WebBlueMedium
-    "Forte\0"  // WebBlueStrong
     "LIMITE LIBÉRÉE\0"  // LimitFreed
     "épuisée dans %s\0"  // RunsOutIn
     "AUJOURD'HUI\0"  // TodayTitle
@@ -1519,9 +1504,6 @@ static const char kIt[] MIBLO_ROM =
     "Inizia alle\0"  // WebBlueFrom
     "Finisce alle\0"  // WebBlueTo
     "Intensità\0"  // WebBlueLevel
-    "Leggera\0"  // WebBlueLight
-    "Media\0"  // WebBlueMedium
-    "Forte\0"  // WebBlueStrong
     "LIMITE LIBERATO\0"  // LimitFreed
     "finisce tra %s\0"  // RunsOutIn
     "OGGI\0"  // TodayTitle
@@ -1795,9 +1777,6 @@ static const char kDe[] MIBLO_ROM =
     "Beginnt um\0"  // WebBlueFrom
     "Endet um\0"  // WebBlueTo
     "Stärke\0"  // WebBlueLevel
-    "Leicht\0"  // WebBlueLight
-    "Mittel\0"  // WebBlueMedium
-    "Stark\0"  // WebBlueStrong
     "LIMIT FREI\0"  // LimitFreed
     "reicht noch %s\0"  // RunsOutIn
     "HEUTE\0"  // TodayTitle
@@ -2071,9 +2050,6 @@ static const char kRu[] MIBLO_ROM =
     "Начало\0"  // WebBlueFrom
     "Конец\0"  // WebBlueTo
     "Интенсивность\0"  // WebBlueLevel
-    "Слабая\0"  // WebBlueLight
-    "Средняя\0"  // WebBlueMedium
-    "Сильная\0"  // WebBlueStrong
     "ЛИМИТ ОБНОВЛЁН\0"  // LimitFreed
     "закончится через %s\0"  // RunsOutIn
     "СЕГОДНЯ\0"  // TodayTitle
@@ -2347,9 +2323,6 @@ static const char kZh[] MIBLO_ROM =
     "开始时间\0"  // WebBlueFrom
     "结束时间\0"  // WebBlueTo
     "强度\0"  // WebBlueLevel
-    "弱\0"  // WebBlueLight
-    "中\0"  // WebBlueMedium
-    "强\0"  // WebBlueStrong
     "额度已恢复\0"  // LimitFreed
     "%s 后用完\0"  // RunsOutIn
     "今天\0"  // TodayTitle

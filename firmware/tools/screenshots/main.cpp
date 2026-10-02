@@ -21,6 +21,7 @@
 
 #include "TFT_eSPI.h"
 #include "fonts.h"
+#include "miblo_config.h"
 #include "miblo_cues.h"
 #include "miblo_occasions.h"
 #include "miblo_overview.h"
@@ -203,7 +204,7 @@ constexpr int kMinMargin = 3;
 std::vector<std::string> gMarginErrors;
 
 void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::string& name, uint8_t warmth) {
-  const uint16_t bg = ui::warmColor(ui::color::BG, warmth);
+  const uint16_t bg = ui::warmColor(ui::color::BG, ui::warmGains(warmth));
   std::vector<int> rowFill(h, 0), colFill(w, 0);
   for (int y = 0; y < h; y++)
     for (int x = 0; x < w; x++)
@@ -553,18 +554,26 @@ void renderAll(Lang L) {
     screens::roam(L, snap, clk, ms, screens::DeskMood::Calm);
     save(s, "42-pet-mode-" + std::to_string(ms / 1000));
   }
-  // The blue light filter at each strength (0: off, for comparison), on the Overview and in pet mode.
+  // The blue light filter at the old three strengths (0: off, for comparison), on the Overview and
+  // in pet mode, then at the slider's low end. The old levels' files keep their names: the
+  // strengths they map to give exactly the old colours.
   for (uint8_t level = 0; level <= 3; level++) {
+    const uint8_t strength = level ? miblo::blueStrengthForLevel(level) : 0;
     {
-      Shot s(level);
+      Shot s(strength);
       screens::overview(L, snap, pager, 0, clk, false);
       save(s, "60-blue-filter-overview-" + std::to_string(level));
     }
     {
-      Shot s(level);
+      Shot s(strength);
       screens::roam(L, snap, clk, 20000, screens::DeskMood::Calm);
       save(s, "60-blue-filter-pet-" + std::to_string(level));
     }
+  }
+  {
+    Shot s(15);
+    screens::overview(L, snap, pager, 0, clk, false);
+    save(s, "60-blue-filter-overview-15pct");
   }
 
   for (const Mood& m : kMoods) {

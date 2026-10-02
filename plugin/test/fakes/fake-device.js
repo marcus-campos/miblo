@@ -22,6 +22,9 @@ export function startFakeDevice({
   tokens = [],  // already paired with these tokens (e.g. to another computer)
   otherCodeSec = 0,  // another purpose's code is on the screen for this long: /update/open is busy
   legacy = false,  // a firmware before the daily-life routes: they answer 404, /api/info lacks their fields
+  // The blue light filter: 'slider' (strength 1..100 %, blueStrength), 'levels' (a firmware before
+  // the slider: blueLevel 1..3 only) or 'none' (before the filter). Unknown config fields are ignored.
+  blue = legacy ? 'none' : 'slider',
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
   busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
   busyPath = null,
@@ -78,6 +81,45 @@ export function startFakeDevice({
     if (merged.nightFrom === merged.nightTo) return 'nightTo' in patch ? 'nightTo' : 'nightFrom';
     return null;
   };
+  // Blue light filter, as /api/info reports it and /api/config validates it (miblo_config.cpp):
+  // blueFilter 0 off / 1 always / 2 scheduled; blueLevel 1..3 (legacy) sets the strength it
+  // stands for (31/63/100) unless blueStrength comes too. The info reports the nearest level.
+  const BLUE_LEVELS = [31, 63, 100];
+  const blueCfg = () => {
+    if (blue === 'none') return {};
+    const strength = state.config.blueStrength ?? 63;
+    const out = {
+      blueFilter: state.config.blueFilter ?? 0,
+      blueLevel: strength <= 47 ? 1 : strength <= 81 ? 2 : 3,
+      blueFrom: state.config.blueFrom ?? 1260,
+      blueTo: state.config.blueTo ?? 420,
+    };
+    if (blue === 'slider') out.blueStrength = strength;
+    return out;
+  };
+  const badBlueField = (patch) => {
+    if (blue === 'none') return null;
+    const intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
+    if ('blueFilter' in patch && !intIn(patch.blueFilter, 0, 2)) return 'blueFilter';
+    if (blue === 'slider' && 'blueStrength' in patch && !intIn(patch.blueStrength, 1, 100)) return 'blueStrength';
+    if ('blueLevel' in patch && !intIn(patch.blueLevel, 1, 3)) return 'blueLevel';
+    if ('blueFrom' in patch && !intIn(patch.blueFrom, 0, 1439)) return 'blueFrom';
+    if ('blueTo' in patch && !intIn(patch.blueTo, 0, 1439)) return 'blueTo';
+    const merged = { ...blueCfg(), ...patch };
+    if (merged.blueFrom === merged.blueTo) return 'blueTo' in patch ? 'blueTo' : 'blueFrom';
+    return null;
+  };
+  // What a config patch keeps: the fields this firmware knows (the others are ignored).
+  const applyConfig = (patch) => {
+    const p = { ...patch };
+    if (blue === 'none') for (const k of ['blueFilter', 'blueLevel', 'blueStrength', 'blueFrom', 'blueTo']) delete p[k];
+    if (blue !== 'slider') delete p.blueStrength;
+    if ('blueLevel' in p) {
+      if (!('blueStrength' in p)) p.blueStrength = BLUE_LEVELS[p.blueLevel - 1];
+      delete p.blueLevel;
+    }
+    Object.assign(state.config, p);
+  };
   // Device name (miblo_config.cpp): at most 20 characters and under 64 UTF-8 bytes; "" restores
   // the default. /api/info reports the configured name, or the default one.
   const currentName = () => (typeof state.config.name === 'string' && state.config.name !== '' ? state.config.name : name);
@@ -133,7 +175,7 @@ export function startFakeDevice({
       if (state.tokens.length > 0 && !authed(req)) return send(200, { id, paired: true, proto: 1 });
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
-      return send(200, { id, name: currentName(), fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg(), ...(legacy ? {} : dailyInfo()) });
+      return send(200, { id, name: currentName(), fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg(), ...blueCfg(), ...(legacy ? {} : dailyInfo()) });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -160,9 +202,10 @@ export function startFakeDevice({
     if (!authed(req)) return send(401, { error: 'unauthorized' });
     if (req.method === 'POST' && req.url === '/api/state') { state.snapshots.push(body); return send(200, { ok: true }); }
     if (req.method === 'POST' && req.url === '/api/config') {
-      const bad = badRotationField(body ?? {}) ?? badNightField(body ?? {}) ?? badNameField(body ?? {}) ?? badOwnerField(body ?? {});
+      const bad = badRotationField(body ?? {}) ?? badNightField(body ?? {}) ?? badBlueField(body ?? {}) ??
+        badNameField(body ?? {}) ?? badOwnerField(body ?? {});
       if (bad) return send(400, { error: 'invalid', field: bad });  // all-or-nothing, like the firmware
-      Object.assign(state.config, body);
+      applyConfig(body ?? {});
       return send(200, { ok: true });
     }
     // POST /api/demo {minutes: 0..30, default 10} (firmware src/api.cpp handleDemo).

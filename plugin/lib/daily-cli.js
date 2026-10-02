@@ -1,5 +1,6 @@
-// The daily-life commands of bin/miblo.js: focus, meeting, find, timer, say, remind, countdown
-// (they talk to every paired gadget, or only `--id <id>`) and today/limits (they read the bridge).
+// The daily-life commands of bin/miblo.js: focus, meeting, find, timer, say, remind, countdown,
+// blue (they talk to every paired gadget, or only `--id <id>`) and today/limits (they read the
+// bridge).
 // Every argument is validated here exactly as the firmware validates it, before any request.
 import { cleanId, cleanName } from './mdns.js';
 import { busyLine, isBusy, isReducedInfo } from './device-client.js';
@@ -85,6 +86,10 @@ const FIELD_HINTS = {
   days: 'the days',
   date: 'the date (it must be today or later)',
   md: 'the date',
+  blueStrength: 'the strength (1-100%)',
+  blueFilter: 'the blue light filter setting',
+  blueFrom: 'the start time (it must differ from the end)',
+  blueTo: 'the end time (it must differ from the start)',
 };
 
 // One failed request -> one line for the user.
@@ -586,7 +591,105 @@ async function limits(args, { fetchStatus, now }) {
   return ok(limitsLine(st.usage, now()) ?? NO_LIMITS);
 }
 
-export const DAILY_COMMANDS = { focus, meeting, find, timer, say, remind, countdown, today, limits };
+// ---- blue: the blue light filter (firmware miblo_config.h blueFilter, blueStrength, blueFrom, blueTo) ----
+// blueFilter: 0 off, 1 always, 2 between blueFrom and blueTo (minutes of the gadget's local day;
+// the window may cross midnight). The strength is 1..100 %; the words of the old three-level
+// select are the strengths with exactly their colours (miblo_config.cpp blueStrengthForLevel).
+export const BLUE_STRENGTH = { min: 1, max: 100 };
+export const BLUE_LEVELS = { low: 31, medium: 63, high: 100 };
+const BLUE_USAGE = 'Usage: blue [status] | blue off | blue [on] [HH:MM HH:MM] [1-100%|low|medium|high]  [--id <id>]';
+const hhmm = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
+
+// -> { status: true }, { patch } or { error }. "on" alone is always on; two times are a schedule
+// ("on" may come with them); a number (with or without %) or low/medium/high is the strength,
+// alone (the filter's state is kept) or with the rest; "off" takes nothing else.
+export function parseBlueArgs(args) {
+  if (!args.length || (args.length === 1 && String(args[0]).toLowerCase() === 'status')) return { status: true };
+  let state;
+  let strength;
+  const times = [];
+  for (const a of args) {
+    const t = /^(\d{1,2})[:h](\d{2})$/.exec(a);
+    const word = String(a).toLowerCase();
+    if (word === 'on' || word === 'off') {
+      if (state !== undefined) return { error: `Give "on" or "off" once.\n${BLUE_USAGE}` };
+      state = word;
+    } else if (t) {
+      const h = Number(t[1]);
+      const m = Number(t[2]);
+      if (h > 23 || m > 59) return { error: `Invalid time "${quoteArg(a).slice(0, 10)}": use HH:MM from 00:00 to 23:59.` };
+      times.push(h * 60 + m);
+    } else if (/^[+-]?\d+(\.\d+)?%?$/.test(a) || Object.hasOwn(BLUE_LEVELS, word)) {
+      if (strength !== undefined) return { error: `Give one strength.\n${BLUE_USAGE}` };
+      strength = Object.hasOwn(BLUE_LEVELS, word) ? BLUE_LEVELS[word] : Number(String(a).replace('%', ''));
+      if (!inRange(strength, BLUE_STRENGTH)) {
+        return { error: `Strength must be a whole number from ${BLUE_STRENGTH.min} to ${BLUE_STRENGTH.max} % (got ${quoteArg(a)}).` };
+      }
+    } else {
+      return { error: `Unexpected argument "${quoteArg(a)}".\n${BLUE_USAGE}` };
+    }
+  }
+  if (state === 'off' && (times.length || strength !== undefined)) return { error: `"off" takes nothing else.\n${BLUE_USAGE}` };
+  if (times.length && times.length !== 2) return { error: `Give both times (start and end), e.g. 21:00 07:00.\n${BLUE_USAGE}` };
+  if (times.length && times[0] === times[1]) return { error: 'Start and end times must differ.' };
+  const patch = {};
+  if (state === 'off') patch.blueFilter = 0;
+  else if (times.length) [patch.blueFilter, patch.blueFrom, patch.blueTo] = [2, times[0], times[1]];
+  else if (state === 'on') patch.blueFilter = 1;
+  if (strength !== undefined) patch.blueStrength = strength;
+  return { patch };
+}
+
+const blueWhen = (c) => (c.blueFilter === 1 ? 'always on'
+  : c.blueFilter === 2 ? `on from ${hhmm(c.blueFrom)} to ${hhmm(c.blueTo)}` : 'off');
+
+// One gadget's filter from /api/info -> "on from 21:00 to 07:00 (strength 60%)". A firmware from
+// before the slider reports only the old level.
+const blueLine = (info) => (Number.isInteger(info.blueStrength)
+  ? `${blueWhen(info)} (strength ${info.blueStrength}%)`
+  : `${blueWhen(info)} (to choose the strength, update it with /miblo:update)`);
+
+async function blue(args, { store, client }) {
+  const { id, rest, error } = takeId(args);
+  if (error) return fail(2, error);
+  const parsed = parseBlueArgs(rest);
+  if (parsed.error) return fail(2, parsed.error);
+  const t = targetsFor(store, id);
+  if (t.error) return t.error;
+
+  // /api/info first: unknown config fields are ignored, so a firmware from before the filter would
+  // accept the patch and do nothing, and one from before the slider (it has on/off/schedule) would
+  // silently drop blueStrength: those are told to update instead.
+  const wantsStrength = parsed.patch?.blueStrength !== undefined;
+  const infos = (await each(t.targets, (d) => client.info(d.addr, d.token))).map((r) => {
+    if (r.err) return r;
+    if (isReducedInfo(r.reply)) return { ...r, err: { status: 401 } };
+    const n = (k) => Number.isInteger(r.reply[k]);
+    if (!n('blueFilter') || !n('blueFrom') || !n('blueTo')) return { ...r, err: { status: 404 } };
+    if (wantsStrength && !n('blueStrength')) return { ...r, err: { status: 404 } };
+    return r;
+  });
+
+  if (parsed.status) {
+    const lines = infos.map((r) => (r.err ? problemLine(r.label, r.err) : `Blue light filter on ${r.label}: ${blueLine(r.reply)}.`));
+    return infos.some((r) => !r.err) ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
+  }
+
+  const { patch } = parsed;
+  const sendable = infos.filter((r) => !r.err);
+  const sent = await each(sendable.map((r) => r.d), (d) => client.setConfig(d.addr, d.token, patch));
+  const results = infos.map((r) => (r.err ? r : sent.find((x) => x.d === r.d)));
+  const parts = [];
+  if (patch.blueFilter !== undefined) parts.push(blueWhen(patch));
+  if (patch.blueStrength !== undefined) parts.push(`strength ${patch.blueStrength}%`);
+  // The strength alone, on gadgets whose filter is off: nothing changes on screen until it is on.
+  const tookIt = sendable.filter((r) => !sent.find((x) => x.d === r.d).err);
+  const offNote = patch.blueFilter === undefined && tookIt.length && tookIt.every((r) => r.reply.blueFilter === 0)
+    ? ' (it is off: /miblo:blue on to turn it on)' : '';
+  return summarize(results, (names) => `Blue light filter ${parts.join(', ')} for ${names}${offNote}.`);
+}
+
+export const DAILY_COMMANDS = { focus, meeting, find, timer, say, remind, countdown, blue, today, limits };
 
 // The daily-life lines of miblo.js USAGE.
 export const DAILY_USAGE = [
@@ -597,6 +700,7 @@ export const DAILY_USAGE = [
   '  say <text...> [--min N] | say off  [--id <id>]',
   '  remind [<minutes>|<HH:MM>|every day <HH:MM>|weekdays <HH:MM> <text...>] | remind off [N]  [--id <id>]',
   '  countdown <label...> <DD/MM[/YYYY]> | countdown off | countdown  [--id <id>]',
+  '  blue [status] | blue off | blue [on] [HH:MM HH:MM] [1-100%|low|medium|high]  [--id <id>]',
   '  today',
   '  limits',
 ];

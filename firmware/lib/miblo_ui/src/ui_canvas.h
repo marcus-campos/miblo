@@ -85,29 +85,46 @@ class Canvas {
   virtual void clear(uint16_t c) { fillRect(0, 0, spec().w, spec().h, c); }
 };
 
-// Blue light filter: `c` as it looks under a warmer white point, the colour temperature of each
-// level being 4500 K, 3500 K and 2700 K. The multipliers are the black-body white of that
-// temperature in sRGB (CIE 1931 2-degree observer, the one sRGB and colour temperature are
-// defined with; brightest channel = 255): green 222/199/173 and blue 188/139/89 out of 255. Red
-// stays: it is the brightest channel of any white below 6500 K, so lowering it would only dim the
-// screen (night mode's job). Scaling a gamma-encoded value by m scales that channel's light by
+// Blue light filter: how much green and blue are kept (out of 255) under a warmer white point.
+// Red stays: it is the brightest channel of any white below 6500 K, so lowering it would only dim
+// the screen (night mode's job). Scaling a gamma-encoded value by m scales that channel's light by
 // m^2.2 whatever the colour, so white lands on the target and all colours shift alike.
-// Level 0 returns `c` unchanged; levels above 3 are treated as 3. A switch, not a table: on the
-// ESP8266 a const table would sit in RAM.
-// Each channel becomes round(v * m / 255), computed as (v * m * 257 + 2^15) >> 16: the ESP8266
-// has no divide instruction (every division is a call into ROM, and this runs for each shape
-// drawn), and for every 5- and 6-bit v and these multipliers the two agree exactly
-// (test_warm_color checks all 65536 colours at each level).
-inline uint16_t warmColor(uint16_t c, uint8_t level) {
-  uint32_t gm, bm;
-  switch (level) {
-    case 0: return c;
-    case 1: gm = 222, bm = 188; break;
-    case 2: gm = 199, bm = 139; break;
-    default: gm = 173, bm = 89; break;
-  }
-  const uint32_t g = (((c >> 5) & 63) * gm * 257 + 0x8000) >> 16;
-  const uint32_t b = ((c & 31) * bm * 257 + 0x8000) >> 16;
+struct WarmGains {
+  uint8_t g = 255;
+  uint8_t b = 255;
+};
+
+// The multipliers for a strength of 0..100 % (above 100 counts as 100; 0 = none, the sRGB white
+// of 6504 K). The strength is linear in mired (10^6 / kelvin, the scale on which equal steps look
+// alike), from 6504 K at 0 % to 2732 K at 100 %. Four anchors are the black-body white of their
+// temperature in sRGB (CIE 1931 2-degree observer; brightest channel = 255): 6504 K (0 %),
+// 4541 K (31 %), 3489 K (63 %) and 2732 K (100 %), the last three being the old strengths 1..3
+// (miblo::blueStrengthForLevel), so their colours stay exactly the same. Between two anchors each
+// multiplier is interpolated linearly (rounded): a smooth ramp, warmer at every step.
+// Integers only, no table (a const table would sit in the ESP8266's RAM); it divides, so it is
+// called when the strength changes (ShiftCanvas::setWarmth), never per colour.
+inline WarmGains warmGains(uint8_t strength) {
+  WarmGains out;
+  if (strength == 0) return out;
+  if (strength > 100) strength = 100;
+  int s0, s1, g0, g1, b0, b1;
+  if (strength <= 31) s0 = 0, s1 = 31, g0 = 255, g1 = 222, b0 = 255, b1 = 188;
+  else if (strength <= 63) s0 = 31, s1 = 63, g0 = 222, g1 = 199, b0 = 188, b1 = 139;
+  else s0 = 63, s1 = 100, g0 = 199, g1 = 173, b0 = 139, b1 = 89;
+  const int span = s1 - s0, d = strength - s0;
+  out.g = (uint8_t)(g0 - ((g0 - g1) * d * 2 + span) / (2 * span));
+  out.b = (uint8_t)(b0 - ((b0 - b1) * d * 2 + span) / (2 * span));
+  return out;
+}
+
+// `c` under the blue light filter's multipliers (warmGains). Each channel becomes
+// round(v * m / 255), computed as (v * m * 257 + 2^15) >> 16: the ESP8266 has no divide
+// instruction (every division is a call into ROM, and this runs for each shape drawn), and for
+// every 5- and 6-bit v and every strength's multipliers the two agree exactly (test_warm_color
+// checks all 65536 colours at each strength).
+inline uint16_t warmColor(uint16_t c, WarmGains m) {
+  const uint32_t g = (((c >> 5) & 63) * (uint32_t)m.g * 257 + 0x8000) >> 16;
+  const uint32_t b = ((c & 31) * (uint32_t)m.b * 257 + 0x8000) >> 16;
   return (uint16_t)((c & 0xF800) | g << 5 | b);
 }
 
@@ -129,7 +146,8 @@ class ShiftCanvas : public Canvas {
   void setShift(int dx, int dy) { dx_ = dx, dy_ = dy; }
   int dx() const { return dx_; }
   int dy() const { return dy_; }
-  void setWarmth(uint8_t level) { warm_ = level; }
+  // Blue light filter strength, 0..100 % (0 = off).
+  void setWarmth(uint8_t strength) { warm_ = strength, gains_ = warmGains(strength); }
   uint8_t warmth() const { return warm_; }
 
   ScreenSpec spec() const override { return in_.spec(); }
@@ -161,12 +179,13 @@ class ShiftCanvas : public Canvas {
   void clear(uint16_t c) override { in_.clear(f(c)); }  // the whole panel, not the shifted area
 
  private:
-  uint16_t f(uint16_t c) const { return warm_ ? warmColor(c, warm_) : c; }
+  uint16_t f(uint16_t c) const { return warm_ ? warmColor(c, gains_) : c; }
 
   Canvas& in_;
   int dx_ = 0;
   int dy_ = 0;
   uint8_t warm_ = 0;  // blue light filter strength, 0 = off
+  WarmGains gains_;   // its multipliers (warmGains(warm_))
 };
 
 }  // namespace ui

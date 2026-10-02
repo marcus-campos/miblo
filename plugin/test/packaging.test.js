@@ -39,7 +39,7 @@ test('every tracked event runs hook.js asynchronously', () => {
 
 const COMMANDS = ['pair', 'status', 'mode', 'rotate', 'night', 'settings', 'rename', 'owner', 'demo', 'link-statusline', 'unlink-statusline', 'reset',
   // daily life
-  'focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'today', 'limits'];
+  'focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'blue', 'today', 'limits'];
 
 test('miblo.md was split into one command per action (plugins namespace commands as /miblo:<file>)', () => {
   assert.ok(!fs.existsSync(path.join(root, 'commands/miblo.md')));
@@ -88,7 +88,7 @@ for (const name of ['update', 'pair']) {
 
 // The daily-life commands take free text: the user's arguments must never be pasted into a shell
 // line; Claude builds the command (free text only as one single-quoted argument).
-for (const name of ['focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'today', 'limits']) {
+for (const name of ['focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'blue', 'today', 'limits']) {
   test(`the /miblo:${name} command never pastes $ARGUMENTS into a command`, () => {
     const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
     const uses = md.split(/\r?\n/).filter((l) => l.includes('$ARGUMENTS'));

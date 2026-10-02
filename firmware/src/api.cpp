@@ -69,7 +69,7 @@ static void handleInfo() {
     json(200, out.c_str());
     return;
   }
-  // 42 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
+  // 43 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
   // phase, the countdown date): ~830 B on the ESP8266, plus ~440 B for the keys, which are copied
   // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
   // ~1.57 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
@@ -122,9 +122,11 @@ static void handleInfo() {
   doc[F("nightFrom")] = ctx.cfg.nightFrom;
   doc[F("nightTo")] = ctx.cfg.nightTo;
   doc[F("nightBrightness")] = ctx.cfg.nightBrightness;
-  // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..3; its own window).
+  // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..100 %; its own window).
+  // blueLevel (1..3, the nearest old level) for plugins from before the slider.
   doc[F("blueFilter")] = ctx.cfg.blueFilter;
-  doc[F("blueLevel")] = ctx.cfg.blueLevel;
+  doc[F("blueStrength")] = ctx.cfg.blueStrength;
+  doc[F("blueLevel")] = miblo::blueLevelForStrength(ctx.cfg.blueStrength);
   doc[F("blueFrom")] = ctx.cfg.blueFrom;
   doc[F("blueTo")] = ctx.cfg.blueTo;
   doc[F("mascot")] = ctx.cfg.mascot;

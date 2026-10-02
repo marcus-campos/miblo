@@ -132,7 +132,7 @@ FUZZ_REGISTER(snapshot, fuzzSnapshot, kSnapshotSeeds, kSnapshotDict, 7000);
 
 const char* const kConfigSeeds[] = {
     R"({"mode":"limits","brightness":80,"alerts":true,"heroPermSec":10,"tz":"America/Sao_Paulo","lang":"pt-BR"})",
-    R"({"name":"Desk","night":true,"nightFrom":1320,"nightTo":420,"nightBrightness":5,"blueFilter":true,"blueFrom":1200,"blueTo":360,"blueLevel":2})",
+    R"({"name":"Desk","night":true,"nightFrom":1320,"nightTo":420,"nightBrightness":5,"blueFilter":true,"blueFrom":1200,"blueTo":360,"blueLevel":2,"blueStrength":40})",
     R"({"owner":"Marcus","birthday":"03-14","born":"2026-01-02","friends":false,"insist":false,"mascot":3,"sleepMin":0,"petMin":30})",
     R"({"rotate":true,"rotateEverySec":60,"rotateShowSec":10,"workFrom":540,"workTo":1080,"workDays":62,"fanfareMin":10})",
     R"({"tz":"<-03>3","tz2":"Asia/Tokyo","tz2Label":"Tokyo 東京","deskQr":true,"waterMin":45,"breakAfterMin":50,"eyes":true,"endOfDay":true,"weekly":true,"focusQuiet":true,"frame":true,"friendsSide":1,"langAuto":true})",
@@ -144,7 +144,7 @@ const char* const kConfigDict[] = {
     "\"mode\":", "\"brightness\":", "\"alerts\":", "\"heroPermSec\":", "\"heroDoneSec\":", "\"flashBlinks\":",
     "\"reminderMin\":", "\"discreet\":", "\"tz\":", "\"name\":", "\"lang\":", "\"langAuto\":", "\"night\":",
     "\"nightFrom\":", "\"nightTo\":", "\"nightBrightness\":", "\"blueFilter\":", "\"blueFrom\":", "\"blueTo\":",
-    "\"blueLevel\":", "\"rotate\":", "\"rotateEverySec\":", "\"rotateShowSec\":", "\"mascot\":", "\"sleepMin\":",
+    "\"blueLevel\":", "\"blueStrength\":", "\"rotate\":", "\"rotateEverySec\":", "\"rotateShowSec\":", "\"mascot\":", "\"sleepMin\":",
     "\"petMin\":", "\"owner\":", "\"birthday\":", "\"born\":", "\"friends\":", "\"friendsSide\":", "\"insist\":",
     "\"workFrom\":", "\"workTo\":", "\"workDays\":", "\"fanfareMin\":", "\"tz2\":", "\"tz2Label\":", "\"deskQr\":",
     "\"waterMin\":", "\"breakAfterMin\":", "\"eyes\":", "\"endOfDay\":", "\"weekly\":", "\"focusQuiet\":",

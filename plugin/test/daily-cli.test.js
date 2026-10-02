@@ -407,3 +407,131 @@ test('a busy gadget (503) is called busy in the daily-life commands, not offline
     await a.close();
   }
 });
+
+// ---- blue: the blue light filter (firmware miblo_config.h blueFilter/blueStrength/blueFrom/blueTo) ----
+
+test('blue: status, on, off, a schedule, a strength and the old level words', async () => {
+  const a = await fake({ id: 'miblo-aaaa', name: 'Amon' });
+  const b = await fake({ id: 'miblo-bbbb', name: 'Shiru' });
+  const d = deps();
+  try {
+    pair(d, a, b);
+    let r = await run(['blue'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter on Amon: off \(strength 63%\)\.\nBlue light filter on Shiru: off \(strength 63%\)\./);
+    assert.equal((await run(['blue', 'status'], d)).out, r.out);
+
+    r = await run(['blue', 'on'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter always on for Amon, Shiru\./);
+    assert.equal(a.state.config.blueFilter, 1);
+
+    r = await run(['blue', '21:00', '07:00'], d);
+    assert.match(r.out, /Blue light filter on from 21:00 to 07:00 for Amon, Shiru\./);
+    assert.deepEqual([a.state.config.blueFilter, a.state.config.blueFrom, a.state.config.blueTo], [2, 1260, 420]);
+
+    r = await run(['blue', '60%'], d);
+    assert.match(r.out, /Blue light filter strength 60% for Amon, Shiru\./);
+    assert.equal(b.state.config.blueStrength, 60);
+    assert.equal(b.state.config.blueFilter, 2);  // the strength alone keeps the schedule
+    assert.match((await run(['blue', 'status'], d)).out, /Amon: on from 21:00 to 07:00 \(strength 60%\)\./);
+
+    for (const [word, strength] of [['low', 31], ['medium', 63], ['high', 100]]) {
+      await run(['blue', word], d);
+      assert.equal(a.state.config.blueStrength, strength, word);
+    }
+    r = await run(['blue', 'on', '40', '--id', 'miblo-bbbb'], d);
+    assert.match(r.out, /Blue light filter always on, strength 40% for Shiru\./);
+    assert.deepEqual([b.state.config.blueFilter, b.state.config.blueStrength], [1, 40]);
+    assert.equal(a.state.config.blueStrength, 100);  // --id: only that one
+    r = await run(['blue', 'on', '20:00', '06:00'], d);  // "on" with a window: scheduled
+    assert.match(r.out, /Blue light filter on from 20:00 to 06:00 for Amon, Shiru\./);
+    r = await run(['blue', '22:30', '06:00', '25%'], d);
+    assert.match(r.out, /Blue light filter on from 22:30 to 06:00, strength 25% for Amon, Shiru\./);
+
+    r = await run(['blue', 'off'], d);
+    assert.match(r.out, /Blue light filter off for Amon, Shiru\./);
+    assert.equal(a.state.config.blueFilter, 0);
+    assert.equal(a.state.config.blueStrength, 25);  // kept for next time
+
+    // The strength alone while the filter is off says so.
+    r = await run(['blue', '70%'], d);
+    assert.match(r.out, /Blue light filter strength 70% for Amon, Shiru \(it is off: \/miblo:blue on to turn it on\)\./);
+    assert.ok(!/tok-/.test(r.out));
+  } finally { await a.close(); await b.close(); }
+});
+
+test('blue validates its arguments before any request', async () => {
+  const a = await fake({ name: 'Amon' });
+  const d = deps();
+  try {
+    pair(d, a);
+    for (const bad of [['0%'], ['101'], ['2.5'], ['-5'], ['21:00'], ['21:00', '21:00'], ['24:00', '07:00'], ['21:00', '07:60'],
+      ['on', 'off'], ['off', '50'], ['off', '21:00', '07:00'], ['50', '60'], ['low', 'high'], ['purple'], ['21:00', '07:00', '08:00'],
+      ['status', 'on'], ['$(reboot)']]) {
+      const r = await run(['blue', ...bad], d);
+      assert.equal(r.code, 2, bad.join(' '));
+    }
+    assert.deepEqual(a.state.config, {});
+    assert.match((await run(['blue', '0%'], d)).out, /Strength must be a whole number from 1 to 100/);
+  } finally { await a.close(); }
+});
+
+test('blue tells an old firmware to update, and a busy one to try again', async () => {
+  const none = await fake({ id: 'miblo-aaaa', name: 'Amon', blue: 'none' });
+  const levels = await fake({ id: 'miblo-bbbb', name: 'Shiru', blue: 'levels' });
+  const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
+  try {
+    pair(d, none, levels);
+    // Before the filter: nothing at all.
+    for (const argv of [['blue'], ['blue', 'on'], ['blue', '60%'], ['blue', 'off']]) {
+      const r = await run([...argv, '--id', 'miblo-aaaa'], d);
+      assert.equal(r.code, 1, argv.join(' '));
+      assert.match(r.out, /Amon does not support this yet: update it with \/miblo:update\./);
+    }
+    // Before the slider: on, off and the schedule work; only a strength asks for the update.
+    for (const argv of [['blue', '60%'], ['blue', 'on', 'high'], ['blue', '21:00', '07:00', '30']]) {
+      const r = await run([...argv, '--id', 'miblo-bbbb'], d);
+      assert.equal(r.code, 1, argv.join(' '));
+      assert.match(r.out, /Shiru does not support this yet: update it with \/miblo:update\./);
+    }
+    assert.deepEqual(levels.state.config, {});  // nothing sent to a firmware that would ignore the strength
+    let r = await run(['blue', 'ON', '--id', 'miblo-bbbb'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter always on for Shiru\./);
+    r = await run(['blue', '22:00', '06:00', '--id', 'miblo-bbbb'], d);
+    assert.match(r.out, /Blue light filter on from 22:00 to 06:00 for Shiru\./);
+    assert.deepEqual([levels.state.config.blueFilter, levels.state.config.blueFrom, levels.state.config.blueTo], [2, 1320, 360]);
+    r = await run(['blue', '--id', 'miblo-bbbb'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter on Shiru: on from 22:00 to 06:00 \(to choose the strength, update it with \/miblo:update\)\./);
+    r = await run(['blue', 'Off', '--id', 'miblo-bbbb'], d);
+    assert.match(r.out, /Blue light filter off for Shiru\./);
+    assert.equal(levels.state.config.blueFilter, 0);
+    // Both at once: one takes it, the other is told to update.
+    r = await run(['blue', 'on'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter always on for Shiru\.\nAmon does not support this yet/);
+    const fresh = await fake({ id: 'miblo-cccc', name: 'Kuro' });
+    try {
+      pair(d, fresh);
+      fresh.state.busyLeft = Infinity;
+      const r = await run(['blue', 'on', '--id', 'miblo-cccc'], d);
+      assert.equal(r.code, 1);
+      assert.match(r.out, /Kuro is busy right now — try again in a moment\./);
+      assert.doesNotMatch(r.out, /offline/);
+    } finally { await fresh.close(); }
+  } finally { await none.close(); await levels.close(); }
+});
+
+test('blue: a field the gadget rejects is explained', async () => {
+  const client = {
+    info: async () => ({ id: 'miblo-aaaa', name: 'Amon', fw: '1.11.0', paired: true, blueFilter: 0, blueStrength: 63, blueFrom: 1260, blueTo: 420 }),
+    setConfig: async () => { const e = new Error('400'); e.status = 400; e.data = { error: 'invalid', field: 'blueStrength' }; throw e; },
+  };
+  const d = deps({ client });
+  new DeviceStore(d.dataDir).upsert({ id: 'miblo-aaaa', name: 'Amon', addr: 'x:80', token: 't' });
+  const r = await run(['blue', '50'], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /Amon rejected the strength \(1-100%\)\./);
+});

@@ -58,4 +58,15 @@ export class DeviceClient {
   reset(addr, token) {
     return this.#req(addr, '/api/reset', { method: 'POST', token, body: {} });
   }
+
+  // ---- Daily life (firmware 1.11.0+; an older one answers 404) ----
+  // Each takes the JSON body the firmware's handler validates (src/api.cpp dailyRoute).
+  focus(addr, token, body) { return this.#req(addr, '/api/focus', { method: 'POST', token, body }); }
+  meeting(addr, token, body) { return this.#req(addr, '/api/meeting', { method: 'POST', token, body }); }
+  say(addr, token, body) { return this.#req(addr, '/api/say', { method: 'POST', token, body }); }
+  remind(addr, token, body) { return this.#req(addr, '/api/remind', { method: 'POST', token, body }); }
+  reminders(addr, token) { return this.#req(addr, '/api/remind', { token }); }
+  timer(addr, token, body) { return this.#req(addr, '/api/timer', { method: 'POST', token, body }); }
+  countdown(addr, token, body) { return this.#req(addr, '/api/countdown', { method: 'POST', token, body }); }
+  find(addr, token) { return this.#req(addr, '/api/find', { method: 'POST', token, body: {} }); }
 }

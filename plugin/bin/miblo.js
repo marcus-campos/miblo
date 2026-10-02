@@ -9,6 +9,7 @@ import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
+import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -26,6 +27,7 @@ const USAGE = [
   '  reset <id>',
   '  update [check|open|send] [id] [code] [--file path] [--check]',
   '  link-statusline | unlink-statusline',
+  ...DAILY_USAGE,
 ].join('\n');
 
 const cleanAddr = (s) => String(s ?? '').replace(/[^A-Za-z0-9.:[\]-]/g, '').slice(0, 64);
@@ -625,6 +627,9 @@ export async function run(argv, deps) {
       return ok(r.changed ? 'Statusline unlinked.' : 'Statusline was not linked.');
     }
     default:
+      if (Object.hasOwn(DAILY_COMMANDS, cmd)) {
+        return DAILY_COMMANDS[cmd](args, { store, client, fetchStatus, now: deps.now ?? Date.now });
+      }
       return fail(2, USAGE);
   }
 }

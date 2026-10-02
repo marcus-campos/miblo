@@ -331,6 +331,13 @@ test('unknown subcommand prints usage with code 2', async () => {
   assert.match(r.out, /Usage/);
 });
 
+test('the usage lists the daily-life commands; an inherited object key is not a command', async () => {
+  const r = await run(['wat'], deps());
+  for (const cmd of ['focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'today', 'limits']) assert.match(r.out, new RegExp(`^  ${cmd}\\b`, 'm'), cmd);
+  assert.equal((await run(['toString'], deps())).code, 2);
+  assert.equal((await run(['constructor'], deps())).code, 2);
+});
+
 test('discover and pair sanitize gadget-provided strings', async () => {
   const d = deps({ discoverFn: async () => [{ id: 'g1`x`', name: 'Evil\n\u001b[31mname-that-is-way-too-long', addr: '10.0.0.5:80' }, { id: '!!!', name: 'x', addr: '1.2.3.4:80' }] });
   assert.equal((await run(['discover'], d)).out.trim(), 'g1x\tEvil31mname-that-is-\t10.0.0.5:80');

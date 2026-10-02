@@ -31,7 +31,9 @@ test('every tracked event runs hook.js asynchronously', () => {
   assert.notEqual(onboard.async, true);
 });
 
-const COMMANDS = ['pair', 'status', 'mode', 'rotate', 'night', 'settings', 'rename', 'owner', 'demo', 'link-statusline', 'unlink-statusline', 'reset'];
+const COMMANDS = ['pair', 'status', 'mode', 'rotate', 'night', 'settings', 'rename', 'owner', 'demo', 'link-statusline', 'unlink-statusline', 'reset',
+  // daily life
+  'focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'today', 'limits'];
 
 test('miblo.md was split into one command per action (plugins namespace commands as /miblo:<file>)', () => {
   assert.ok(!fs.existsSync(path.join(root, 'commands/miblo.md')));
@@ -75,5 +77,16 @@ for (const name of ['update', 'pair']) {
     assert.match(md, /^description: \S/m);
     const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
     assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+  });
+}
+
+// The daily-life commands take free text: the user's arguments must never be pasted into a shell
+// line; Claude builds the command (free text only as one single-quoted argument).
+for (const name of ['focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown', 'today', 'limits']) {
+  test(`the /miblo:${name} command never pastes $ARGUMENTS into a command`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    const uses = md.split(/\r?\n/).filter((l) => l.includes('$ARGUMENTS'));
+    assert.deepEqual(uses, ['Arguments: `$ARGUMENTS`']);
+    assert.match(md, /^Safety: never paste the arguments above/m);
   });
 }

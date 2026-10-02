@@ -1197,6 +1197,56 @@ static void test_pet_antics_stay_on_screen() {
   }
 }
 
+// Riff alone has a 31st antic, a guitar solo: in its rounds all 31 once each, never twice in a
+// row; no other pet ever plays it, and the others' order is the same as ever.
+static void test_riff_plays_a_solo() {
+  screens::RoamAntic catOrder[61];
+  for (uint32_t c = 1; c <= 60; c++) catOrder[c] = screens::roamAntic(c * screens::kAnticEveryMs, nullptr);
+  screens::setMascotPet((uint8_t)miblo::Pet::Riff);
+  const uint8_t n = screens::kAnticCount + 1;
+  uint8_t seen[3][screens::kAnticCount + 2] = {};
+  screens::RoamAntic prev = screens::RoamAntic::None;
+  for (uint32_t c = 1; c <= 3u * n; c++) {
+    const screens::RoamAntic a = screens::roamAntic(c * screens::kAnticEveryMs, nullptr);
+    TEST_ASSERT_TRUE(a != screens::RoamAntic::None);
+    TEST_ASSERT_TRUE(a != prev);
+    seen[(c - 1) / n][(uint8_t)a]++;
+    prev = a;
+  }
+  for (int r = 0; r < 3; r++)
+    for (int a = 1; a <= n; a++) TEST_ASSERT_EQUAL_UINT8(1, seen[r][a]);
+  TEST_ASSERT_FALSE(screens::anticOnSign(screens::RoamAntic::Solo));
+  for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
+    if (pet == (uint8_t)miblo::Pet::Riff) continue;
+    screens::setMascotPet(pet);
+    for (uint32_t c = 1; c <= 60; c++)
+      TEST_ASSERT_TRUE(screens::roamAntic(c * screens::kAnticEveryMs, nullptr) == catOrder[c]);
+  }
+  screens::setMascotPet(0);
+}
+
+// Every pet's own tail antic (and Riff's solo), all along it, stays on screen at every resolution.
+static void test_pet_tails_stay_on_screen() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
+    screens::setMascotPet(pet);
+    for (const auto& sp : specs) {
+      FakeCanvas fc(sp);
+      screens::bind(fc);
+      idle();
+      screens::reset();
+      for (uint32_t c = 1; c <= 2u * (screens::kAnticCount + 1); c++) {
+        const screens::RoamAntic a = screens::roamAntic(c * screens::kAnticEveryMs, nullptr);
+        if (a != screens::RoamAntic::Tail && a != screens::RoamAntic::Solo) continue;
+        for (uint32_t at = 0; at < screens::kAnticFloorMs; at += 50)
+          screens::roam(Lang::En, snap, testClock(), c * screens::kAnticEveryMs + at, screens::DeskMood::Calm);
+      }
+      TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    }
+  }
+  screens::setMascotPet(0);
+}
+
 // The canvas whose band check visit() arms around each prop it draws.
 static FakeCanvas* gBandCanvas = nullptr;
 static void armBand(bool drawing) {
@@ -1955,6 +2005,8 @@ int main() {
   RUN_TEST(test_pet_scene_quiet_when_not_playful);
   RUN_TEST(test_props_stay_near_their_anchor);
   RUN_TEST(test_pet_antics_stay_on_screen);
+  RUN_TEST(test_riff_plays_a_solo);
+  RUN_TEST(test_pet_tails_stay_on_screen);
   RUN_TEST(test_visits_stay_on_screen_all_activities);
   RUN_TEST(test_visit_add_item_drops_bad_kinds);
   RUN_TEST(test_update_available_screen);

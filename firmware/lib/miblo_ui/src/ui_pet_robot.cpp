@@ -149,6 +149,22 @@ void robotFront(const PetCtx& c) {
   }
 }
 
-const PetDef kPetRobot MIBLO_ROM = {robotHead, robotFront, {0, 0, 4, 0, 4, 12}, 0x339F, color::RED};
+// The Tail antic: a coiled cable out of its back, a plug at its end wagging up and down.
+static void robotTail(const PetCtx& c) {
+  MascotPen& d = c.d;
+  const int x = c.x, b = c.b, w = petSwing(c);
+  for (int i = 0; i < 3; i++) {  // the coil: rings, the background through them
+    const int cy = 26 + (i == 2 ? w : 0) + b;
+    d.circle(36 + 5 * i + x, cy, 3, c.mc.line);
+    d.circle(36 + 5 * i + x, cy, 1, color::BG);
+  }
+  const int py = 26 + 2 * w + b;
+  d.rrect(46 + x, py - 4, 7, 8, 2, c.mc.accent);  // the plug and its prongs
+  d.rect(53 + x, py - 3, 3, 2, c.mc.line);
+  d.rect(53 + x, py + 1, 3, 2, c.mc.line);
+}
+
+// The eyes are on the dark screen: light glasses rims.
+const PetDef kPetRobot MIBLO_ROM = {robotHead, robotFront, {0, 0, 4, 0, 4, 12, 1}, 0x339F, color::RED, robotTail};
 
 }  // namespace screens

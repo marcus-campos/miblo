@@ -170,8 +170,18 @@ void alienFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-3 + x, 24 + b, 6, 6, 2, mc.earIn);
 }
 
+namespace {
+// The Tail antic: no tail; signal dots float out from its right antenna, one after the other.
+void alienTail(const PetCtx& c) {
+  for (int i = 0; i < 4; i++) {
+    if ((c.wag - 1 + 4 - i) % 4 == 0) continue;  // a gap travelling out along them
+    c.d.circle(31 + 7 * i + c.x, -38 + 3 * i - (i % 2) * 3 + c.b, 2 - i / 2, c.mc.accent);
+  }
+}
+}  // namespace
+
 // Its one eye a little higher than the cat's two (one wide lens for the glasses).
 const PetDef kPetAlien MIBLO_ROM = {alienHead, alienFront, {0, 0, 0, 0, kEyeY, 0}, color::VIOLET,
-                                      kGlow};
+                                      kGlow, alienTail};
 
 }  // namespace screens

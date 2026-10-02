@@ -243,7 +243,8 @@ uint16_t mascotSkin() {
 // `at`: where they sit on the pet (hats down by hatDy, glasses on its eyes).
 // `dark`: the face is dark (light glasses).
 static void drawHat(MascotPen& d, int x, int b0, uint8_t phase, const PetAnchors& at, bool dark) {
-  const int b = b0 + at.hatDy;
+  int b = b0 + at.hatDy;
+  if (at.hatDy < 0 && b < -5) b = -5;  // raised on this pet: a hop takes them no higher than the cat's
   switch (g_accessory) {
     case 1:  // Santa hat: red, white brim and pompom, tipped to the right
       d.tri(-15 + x, -18 + b, 15 + x, -18 + b, 11 + x, -40 + b, color::RED);
@@ -346,19 +347,21 @@ static void drawHeadphones(MascotPen& d, int x, int b, int wide) {
 // Every mascot: the pet (ui_pet.h) and what all pets share around it. `desk` adds what only the
 // big Desk mascot has: a table edge, front paws and the extras (sweat, alarm, zzz, open mouth).
 static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk, bool table = true,
-                       bool box = true) {
+                       bool box = true, uint8_t wag = 0) {
   PetDef def;
   mibloRomCopy(&def, currentPet(), sizeof(def));
-  const PetCtx c{d, k, petColors(def), k.dx, k.dy, detail, desk};
+  if (!def.tail) wag = 0;  // the cat's tail is the antic's prop
+  const PetCtx c{d, k, petColors(def), k.dx, k.dy, detail, desk, wag};
   const int x = k.dx;
   const int b = k.dy;
   if (box) d.rect(-48, -48, 96, 96, color::BG);
   if (desk && table) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
+  if (wag) def.tail(c);  // behind the pet
   def.head(c);
   if (k.extras & kHeadphones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
   if (mascotTie()) drawTie(d, x, b + def.at.neckDy);
   drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64), def.at,
-          luma565(c.mc.skin) < kDarkSkin);
+          luma565(c.mc.skin) < kDarkSkin || def.at.darkEyes);
   if (!desk) return;
   def.front(c);
   if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming
@@ -445,9 +448,15 @@ void mascot(int cx, int cy, uint8_t frame, bool small) {
   drawMascot(d, k, !small, false);
 }
 
-void deskMascot(int cx, int cy, const MascotLook& look, int half, bool table, bool box) {
+void deskMascot(int cx, int cy, const MascotLook& look, int half, bool table, bool box, uint8_t wag) {
   MascotPen d{*g_canvas, cx, cy, Sz(half), 48};  // the 96-unit box drawn exactly 2 * Sz(half) wide
-  drawMascot(d, look, true, true, table, box);
+  drawMascot(d, look, true, true, table, box, wag);
+}
+
+bool petWags() {
+  PetDef def;
+  mibloRomCopy(&def, currentPet(), sizeof(def));
+  return def.tail != nullptr;
 }
 
 void qr(const char* payload, int x, int y, int scale) {

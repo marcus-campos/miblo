@@ -92,10 +92,20 @@ void crabFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-3 + x, 26 + b, 6, 5, 2, mc.earIn);
 }
 
+// The Tail antic: no tail; it scuttles from side to side after its own claws, kicking up a little
+// dust by its legs.
+void crabTail(const PetCtx& c) {
+  for (int s = -1; s <= 1; s += 2) {
+    const int r = ((c.wag - 1 + (s > 0)) % 2) + 1;
+    c.d.circle(s * 50 + c.x, 37 + c.b, r, c.mc.earIn);
+    c.d.circle(s * 54 + c.x, 33 + c.b, 3 - r, c.mc.earIn);
+  }
+}
+
 }  // namespace
 
 // Eyes up on the stalks (glasses there too); blue eyes, red claw tips.
 const PetDef kPetCrab MIBLO_ROM = {crabHead, crabFront, {0, 0, 0, 0, 6 - kEyeUp, 14}, ui::color::BLUE,
-                                   ui::color::RED};
+                                   ui::color::RED, crabTail};
 
 }  // namespace screens

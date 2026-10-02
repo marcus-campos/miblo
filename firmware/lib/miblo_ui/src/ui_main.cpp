@@ -1068,11 +1068,16 @@ uint32_t anticLength(RoamAntic a) {
   return a == RoamAntic::None ? 0 : anticOnSign(a) ? kAnticMs : kAnticFloorMs;
 }
 
-// Round `round`'s order of the 30 antics: a seeded shuffle, the same on every run.
-static void anticOrder(uint32_t round, uint8_t* out) {
-  for (uint8_t i = 0; i < kAnticCount; i++) out[i] = (uint8_t)(i + 1);
+// How many antics the current pet plays: the 30, and Riff's guitar solo.
+static uint8_t anticCount() {
+  return mascotPet() == (uint8_t)miblo::Pet::Riff ? kAnticCount + 1 : kAnticCount;
+}
+
+// Round `round`'s order of the `n` antics: a seeded shuffle, the same on every run.
+static void anticOrder(uint32_t round, uint8_t n, uint8_t* out) {
+  for (uint8_t i = 0; i < n; i++) out[i] = (uint8_t)(i + 1);
   uint32_t s = round * 2654435761u + 0x9E3779B9u;
-  for (uint8_t i = kAnticCount - 1; i > 0; i--) {
+  for (uint8_t i = n - 1; i > 0; i--) {
     s = s * 1664525u + 1013904223u;
     const uint8_t j = (uint8_t)((s >> 8) % (uint32_t)(i + 1));
     const uint8_t t = out[i];
@@ -1082,13 +1087,14 @@ static void anticOrder(uint32_t round, uint8_t* out) {
 }
 
 static RoamAntic anticOfCycle(uint32_t cycle) {  // cycle >= 1
-  const uint32_t idx = cycle - 1, round = idx / kAnticCount, pos = idx % kAnticCount;
-  uint8_t order[kAnticCount];
-  anticOrder(round, order);
+  const uint8_t n = anticCount();
+  const uint32_t idx = cycle - 1, round = idx / n, pos = idx % n;
+  uint8_t order[kAnticCount + 1];
+  anticOrder(round, n, order);
   if (round > 0) {  // never the same one twice in a row, across rounds too
-    uint8_t prev[kAnticCount];
-    anticOrder(round - 1, prev);
-    if (order[0] == prev[kAnticCount - 1]) {
+    uint8_t prev[kAnticCount + 1];
+    anticOrder(round - 1, n, prev);
+    if (order[0] == prev[n - 1]) {
       const uint8_t t = order[0];
       order[0] = order[1];
       order[1] = t;
@@ -1136,6 +1142,7 @@ struct RoamScene {
   bool blot;           // coffee spilled on the sign
   int drops;           // coffee drops falling (0..3)
   int curX, curY;      // the mouse cursor on the sign, 0..100 (curX -1: none)
+  uint8_t wag;         // the Tail antic of a pet with its own tail: its frame + 1 (deskMascot)
   Prop props[5];
   uint8_t nProps;
 };
@@ -1336,7 +1343,8 @@ static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
     }
     case RoamAntic::Tail: {  // its tail swings; it watches, turns after it, ends up dizzy
       const uint8_t sw = (uint8_t)(p / 250);
-      addProp(sc, PropKind::Tail, cx + Sz(40), cy + Sz(28), p < 6500 ? sw : 2);
+      if (petWags()) sc.wag = (uint8_t)((p < 6500 ? sw : 2) + 1);  // its own, drawn with it
+      else addProp(sc, PropKind::Tail, cx + Sz(40), cy + Sz(28), p < 6500 ? sw : 2);
       if (p < 3000) k = MascotLook{0, 0, 3, (int8_t)(sw % 8 < 4 ? -2 : 0), Eyes::Open, Paws::Down, 0};
       else if (p < 6500)
         k = MascotLook{(int8_t)((p / 300) % 2 ? -4 : 4), 0, 3, 0, Eyes::Wide,
@@ -1562,6 +1570,19 @@ static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
                      (uint16_t)(p < 3000 ? 0 : (p / 900) % 2 ? kZ1 : kZ1 | kZ2)};
       break;
     }
+    case RoamAntic::Solo: {  // (Riff) a little guitar solo: the hand up and down the neck, notes
+      const bool slide = (p / 300) % 2;
+      for (int i = 0; i < 2; i++) {
+        const uint32_t ph = (p + (uint32_t)i * 900) % 1800;
+        addProp(sc, PropKind::Note, cx + Sz(i ? 46 : -50), cy + Sz(20) - (int)(ph * (uint32_t)Sz(56) / 1800));
+      }
+      if (p < 1000) k = MascotLook{0, 0, 3, 3, Eyes::Open, Paws::Down, kGuitar};  // a look at the strings
+      else if (p < 7500)
+        k = MascotLook{0, (int8_t)((p / 250) % 2 ? -3 : 0), 0, 0, (p / 1500) % 2 ? Eyes::Happy : Eyes::Closed,
+                       slide ? Paws::ReachRight : Paws::Down, (uint16_t)(kGuitar | (p >= 4500 ? kMouthWide : 0))};
+      else k = MascotLook{0, 0, 0, 0, Eyes::Happy, Paws::Down, kGuitar};
+      break;
+    }
     default: break;
   }
 }
@@ -1723,6 +1744,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   h = hashInt(h, (uint32_t)sc.floor | (uint32_t)sc.catBehind << 1 | (uint32_t)sc.blot << 2 |
                      (uint32_t)sc.drops << 4 | (uint32_t)(sc.signDx + 16) << 8 | (uint32_t)computerAway << 16);
   h = hashInt(h, (uint32_t)((sc.curX + 1) * 1000 + sc.curY));
+  if (sc.wag) h = hashInt(h, sc.wag);
   for (uint8_t i = 0; i < sc.nProps; i++) {
     const Prop& p = sc.props[i];
     h = hashInt(hashInt(h, (uint32_t)p.kind | (uint32_t)p.f << 8), (uint32_t)(p.x * 1000 + p.y) ^ ((uint32_t)p.x2 << 20));
@@ -1743,7 +1765,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     C().fillRect(left, top, bw, bh, color::BG);
     if (sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);
     drawSign(sc, clk.hhmm, lim, reset, resetFg, lastName, nameFg, lastWhen, computerAway);
-    if (!sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false);  // over the sign
+    if (!sc.catBehind) deskMascot(sc.catX, sc.catY, sc.k, kRoamCatHalf, false, false, sc.wag);  // over the sign
     for (uint8_t i = 0; i < sc.nProps; i++) drawProp(sc.props[i]);
   };
   // In strips, like the desk mascot: no big heap block, no flash.

@@ -27,9 +27,10 @@ void duckHead(const PetCtx& c) {
   MascotPen& d = c.d;
   const PetColors& mc = c.mc;
   const int x = c.x, b = c.b;
-  // The bath-toy body behind the head, its tail tip up on the right.
-  d.tri(24 + x, 24 + b, 43 + x, 4 + b, 41 + x, 30 + b, mc.line);
-  d.tri(26 + x, 24 + b, 41 + x, 7 + b, 39 + x, 29 + b, mc.skin);
+  // The bath-toy body behind the head, its tail tip up on the right (wiggling in the Tail antic).
+  const int w = petSwing(c), tx = 2 * w + x, ty = (w < 0 ? -w : w) + b;
+  d.tri(24 + x, 24 + b, 43 + tx, 4 + ty, 41 + x, 30 + b, mc.line);
+  d.tri(26 + x, 24 + b, 41 + tx, 7 + ty, 39 + x, 29 + b, mc.skin);
   d.rrect(-41 + x, 13 + b, 82, 27, 13, mc.line);
   d.rrect(-40 + x, 14 + b, 80, 25, 12, mc.skin);
   // The curl on top of the head.
@@ -85,8 +86,17 @@ void duckFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-3 + x, 24 + b, 6, 6, 2, mc.earIn);
 }
 
+// The Tail antic: the tail tip wiggles (head()) and ripples spread out from under it.
+void duckTail(const PetCtx& c) {
+  for (int i = 0; i < 2; i++) {
+    const int r = (c.wag - 1 + 2 * i) % 4;
+    c.d.rrect(44 + 3 * r + c.x, 37 - 2 * i + c.b, 4 + r, 2, 1, c.mc.accent);
+  }
+}
+
 }  // namespace
 
-const PetDef kPetDuck MIBLO_ROM = {duckHead, duckFront, {0, 0, 0, 0, 6, 14}, 0x435F, ui::color::FLASH_BLUE};
+const PetDef kPetDuck MIBLO_ROM = {duckHead, duckFront, {0, 0, 0, 0, 6, 14}, 0x435F, ui::color::FLASH_BLUE,
+                                   duckTail};
 
 }  // namespace screens

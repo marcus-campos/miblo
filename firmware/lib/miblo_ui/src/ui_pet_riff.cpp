@@ -37,11 +37,11 @@ void brows(const PetCtx& c) {
 void riffHead(const PetCtx& c) {
   MascotPen& d = c.d;
   const PetColors& mc = c.mc;
-  const int x = c.x, b = c.b;
+  const int x = c.x, b = c.b, sway = 2 * petSwing(c);  // the Tail antic swings the mohawk
   for (size_t i = 0; i < sizeof(kSpikes) / sizeof(kSpikes[0]); i++) {  // the mohawk
     int8_t s[3];
     mibloRomCopy(s, kSpikes[i], sizeof(s));
-    d.tri(s[0] + x, -10 + b, s[1] + x, -10 + b, (s[0] + s[1]) / 2 + 3 + x, s[2] + b, mc.accent);
+    d.tri(s[0] + x, -10 + b, s[1] + x, -10 + b, (s[0] + s[1]) / 2 + 3 + sway + x, s[2] + b, mc.accent);
   }
   d.circle(-31 + x, 4 + b, 6, mc.skin);  // small round ears
   d.circle(31 + x, 4 + b, 6, mc.skin);
@@ -89,11 +89,32 @@ void riffFront(const PetCtx& c) {
     d.rrect(-7 + x, 18 + b, 14, 10, 5, mc.lid);
     d.rect(-4 + x, 23 + b, 8, 4, mc.earIn);
   }
+  if (c.k.extras & kGuitar) {  // a little guitar across it (fanfare, solo): the paws hold it
+    for (int o = 1; o >= 0; o--) {  // the neck, under the mouth: outlined, so it shows on the background
+      const uint16_t col = o ? mc.line : mc.lid;
+      d.tri(-24 + x, 33 - o + b, 42 + o + x, 21 - o + b, 42 + o + x, 25 + o + b, col);
+      d.tri(-24 + x, 33 - o + b, -24 + x, 37 + o + b, 42 + o + x, 25 + o + b, col);
+    }
+    for (int fx = 0; fx <= 30; fx += 10) d.rect(fx + x, 29 - fx * 2 / 11 + b, 1, 4, mc.earIn);  // frets
+    d.rrect(40 + x, 18 + b, 7, 7, 2, mc.accent);  // the headstock
+    d.circle(-36 + x, 32 + b, 8, mc.accent);  // the body and its sound hole
+    d.circle(-27 + x, 31 + b, 6, mc.accent);
+    d.circle(-31 + x, 31 + b, 2, mc.line);
+  }
   petPaws(c, petPadPaw);
   if (c.k.extras & kTongue) d.rrect(1 + x, 20 + b, 6, 6, 2, mc.earIn);  // out of the grin's high side
 }
 
+// The Tail antic: a short spiky tail flicking behind it (and head() swings the mohawk).
+static void riffTail(const PetCtx& c) {
+  const int x = c.x, b = c.b, w = 2 * petSwing(c);
+  c.d.tri(26 + x, 22 + b, 26 + x, 32 + b, 46 + x, 18 + w + b, c.mc.accent);
+  c.d.tri(34 + x, 22 + w / 2 + b, 38 + x, 21 + w / 2 + b, 37 + x, 13 + w + b, c.mc.accent);  // its spikes
+  c.d.tri(40 + x, 20 + w / 2 + b, 44 + x, 19 + w / 2 + b, 45 + x, 12 + w + b, c.mc.accent);
+}
+
 // Its head a little lower than the cat's (the mohawk above it): hats and headphones down by 4.
-const PetDef kPetRiff MIBLO_ROM = {riffHead, riffFront, {4, 4, 0, 0, 6, 14}, color::FLASH_BLUE, kHotPink};
+const PetDef kPetRiff MIBLO_ROM = {riffHead, riffFront, {4, 4, 0, 0, 6, 14}, color::FLASH_BLUE, kHotPink,
+                                   riffTail};
 
 }  // namespace screens

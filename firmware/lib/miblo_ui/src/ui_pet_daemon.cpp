@@ -74,8 +74,19 @@ void daemonFront(const PetCtx& c) {
   if (c.k.extras & kTongue) d.rrect(-2 + x, 17 + b, 4, 5, 2, mc.earIn);
 }
 
+// The Tail antic: the hem trails off to the right like smoke, its puffs swinging up and down.
+void daemonTail(const PetCtx& c) {
+  const int w = petSwing(c);
+  for (int i = 1; i <= 3; i++) {
+    const int px = 22 + 9 * i + c.x, py = kHemY - 2 + w * i + c.b;
+    c.d.circle(px, py, 8 - 2 * i, c.mc.earIn);
+    c.d.circle(px, py, 6 - 2 * i < 1 ? 1 : 6 - 2 * i, c.mc.skin);
+  }
+}
+
 }  // namespace
 
-const PetDef kPetDaemon MIBLO_ROM = {daemonHead, daemonFront, {0, -4, 0, -6, 2, 14}, ui::color::VIOLET, 0x262B};
+const PetDef kPetDaemon MIBLO_ROM = {daemonHead, daemonFront, {0, -4, 0, -6, 2, 14}, ui::color::VIOLET, 0x262B,
+                                     daemonTail};
 
 }  // namespace screens

@@ -175,27 +175,29 @@ static void drawHat(MascotPen& d, int x, int b, uint8_t phase) {
         d.rrect(e * 9 + o * 6 + x, -28 + b, 6, 8, 3, color::EAR_IN);
       }
       break;
-    case 5:  // nerdy square glasses over the eyes: 2-unit rims, a bridge and the temples
+    case 5: {  // nerdy square glasses over the eyes: 2-unit rims, a bridge and the temples
+      const uint16_t rim = g_style == 2 ? color::MUTED : color::PUPIL;  // light rims on the black cat
       for (int e = -14; e <= 14; e += 28) {
-        d.rect(e - 9 + x, -5 + b, 18, 2, color::PUPIL);
-        d.rect(e - 9 + x, 15 + b, 18, 2, color::PUPIL);
-        d.rect(e - 11 + x, -3 + b, 2, 18, color::PUPIL);
-        d.rect(e + 9 + x, -3 + b, 2, 18, color::PUPIL);
+        d.rect(e - 9 + x, -5 + b, 18, 2, rim);
+        d.rect(e - 9 + x, 15 + b, 18, 2, rim);
+        d.rect(e - 11 + x, -3 + b, 2, 18, rim);
+        d.rect(e + 9 + x, -3 + b, 2, 18, rim);
         d.rect(e - 8 + x, -1 + b, 2, 4, color::WHITE);  // a glint on the lens
       }
-      d.rect(-3 + x, 1 + b, 6, 2, color::PUPIL);
-      d.rect(-32 + x, 1 + b, 7, 2, color::PUPIL);
-      d.rect(25 + x, 1 + b, 7, 2, color::PUPIL);
+      d.rect(-3 + x, 1 + b, 6, 2, rim);
+      d.rect(-32 + x, 1 + b, 7, 2, rim);
+      d.rect(25 + x, 1 + b, 7, 2, rim);
       break;
+    }
     case 6: {  // hearts floating around the head; they bob with each change of look
       const int hb = b > 0 ? b : 0;  // they follow the cat down, never up out of the box
       for (int i = 0; i < 3; i++) {  // above the head, by the left cheek, by the right cheek
         const int hx = i == 0 ? 0 : i == 1 ? -41 : 41;
         const int hy = (i == 0 ? -38 : i == 1 ? -2 : 10) + hb - 2 * ((phase + i) % 3);
         const uint16_t c = i == 1 ? color::EAR_IN : color::RED;
-        d.circle(hx - 3, hy, 3, c);
-        d.circle(hx + 2, hy, 3, c);
-        d.tri(hx - 6, hy + 1, hx + 5, hy + 1, hx, hy + 7, c);
+        d.circle(hx - 3, hy, 4, c);
+        d.circle(hx + 3, hy, 4, c);
+        d.tri(hx - 6, hy + 2, hx + 6, hy + 2, hx, hy + 9, c);
       }
       break;
     }
@@ -208,8 +210,9 @@ static void drawTie(MascotPen& d, int x, int b) {
   d.tri(-8 + x, 29 + b, -2 + x, 32 + b, -5 + x, 35 + b, color::WHITE);  // the collar's points
   d.tri(8 + x, 29 + b, 2 + x, 32 + b, 5 + x, 35 + b, color::WHITE);
   d.rect(-3 + x, 30 + b, 6, 4, color::VIOLET);  // the knot
-  d.tri(-4 + x, 37 + b, 4 + x, 37 + b, x, 33 + b, color::VIOLET);
-  d.tri(-4 + x, 37 + b, 4 + x, 37 + b, x, 42 + b, color::VIOLET);
+  d.tri(-3 + x, 34 + b, 3 + x, 34 + b, -5 + x, 40 + b, color::VIOLET);  // the blade, widening ...
+  d.tri(3 + x, 34 + b, 5 + x, 40 + b, -5 + x, 40 + b, color::VIOLET);
+  d.tri(-5 + x, 40 + b, 5 + x, 40 + b, x, 46 + b, color::VIOLET);       // ... to a point
 }
 
 // Focus headphones (kHeadphones): a band hugging the top of the head (discs along a circle just
@@ -301,10 +304,12 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
   // Tired (8 h of Claude working today, or kEyeBags): faint bags under the eyes.
   if ((k.extras & kEyeBags) || catMood() == (uint8_t)miblo::CatMood::Tired) {
     const int low = k.eyes == Eyes::Wide ? 2 : 0;
+    // Subtle but visible on every colour: the black cat's line colour is darker than its skin.
+    const uint16_t bag = g_style == 1 ? 0x9900 : g_style == 2 ? 0x7BCF : mc.line;
     for (int e = -14; e <= 14; e += 28) {
-      d.rect(e - 6 + x, 16 + low + b, 2, 1, mc.line);
-      d.rect(e - 4 + x, 17 + low + b, 8, 1, mc.line);
-      d.rect(e + 4 + x, 16 + low + b, 2, 1, mc.line);
+      d.rect(e - 6 + x, 16 + low + b, 2, 1, bag);
+      d.rect(e - 4 + x, 17 + low + b, 8, 1, bag);
+      d.rect(e + 4 + x, 16 + low + b, 2, 1, bag);
     }
   }
   d.rrect(-4 + x, 17 + b, 8, 5, 2, mc.nose);

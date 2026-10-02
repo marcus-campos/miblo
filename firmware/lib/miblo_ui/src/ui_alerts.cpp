@@ -80,22 +80,26 @@ void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs, uint
 }
 
 void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, const Clock& clk,
-          const miblo::RunTracker& runs, bool anonymous) {
+          const miblo::RunTracker& runs, bool anonymous, const char* name) {
   const bool amber = kind != AlertKind::Done;
-  // A "needs you" whose session is not in this snapshot (another paired computer's, or an
-  // alerts-only one) still draws, anonymously and without the wait's duration; "finished" not.
+  // The alerted session is not in this snapshot (another paired computer's, or an alerts-only
+  // one): the header already on screen stays as it is, so it doesn't flip with every snapshot;
+  // drawn first like this, it shows the cached name and the kind, nothing from the row.
   const bool known = idx >= 0 && idx < s.count;
-  if (!known && !amber) return;
-  const SessionRow& r = s.sessions[known ? idx : 0];  // read only when `known`
-  if (!known) anonymous = true;
+  if (!known && drawn(R_HEADER)) return;
+  const SessionRow& r = s.sessions[known ? idx : 0];  // row fields are read only when `known`
+  if (!known && !(name && name[0])) anonymous = true;
+  const char* title = known ? r.name : name;
   char buf[160];
   char tmp[48];
 
   // Only what is displayed goes into the hash (the model/ctx/tokens line is only on "Finished").
   uint32_t h = hashStr(hashInt(hashInt(kHashSeed, (uint32_t)lang), (uint32_t)kind), known ? r.id : "");
   // Meeting mode (anonymous): no name, tool or command at all.
-  h = anonymous ? hashInt(h, 1) : hashStr(hashStr(hashStr(h, r.name), discreet ? "" : r.det), r.tool);
-  if (!amber) {
+  if (anonymous) h = hashInt(h, 1);
+  else if (!known) h = hashStr(hashInt(h, 2), title);
+  else h = hashStr(hashStr(hashStr(h, r.name), discreet ? "" : r.det), r.tool);
+  if (!amber && known) {
     uint32_t dur = 0;
     h = hashStr(hashInt(hashInt(hashInt(h, (uint32_t)r.ctx), (uint32_t)r.tok), runs.stats(r.id, dur) ? dur : 0), r.model);
   }
@@ -111,7 +115,7 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
     }
     int sub = Y(92);  // baseline of the line under the title
     uint32_t took = 0;
-    const bool timed = !amber && runs.stats(r.id, took);
+    const bool timed = !amber && known && runs.stats(r.id, took);
     if (anonymous) {  // "A session needs you" / "Finished after 7:07", one or two lines of the title font
       char a[96];
       const char* b;
@@ -130,12 +134,12 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
         sub = Y(114);
       }
     } else {
-      C().text(X(12), Y(62), r.name, Font::Hero, color::TEXT, Align::Left, X(216));
+      C().text(X(12), Y(62), title, Font::Hero, color::TEXT, Align::Left, X(216));
     }
     if (amber) {
       C().text(X(12), sub, t(lang, kind == AlertKind::Perm ? S::AskedPermission : S::AskedQuestion), Font::Body,
                color::AMBER, Align::Left, X(216));
-      if (!anonymous && r.tool[0]) {
+      if (known && !anonymous && r.tool[0]) {
         C().fillRoundRect(X(12), Y(104), X(216), Y(32), Sz(4), color::CMD_BG);
         if (discreet || !r.det[0]) snprintf(buf, sizeof(buf), "%s", r.tool);
         else snprintf(buf, sizeof(buf), "%s: %s", r.tool, r.det);
@@ -147,8 +151,10 @@ void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, 
         snprintf(buf, sizeof(buf), t(lang, S::Took), tmp);
         C().text(X(12), sub, buf, Font::Body, color::TEXT, Align::Left, X(216));
       }
-      metaLine(r, buf, sizeof(buf));
-      C().text(X(12), sub + Y(26), buf, Font::Small, color::MUTED, Align::Left, X(216));
+      if (known) {
+        metaLine(r, buf, sizeof(buf));
+        C().text(X(12), sub + Y(26), buf, Font::Small, color::MUTED, Align::Left, X(216));
+      }
     }
   }
 

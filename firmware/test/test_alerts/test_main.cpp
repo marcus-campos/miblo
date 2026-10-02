@@ -823,6 +823,97 @@ static void test_alerts_only_snapshot_mid_hero_does_not_cut_it() {
   TEST_ASSERT_EQUAL_UINT32(3000, v.phaseStartMs);
 }
 
+// Two paired computers, each with its own bridge (own seq, alert ids from 1, records resent for
+// 30 s): every "finished" on either one is shown exactly once. One bridge restarting (its seq
+// going back) starts only its own ids over.
+static void test_two_computers_each_finished_shows_once() {
+  AlertSequencer q;
+  Snapshot a, b;
+  reset();
+  strcpy(snap.host, "pc-a");
+  session("aaaa0001", SessionState::Done, 100);
+  session("aaaa0002", SessionState::Done, 101);
+  alert(1, AlertKind::Done, "aaaa0001");
+  alert(2, AlertKind::Done, "aaaa0002");
+  a = snap;
+  reset();
+  strcpy(snap.host, "pc-b");
+  session("bbbb0001", SessionState::Done, 102);
+  alert(1, AlertKind::Done, "bbbb0001");
+  b = snap;
+  int shown[3] = {};
+  const char* ids[] = {"aaaa0001", "aaaa0002", "bbbb0001"};
+  AlertPhase lp = AlertPhase::None;
+  uint32_t lstart = 0, now = 0;
+  auto run = [&](int secs, uint32_t seqA, uint32_t seqB) {
+    for (int sec = 0; sec < secs; sec++) {
+      snap = sec % 2 ? b : a;
+      snap.seq = (sec % 2 ? seqB : seqA) + (uint32_t)sec / 2;
+      q.ingest(snap, now);
+      for (int k = 0; k < 10; k++, now += 100) {
+        const AlertView& v = q.update(snap, now);
+        if (v.phase == AlertPhase::Flash && (lp != AlertPhase::Flash || lstart != v.phaseStartMs)) {
+          for (int i = 0; i < 3; i++) shown[i] += strcmp(v.sid, ids[i]) == 0;
+        }
+        lp = v.phase;
+        lstart = v.phaseStartMs;
+      }
+    }
+  };
+  run(30, 500, 7);  // records resent for 30 s
+  for (int i = 0; i < 3; i++) TEST_ASSERT_EQUAL_INT_MESSAGE(1, shown[i], ids[i]);
+  // pc-b's bridge restarts: seq and ids start over; its new "finished" (id 1 again) shows, and
+  // pc-a's records are still not shown again.
+  b.alertCount = 0;
+  strcpy(b.sessions[0].id, "bbbb0009");
+  b.alerts[b.alertCount] = {1, AlertKind::Done, "bbbb0009"};
+  b.alertCount++;
+  ids[2] = "bbbb0009";
+  shown[2] = 0;
+  run(30, 600, 1);
+  TEST_ASSERT_EQUAL_INT(1, shown[0]);
+  TEST_ASSERT_EQUAL_INT(1, shown[1]);
+  TEST_ASSERT_EQUAL_INT(1, shown[2]);
+}
+
+// The name the alert started with stays available while its row is missing (another computer's
+// snapshot), for the screen to keep showing it; "" when it started without a row.
+static void test_alert_keeps_the_name_it_started_with() {
+  AlertTiming t;
+  t.reminderMs = 0;
+  AlertSequencer q;
+  q.setTiming(t);
+  reset();
+  session("aaaa0001", SessionState::Perm, 100);
+  strcpy(snap.sessions[0].name, "api-server");
+  q.ingest(snap, 0);
+  q.update(snap, 0);
+  TEST_ASSERT_EQUAL_STRING("api-server", q.alertName());
+  reset(1);
+  strcpy(snap.host, "pc-b");
+  session("bbbb0001", SessionState::Running, 100);
+  q.ingest(snap, 500);
+  TEST_ASSERT_EQUAL(AlertPhase::Flash, q.update(snap, 500).phase);
+  TEST_ASSERT_EQUAL_STRING("api-server", q.alertName());
+}
+
+// An older plugin's alerts-only snapshot carries no `host`: it counts as the computer heard last,
+// so a "finished" already shown is not shown again.
+static void test_alerts_only_snapshot_without_host_is_the_last_computer() {
+  AlertSequencer q;
+  reset(40);
+  strcpy(snap.host, "pc-a");
+  session("aaaa0001", SessionState::Done, 100);
+  alert(5, AlertKind::Done, "aaaa0001");
+  q.ingest(snap, 0);
+  uint32_t now = drain(q, 0);
+  snap.host[0] = 0;
+  snap.seq = 41;
+  q.ingest(snap, now);
+  TEST_ASSERT_EQUAL_UINT8(0, q.queued());
+  TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, now).phase);
+}
+
 // ---- Randomized bridge + gadget model (adapted from the round-2 review harness) ----
 // The bridge side models the plugin: sessions change state (`since` = when), every entry into
 // perm/question/done adds an alert record (ids increasing) that lives 30 s; the snapshot sorts
@@ -1090,6 +1181,9 @@ int main() {
   RUN_TEST(test_new_wait_is_shown_again_and_a_missing_session_is_not_a_new_wait);
   RUN_TEST(test_two_computers_every_wait_gets_its_full_hero);
   RUN_TEST(test_alerts_only_snapshot_mid_hero_does_not_cut_it);
+  RUN_TEST(test_two_computers_each_finished_shows_once);
+  RUN_TEST(test_alert_keeps_the_name_it_started_with);
+  RUN_TEST(test_alerts_only_snapshot_without_host_is_the_last_computer);
   RUN_TEST(test_randomized_bridge_model_loses_and_duplicates_nothing);
   return UNITY_END();
 }

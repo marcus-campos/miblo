@@ -145,6 +145,14 @@ test('the alert-only snapshot keeps the forecast in usage', async () => {
   assert.equal(alertOnlySnapshot(full).usage.h5.eta, 1790611200);
 });
 
+test('alerts-only snapshot names the computer it comes from', async () => {
+  const { alertOnlySnapshot } = await import('../lib/snapshot-builder.js');
+  const { tracker, metrics } = world();
+  tracker.handle({ session_id: 's', hook_event_name: 'PermissionRequest', cwd: '/w/a', tool_name: 'Bash', tool_input: {} });
+  const full = buildSnapshot({ seq: 1, nowMs: NOW, host: 'mac-studio', tracker, metrics });
+  assert.equal(alertOnlySnapshot(full).host, 'mac-studio');
+});
+
 test('ts only for a running Bash command', async () => {
   const { alertOnlySnapshot } = await import('../lib/snapshot-builder.js');
   let t = NOW - 90_000;

@@ -28,6 +28,8 @@ void reset();
 bool region(uint8_t id, uint32_t hash, int x, int y, int w, int h, uint16_t bg = ui::color::BG);
 // Like region() but without clearing: for areas that repaint their own background.
 bool dirty(uint8_t id, uint32_t hash);
+// true if the region was drawn since the last screen switch (reset()).
+bool drawn(uint8_t id);
 // Like region(), but the redraw is composed off-screen when the canvas has a layer (memory
 // permitting) and pushed in one go on end() / at the end of the scope, so the region never
 // flashes its background colour; otherwise it is cleared and drawn directly. For whole-region
@@ -144,8 +146,11 @@ constexpr uint32_t kFlashPhaseMs = 375;  // half of miblo::kBlinkMs: config flas
 // session names, tools or commands.
 void flash(Lang lang, miblo::AlertKind kind, const char* name, uint32_t elapsedMs, uint8_t level = 0,
            bool anonymous = false);
+// `idx` < 0: the alerted session is not in `s` (another paired computer's snapshot): what the
+// hero already drew stays as it is; drawn first like this, it shows `name` (the name the alert
+// started with, miblo::AlertSequencer::alertName()), anonymous if "".
 void hero(Lang lang, const miblo::Snapshot& s, int idx, miblo::AlertKind kind, bool discreet, const Clock& clk,
-          const miblo::RunTracker& runs, bool anonymous = false);
+          const miblo::RunTracker& runs, bool anonymous = false, const char* name = "");
 // `exhaustAt` (miblo::etaFor): when the 5h window runs out at the current pace (0 = no forecast).
 void overview(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
               bool discreet, uint32_t exhaustAt = 0);

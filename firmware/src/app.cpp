@@ -638,18 +638,18 @@ void loop() {
       break;
     }
     case ScreenId::AlertFlash: {
-      int idx = miblo::findSession(ctx.snap, alert.sid);
-      screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs,
-                     alert.level, ctx.meeting.on());
+      // The name the alert started with: another computer's snapshot (without that row) doesn't
+      // change it.
+      screens::flash(lang, alert.kind, ctx.alerts.alertName(), now - alert.phaseStartMs, alert.level,
+                     ctx.meeting.on());
       break;
     }
     case ScreenId::AlertHero:
       screens::hero(lang, ctx.snap, miblo::findSession(ctx.snap, alert.sid), alert.kind, discreet, clk, ctx.runs,
-                    ctx.meeting.on());
+                    ctx.meeting.on(), ctx.alerts.alertName());
       break;
     case ScreenId::Fanfare: {
-      const int idx = miblo::findSession(ctx.snap, alert.sid);
-      const char* name = idx >= 0 && !ctx.meeting.on() ? ctx.snap.sessions[idx].name : "";
+      const char* name = ctx.meeting.on() ? "" : ctx.alerts.alertName();
       screens::fanfare(lang, name, fanDur, now - alert.phaseStartMs);
       break;
     }

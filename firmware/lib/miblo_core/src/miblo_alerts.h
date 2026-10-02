@@ -56,8 +56,16 @@ struct AlertView {
 // kMaxSessions waits across several computers can evict an entry and show that wait again.
 // Booting (or turning alerts on) with sessions already waiting shows each of them once.
 //
-// "Finished" stays id-based: records are deduplicated by `id` (highest id seen so far), one per
-// session, queued (kMaxAlerts) and held while `holdDone` (focus), then shown once.
+// "Finished" stays id-based: records are deduplicated by `id`, the highest id seen so far per
+// sending computer (the snapshot's `host`; up to kMaxHosts, least recently heard evicted; one
+// entry for old plugins without `host`), and a seq going backwards starts over only that
+// computer's ids (its bridge restarted). One per session, queued (kMaxAlerts) and held while
+// `holdDone` (focus), then shown once. A queued or running "finished" survives another
+// computer's snapshot (its session is not in it); it is dropped when its session is in the
+// snapshot and no longer done, or missing from its own computer's snapshot.
+//
+// alertName(): the session name the alert started with, so the screen keeps showing it while
+// another computer's snapshot (without that row) is up; "" when it started without a row.
 class AlertSequencer {
  public:
   void setTiming(const AlertTiming& t);
@@ -71,7 +79,8 @@ class AlertSequencer {
   // On every loop iteration: advances the phases and returns what should be on screen; picks the
   // next wait not shown yet straight from `s` (so `s` must be the latest snapshot).
   const AlertView& update(const Snapshot& s, uint32_t nowMs);
-  uint32_t lastSeenId() const { return maxId_; }
+  uint32_t lastSeenId() const { return hostN_ ? hosts_[0].maxId : 0; }  // of the last computer heard
+  const char* alertName() const { return name_; }
   uint8_t queued() const { return qn_; }  // "finished" alerts queued (or held)
   void clear();
 
@@ -79,9 +88,14 @@ class AlertSequencer {
   AlertTiming t_;
   AlertItem queue_[kMaxAlerts] = {};
   uint8_t qn_ = 0;
-  uint32_t maxId_ = 0;
-  uint32_t lastSeq_ = 0;
-  bool haveSeq_ = false;
+  // Per sending computer: its host hash, last seq and highest alert id; [0] = heard last.
+  struct HostSeq {
+    uint32_t host, lastSeq, maxId;
+  };
+  static constexpr uint8_t kMaxHosts = 4;
+  HostSeq hosts_[kMaxHosts] = {};
+  uint8_t hostN_ = 0;
+  uint16_t viewHost_ = 0;  // hostTag of the snapshot the running alert started on
   AlertView view_ = {AlertPhase::None, AlertKind::Done, {0}, 0, 0};
   AlertModifiers mods_;
   bool amberShown_ = false;
@@ -92,6 +106,7 @@ class AlertSequencer {
   char remindSid_[9] = {0};   // the session the reminders are about ("" = none)
   uint32_t flashLenMs_ = 0;   // the running alert's flash length (level, quiet flash)
   uint32_t heroLenMs_ = 0;    // the running alert's hero length (level, extendHero)
+  char name_[sizeof(SessionRow::name)] = {0};  // the running alert's session name at its start
   // Waits already shown: (session key, since). A key is the session's 8-hex-digit short id read
   // as a number (exact for every id the bridge sends; other strings are hashed), so presence and
   // identity are exact while an entry costs 8 B instead of 13 (160 B in all, not 260).
@@ -99,8 +114,9 @@ class AlertSequencer {
   uint32_t shownSince_[kMaxSessions] = {};
   uint8_t shownN_ = 0;
 
-  static bool stillValid(const Snapshot& s, AlertKind kind, const char* sid);
-  void start(AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level);
+  static bool doneStillValid(const Snapshot& s, const char* sid, uint16_t host);
+  HostSeq& hostOf(const Snapshot& s);
+  void start(const Snapshot& s, AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level, uint16_t host);
   void finish(uint32_t nowMs);
   uint8_t levelNow() const;
   void removeAt(uint8_t i);

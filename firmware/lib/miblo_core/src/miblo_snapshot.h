@@ -50,6 +50,7 @@ struct AlertItem {
   uint32_t id;
   AlertKind kind;
   char sid[9];
+  uint16_t host;  // AlertSequencer: which computer queued it (hostTag); not parsed (fits the padding)
 };
 
 struct Snapshot {

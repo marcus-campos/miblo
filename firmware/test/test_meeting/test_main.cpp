@@ -150,8 +150,7 @@ static void test_anonymous_alerts_hide_names() {
 }
 
 // The alerted session missing from the snapshot on screen (another paired computer's snapshot, or
-// an alerts-only one): a "needs you" flash and hero still draw, anonymously; "finished" draws
-// nothing, as before.
+// an alerts-only one), nothing cached: the flash and hero still draw, anonymously.
 static void test_needs_you_without_its_session_row_draws_anonymously() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
@@ -171,8 +170,49 @@ static void test_needs_you_without_its_session_row_draws_anonymously() {
   TEST_ASSERT_FALSE(drewAny(fc, "waiting "));  // unknown: no made-up duration
   screens::reset();
   fc.clearLog();
+  // A "finished" from another computer survives its snapshot too: anonymous, no row details.
   screens::hero(Lang::En, snap, -1, AlertKind::Done, false, clk, runs, false);
-  TEST_ASSERT_FALSE(drewAny(fc, "FINISHED"));
+  TEST_ASSERT_TRUE(drewAny(fc, "FINISHED"));
+  TEST_ASSERT_FALSE(drewAny(fc, "other-repo"));
+  TEST_ASSERT_FALSE(drewAny(fc, "Opus"));
+}
+
+// Two computers' snapshots alternate during a hero: once drawn, its header stays as it started
+// (name, tool) while the row is missing; drawn first without the row, it uses the name cached at
+// the alert's start; anonymous only without one.
+static void test_hero_header_stays_put_while_its_row_is_missing() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  fillWaiting("secret-client", "Bash", "deploy prod");
+  Snapshot other = snap;
+  other.count = 1;
+  strcpy(other.sessions[0].id, "99999999");
+  strcpy(other.sessions[0].name, "elsewhere");
+  RunTracker runs;
+  const screens::Clock clk = testClock();
+  screens::reset();
+  screens::hero(Lang::En, snap, 0, AlertKind::Perm, false, clk, runs, false, "secret-client");
+  TEST_ASSERT_TRUE(drewAny(fc, "deploy prod"));
+  fc.clearLog();
+  screens::hero(Lang::En, other, -1, AlertKind::Perm, false, clk, runs, false, "secret-client");
+  TEST_ASSERT_FALSE(drewAny(fc, "A session needs you"));
+  TEST_ASSERT_FALSE(drewAny(fc, "secret-client"));  // not redrawn: still on screen
+  fc.clearLog();
+  screens::hero(Lang::En, snap, 0, AlertKind::Perm, false, clk, runs, false, "secret-client");
+  TEST_ASSERT_FALSE(drewAny(fc, "secret-client"));  // back: same header, nothing to redraw
+  // The hero starts on the other computer's snapshot: the cached name, no tool.
+  screens::reset();
+  fc.clearLog();
+  screens::hero(Lang::En, other, -1, AlertKind::Perm, false, clk, runs, false, "secret-client");
+  TEST_ASSERT_TRUE(drewAny(fc, "secret-client"));
+  TEST_ASSERT_TRUE(drewAny(fc, "Asked permission"));
+  TEST_ASSERT_FALSE(drewAny(fc, "A session needs you"));
+  // Meeting mode: anonymous whatever is cached.
+  screens::reset();
+  fc.clearLog();
+  screens::hero(Lang::En, other, -1, AlertKind::Perm, false, clk, runs, true, "secret-client");
+  TEST_ASSERT_FALSE(drewAny(fc, "secret-client"));
+  TEST_ASSERT_TRUE(drewAny(fc, "A session needs you"));
 }
 
 // From the 5th reminder the flash blinks red (white text), whatever the kind.
@@ -286,6 +326,7 @@ int main() {
   RUN_TEST(test_anonymous_alerts_hide_names);
   RUN_TEST(test_level_two_flash_is_red);
   RUN_TEST(test_needs_you_without_its_session_row_draws_anonymously);
+  RUN_TEST(test_hero_header_stays_put_while_its_row_is_missing);
   RUN_TEST(test_meeting_screens_fit_every_language_and_resolution);
   RUN_TEST(test_badge_draws_every_frame);
   RUN_TEST(test_fanfare_fits_every_language_and_resolution);

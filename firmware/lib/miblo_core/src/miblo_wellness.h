@@ -13,6 +13,7 @@ constexpr uint32_t kWorkGapMs = 600000;     // up to 10 min without work still c
 constexpr uint32_t kEyesEveryMs = 1200000;  // 20 min of continuous work
 constexpr uint32_t kBreakNudgeMs = 60000, kWaterNudgeMs = 20000, kEyesNudgeMs = 20000;
 constexpr uint32_t kNudgeWaitMs = 300000;   // a nudge due while blocked waits this long, then is skipped
+constexpr uint32_t kActiveMs = 60000;       // break and eye rest come due only within a minute of work
 
 class WellnessClock {
  public:

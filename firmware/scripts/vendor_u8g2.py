@@ -10,7 +10,14 @@ The CJK font is not taken from Bodmer: u8g2 only ships Unifont with a few hundre
 so the GB2312 set below is converted here from the official Unifont BDF with u8g2's own bdfconv
 (built from source at a pinned commit; needs a C compiler).
 
-Usage: firmware/.venv/bin/python firmware/scripts/vendor_u8g2.py
+Each font then loses the glyphs that an earlier font covers in every stack it sits in
+(boards/*/fonts.h): TftCanvas draws a character with the first font of the stack that has it, so
+those glyphs can never be drawn (e.g. the ASCII of the Cyrillic and CJK fonts, which always sit
+after a Latin font). Nothing on screen changes; about 9 KB of flash is saved. Change a stack?
+Re-vendor, or run with --prune to prune the committed fonts again (that never brings a dropped
+glyph back: a font moved to the front of a stack needs the full re-vendor).
+
+Usage: firmware/.venv/bin/python firmware/scripts/vendor_u8g2.py [--prune]
 """
 import codecs
 import glob
@@ -121,6 +128,107 @@ def subset_font(data, chars):
     return bytes(header) + body + b"\0\4\377\377\0"
 
 
+def glyph_records(data):
+    """(encoding, record bytes) of every glyph of a u8g2 font, and the Unicode lookup table.
+
+    The 8-bit records are [encoding, size, bits...]; the Unicode ones [encoding (2 bytes, big
+    endian), size, bits...]. The lookup table ([offset, last encoding] word pairs, ended by the
+    0xFFFF encoding) splits the Unicode glyphs into blocks: each offset jumps from the previous
+    block start (the first one from the table itself) to the block of glyphs up to its encoding.
+    """
+    glyphs, p = [], 23
+    while data[p + 1]:
+        glyphs.append((data[p], data[p:p + data[p + 1]]))
+        p += data[p + 1]
+    table_at = 23 + (data[21] << 8 | data[22])
+    if table_at != p + 2:
+        sys.exit("unexpected u8g2 font layout")
+    table, q = [], table_at
+    while True:
+        last = data[q + 2] << 8 | data[q + 3]
+        table.append(last)
+        q += 4
+        if last == 0xFFFF:
+            break
+    p = table_at + (data[table_at] << 8 | data[table_at + 1])  # first block
+    while p + 1 < len(data) and (data[p] << 8 | data[p + 1]):
+        glyphs.append((data[p] << 8 | data[p + 1], data[p:p + data[p + 2]]))
+        p += data[p + 2]
+    return glyphs, table
+
+
+def prune_font(data, drop):
+    """The u8g2 font without the glyphs whose encodings are in `drop`.
+
+    Same header (metrics) except the offsets: 'A' and 'a' point to the first kept glyph at or
+    after them (the lookup scans forward from there), the Unicode table keeps its blocks with the
+    offsets of the kept glyphs.
+    """
+    glyphs, table = glyph_records(data)
+    small = [(e, g) for e, g in glyphs if e < 256 and e not in drop]
+    big = [(e, g) for e, g in glyphs if e >= 256 and e not in drop]
+    body = b"".join(g for _, g in small)
+
+    def first_at(enc):
+        return sum(len(g) for e, g in small if e < enc)
+
+    header = bytearray(data[:23])
+    for at, enc in ((17, ord("A")), (19, ord("a"))):
+        off = first_at(enc)
+        header[at], header[at + 1] = off >> 8, off & 0xFF
+    body += b"\0\0"
+    uni = len(body)
+    header[21], header[22] = uni >> 8, uni & 0xFF
+    # Block starts, relative to the table: each block begins at its first kept glyph above the
+    # previous block's last encoding (an emptied block points at the next glyph).
+    glyph_bytes = b"".join(g for _, g in big)
+    starts, lo = [], 0
+    for last in table:
+        starts.append(4 * len(table) + sum(len(g) for e, g in big if e <= lo))
+        lo = last
+    entries = b""
+    prev = 0
+    for start, last in zip(starts, table):
+        delta = start - prev
+        entries += bytes([delta >> 8, delta & 0xFF, last >> 8, last & 0xFF])
+        prev = start
+    # The glyph list ends with a zero encoding (its second byte is the C string's own NUL).
+    return bytes(header) + body + entries + glyph_bytes + b"\0"
+
+
+def stacks():
+    """The font stacks of every board (lists of font names, in order), from boards/*/fonts.h."""
+    found = []
+    for path in sorted(glob.glob(os.path.join(HERE, "..", "boards", "*", "fonts.h"))):
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+        for body in re.findall(r"MIBLO_ROM\s*=\s*\{([^}]*nullptr)\s*\}", text):
+            found.append(re.findall(r"u8g2_font_\w+", body))
+    if not found:
+        sys.exit("no font stacks found in boards/*/fonts.h")
+    return found
+
+
+def prune(fonts):
+    """Drops from each font the glyphs an earlier font covers in every stack that holds it."""
+    encs = {name: {e for e, _ in glyph_records(data)[0]} for name, data in fonts.items()}
+    reachable = {name: set() for name in fonts}
+    for stack in stacks():
+        covered = set()
+        for name in stack:
+            if name not in fonts:
+                sys.exit(f"font {name} of a stack is not vendored")
+            reachable[name] |= encs[name] - covered
+            covered |= encs[name]
+    out = {}
+    for name, data in fonts.items():
+        drop = encs[name] - reachable[name]
+        out[name] = prune_font(data, drop) if drop else data
+        if drop:
+            print(f"  {name}: {len(drop)} unreachable glyphs, {len(data) - len(out[name])} bytes saved")
+    return out
+
+
 def gb2312_chars():
     """Unicode code points of ASCII, the GB2312_ROWS of GB2312 and EXTRA_CHARS."""
     chars = set(range(32, 127))
@@ -193,38 +301,61 @@ def main():
 
     print("downloading u8g2_fonts.c (~26 MB)...")
     source = fetch("src/u8g2_fonts.c").split("\n")
-    out = ['/* Generated by scripts/vendor_u8g2.py - only the fonts used by Miblo. */',
-           '#include "u8g2_fonts.h"', ""]
-    total = 0
+    parts = []  # (name, C definition lines)
     for font in FONTS:
         if font == "u8g2_font_unifont_t_gb2312a":
             print(f"converting Unifont {UNIFONT_VERSION}...")
-            lines = unifont_lines(font)
-            out.extend(lines)
-            out.append("")
-            size = int(re.search(r"\[(\d+)\]", lines[0]).group(1))
-            total += size
-            print(f"  {font}: {size} bytes")
+            parts.append((font, unifont_lines(font)))
             continue
-        start = next((i for i, l in enumerate(source) if l.startswith(f"const uint8_t {font}[")), None)
-        if start is None:
+        lines = definition(source, font)
+        if lines is None:
             sys.exit(f"font not found: {font}")
-        end = start
-        while not source[end].rstrip().endswith('";'):
-            end += 1
-        lines = source[start:end + 1]
         subsets = SUBSETS.get(font, [(font, None)])
         for name, chars in subsets:
-            part = font_c(name, subset_font(font_bytes(lines), chars)) if chars else lines
-            out.extend(part)
-            out.append("")
-            size = int(re.search(r"\[(\d+)\]", part[0]).group(1))
-            total += size
-            print(f"  {name}: {size} bytes")
+            parts.append((name, font_c(name, subset_font(font_bytes(lines), chars)) if chars else lines))
+    write_fonts(parts)
+
+
+def definition(lines, name):
+    """The C definition lines of font `name` in `lines`, or None."""
+    start = next((i for i, l in enumerate(lines) if l.startswith(f"const uint8_t {name}[")), None)
+    if start is None:
+        return None
+    end = start
+    while not lines[end].rstrip().endswith('";'):
+        end += 1
+    return lines[start:end + 1]
+
+
+def write_fonts(parts):
+    """Prunes the fonts (prune()) and writes miblo_fonts.c."""
+    pruned = prune({name: font_bytes(lines) for name, lines in parts})
+    out = ['/* Generated by scripts/vendor_u8g2.py - only the fonts used by Miblo. */',
+           '#include "u8g2_fonts.h"', ""]
+    total = 0
+    for name, lines in parts:
+        if pruned[name] != font_bytes(lines):
+            lines = font_c(name, pruned[name])
+        out.extend(lines)
+        out.append("")
+        size = int(re.search(r"\[(\d+)\]", lines[0]).group(1))
+        total += size
+        print(f"  {name}: {size} bytes")
     with open(os.path.join(DEST, "miblo_fonts.c"), "w", encoding="latin-1") as f:
         f.write("\n".join(out) + "\n")
     print(f"total font size: {total} bytes")
 
 
+def prune_committed():
+    """--prune: prunes the committed miblo_fonts.c again (after a stack changed)."""
+    with open(os.path.join(DEST, "miblo_fonts.c"), encoding="latin-1") as f:
+        lines = f.read().split("\n")
+    names = re.findall(r"^const uint8_t (\w+)\[", "\n".join(lines), re.M)
+    write_fonts([(name, definition(lines, name)) for name in names])
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--prune"]:
+        prune_committed()
+    else:
+        main()

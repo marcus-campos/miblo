@@ -108,7 +108,7 @@ struct Violations {
 struct Stats {
   uint64_t frames = 0, snapshots = 0, commands = 0, reminders = 0, alarms = 0, timers = 0, focusEnds = 0,
            cues = 0, visits = 0, wakes = 0, reboots = 0, nudges = 0, dayEnds = 0, recaps = 0, alerts = 0,
-           alarmDays = 0, alarmMissedDays = 0;
+           alarmDays = 0, alarmMissedDays = 0, insist1 = 0, insist2 = 0, meetingAlerts = 0;
 };
 
 class Sim {
@@ -128,6 +128,7 @@ class Sim {
     cfg_.weekly = true;
     cfg_.fanfareMin = pick(rng_, {0, 3, 5, 10});
     cfg_.focusQuiet = rng_.below(2);
+    cfg_.insist = rng_.below(4) != 0;
     utc_ = 1790000000 + rng_.below(86400 * 7);  // early October 2026, any time of the week
     tz_ = 3600 * ((int)rng_.below(5) - 2);
     boot(reboots_ ? rng_.below(600000) : 0xFFFFFFFFu - 3600000u);  // no reboots: wraps after 1 h and ~49.7 d later
@@ -274,6 +275,8 @@ class Sim {
     timerLive_ = false;
     focusGen_++;
     alarmLive_.clear();
+    waitShown_.clear();  // booting with sessions waiting shows each of them once more
+    flashOn_ = false;
     if (!savedNotes_.empty()) {
       DynamicJsonDocument doc(kNotesDoc);
       if (deserializeJson(doc, savedNotes_)) {
@@ -574,11 +577,17 @@ class Sim {
       st.cues++;
       checkFired(fired, dayKey);
     }
+    // A new cue starts its own run: two in a row (a reminder, then a focus end after a stall)
+    // rightly keep the cue screen up longer than one.
+    if (fired != NoteKind::None || fe == FocusEvent::BreakStarted || fe == FocusEvent::Finished ||
+        fe == FocusEvent::BackPrompt)
+      runSinceSim_ = simMs_;
     if (notes_.takeDirty()) save();
 
     alerts_.setModifiers({cfg_.insist, meeting_.on(), focus_.phase() == FocusPhase::Focus && cfg_.focusQuiet});
     const AlertView& alert = alerts_.update(snap_, ms_);
     if (alerts_.queued() > kMaxAlerts) v.add("alert queue over its size", simMs_);
+    checkAlert(alert);
     bool fanfare = false;
     uint32_t fanDur = 0;
     if (alert.phase == AlertPhase::Hero && alert.kind == AlertKind::Done && cfg_.fanfareMin &&
@@ -764,6 +773,48 @@ class Sim {
     prevDayKey_ = dayKey;
   }
 
+  // Needs you is shown once per wait (without reminders), insistence only when it is on, and a
+  // flash started in meeting mode is a single blink.
+  std::map<std::string, uint32_t> waitShown_;  // session -> the `since` of the wait already alerted
+  bool flashOn_ = false, flashQuiet_ = false;
+  uint32_t flashStartMs_ = 0;
+  void checkAlert(const AlertView& a) {
+    for (int i = 0; i < snap_.count; i++) {
+      const SessionRow& r = snap_.sessions[i];
+      auto it = waitShown_.find(r.id);
+      const bool waiting = r.st == SessionState::Perm || r.st == SessionState::Question;
+      if (it != waitShown_.end() && (!waiting || it->second != r.since)) waitShown_.erase(it);
+    }
+    const bool amber = a.kind == AlertKind::Perm || a.kind == AlertKind::Question;
+    if (a.level > 2) v.add("insistence level over 2", simMs_);
+    if (a.phase != AlertPhase::None && a.level && (!cfg_.insist || !amber)) v.add("insistence while off", simMs_);
+    const bool started = a.phase == AlertPhase::Flash && (!flashOn_ || a.phaseStartMs != flashStartMs_);
+    if (started) {
+      flashStartMs_ = a.phaseStartMs;
+      flashQuiet_ = meeting_.on();
+      if (flashQuiet_) st.meetingAlerts++;
+      if (a.level == 1) st.insist1++;
+      if (a.level == 2) st.insist2++;
+      if (amber) {
+        const int i = findSession(snap_, a.sid);
+        if (i < 0 || (snap_.sessions[i].st != SessionState::Perm && snap_.sessions[i].st != SessionState::Question)) {
+          v.add("a needs-you alert started for a session not waiting", simMs_);
+        } else {
+          auto it = waitShown_.find(a.sid);
+          if (cfg_.reminderMin == 0 && it != waitShown_.end() && it->second == snap_.sessions[i].since) {
+            v.add("a wait alerted twice", simMs_);
+          }
+          waitShown_[a.sid] = snap_.sessions[i].since;
+        }
+      }
+    }
+    flashOn_ = a.phase == AlertPhase::Flash;
+    if (flashOn_ && flashQuiet_ && ms_ - flashStartMs_ > kBlinkMs + kMaxStepMs) {
+      v.add("a meeting-mode flash longer than one blink", simMs_);
+      flashQuiet_ = false;
+    }
+  }
+
   // Each screen's longest continuous stay (plus one stalled frame).
   uint64_t stuckBound(ScreenId s) const {
     switch (s) {
@@ -916,14 +967,16 @@ void runSeeds(uint32_t days, uint32_t seeds) {
     const Stats& s = sim.st;
     printf("seed %u (%s): %u days, %llu frames, %llu snapshots, %llu commands, %llu alerts, %llu reminders, "
            "%llu alarms (%llu/%llu alarm days missed), %llu timers, %llu focus ends, %llu nudges, %llu day ends, "
-           "%llu recaps, %llu visits, %llu wakes, %llu reboots: %u violations\n",
+           "%llu recaps, %llu visits, %llu wakes, %llu reboots, %llu insist1, %llu insist2, %llu meeting alerts: "
+           "%u violations\n",
            (unsigned)seed, seed % 2 == 0 ? "reboots" : "millis wraps", (unsigned)days,
            (unsigned long long)s.frames, (unsigned long long)s.snapshots, (unsigned long long)s.commands,
            (unsigned long long)s.alerts, (unsigned long long)s.reminders, (unsigned long long)s.alarms,
            (unsigned long long)s.alarmMissedDays, (unsigned long long)s.alarmDays, (unsigned long long)s.timers,
            (unsigned long long)s.focusEnds, (unsigned long long)s.nudges, (unsigned long long)s.dayEnds,
            (unsigned long long)s.recaps, (unsigned long long)s.visits, (unsigned long long)s.wakes,
-           (unsigned long long)s.reboots, (unsigned)sim.v.n);
+           (unsigned long long)s.reboots, (unsigned long long)s.insist1, (unsigned long long)s.insist2,
+           (unsigned long long)s.meetingAlerts, (unsigned)sim.v.n);
     if (s.alarmMissedDays) sim.v.add("an alarm missed its day with the clock steady", 0);
     if (sim.v.n) {
       printf("  %s\n", sim.v.first.c_str());

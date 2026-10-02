@@ -136,6 +136,8 @@ const char* const kConfigSeeds[] = {
     R"({"rotate":true,"rotateEverySec":60,"rotateShowSec":10,"workFrom":540,"workTo":1080,"workDays":62,"fanfareMin":10})",
     R"({"tz":"<-03>3","tz2":"Asia/Tokyo","tz2Label":"Tokyo 東京","deskQr":true,"waterMin":45,"breakAfterMin":50,"eyes":true,"endOfDay":true,"weekly":true,"focusQuiet":true,"frame":true,"friendsSide":1,"langAuto":true})",
     R"({"tz":"EST5EDT,M3.2.0,M11.1.0","reminderMin":0,"flashBlinks":5,"discreet":true,"heroDoneSec":2})",
+    "{\"tz2\":\"Asia/Tokyo\",\"tz2Label\":\"Tokyo\"}\n{\"tz2\":\"\"}\n{\"tz\":\"Europe/Lisbon\",\"lang\":\"pt-PT\"}\n{\"owner\":\"Ana\",\"birthday\":\"02-29\"}",
+    "{\"mode\":\"sessions\",\"brightness\":300}\n{\"insist\":false,\"workDays\":127}\n{\"tz\":\"Nowhere/City\"}",
     nullptr};
 const char* const kConfigDict[] = {
     "\"mode\":", "\"brightness\":", "\"alerts\":", "\"heroPermSec\":", "\"heroDoneSec\":", "\"flashBlinks\":",
@@ -146,7 +148,7 @@ const char* const kConfigDict[] = {
     "\"workFrom\":", "\"workTo\":", "\"workDays\":", "\"fanfareMin\":", "\"tz2\":", "\"tz2Label\":", "\"deskQr\":",
     "\"waterMin\":", "\"breakAfterMin\":", "\"eyes\":", "\"endOfDay\":", "\"weekly\":", "\"focusQuiet\":",
     "\"frame\":", "\"overview\"", "\"sessions\"", "\"limits\"", "\"UTC0\"", "\"Europe/Lisbon\"", "\"zh\"",
-    "\"pt-PT\"", "\"02-29\"", "\"2024-02-29\"", "\"13-01\"", nullptr};
+    "\"pt-PT\"", "\"02-29\"", "\"2024-02-29\"", "\"13-01\"", "}\n{", nullptr};
 
 std::string storedJson(const Config& c, bool& overflowed) {
   DynamicJsonDocument st(kConfigJsonCapacity);
@@ -225,6 +227,39 @@ void fuzzConfig(const uint8_t* d, size_t n) {
         FUZZ_CHECK(fuzz::plainIdent(bad), "badField not a plain identifier");
         FUZZ_CHECK(storedJson(c, over) == before, "a refused patch changed the settings");
       }
+    }
+  }
+  // The settings page (POST /config, web.cpp handleSettings): one patch after another on the
+  // running settings, the lines of the input; and the Wi-Fi portal's tz/lang patch.
+  if (memchr(text, '\n', n)) {
+    Config running;
+    const char* p = text;
+    const char* end = text + n;
+    for (int k = 0; p < end && k < 6; k++) {
+      const char* nl = static_cast<const char*>(memchr(p, '\n', (size_t)(end - p)));
+      const char* lineEnd = nl ? nl : end;
+      const size_t len = (size_t)(lineEnd - p);
+      DynamicJsonDocument doc(kConfigJsonCapacity);
+      if (len <= 1536 && !deserializeJson(doc, p, len) && doc.is<JsonObject>()) {
+        bool over;
+        const std::string before = storedJson(running, over);
+        const char* bad = nullptr;
+        if (applyConfigPatch(running, doc.as<JsonObjectConst>(), &bad)) {
+          fuzz::reached();
+          checkConfig(running);
+        } else {
+          FUZZ_CHECK(fuzz::plainIdent(bad), "badField not a plain identifier");
+          FUZZ_CHECK(storedJson(running, over) == before, "a refused patch changed the running settings");
+        }
+        if (doc["tz"].is<const char*>() || doc["lang"].is<const char*>()) {  // the portal's form
+          StaticJsonDocument<256> portal;
+          if (doc["tz"].is<const char*>()) portal["tz"] = doc["tz"].as<const char*>();
+          if (doc["lang"].is<const char*>()) portal["lang"] = doc["lang"].as<const char*>();
+          Config c2 = running;
+          if (applyConfigPatch(c2, portal.as<JsonObjectConst>(), nullptr)) checkConfig(c2);
+        }
+      }
+      p = nl ? nl + 1 : end;
     }
   }
   // The same bytes as a (possibly damaged) /config.json.

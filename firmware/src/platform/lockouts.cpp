@@ -62,7 +62,13 @@ void persist(uint32_t nowMs) {
   ESP.rtcUserMemoryWrite(kBlock, reinterpret_cast<uint32_t*>(&r), sizeof(r));
   last = r;
 }
+void clear() {
+  Record r{};  // magic 0: nothing to restore
+  ESP.rtcUserMemoryWrite(kBlock, reinterpret_cast<uint32_t*>(&r), sizeof(r));
+  last = r;
+}
 #else
+void clear() {}
 void restore(uint32_t) {}
 void persist(uint32_t) {}
 #endif

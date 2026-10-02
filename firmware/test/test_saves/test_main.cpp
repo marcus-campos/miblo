@@ -74,6 +74,18 @@ static void test_change_during_backoff_is_rate_limited() {
   TEST_ASSERT_TRUE(s.due(2 * M + 30000));
 }
 
+// On an hourly backoff, a change more than a minute after the failure is tried at once.
+static void test_change_long_after_failure_on_hourly_backoff() {
+  SaveRetry r;
+  r.request(0);
+  for (int i = 0; i < 7; i++) r.failed(0);  // the next attempt waits an hour
+  TEST_ASSERT_FALSE(r.due(59 * M));
+  r.request(M + 1);
+  TEST_ASSERT_TRUE(r.due(M + 1));
+  r.request(10 * M);  // still pending: stays due
+  TEST_ASSERT_TRUE(r.due(10 * M));
+}
+
 // A change while a retry is due soon never pushes it later.
 static void test_change_never_delays_a_retry() {
   SaveRetry r;
@@ -102,6 +114,7 @@ int main() {
   RUN_TEST(test_backoff_doubles_up_to_an_hour);
   RUN_TEST(test_success_resets_backoff);
   RUN_TEST(test_change_during_backoff_is_rate_limited);
+  RUN_TEST(test_change_long_after_failure_on_hourly_backoff);
   RUN_TEST(test_change_never_delays_a_retry);
   RUN_TEST(test_survives_millis_wrap);
   return UNITY_END();

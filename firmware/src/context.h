@@ -28,7 +28,8 @@ struct Context {
   Identity ident{};
   miblo::Config cfg;
   miblo::TokenStore tokens;
-  // The pairings are saved by the app loop (with retries): a change asks here (request()).
+  // Pairing and removing a computer save at once (and are undone if that fails); a rename or an
+  // automatic label asks here (request()) and the app loop saves it, with retries.
   miblo::SaveRetry tokensSave;
   miblo::PairingGuard pairing;
   miblo::PresenceGate presence;

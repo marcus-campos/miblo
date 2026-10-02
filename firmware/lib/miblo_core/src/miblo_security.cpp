@@ -208,13 +208,14 @@ PairingGuard::Result PairingGuard::check(const char* code, uint32_t nowMs) {
   return Result::BadCode;
 }
 
-void TokenStore::add(const char* token, const char* host) {
+void TokenStore::add(const char* token, const char* host, TokenUndo* undo) {
   uint32_t order = 1;
   for (uint8_t i = 0; i < n_; i++) {
     if (e_[i].order >= order) order = e_[i].order + 1;
   }
   int slot = -1;
-  if (n_ < kMax) slot = n_++;
+  const bool full = n_ >= kMax;
+  if (!full) slot = n_++;
   if (slot < 0) {  // full: evict the oldest pairing
     slot = 0;
     for (uint8_t i = 1; i < n_; i++) {
@@ -222,6 +223,13 @@ void TokenStore::add(const char* token, const char* host) {
     }
   }
   TokenEntry& e = e_[slot];
+  if (undo) {
+    undo->kind = !full ? TokenUndo::Kind::Added : TokenUndo::Kind::Replaced;
+    undo->slot = (uint8_t)slot;
+    undo->entry = e;
+    undo->seen = (seenSet_ >> slot) & 1u;
+    undo->seenMs = seenMs_[slot];
+  }
   seenSet_ &= (uint8_t)~(1u << slot);  // a new pairing: not seen yet
   strncpy(e.token, token, sizeof(e.token) - 1);
   e.token[sizeof(e.token) - 1] = 0;
@@ -242,8 +250,16 @@ int TokenStore::find(const char* token) const {
   return found;
 }
 
-bool TokenStore::remove(uint8_t i, const char* host) {
+bool TokenStore::remove(uint8_t i, const char* host, TokenUndo* undo) {
+  if (undo) undo->kind = TokenUndo::Kind::None;
   if (i >= n_ || !host || strcmp(e_[i].host, host) != 0) return false;
+  if (undo) {
+    undo->kind = TokenUndo::Kind::Removed;
+    undo->slot = i;
+    undo->entry = e_[i];
+    undo->seen = (seenSet_ >> i) & 1u;
+    undo->seenMs = seenMs_[i];
+  }
   for (uint8_t j = i; j + 1 < n_; j++) {
     e_[j] = e_[j + 1];
     seenMs_[j] = seenMs_[j + 1];
@@ -254,6 +270,39 @@ bool TokenStore::remove(uint8_t i, const char* host) {
   n_--;
   e_[n_] = TokenEntry{};
   return true;
+}
+
+void TokenStore::undo(const TokenUndo& u) {
+  const uint8_t bit = (uint8_t)(1u << u.slot);
+  switch (u.kind) {
+    case TokenUndo::Kind::None:
+      return;
+    case TokenUndo::Kind::Added:  // the new entry was appended last
+      if (n_ == 0 || u.slot != n_ - 1) return;
+      n_--;
+      e_[n_] = TokenEntry{};
+      seenSet_ &= (uint8_t)~bit;
+      return;
+    case TokenUndo::Kind::Replaced:  // the oldest was evicted for it: back in its place
+      if (u.slot >= n_) return;
+      e_[u.slot] = u.entry;
+      seenMs_[u.slot] = u.seenMs;
+      seenSet_ = u.seen ? (uint8_t)(seenSet_ | bit) : (uint8_t)(seenSet_ & ~bit);
+      return;
+    case TokenUndo::Kind::Removed: {  // back in its place; the ones after it move down again
+      if (n_ >= kMax || u.slot > n_) return;
+      for (uint8_t j = n_; j > u.slot; j--) {
+        e_[j] = e_[j - 1];
+        seenMs_[j] = seenMs_[j - 1];
+      }
+      const uint8_t low = seenSet_ & (uint8_t)(bit - 1);
+      seenSet_ = (uint8_t)(low | ((seenSet_ >> u.slot) << (u.slot + 1)) | (u.seen ? bit : 0));
+      e_[u.slot] = u.entry;
+      seenMs_[u.slot] = u.seenMs;
+      n_++;
+      return;
+    }
+  }
 }
 
 TokenStore::RenameResult TokenStore::rename(uint8_t i, const char* host, const char* name) {

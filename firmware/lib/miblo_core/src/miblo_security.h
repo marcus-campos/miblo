@@ -95,13 +95,24 @@ struct TokenEntry {
   uint32_t order;  // higher = more recent
 };
 
+// What one add() or remove() changed, so a change whose save failed can be taken back (undo()):
+// the RAM then never trusts a computer the flash would forget, nor keeps out one it would restore.
+struct TokenUndo {
+  enum class Kind : uint8_t { None, Added, Replaced, Removed };
+  Kind kind = Kind::None;
+  uint8_t slot = 0;
+  TokenEntry entry{};  // the entry replaced or removed
+  bool seen = false;   // its "seen" state
+  uint32_t seenMs = 0;
+};
+
 // Up to 4 paired computers. Every pairing appends a new token (host names are truncated and
 // may collide, so they never replace one another); when full, the oldest pairing is evicted.
 class TokenStore {
  public:
   static constexpr uint8_t kMax = 4;
   // `host` is cut to 20 characters; one that is not clean text (miblo::typedText) is "computer".
-  void add(const char* token, const char* host);
+  void add(const char* token, const char* host, TokenUndo* undo = nullptr);
   bool matches(const char* token) const { return find(token) >= 0; }
   int find(const char* token) const;  // its place in the list, -1 if none (constant time)
   uint8_t count() const { return n_; }
@@ -110,7 +121,9 @@ class TokenStore {
   void clear() { n_ = 0; }
   // The settings page's list: remove the computer at place i, only if that place still holds
   // `host` (the list may have changed since the page read it). The others keep their tokens.
-  bool remove(uint8_t i, const char* host);
+  bool remove(uint8_t i, const char* host, TokenUndo* undo = nullptr);
+  // Takes back the add() or remove() that filled `u` (the last change only).
+  void undo(const TokenUndo& u);
   // The settings page names a computer: place i, only if it still holds `host` (as remove()).
   // `name` follows a gadget name's rules (<= 20 characters, no control characters, fits the
   // label); "" hands the label back to the computer (automatic: its next snapshot names it).

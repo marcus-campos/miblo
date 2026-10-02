@@ -194,8 +194,18 @@ static void handlePair() {
   char host[33];
   miblo::utf8Copy(host, sizeof(host), doc["host"] | "computer", 20);
   if (!miblo::typedText(host, sizeof(host), 20)) strcpy(host, "computer");  // as TokenStore::add
-  ctx.tokens.add(token, host);
-  ctx.tokensSave.request(now);  // saved by the app loop right after this response (retried if it fails)
+  // Saved before the reply: a token the gadget would forget after a power cut is never handed
+  // out. A failed save (low heap, flash) takes the pairing back, keeps the code (it was not
+  // used up) and answers busy, so the plugin sends it again.
+  miblo::TokenUndo undo;
+  ctx.tokens.add(token, host, &undo);
+  if (!storage::saveTokens(ctx.tokens)) {
+    ctx.tokens.undo(undo);
+    json(503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  ctx.tokensSave.succeeded();  // any pending save (a rename, an automatic label) was in this one
+  ctx.tokens.saved(now);
   storage::markConfigured();  // first pairing: never codeless OTA again (survives factory reset)
   strlcpy(ctx.pairedHost, host, sizeof(ctx.pairedHost));
   ctx.justPaired = true;

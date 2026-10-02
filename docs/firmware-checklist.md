@@ -350,4 +350,6 @@ notes.
     written). The serial log never shows `config: save failed`, `pairs: save failed` or
     `notes: save failed` in normal use; when one does (very low heap, a failing flash), the save
     is retried after 1, 2, 4... minutes, at most an hour apart (`miblo::SaveRetry`). Storage
-    itself (LittleFS) is not in the native tests: this check covers it.
+    itself (LittleFS) is not in the native tests: this check covers it. Pairing and removing a
+    computer are saved before the reply: when that save fails the gadget answers `503 busy` and
+    nothing changes (the pairing code stays valid; `/miblo:pair` resends it).

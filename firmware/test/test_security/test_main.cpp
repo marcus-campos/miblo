@@ -535,6 +535,50 @@ static void test_address_challenge() {
   TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(none, nonce, "de18ad43", "miblo-4f2a", mac));
 }
 
+// A paired computer's token proves it is no rebinding page (a page cannot know it): the plugin
+// keeps working through a custom DNS alias (Pi-hole, router alias, MagicDNS). Everyone else, the
+// web session and the pages included, needs the IP or the gadget's own name.
+static void test_host_verdict() {
+  const char* id = "miblo-4f2a";
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("192.168.0.41", true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost(nullptr, false, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongHost, judgeHost("miblo.home.arpa", true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("miblo.home.arpa", true, nullptr, false, true, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("desk.tail1234.ts.net", true, "http://x.example", true, true, id));
+  // Present but too long to read: never taken as absent.
+  TEST_ASSERT_EQUAL(HostVerdict::WrongHost, judgeHost(nullptr, true, nullptr, false, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongOrigin,
+                    judgeHost("192.168.0.41", true, "http://attacker.example", true, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::WrongOrigin, judgeHost("192.168.0.41", true, nullptr, true, false, id));
+  TEST_ASSERT_EQUAL(HostVerdict::Ok, judgeHost("192.168.0.41", true, "http://192.168.0.41", true, false, id));
+}
+
+// A browser refused for its Host gets a small page linking to the gadget's IP; API callers JSON.
+static void test_wrong_host_reply() {
+  TEST_ASSERT_TRUE(acceptsHtml("text/html,application/xhtml+xml,*/*;q=0.8"));
+  TEST_ASSERT_TRUE(acceptsHtml("TEXT/HTML"));
+  TEST_ASSERT_FALSE(acceptsHtml("application/json"));
+  TEST_ASSERT_FALSE(acceptsHtml("*/*"));
+  TEST_ASSERT_FALSE(acceptsHtml(nullptr));
+  char out[400];
+  size_t n = wrongHostReply(out, sizeof(out), "421 Misdirected Request", "192.168.0.41", true);
+  TEST_ASSERT_EQUAL(strlen(out), n);
+  TEST_ASSERT_NOT_NULL(strstr(out, "HTTP/1.1 421 Misdirected Request\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: text/html; charset=utf-8\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "<a href=\"http://192.168.0.41/\">http://192.168.0.41/</a>"));
+  const char* body = strstr(out, "\r\n\r\n") + 4;
+  char cl[40];
+  snprintf(cl, sizeof(cl), "Content-Length: %u\r\n", (unsigned)strlen(body));
+  TEST_ASSERT_NOT_NULL(strstr(out, cl));
+  n = wrongHostReply(out, sizeof(out), "403 Forbidden", "192.168.0.41", false);
+  TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: application/json\r\n"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "\r\n\r\n{\"error\":\"wrong host\"}"));
+  // No IP to offer (not connected): the page still says where to go, without a link.
+  wrongHostReply(out, sizeof(out), "421 Misdirected Request", "", true);
+  TEST_ASSERT_NULL(strstr(out, "<a "));
+  TEST_ASSERT_EQUAL(0, wrongHostReply(out, 20, "421 Misdirected Request", "192.168.0.41", true));  // never cut
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
@@ -1054,6 +1098,8 @@ int main() {
   RUN_TEST(test_host_policy);
   RUN_TEST(test_sha256_and_hmac);
   RUN_TEST(test_address_challenge);
+  RUN_TEST(test_host_verdict);
+  RUN_TEST(test_wrong_host_reply);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_content_length_matches_the_server);
   RUN_TEST(test_headers_plain_and_complete);

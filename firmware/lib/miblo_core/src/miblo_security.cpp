@@ -278,6 +278,62 @@ bool originAllowed(const char* origin, const char* id) {
   return hostSpan(origin + schemeLen, n - schemeLen, id);
 }
 
+HostVerdict judgeHost(const char* host, bool hostPresent, const char* origin, bool originPresent, bool pairedBearer,
+                      const char* id) {
+  if (pairedBearer) return HostVerdict::Ok;
+  if (hostPresent && (!host || !hostAllowed(host, id))) return HostVerdict::WrongHost;
+  if (originPresent && (!origin || !originAllowed(origin, id))) return HostVerdict::WrongOrigin;
+  return HostVerdict::Ok;
+}
+
+bool acceptsHtml(const char* accept) {
+  static const char kHtml[] MIBLO_ROM = "text/html";
+  const size_t n = sizeof(kHtml) - 1;
+  if (!accept) return false;
+  for (const char* p = accept; strlen(p) >= n; p++) {
+    if (matchesLower(p, kHtml, n)) return true;
+  }
+  return false;
+}
+
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html) {
+  // Formats kept in flash (MIBLO_ROM), copied to the stack only for this call.
+  static const char kLinkPage[] MIBLO_ROM =
+      "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
+      "<title>Miblo</title><p>Miblo: <a href=\"http://%s/\">http://%s/</a></p>";
+  static const char kPlainPage[] MIBLO_ROM = "<!doctype html><meta charset=\"utf-8\"><title>Miblo</title><p>Miblo</p>";
+  static const char kJson[] MIBLO_ROM = "{\"error\":\"wrong host\"}";
+  static const char kHead[] MIBLO_ROM =
+      "HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\n"
+      "Content-Length: %u\r\n\r\n%s";
+  static const char kHtmlType[] MIBLO_ROM = "text/html; charset=utf-8";
+  static const char kJsonType[] MIBLO_ROM = "application/json";
+  char fmt[sizeof(kLinkPage)];
+  char body[200];
+  if (html) {
+    const size_t ipLen = ip ? strlen(ip) : 0;
+    const bool link = ipLen > 0 && ipLen <= 15 && ipv4Literal(ip, ipLen);
+    if (link) {
+      mibloRomCopy(fmt, kLinkPage, sizeof(kLinkPage));
+      snprintf(body, sizeof(body), fmt, ip, ip);
+    } else {
+      mibloRomCopy(body, kPlainPage, sizeof(kPlainPage));
+    }
+  } else {
+    mibloRomCopy(body, kJson, sizeof(kJson));
+  }
+  char type[sizeof(kHtmlType)];
+  if (html) mibloRomCopy(type, kHtmlType, sizeof(kHtmlType));
+  else mibloRomCopy(type, kJsonType, sizeof(kJsonType));
+  mibloRomCopy(fmt, kHead, sizeof(kHead));
+  const int n = snprintf(out, cap, fmt, status, type, (unsigned)strlen(body), body);
+  if (n < 0 || (size_t)n >= cap) {
+    if (cap) out[0] = 0;
+    return 0;
+  }
+  return (size_t)n;
+}
+
 void PairingGuard::setCode(const char* code4) {
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;

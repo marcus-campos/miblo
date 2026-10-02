@@ -1496,19 +1496,40 @@ static PGM_P largeBodyRefusal(LookaheadClient* client, const String& url) {
 
 // M1: a request for another name than the gadget's (DNS rebinding: a web page whose own name now
 // points at the gadget), or from another site's page (Origin), is refused before anything is read
-// or done: 421 / 403. The setup AP answers any Host (its captive portal redirects them). The header
-// block is complete here (the read-ahead holds a request until it is, lookahead_client.h).
-static PGM_P foreignRequest(LookaheadClient* client) {
-  if (net::apActive() && client->localIP() == WiFi.softAPIP()) return nullptr;
+// or done: 421 / 403 (miblo::judgeHost). A paired computer's bearer token skips the check (a page
+// cannot know one), so the plugin works through a custom DNS alias; a browser must use the IP or
+// <id>.local, and one that used another name gets a small page linking to the IP. The setup AP
+// answers any Host (its captive portal redirects them). The header block is complete here (the
+// read-ahead holds a request until it is, lookahead_client.h). True when refused (and answered).
+static bool refuseForeign(LookaheadClient* client) {
+  if (net::apActive() && client->localIP() == WiFi.softAPIP()) return false;
   const char* p = client->peekBuffer();
   const size_t n = client->peekAvailable();
-  char value[72];
-  bool present = false;
-  const bool found = miblo::findHeader(p, n, "host", value, sizeof(value), &present);
-  if (present && (!found || !miblo::hostAllowed(value, ctx.ident.id))) return PSTR("421 Misdirected Request");
-  const bool origin = miblo::findHeader(p, n, "origin", value, sizeof(value), &present);
-  if (present && (!origin || !miblo::originAllowed(value, ctx.ident.id))) return PSTR("403 Forbidden");
-  return nullptr;
+  char host[72];
+  char origin[72];
+  bool hostPresent = false, originPresent = false;
+  const bool hostFound = miblo::findHeader(p, n, "host", host, sizeof(host), &hostPresent);
+  const bool originFound = miblo::findHeader(p, n, "origin", origin, sizeof(origin), &originPresent);
+  bool paired = false;
+  {
+    char auth[56];
+    char token[40];
+    paired = miblo::findHeader(p, n, "authorization", auth, sizeof(auth)) &&
+             miblo::bearerToken(auth, token, sizeof(token)) && ctx.tokens.find(token) >= 0;
+  }
+  const miblo::HostVerdict v = miblo::judgeHost(hostFound ? host : nullptr, hostPresent, originFound ? origin : nullptr,
+                                                originPresent, paired, ctx.ident.id);
+  if (v == miblo::HostVerdict::Ok) return false;
+  char accept[96];
+  const bool html = miblo::findHeader(p, n, "accept", accept, sizeof(accept)) && miblo::acceptsHtml(accept);
+  char status[28];
+  strncpy_P(status, v == miblo::HostVerdict::WrongHost ? PSTR("421 Misdirected Request") : PSTR("403 Forbidden"),
+            sizeof(status) - 1);
+  status[sizeof(status) - 1] = 0;
+  const String ip = net::connected() ? WiFi.localIP().toString() : String();
+  char out[384];
+  if (miblo::wrongHostReply(out, sizeof(out), status, ip.c_str(), html)) client->print(out);
+  return true;
 }
 
 static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
@@ -1518,7 +1539,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
   auto* client = static_cast<LookaheadClient*>(wifiClient);
   if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
     // The server parses no body for these.
-    if (PGM_P status = foreignRequest(client)) return refuse(client, status, PSTR("{\"error\":\"wrong host\"}"));
+    if (refuseForeign(client)) return WebServerT::CLIENT_MUST_STOP;
     return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
   }
   static const char kBad[] PROGMEM = "400 Bad Request";
@@ -1535,7 +1556,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
     if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
     verdict = client->aheadVerdict();
   }
-  if (PGM_P status = foreignRequest(client)) return refuse(client, status, PSTR("{\"error\":\"wrong host\"}"));
+  if (refuseForeign(client)) return WebServerT::CLIENT_MUST_STOP;
   // H1: a Content-Length the server would read differently from what the guards below judge
   // ("-1", "+60000", duplicates that disagree) is refused before the server reads anything. The
   // read-ahead (lookahead_client.h) already refuses it; this is the same rule at the hook.

@@ -87,6 +87,22 @@ struct LockoutState {
   uint8_t reserved[3];
 };
 
+// The whole Host/Origin decision for one request (the hook, web.cpp foreignRequest). `*Present`:
+// the header is there (its value may be nullptr when it did not fit: refused, never "absent").
+// `pairedBearer`: the request carries a bearer token of a paired computer; a rebinding page
+// cannot know one, so the plugin keeps working through a custom DNS alias (Pi-hole, a router
+// alias, Tailscale MagicDNS). A browser (the pages, the web session) needs the IP or <id>.local.
+enum class HostVerdict : uint8_t { Ok, WrongHost, WrongOrigin };
+HostVerdict judgeHost(const char* host, bool hostPresent, const char* origin, bool originPresent, bool pairedBearer,
+                      const char* id);
+// Whether an Accept header asks for HTML (a browser navigating), case-insensitive.
+bool acceptsHtml(const char* accept);
+// The full refusal for a wrong Host/Origin, written into out: `status` ("421 Misdirected
+// Request"), then for a browser (html) a language-neutral page linking to http://<ip>/ (no link
+// when ip is empty or not a dotted IPv4), else {"error":"wrong host"}. Returns its length, 0 if
+// it does not fit in cap (never cut).
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html);
+
 // Escalating brute-force lockout behind PairingGuard and each PresenceGate purpose (M2). The 5th
 // failure in a row locks for 60 s; from then on every 3rd failure locks again, each lockout twice
 // as long as the last, up to 24 h. Only success() ends the escalation. Call update() regularly (the

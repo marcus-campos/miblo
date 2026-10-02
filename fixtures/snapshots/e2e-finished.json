@@ -1,0 +1,90 @@
+{
+  "v": 1,
+  "seq": 11,
+  "now": 1792498820,
+  "host": "MacBook-Marcus",
+  "usage": {
+    "h5": {
+      "pct": 30,
+      "reset": 1792506000,
+      "eta": 0
+    },
+    "d7": {
+      "pct": 10,
+      "reset": 1792798800
+    }
+  },
+  "today": {
+    "usd": 0,
+    "turns": 2,
+    "work": 20
+  },
+  "sessions": [
+    {
+      "id": "cccccccc",
+      "name": "p-c",
+      "st": "running",
+      "tool": "_wait_agents",
+      "det": "2",
+      "since": 1792498804,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "dddddddd",
+      "name": "p-d",
+      "st": "running",
+      "tool": "_compact",
+      "det": "",
+      "since": 1792498806,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "aaaaaaaa",
+      "name": "p-a",
+      "st": "done",
+      "tool": "",
+      "det": "",
+      "since": 1792498810,
+      "model": "Sonnet",
+      "ctx": 21,
+      "tok": 42000
+    },
+    {
+      "id": "bbbbbbbb",
+      "name": "p-b",
+      "st": "done",
+      "tool": "",
+      "det": "",
+      "since": 1792498812,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 0,
+  "alerts": [
+    {
+      "id": 1,
+      "kind": "done",
+      "sid": "aaaaaaaa"
+    },
+    {
+      "id": 2,
+      "kind": "done",
+      "sid": "bbbbbbbb"
+    }
+  ],
+  "latest": "1.12.0",
+  "tz": [
+    {
+      "z": "America/Sao_Paulo",
+      "off": -180,
+      "next": 0,
+      "noff": -180
+    }
+  ]
+}

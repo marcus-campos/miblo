@@ -14,6 +14,8 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
+Safety: never paste the arguments above into a command. Build the command yourself from only: the fixed words shown here, whole numbers you write, and an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
+
 What it does: in Overview mode, the gadget switches to the Limits screen for `show-seconds` once every `every-seconds`, then back. Alerts and sessions waiting on the user always take priority. Ranges: every 10–3600 s, show 3–300 s, and show must be shorter than every.
 
 ## With arguments: `<on|off> [every-seconds] [show-seconds] [id]`

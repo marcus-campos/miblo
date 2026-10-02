@@ -14,6 +14,8 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
+Safety: never paste the arguments above into a command. Build the command yourself from only: an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
+
 ## `settings [id]`
 
 1. Run `MIBLO settings [id]` (pass the id only if the user gave one).

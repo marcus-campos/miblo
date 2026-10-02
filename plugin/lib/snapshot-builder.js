@@ -7,9 +7,16 @@ const cut = (s, n) => {
 const shortId = (id) => String(id).replace(/-/g, '').slice(0, 8);
 const toSec = (ms) => Math.floor(ms / 1000);
 
+// `usage` (MetricsStore.usage()) with the 5-hour forecast `eta` (epoch s) in `h5`; unchanged when
+// there is no forecast or no 5-hour window to put it in.
+export function withEta(usage, eta) {
+  return eta && usage?.h5 ? { ...usage, h5: { ...usage.h5, eta } } : usage;
+}
+
 // `day` (a DayStats) is optional: without it `today` only carries the cost. `latest` is the
-// newest released version ("X.Y.Z"); the field is omitted when unknown.
-export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest }) {
+// newest released version ("X.Y.Z"); the field is omitted when unknown. `eta` (epoch s, from
+// LimitForecast) goes into `usage.h5` when there is a forecast and a 5-hour window to put it in.
+export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest, eta }) {
   const all = tracker.sessions();
   const rows = all.map((s) => {
     const m = metrics.forSession(s.id);
@@ -31,7 +38,7 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest 
     seq,
     now: toSec(nowMs),
     host: cut(host, NAME_LEN),
-    usage: metrics.usage(),
+    usage: withEta(metrics.usage(), eta),
     today: { ...metrics.today(), ...(day ? day.today() : {}) },
     sessions: rows.slice(0, MAX_SESSIONS),
     more: Math.max(0, rows.length - MAX_SESSIONS),

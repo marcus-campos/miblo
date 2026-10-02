@@ -203,3 +203,35 @@ test('a failing debounced push is logged, not thrown', async () => {
   assert.equal(lines.length, 1);
   assert.match(lines[0], /push failed: Error: boom/);
 });
+
+test('a rising 5-hour limit is forecast in the snapshot and in /status', async () => {
+  const dev = await startFakeDevice();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const client = new DeviceClient();
+  const token = await client.pair(dev.addr, '4827', 'test');
+  new DeviceStore(dataDir).upsert({ id: 'x', name: 'X', addr: dev.addr, token });
+  let t = new Date(2026, 8, 29, 10).getTime();
+  const reset = Math.floor(t / 1000) + 4 * 3600;
+  const bridge = createBridge({ dataDir, client, discoverFn: async () => [], now: () => t });
+  const http = await started(bridge);
+  const reading = (pct) => http.post('/statusline', { session_id: 's1', rate_limits: { five_hour: { used_percentage: pct, resets_at: reset } } });
+  try {
+    await reading(40);
+    await bridge.push();
+    assert.ok(!('eta' in dev.state.snapshots.at(-1).usage.h5));  // one reading is no pace
+    assert.equal((await (await fetch(http.base + '/status')).json()).forecast, null);
+    for (let i = 1; i <= 20; i++) {
+      t += 60_000;
+      await reading(40 + i);  // 1 point a minute
+    }
+    await bridge.push();
+    const eta = Math.floor(t / 1000) + 40 * 60;  // 60% now, 40 points left
+    assert.equal(dev.state.snapshots.at(-1).usage.h5.eta, eta);
+    const status = await (await fetch(http.base + '/status')).json();
+    assert.equal(status.forecast, eta);
+    assert.equal(status.usage.h5.eta, eta);
+  } finally {
+    await http.stop();
+    await dev.close();
+  }
+});

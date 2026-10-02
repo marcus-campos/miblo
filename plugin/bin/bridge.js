@@ -6,7 +6,8 @@ import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, clau
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
 import { DayStats } from '../lib/day-stats.js';
-import { buildSnapshot } from '../lib/snapshot-builder.js';
+import { LimitForecast } from '../lib/limit-forecast.js';
+import { buildSnapshot, withEta } from '../lib/snapshot-builder.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { DeviceManager } from '../lib/device-manager.js';
@@ -21,6 +22,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
+  const forecast = new LimitForecast({ now });
   const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now });
   let seq = 0;
   let timer = null;
@@ -30,7 +32,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     timer = null;
     if (tracker.hasActive()) lastActive = now();
     day.observe(tracker.sessions());
-    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day, latest: release.get() });
+    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day, latest: release.get(), eta: forecast.eta() });
     await devices.pushAll(snapshot);
   };
   const schedule = () => {
@@ -45,18 +47,25 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
       if (tracker.handle(evt)) schedule();
     },
     onStatusline(sl) {
-      if (metrics.ingest(sl, { fresh: tracker.sawStart(sl?.session_id) })) schedule();
+      if (metrics.ingest(sl, { fresh: tracker.sawStart(sl?.session_id) })) {
+        forecast.observe(metrics.usage()?.h5);
+        schedule();
+      }
     },
-    getStatus: () => ({
-      sessions: tracker.sessions(),
-      usage: metrics.usage(),
-      today: { ...metrics.today(), ...day.today() },
-      devices: devices.status(),
-      statuslineSeen: metrics.hasReadings(),
-    }),
+    getStatus: () => {
+      const eta = forecast.eta();
+      return {
+        sessions: tracker.sessions(),
+        usage: withEta(metrics.usage(), eta),
+        today: { ...metrics.today(), ...day.today() },
+        forecast: eta,  // epoch s when the 5-hour limit runs out at this pace, or null
+        devices: devices.status(),
+        statuslineSeen: metrics.hasReadings(),
+      };
+    },
   });
 
-  return { tracker, metrics, day, devices, release, server, push, schedule, idleFor: () => now() - lastActive };
+  return { tracker, metrics, day, forecast, devices, release, server, push, schedule, idleFor: () => now() - lastActive };
 }
 
 function main() {

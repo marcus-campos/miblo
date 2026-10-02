@@ -121,3 +121,26 @@ test('alerting sessions are kept over quiet working ones when trimming', () => {
   // Every alert points at a session that is actually present, so the gadget can name it.
   for (const a of s.alerts) assert.ok(ids.includes(a.sid), `alert ${a.sid} has its session`);
 });
+
+test('eta goes into usage.h5 only with a forecast and a 5-hour window', () => {
+  const { tracker, metrics } = world();
+  const build = (eta) => buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, eta });
+  assert.equal(build(1790611200).usage, null);  // no usage.h5 yet: eta ignored
+  metrics.ingest({ session_id: 's', rate_limits: {
+    five_hour: { used_percentage: 62, resets_at: 1_790_613_720 }, seven_day: { used_percentage: 38, resets_at: 1_790_900_000 } } });
+  assert.deepEqual(build(1790611200).usage, {
+    h5: { pct: 62, reset: 1_790_613_720, eta: 1790611200 }, d7: { pct: 38, reset: 1_790_900_000 } });
+  assert.ok(!('eta' in build(null).usage.h5));
+  assert.ok(!('eta' in build(undefined).usage.h5));
+  // The store's own reading is never changed.
+  assert.ok(!('eta' in metrics.usage().h5));
+});
+
+test('the alert-only snapshot keeps the forecast in usage', async () => {
+  const { alertOnlySnapshot } = await import('../lib/snapshot-builder.js');
+  const { tracker, metrics } = world();
+  tracker.handle({ session_id: 's', hook_event_name: 'PermissionRequest', cwd: '/w/a', tool_name: 'Bash', tool_input: {} });
+  metrics.ingest({ session_id: 's', rate_limits: { five_hour: { used_percentage: 62, resets_at: 1_790_613_720 } } });
+  const full = buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, eta: 1790611200 });
+  assert.equal(alertOnlySnapshot(full).usage.h5.eta, 1790611200);
+});

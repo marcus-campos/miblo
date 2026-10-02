@@ -226,6 +226,62 @@ static void test_weekly_recap_rules() {
   TEST_ASSERT_TRUE(r.showing(9000000));
 }
 
+// Claude stopped (the person may already be resting): a break or eye rest never comes due in
+// the gap; it comes when work resumes.
+static void test_break_not_due_in_a_gap() {
+  miblo::WellnessClock w;
+  const miblo::Config c = wellCfg(60, 0, true);
+  uint32_t t = 0;
+  for (int i = 0; i <= 55; i++, t += M) w.update(t, c, true, false, true);
+  for (int i = 0; i < 7; i++, t += M) {  // 56..62 min: no session running
+    w.update(t, c, false, false, true);
+    TEST_ASSERT_EQUAL(miblo::Nudge::None, w.showing(t));
+  }
+  w.update(t, c, true, false, true);  // 63 min, the gap was under 10 min: still continuous
+  TEST_ASSERT_EQUAL(miblo::Nudge::Break, w.showing(t));
+}
+
+// A higher nudge coming due does not restart a lower one's wait: nothing waits over 5 min.
+static void test_blocked_wait_never_restarts() {
+  miblo::WellnessClock w;
+  const miblo::Config c = wellCfg(60, 60, false);
+  uint32_t t = 0;
+  w.update(t, c, false, true, false);  // work hours from 0: water due at 60 min
+  for (t = 2 * M; t <= 65 * M; t += M) w.update(t, c, true, true, false);  // break due at 62 min
+  w.update(66 * M, c, true, true, false);  // water has waited 6 min: both skipped
+  w.update(66 * M + 1, c, true, true, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::None, w.showing(66 * M + 1));
+  w.update(67 * M, c, true, true, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::None, w.showing(67 * M));
+}
+
+// The hour of waiting for a running session starts when the summary may first take the screen,
+// not while something else (focus, alerts) held it.
+static void test_end_of_day_wait_starts_when_allowed() {
+  miblo::Config c;
+  c.endOfDay = true;
+  miblo::EndOfDay e;
+  const uint32_t k = key(2026, 10, 2);
+  const uint32_t H = 3600000;
+  e.update(0, c, k, 5, 18 * 60, true, false);
+  e.update(2 * H, c, k, 5, 20 * 60, true, true);  // allowed for the first time, still running
+  TEST_ASSERT_FALSE(e.showing(2 * H));
+  e.update(3 * H - 1, c, k, 5, 21 * 60 - 1, true, true);
+  TEST_ASSERT_FALSE(e.showing(3 * H - 1));
+  e.update(3 * H, c, k, 5, 21 * 60, true, true);
+  TEST_ASSERT_TRUE(e.showing(3 * H));
+}
+
+static void test_weekly_recap_across_the_wrap() {
+  miblo::WeeklyRecap r;
+  const uint32_t t = 0xFFFFFFFFu - 1000;
+  r.update(t, true, key(2026, 10, 5), 1, 9 * 60, false, true, true);
+  TEST_ASSERT_TRUE(r.showing(t));
+  TEST_ASSERT_TRUE(r.showing(t + miblo::WeeklyRecap::kShowMs - 1));
+  r.update(t + miblo::WeeklyRecap::kShowMs, true, key(2026, 10, 5), 1, 9 * 60 + 1, false, true, true);
+  TEST_ASSERT_FALSE(r.showing(t + miblo::WeeklyRecap::kShowMs));
+}
+
 // ---- Cat mood ----
 
 static void test_cat_mood() {
@@ -358,6 +414,10 @@ int main(int, char**) {
   RUN_TEST(test_weekly_recap_on_monday);
   RUN_TEST(test_weekly_recap_rules);
   RUN_TEST(test_cat_mood);
+  RUN_TEST(test_break_not_due_in_a_gap);
+  RUN_TEST(test_blocked_wait_never_restarts);
+  RUN_TEST(test_end_of_day_wait_starts_when_allowed);
+  RUN_TEST(test_weekly_recap_across_the_wrap);
   RUN_TEST(test_rhythm_screens_fit_everywhere);
   RUN_TEST(test_nudge_says_what_to_do);
   RUN_TEST(test_day_end_content);

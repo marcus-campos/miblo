@@ -8,18 +8,19 @@ bool inWorkHours(const Config& cfg, uint8_t weekday, int minute) {
   return minute >= 0 && workDay(cfg, weekday) && minute >= cfg.workFrom && minute < cfg.workTo;
 }
 
-// Once a day, from the end of the work hours (time known, a work day). A session still running
-// holds it up to kMaxWaitMs, counted from the first frame it could have shown; then it shows
-// anyway. Something more important on screen (`allowed` false) holds it until a gap.
+// Once a day, from the end of the work hours (time known, a work day). Something more important
+// on screen (`allowed` false) holds it until a gap. A session still running then holds it up to
+// kMaxWaitMs, counted from the first frame it was allowed; then it shows anyway.
 void EndOfDay::update(uint32_t nowMs, const Config& cfg, uint32_t dayKey, uint8_t weekday, int minute, bool running,
                       bool allowed) {
   if (shown_ && (!cfg.endOfDay || nowMs - shownMs_ >= kShowMs)) shown_ = false;
   if (!cfg.endOfDay || dayKey == 0 || doneDay_ == dayKey || !workDay(cfg, weekday) || minute < cfg.workTo) return;
+  if (!allowed) return;
   if (waitDay_ != dayKey) {
     waitDay_ = dayKey;
     waitFromMs_ = nowMs;
   }
-  if ((running && nowMs - waitFromMs_ < kMaxWaitMs) || !allowed) return;
+  if (running && nowMs - waitFromMs_ < kMaxWaitMs) return;
   doneDay_ = dayKey;
   shown_ = true;
   shownMs_ = nowMs;

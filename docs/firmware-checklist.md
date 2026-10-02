@@ -185,6 +185,8 @@ notes.
     - **Monday recap:** on a Monday (or with the Mac's clock set to a Monday, bridge restarted), the
       first activity from 05:00, or 09:00, shows last week for 1 min: hours, responses, cost and
       the busiest day. Not on other days, not with "Monday: last week's summary" off, not with an older plugin.
+    - **Known limit:** "already shown today" lives only in RAM. A restart or an update the same
+      evening (or Monday) shows the end-of-day summary (or the recap) once more.
 
 <!-- daily:notes -->
 

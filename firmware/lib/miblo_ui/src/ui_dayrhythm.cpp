@@ -72,8 +72,10 @@ static MascotLook nudgeLook(Nudge kind, uint32_t ms) {
         k.eyes = Eyes::Happy;
       }
       break;
-    case Nudge::Water:  // a glass in hand, tipping its head back for a sip every other 2 s
+    case Nudge::Water:  // a glass in the right paw, raised for a sip every other 2 s
+      k.paws = Paws::ReachRight;
       if (ms / 2000 % 2) {
+        k.paws = Paws::TapRight;
         k.gy = -2;
         k.eyes = Eyes::Happy;
       }
@@ -89,13 +91,14 @@ static MascotLook nudgeLook(Nudge kind, uint32_t ms) {
   return k;
 }
 
-// The water nudge's glass, held up by the right paw where MascotLook's kCoffee mug goes (that
-// mug, steaming and brown inside, reads as coffee), in the cat's 96-unit box at (cx, cy) drawn
-// 2 * Sz(half) wide. Raised to the mouth while sipping; the water goes down a little each sip.
+// The water nudge's glass (MascotLook's kCoffee mug, steaming and brown inside, reads as
+// coffee), in the cat's 96-unit box at (cx, cy) drawn 2 * Sz(half) wide. Held in the raised right
+// paw (drawn behind the cat, so the paw grips it), or lifted to the mouth while sipping (drawn
+// over the cat). The water goes down a little each sip.
 static void glass(int cx, int cy, int half, bool sip, uint8_t sips) {
   const int unit = Sz(half);
   auto s = [unit](int v) { return (v * unit + 24) / 48; };  // box units (all positive here) to px
-  const int x = cx + s(sip ? 19 : 26), y = cy + s(sip ? 7 : 10);
+  const int x = cx + s(sip ? 16 : 31), y = cy + s(sip ? 6 : 12);
   const int w = s(13), h = s(18);
   constexpr uint16_t kRim = 0xC618;    // #c0c0c0 the glass
   constexpr uint16_t kInside = 0x29A8;  // #2a3440 empty glass
@@ -121,8 +124,14 @@ static void catWithGlass(int cx, int cy, int half, const MascotLook& k, uint32_t
   for (int y = cy - px; y < cy + px; y += stripH) {
     const int sh = y + stripH <= cy + px ? stripH : cy + px - y;
     const bool layered = C().beginLayer(cx - px, y, 2 * px, sh);
-    deskMascot(cx, cy, k, half);
-    glass(cx, cy, half, sip, sips);
+    if (sip) {
+      deskMascot(cx, cy, k, half);
+      glass(cx, cy, half, sip, sips);
+    } else {  // the box's background, the glass, then the cat over it without its own background
+      C().fillRect(cx - px, cy - px, 2 * px, 2 * px, color::BG);
+      glass(cx, cy, half, sip, sips);
+      deskMascot(cx, cy, k, half, true, false);
+    }
     if (!layered) break;  // no memory even for a strip: drawn directly, once
     C().endLayer();
   }

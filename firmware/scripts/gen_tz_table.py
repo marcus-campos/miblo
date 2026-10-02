@@ -19,7 +19,7 @@ The output is, in the same (sorted) order:
 Many zones share a rule (all of "GMT0", "CET-1CEST,M3.5.0,M10.5.0/3", ...): ~93 distinct rules
 for ~460 names, so each rule is stored once and indexed (~4 KB less flash than one per name).
 The release workflow runs it with the newest `tzdata` before building; the result is committed
-when it changes (see firmware/README.md, "Time zones").
+when it changes (see README.md, "Time zones").
 
 Usage: python3 firmware/scripts/gen_tz_table.py [--at YYYY-MM-DD]   (start of the checked period,
        default today)

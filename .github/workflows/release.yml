@@ -35,6 +35,21 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install platformio
+      # The table of zone rules frozen into the firmware, from the newest IANA tz database, so a
+      # release never ships rules older than the day it was built (`make release` refreshes and
+      # commits it too; this catches a tag made without it). The tests and the build below use it.
+      - name: Refresh the time zone table (newest tzdata)
+        working-directory: firmware
+        run: |
+          table="lib/miblo_core/src/miblo_tz_table.h lib/miblo_core/src/miblo_tz_table.cpp"
+          if pip install --upgrade tzdata && python scripts/gen_tz_table.py > "$RUNNER_TEMP/tz.log"; then
+            cat "$RUNNER_TEMP/tz.log"
+            git diff --stat -- $table
+            { echo "### Time zones"; echo; head -1 "$RUNNER_TEMP/tz.log"; } >> "$GITHUB_STEP_SUMMARY"
+          else
+            git checkout -- $table
+            echo "::warning::Time zone table not refreshed: building with the committed one"
+          fi
       - name: Firmware tests
         working-directory: firmware
         run: pio test -e native

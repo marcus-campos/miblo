@@ -1,6 +1,7 @@
 #include "net.h"
 
 #include <DNSServer.h>
+#include <new>
 #include <time.h>
 
 #include "../context.h"
@@ -27,7 +28,9 @@ struct Net {
 };
 static Net nets[kMaxNets];
 static uint8_t netCount = 0;
-static Net sweep[kMaxNets];  // the sweep in progress
+// The sweep in progress: on the heap only while one runs (the setup network is up), so the
+// 400 B it needs are not held for good on a unit that is simply connected.
+static Net* sweep = nullptr;
 static uint8_t sweepCount = 0;
 static uint8_t sweepChannel = 0;  // 0 = no sweep running; else the channel being scanned
 
@@ -68,6 +71,8 @@ static void keepScan(int n) {
   memcpy(nets, sweep, sizeof(nets));
   netCount = sweepCount;
   sweepChannel = 0;
+  delete[] sweep;
+  sweep = nullptr;
 }
 static bool autoReconnectOn = true;
 static bool wasConnected = false;
@@ -190,6 +195,8 @@ static void scanStep(uint32_t nowMs) {
       scanAtMs = 0;
       sweepChannel = 0;
     }
+    delete[] sweep;
+    sweep = nullptr;
     return;
   }
   const int done = WiFi.scanComplete();
@@ -200,6 +207,8 @@ static void scanStep(uint32_t nowMs) {
   if (scanStarted || done == WIFI_SCAN_RUNNING || trialBusy()) return;
   if (!sweepChannel) {
     if (scanAtMs && nowMs - scanAtMs < kScanEveryMs) return;
+    if (!sweep) sweep = new (std::nothrow) Net[kMaxNets];
+    if (!sweep) return;  // no memory right now: try again on the next pass
     sweepCount = 0;  // a new sweep
     scanAtMs = nowMs ? nowMs : 1;
   }

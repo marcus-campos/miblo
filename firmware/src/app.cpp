@@ -113,8 +113,13 @@ static uint8_t shiftStep = 0;    // current pixel-shift position (shifted)
 static uint32_t shiftAtMs = 0;
 static uint32_t roamSinceMs = 0;  // when pet mode came up
 static miblo::PetLatch petLatch;  // pet mode, and when the panel sleeps
-static char shownName[64] = "";   // the name the screen last knew (a change greets with it)
-static char knownOwner[64 + 6] = "";  // owner name + birthday last applied (a change re-arms today's greeting)
+// Only compared, never shown: kept as 32-bit hashes (FNV-1a) instead of copies of the text.
+static uint32_t shownName = 0;   // the name the screen last knew (a change greets with it)
+static uint32_t knownOwner = 0;  // owner name + birthday last applied (a change re-arms today's greeting)
+static uint32_t nameHash() { return miblo::hashStr(miblo::kHashSeed, deviceName()); }
+static uint32_t ownerHash() {
+  return miblo::hashStr(miblo::hashStr(miblo::kHashSeed, ctx.cfg.owner), ctx.cfg.birthday);
+}
 static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
 static uint32_t occasionAtMs = 0;
 
@@ -244,8 +249,8 @@ void setup() {
   storage::loadConfig(ctx.cfg);
   storage::loadTokens(ctx.tokens);
   applyConfig();
-  strlcpy(shownName, deviceName(), sizeof(shownName));
-  snprintf_P(knownOwner, sizeof(knownOwner), PSTR("%s|%s"), ctx.cfg.owner, ctx.cfg.birthday);
+  shownName = nameHash();
+  knownOwner = ownerHash();
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
@@ -277,14 +282,12 @@ void loop() {
     // zone must not light the old zone's schedule for a frame (and redraw everything twice).
     net::applyTimezone();  // (no new mDNS announcement: it carries only the id, never the name)
     applyConfig();
-    if (strcmp(shownName, deviceName()) != 0) {  // renamed: say hello with the new name
-      strlcpy(shownName, deviceName(), sizeof(shownName));
+    if (nameHash() != shownName) {  // renamed: say hello with the new name
+      shownName = nameHash();
       ctx.greeter.named(now);
     }
-    char owner[sizeof(knownOwner)];
-    snprintf_P(owner, sizeof(owner), PSTR("%s|%s"), ctx.cfg.owner, ctx.cfg.birthday);
-    if (strcmp(owner, knownOwner) != 0) {  // told who we are: greet (again) today
-      strlcpy(knownOwner, owner, sizeof(knownOwner));
+    if (ownerHash() != knownOwner) {  // told who we are: greet (again) today
+      knownOwner = ownerHash();
       ctx.greeter.rearm();
     }
     occasionAtMs = 0;  // a birthday may have been set

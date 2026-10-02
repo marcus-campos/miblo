@@ -18,8 +18,9 @@ static uint32_t boundConn = 0;
 static bool bound = false;
 static uint8_t announcesLeft = 0;
 static uint32_t nextAnnounceMs = 0;
-static uint8_t in[512];
-static uint8_t out[512];
+// Packet buffers live on the loop's stack, only while this module runs (static, they held 1 KB
+// of RAM for good): mdns::loop() is called straight from the app loop, far from the 4 KB limit.
+constexpr size_t kPacketMax = 512;
 static char txtId[32];
 
 static miblo::MdnsInfo info() {
@@ -90,6 +91,7 @@ void loop(uint32_t nowMs) {
   }
   if (!bound) return;
 
+  uint8_t out[kPacketMax];
   if (announcesLeft > 0 && (int32_t)(nowMs - nextAnnounceMs) >= 0) {
     miblo::MdnsInfo i = info();
     size_t n = miblo::mdnsAnnounce(i, out, sizeof(out));
@@ -100,6 +102,7 @@ void loop(uint32_t nowMs) {
 
   // Drain several packets per pass: a busy LAN (Macs, TVs, printers) sends plenty of mDNS and the
   // core keeps only a short receive queue, dropping newer packets (like our query) once it's full.
+  uint8_t in[kPacketMax];
   for (int k = 0; k < 8; k++) {
     int len = udp.parsePacket();
     if (len <= 0) return;

@@ -152,15 +152,29 @@ notes.
     (`/miblo:status` keeps working).
 23. **System panel:** on the settings page, open **Advanced**: the Processing and Memory (RAM)
     graphs fill from the right once a second (the last minute only) and the processing load reads
-    a few percent while idle; Storage shows the data in use and the firmware size with the room
-    left for updates. Closing Advanced stops the reads (no more `/settings-system` requests), and
-    on a paired gadget a browser without the on-screen code gets 401 from `/settings-system`.
-24. **Paired computers:** on the settings page, open **Advanced**: each paired computer is
-    listed with its host name and "active now" (the one sending snapshots) or how long ago it
-    was seen; opened through `/miblo:settings`, this computer is marked "(this computer)".
-    Remove another computer: after the confirmation it leaves the list, its `/miblo:status`
-    shows `unauthorized: true`, and `/miblo:pair` brings it back. Removing the last one leaves
-    the gadget unpaired (the page reloads open).
+    a few percent while idle. Storage is two bars, with no whole-chip line: **Program (firmware)**
+    reads like "83% in use · 170 KB free of 1.0 MB" (the firmware against the largest program the
+    4 MB layout takes, 1044464 bytes) and **Data** like "5% in use · 950 KB free of 1000 KB" (the
+    filesystem). Closing Advanced stops the reads (no more `/settings-system` requests), and on a
+    paired gadget a browser without the on-screen code gets 401 from `/settings-system`.
+24. **Paired computers:** on a paired gadget's settings page, once unlocked, a **Paired
+    computers** card (after This device, before Advanced, no need to open Advanced) lists each
+    paired computer with its host name and "active now" (the one sending snapshots) or how long
+    ago it was seen; opened through `/miblo:settings`, this computer is marked "(this computer)".
+    The list refreshes every 30 s.
+    - **Rename:** press Rename on a row: the name becomes a field. Type "Work laptop" and press
+      Enter (or Save): the row shows it, and it stays after a restart and after that computer's
+      next snapshots. Escape cancels. 21 characters are refused (the field turns red); accents and
+      emoji are fine. Rename the computer that opened the page: it keeps "(this computer)" in this
+      browser. Clear the field and save: within a snapshot or two the row shows the computer's host
+      name again.
+    - **Automatic name:** change a computer's host name (or pair with an older label in
+      pairs.json) and let it send a snapshot: its row follows the new host name, and the change
+      is saved within a minute (at most one save a minute). A renamed computer never follows.
+    - **Remove:** remove another computer (also one that was renamed): after the confirmation it
+      leaves the list, its `/miblo:status` shows `unauthorized: true`, and `/miblo:pair` brings it
+      back. Removing the last one leaves the gadget unpaired (the page reloads open, with no
+      Paired computers card).
 25. **Daily life (firmware 1.11):** each part below, on one gadget, with the plugin from the same branch.
 
     - **Focus:** run `/miblo:focus 5 1 2`. The mascot wears headphones and taps the table inside a

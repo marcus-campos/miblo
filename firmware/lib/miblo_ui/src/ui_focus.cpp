@@ -54,17 +54,24 @@ MascotLook catLook(FocusPhase p, uint32_t phaseMs, uint32_t ms) {
   return k;
 }
 
-// The ring moves in 2-degree steps; the filled part and the track never overlap, so a step
-// repaints nothing that was already right (no flicker).
-void ring(FocusPhase p, uint32_t elapsedMs, uint32_t lenMs) {
+// The ring moves in 2-degree steps and a step draws only the new slice in the phase colour. The
+// track is repainted whole only on a phase or round change (or when the progress goes back, a
+// restart), and the progress always goes on top of it: the arcs have round ends, so the track's
+// cap never lands on the progress.
+int g_ringDeg = 0;  // progress drawn so far, degrees
+
+void ring(FocusPhase p, uint8_t round, uint32_t elapsedMs, uint32_t lenMs) {
   int deg = lenMs ? (int)((uint64_t)kRingSpan * elapsedMs / lenMs) : 0;
   if (deg > kRingSpan) deg = kRingSpan;
   deg &= ~1;
-  if (!dirty(R_RING, hashInt(hashInt(kHashSeed + 211, (uint32_t)p), (uint32_t)deg))) return;
   const int cx = X(120), cy = Y(kCatY), r = Sz(kRingR), ir = Sz(kRingIr);
-  const int end = kRingFrom + deg;
-  if (deg > 0) C().arc(cx, cy, r, ir, kRingFrom, end, ringColor(p), color::BG);
-  if (deg < kRingSpan) C().arc(cx, cy, r, ir, end, kRingFrom + kRingSpan, color::TRACK, color::BG);
+  const bool whole = dirty(R_RING, hashInt(hashInt(kHashSeed + 211, (uint32_t)p), round)) || deg < g_ringDeg;
+  if (whole) {
+    C().arc(cx, cy, r, ir, kRingFrom, kRingFrom + kRingSpan, color::TRACK, color::BG);
+    g_ringDeg = 0;
+  }
+  if (deg > g_ringDeg) C().arc(cx, cy, r, ir, kRingFrom + g_ringDeg, kRingFrom + deg, ringColor(p), color::BG);
+  g_ringDeg = deg;
 }
 
 // Rounds as dots: done and current filled (the current one in the phase colour), the rest hollow.
@@ -89,7 +96,7 @@ void focus(Lang lang, const Clock& clk, FocusPhase phase, uint8_t round, uint8_t
   const uint32_t hl = hashInt(kHashSeed + 209, (uint32_t)lang);
   clockRight(hl, clk, Y(18), color::DIM, color::BG);
   deskCat(R_BODY, X(120), Y(kCatY), kCatHalf, catLook(phase, elapsed, ms));
-  ring(phase, elapsed, lenMs);
+  ring(phase, round, elapsed, lenMs);
 
   // Everything under the ring changes with the phase: one cleared block, values in fields.
   const uint32_t ht = hashInt(hashInt(hashInt(hl, (uint32_t)phase), round), rounds);

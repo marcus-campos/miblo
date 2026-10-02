@@ -27,12 +27,26 @@ void FocusTimer::stop() {
   round_ = 0;
 }
 
+// How much an event matters to the screen (the cue it fires): a stall that crosses several
+// transitions reports the strongest one, so the end-of-focus cue is never lost.
+static uint8_t eventRank(FocusEvent e) {
+  switch (e) {
+    case FocusEvent::Finished: return 4;
+    case FocusEvent::BreakStarted: return 3;
+    case FocusEvent::BackPrompt: return 2;
+    case FocusEvent::FocusStarted: return 1;
+    case FocusEvent::None: break;
+  }
+  return 0;
+}
+
 // Advances phase by phase from phaseStartMs_ (never from nowMs), so a stalled loop lands on the
 // same schedule; unsigned differences keep it correct across the millis() wrap.
 FocusEvent FocusTimer::update(uint32_t nowMs) {
-  FocusEvent ev = FocusEvent::None;
+  FocusEvent best = FocusEvent::None;
   while (phase_ != FocusPhase::Off && nowMs - phaseStartMs_ >= phaseLenMs()) {
     phaseStartMs_ += phaseLenMs();
+    FocusEvent ev = FocusEvent::None;
     switch (phase_) {
       case FocusPhase::Focus:
         phase_ = round_ < plan_.rounds ? FocusPhase::Break : FocusPhase::LongBreak;
@@ -55,8 +69,9 @@ FocusEvent FocusTimer::update(uint32_t nowMs) {
       case FocusPhase::Off:
         break;
     }
+    if (eventRank(ev) > eventRank(best)) best = ev;
   }
-  return ev;
+  return best;
 }
 
 uint32_t FocusTimer::phaseLenMs() const {

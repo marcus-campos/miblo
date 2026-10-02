@@ -3,7 +3,8 @@
 export const isReducedInfo = (info) => info?.paired === true && info.fw === undefined && info.name === undefined;
 
 // 503 {"error":"busy"}: the gadget was momentarily low on memory (heapLowForRequest) and refused
-// the request before doing anything with it. Usually gone a moment later.
+// the request before doing anything with it, or (for a pairing) could not save it and took it
+// back, keeping the code valid. Usually gone a moment later.
 export const isBusy = (e) => e?.status === 503;
 export const busyLine = (label) => `${label} is busy right now — try again in a moment.`;
 
@@ -20,7 +21,7 @@ export class DeviceClient {
     this.sleep = sleep;
   }
 
-  // Retries only a 503 (busy), which the firmware sends before touching anything, so resending is
+  // Retries only a 503 (busy), which the firmware sends with nothing changed, so resending is
   // always safe; never a timeout or a dropped connection, whose request may have been carried out.
   // Used for reads and for pairing; other writes leave a 503 to the caller.
   async #retryBusy(addr, path, opts) {

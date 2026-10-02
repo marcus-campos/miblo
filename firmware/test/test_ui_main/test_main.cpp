@@ -4,6 +4,7 @@
 #include "../support/fake_canvas.h"
 #include <time.h>
 
+#include "miblo_mood.h"
 #include "miblo_zone.h"
 #include "ui_screens.h"
 #include "ui_visit_kit.h"
@@ -1585,8 +1586,124 @@ static void test_daily_lines_fit_any_resolution() {
   screens::setSecondClock("", "");
 }
 
+// ---------------- daily life: the Desk's extras and the cat's mood ----------------
+
+// Playful (a light day): an antic every 20 s instead of 30, still the same antic for the same ms.
+static void test_playful_cat_plays_more_often() {
+  screens::setCatMood((uint8_t)miblo::CatMood::Playful);
+  uint32_t at = 1;
+  const screens::RoamAntic a = screens::roamAntic(20000, &at);
+  TEST_ASSERT_TRUE(a != screens::RoamAntic::None);
+  TEST_ASSERT_EQUAL_UINT32(0, at);
+  TEST_ASSERT_TRUE(screens::roamAntic(20000, nullptr) == a);
+  TEST_ASSERT_TRUE(screens::roamAntic(40000, nullptr) != screens::RoamAntic::None);
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
+  TEST_ASSERT_TRUE(screens::roamAntic(20000, nullptr) == screens::RoamAntic::None);
+  TEST_ASSERT_TRUE(screens::roamAntic(30000, nullptr) != screens::RoamAntic::None);
+}
+
+// Tired (8 h of work today): slow, sleepy blinks and a yawn now and then; never on a normal day.
+static void test_tired_cat_yawns() {
+  for (uint8_t mood : {(uint8_t)miblo::CatMood::Tired, (uint8_t)miblo::CatMood::Normal}) {
+    screens::setCatMood(mood);
+    bool yawn = false, sleepy = false;
+    for (uint32_t ms = 0; ms < 45000; ms += 50) {
+      const screens::MascotLook k = screens::deskLook(screens::DeskMood::Calm, true, ms);
+      yawn |= (k.extras & screens::kMouthWide) != 0;
+      sleepy |= k.eyes == screens::Eyes::Sleepy && ms < 11000;  // kCalm's own doze starts at 11.75 s
+    }
+    const bool tired = mood == (uint8_t)miblo::CatMood::Tired;
+    TEST_ASSERT_EQUAL(tired, yawn);
+    TEST_ASSERT_EQUAL(tired, sleepy);
+  }
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
+}
+
+// Desk: the countdown line, the settings QR in the corner (in place of the second clock) and
+// confetti on the day itself; everything inside the screen at every size, in every language.
+static void test_desk_countdown_and_qr() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::setSecondClock("Lisboa", "19:32");
+  screens::setDeskExtras("release in 3 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_TRUE(fc.drew("release in 3 days"));
+  TEST_ASSERT_TRUE(fc.drew("Lisboa"));
+  screens::setDeskExtras("release in 3 days", "http://192.168.100.200/");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_FALSE(fc.drew("Lisboa"));  // the QR wins the corner
+  TEST_ASSERT_EQUAL_INT(ui::color::WHITE, fc.colorAt(232, 6));
+  // Same frame again: nothing redrawn (the QR is not repainted every frame).
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      FakeCanvas f(sp);
+      screens::bind(f);
+      for (const char* qr : {"", "http://192.168.100.200/"}) {
+        screens::setSecondClock("WWWWWWWWWWWW", "23:59");
+        screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW in 999 days", qr);
+        screens::reset();
+        for (uint32_t ms = 0; ms < 60000; ms += 997) screens::desk((Lang)l, snap, clockAt(NOW), ms, NOW + 600);
+        screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW is today!", qr);
+        screens::reset();
+        for (uint32_t ms = 0; ms < 5000; ms += 97) screens::desk((Lang)l, snap, clockAt(NOW), ms);
+      }
+      TEST_ASSERT_EQUAL_INT(0, f.outOfBounds);
+    }
+  }
+  screens::setSecondClock("", "");
+  screens::setDeskExtras("", "");
+}
+
+// The pet's sign: the countdown takes the last task's place, unless a note (a friend, a say)
+// is up; long ones wrap onto the second line.
+static void test_pet_sign_countdown() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::setDeskExtras("release in 3 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("release in 3 days"));
+  TEST_ASSERT_FALSE(fc.drew("infra"));
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm, "Hi, Nina!");
+  TEST_ASSERT_TRUE(fc.drew("Hi, Nina!"));
+  TEST_ASSERT_FALSE(fc.drew("release"));
+  screens::setDeskExtras("Trip to Lisbon with the team in 12 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("in 12 days"));
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas f(sp);
+    screens::bind(f);
+    screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW in 999 days", "");
+    screens::reset();
+    for (uint32_t ms = 0; ms < 400000; ms += 997) screens::roam(Lang::En, snap, clockAt(NOW), ms, screens::DeskMood::Calm);
+    TEST_ASSERT_EQUAL_INT(0, f.outOfBounds);
+  }
+  screens::setDeskExtras("", "");
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_playful_cat_plays_more_often);
+  RUN_TEST(test_tired_cat_yawns);
+  RUN_TEST(test_desk_countdown_and_qr);
+  RUN_TEST(test_pet_sign_countdown);
   RUN_TEST(test_second_zone_clock_keeps_tz);
   RUN_TEST(test_long_command_on_overview);
   RUN_TEST(test_overview_forecast_line);

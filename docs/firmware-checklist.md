@@ -185,6 +185,13 @@ notes.
       the Desk shows "Lisboa" over its time in the top-right corner and the Overview (all done)
       shows "Lisboa HH:MM" under today's cost; it changes with the minute, and the gadget's own
       clock, night mode and resets stay in the gadget's zone.
+    - **Desk extras:** `/miblo:countdown` with a date 3 days ahead: the Desk shows the line in
+      violet over the rings (the cat a size smaller) and the pet's sign shows it in place of the
+      last task; with a date of today, confetti twinkles either side of the cat. Turn on the Desk
+      QR on the settings page: the QR takes the top-right corner (in place of the second clock)
+      and a phone scanning it opens the settings page.
+    - **Mood:** on a day past 8 h of Claude working, the Desk's cat blinks slowly and yawns about
+      every 45 s; on a light day (under 2 h, limits at or under 50%) pet mode plays every 20 s.
 
 <!-- daily:settings -->
 

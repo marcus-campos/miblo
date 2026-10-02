@@ -25,6 +25,7 @@
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
 #include "platform/tft_canvas.h"
+#include "miblo_mood.h"
 #include "shots.h"
 #include "ui_screens.h"
 
@@ -315,7 +316,26 @@ void renderAll(Lang L) {
   screens::setSecondClock("Lisboa", "18:32");
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "17-overview-all-done-second-zone"); }
   { Shot s; screens::desk(L, snap, clk, 0); save(s, "22-desk-second-zone"); }
+  // The Desk's extras: a countdown (/miblo:countdown), the settings QR (wins the corner over the
+  // second clock), confetti on the day itself; the countdown on the pet's sign.
+  {
+    char line[64];
+    snprintf(line, sizeof(line), screens::t(L, S::CountdownDays), "Release", 3u);
+    screens::setDeskExtras(line, "");
+    { Shot s; screens::desk(L, snap, clk, 0); save(s, "22-desk-countdown"); }
+    { Shot s; screens::roam(L, snap, clk, 0, screens::DeskMood::Calm); save(s, "42-pet-countdown"); }
+    screens::setDeskExtras("", "http://192.168.0.42/");
+    { Shot s; screens::desk(L, snap, clk, 0); save(s, "22-desk-qr"); }
+    snprintf(line, sizeof(line), screens::t(L, S::CountdownToday), "Release");
+    screens::setDeskExtras(line, "http://192.168.0.42/");
+    { Shot s; screens::desk(L, snap, clk, 0); save(s, "22-desk-countdown-today-qr"); }
+    screens::setDeskExtras("", "");
+  }
   screens::setSecondClock("", "");
+  // A long day (8 h of work): the cat yawns now and then.
+  screens::setCatMood((uint8_t)miblo::CatMood::Tired);
+  { Shot s; screens::desk(L, snap, clk, 44500); save(s, "22-desk-tired"); }
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
   attention();
   { Shot s; screens::limits(L, snap, clk); save(s, "18-limits"); }
   { Shot s; screens::sessions(L, snap, pager, 0, clk, false); save(s, "19-sessions"); }

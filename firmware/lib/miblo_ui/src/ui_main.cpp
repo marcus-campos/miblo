@@ -5,6 +5,7 @@
 
 #include "miblo_activity.h"
 #include "miblo_format.h"
+#include "miblo_mood.h"
 #include "miblo_policy.h"
 #include "miblo_rom.h"
 #include "ui_internal.h"
@@ -654,6 +655,10 @@ Step stepAt(const Step (&seq)[N], uint32_t ms) {
 }
 }  // namespace
 
+// A tired cat's rhythm (catMood Tired).
+constexpr uint32_t kTiredBlinkEveryMs = 6000, kTiredBlinkMs = 500;
+constexpr uint32_t kYawnEveryMs = 45000, kYawnMs = 1200;
+
 DeskMood deskMood(uint8_t pct) {
   if (pct >= 95) return DeskMood::Scared;
   if (pct >= 80) return DeskMood::Worried;
@@ -679,6 +684,16 @@ MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
     case DeskMood::Asleep:
     default: step = stepAt(kAsleep, ms); break;
   }
+  // Tired (catMood, 8 h of work today) and at ease: the quick blinks give way to a slow, sleepy
+  // one every 6 s, and a yawn comes every 45 s. The urgent moods keep their own faces.
+  if (catMood() == (uint8_t)miblo::CatMood::Tired && (mood == DeskMood::Calm || mood == DeskMood::Watchful)) {
+    if (step.eyes == Eyes::Closed && step.ms <= 150) step.eyes = Eyes::Open;
+    if (ms % kTiredBlinkEveryMs >= kTiredBlinkEveryMs - kTiredBlinkMs) step.eyes = Eyes::Sleepy;
+    if (ms % kYawnEveryMs >= kYawnEveryMs - kYawnMs) {
+      step.eyes = Eyes::Closed;
+      step.extras = (uint16_t)(step.extras | kMouthWide);
+    }
+  }
   const Step* st = &step;
   MascotLook k{st->dx, st->dy, 0, 0, st->eyes, Paws::Down, st->extras};
   const int8_t side = focusLeft ? -3 : 3;  // the gauges sit below the cat: gaze down and sideways
@@ -697,7 +712,9 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
                                  (uint32_t)(uint8_t)k.gy << 24);
   h = hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
-  return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8);  // a hat or colour change redraws
+  // A hat, colour, tie or mood change redraws (the mood draws dark circles: ui_base.cpp).
+  return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8 | (uint32_t)mascotTie() << 16 |
+                        (uint32_t)catMood() << 24);
 }
 
 // The mascot in its box (`half` on the 240 grid), only redrawn when the expression changes. It
@@ -1044,8 +1061,14 @@ static RoamAntic anticOfCycle(uint32_t cycle) {  // cycle >= 1
   return (RoamAntic)order[pos];
 }
 
+// A playful cat (catMood Playful: a light day) plays every 20 s instead of every 30.
+constexpr uint32_t kPlayfulAnticEveryMs = 20000;
+static uint32_t anticEveryMs() {
+  return catMood() == (uint8_t)miblo::CatMood::Playful ? kPlayfulAnticEveryMs : kAnticEveryMs;
+}
+
 RoamAntic roamAntic(uint32_t ms, uint32_t* atMs) {
-  const uint32_t cycle = ms / kAnticEveryMs, at = ms % kAnticEveryMs;
+  const uint32_t every = anticEveryMs(), cycle = ms / every, at = ms % every;
   if (atMs) *atMs = at;
   if (cycle == 0) return RoamAntic::None;
   const RoamAntic a = anticOfCycle(cycle);
@@ -1139,7 +1162,7 @@ static RoamScene roamScene(uint32_t ms, const MascotLook& base, bool playful) {
   // Away from the sign: put it down on the floor, play above it, pick it up again (back where the
   // roaming has got to by then).
   const RoamScene held = sc;
-  floorLayout((int)((ms / kAnticEveryMs) % 3) - 1, sc);
+  floorLayout((int)((ms / anticEveryMs()) % 3) - 1, sc);
   sc.floor = true;
   if (at < kAnticPutMs || at >= kAnticPutMs + kAnticMs) {
     const uint32_t t = at < kAnticPutMs ? at : kAnticFloorMs - at;  // 0 = held .. kAnticPutMs = down
@@ -1589,6 +1612,22 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const SignLimits& li
   }
 }
 
+// `text` on the sign's two task lines: whole on the first when it fits in `w`, else broken at the
+// last space that lets the first line fit (the rest on the second, cut there if need be).
+static void signWrap(const char* text, int w, char* l1, size_t c1, char* l2, size_t c2) {
+  snprintf(l1, c1, "%s", text);
+  l2[0] = 0;
+  if (C().textWidth(l1, Font::SmallBold) <= w) return;
+  for (char* sp = strrchr(l1, ' '); sp; sp = strrchr(l1, ' ')) {
+    *sp = 0;
+    if (C().textWidth(l1, Font::SmallBold) <= w) {
+      snprintf(l2, c2, "%s", text + (sp - l1) + 1);
+      return;
+    }
+  }
+  snprintf(l1, c1, "%s", text);  // no space to break at: one line, cut by the canvas
+}
+
 void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
           uint32_t lookMs, bool computerAway) {
   // Antics while it is calm and nothing else is being said (a friend's hi, a nap together).
@@ -1598,7 +1637,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
 
   // The card's lines (empty when unknown).
   SignLimits lim{"--", "--", color::TEXT, color::TEXT, false};
-  char reset[48] = "", lastName[48] = "", lastWhen[64] = "";
+  char reset[48] = "", lastName[64] = "", lastWhen[64] = "";  // (64: a whole countdown line)
   uint16_t resetFg = color::MUTED;
   const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
   if (usage) {
@@ -1638,6 +1677,9 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     snprintf(lastName, sizeof(lastName), "%s", note);
     lastWhen[0] = 0;
     nameFg = color::AMBER;
+  } else if (deskCountdown()[0]) {  // the countdown ("release in 3 days"), when nothing is said
+    signWrap(deskCountdown(), sc.sw - 2 * X(kRoamMargin), lastName, sizeof(lastName), lastWhen, sizeof(lastWhen));
+    nameFg = color::VIOLET;
   }
 
   uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(sc.catX * 1000 + sc.catY)), sc.k);
@@ -2015,23 +2057,27 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
 
 // ---- greetings ----
 
+// `n` bits of confetti in region `id` (x, y, w, h: pixels), reshuffled when `frame` changes.
+static void confettiIn(uint8_t id, uint32_t seed, uint32_t frame, int x0, int y0, int w, int h, int n) {
+  static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
+                                               color::CORAL, color::VIOLET, color::RED};
+  if (w <= Sz(6) || h <= Sz(6) || !region(id, hashInt(kHashSeed + 71 + seed, frame), x0, y0, w, h)) return;
+  uint32_t r = frame * 2654435761u + seed * 97u + 1;
+  for (int i = 0; i < n; i++) {
+    r = r * 1103515245u + 12345u;
+    const int x = x0 + (int)((r >> 8) % (uint32_t)(w - Sz(5)));
+    const int y = y0 + (int)((r >> 20) % (uint32_t)(h - Sz(5)));
+    uint16_t c;
+    mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
+    C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
+  }
+}
+
 // Confetti along the top and the bottom bands (R_HEADER, R_FOOT), reshuffled when `frame`
 // changes (hello() passes ms / 250: a few times a second).
 void confettiBands(uint32_t frame) {
-  static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
-                                               color::CORAL, color::VIOLET, color::RED};
   for (uint8_t band = 0; band < 2; band++) {
-    const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
-    if (!region(band ? R_FOOT : R_HEADER, hashInt(kHashSeed + 71 + band, frame), 0, y0, X(240), bandH)) continue;
-    uint32_t r = frame * 2654435761u + band * 97u + 1;
-    for (int i = 0; i < 14; i++) {
-      r = r * 1103515245u + 12345u;
-      const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
-      const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
-      uint16_t c;
-      mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
-      C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
-    }
+    confettiIn(band ? R_FOOT : R_HEADER, band, frame, X(6), band ? Y(216) : Y(4), X(229), Y(20), 14);
   }
 }
 
@@ -2060,6 +2106,30 @@ static void deskZone(int left) {
   field(R_ZONE, kHashSeed + 59, X(228), Y(36), hhmm, Font::SmallBold, color::DIM, color::BG, Align::Right, w);
 }
 
+// The settings QR in the Desk's top-right corner (right of `left`, above `bottom`): as big as the
+// corner allows, at most 3 px a module, never redrawn unless the address changes. Its bottom.
+static int deskQr(const char* url, int left, int bottom) {
+  constexpr int kModules = 29 + 2 * 2;  // version 3 + the quiet zone (ui_base.cpp qr())
+  const int right = X(240) - 4, top = 4;
+  int scale = (right - left < bottom - top ? right - left : bottom - top) / kModules;
+  if (scale > 3) scale = 3;
+  if (scale < 1) return top;
+  const int size = kModules * scale;
+  if (dirty(R_QR, hashInt(hashStr(kHashSeed + 67, url), (uint32_t)size))) qr(url, right - size, top, scale);
+  return top + size;
+}
+
+// "release is today!": the countdown line is CountdownToday's text ("%s is today!", the label
+// first in every language).
+static bool countdownIsToday(Lang lang, const char* line) {
+  const char* fmt = t(lang, S::CountdownToday);
+  const char* label = strstr(fmt, "%s");
+  if (!label) return false;
+  const char* suffix = label + 2;
+  const size_t n = strlen(line), m = strlen(suffix);
+  return m && n > m && strcmp(line + n - m, suffix) == 0;
+}
+
 void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt) {
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
   const uint8_t p5 = deskPct(s.h5, now);
@@ -2068,9 +2138,31 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32
   bool focusLeft;
   const DeskMood mood = deskMoodFor(s, now, &focusLeft);
   field(R_CLOCK, kHashSeed + 19, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
-  const int catHalf = 48;
-  deskCat(R_BODY, X(120), Y(72), catHalf, deskLook(mood, focusLeft, nowMs));
-  deskZone(X(120) + Sz(catHalf) + Sz(4));
+  // The extras make room: a countdown line takes the strip over the rings (the cat a size down
+  // and higher), the QR takes the top-right corner (the cat a little smaller), in place of the
+  // second clock. Turning either on or off redraws the whole screen (app.cpp).
+  const char* countdown = deskCountdown();
+  const char* qrUrl = deskQrUrl();
+  const int catHalf = countdown[0] ? 40 : qrUrl[0] ? 44 : 48;
+  const int catY = countdown[0] ? Y(64) : Y(72);
+  deskCat(R_BODY, X(120), catY, catHalf, deskLook(mood, focusLeft, nowMs));
+  const int side = Sz(catHalf) + Sz(4);  // the cat's box, plus a gap, either side of the centre
+  const int stripTop = Y(106);            // where the countdown line's strip begins
+  int cornerBottom = 0;
+  if (qrUrl[0]) cornerBottom = deskQr(qrUrl, X(120) + side, stripTop);
+  else if (secondClockLabel()[0] && secondClockTime()[0]) cornerBottom = Y(40);
+  if (!qrUrl[0]) deskZone(X(120) + side);
+  if (countdown[0]) {
+    field(R_FOOT, kHashSeed + 61, X(120), Y(118), countdown, Font::Small, color::VIOLET, color::BG, Align::Center,
+          X(228));
+    if (countdownIsToday(lang, countdown)) {  // the day itself: confetti either side of the cat
+      const uint32_t frame = nowMs / 400;
+      const int top = Y(26), w = X(120) - side - X(6);
+      confettiIn(R_TIME0, 2, frame, X(6), top, w, stripTop - top, 6);
+      const int rTop = cornerBottom ? cornerBottom + Sz(6) : top;
+      confettiIn(R_TIME0 + 1, 3, frame, X(120) + side, rTop, w, stripTop - rTop, 6);
+    }
+  }
   uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
   h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
   h = hashInt(h, (uint32_t)(s.todayUsd * 100));

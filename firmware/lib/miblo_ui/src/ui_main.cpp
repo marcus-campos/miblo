@@ -423,9 +423,21 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     if (head.begin(R_HEADER, h, 0, 0, X(240), Y(24))) {
       // fixed amber band: "1 WAITING · api-server"
       C().fillRect(0, 0, X(240), Y(22), color::AMBER);
+      // The waiting session's name matters most: when "2 WAITING · checkout" doesn't fit beside
+      // the clock (long words in some languages), try the smaller font, then drop the word (the
+      // amber band already says someone is waiting); only then cut with an ellipsis.
+      const int maxW = X(170);
       snprintf(tmp, sizeof(tmp), t(lang, S::NWaiting), (unsigned)c.pending);
       snprintf(buf, sizeof(buf), "%s%s%s", tmp, heroName[0] ? kDot : "", heroName);
-      C().text(X(10), Y(16), buf, Font::SmallBold, color::BLACK, Align::Left, X(170));
+      Font f = Font::SmallBold;
+      if (C().textWidth(buf, f) > maxW) {
+        if (C().textWidth(buf, Font::Small) <= maxW) {
+          f = Font::Small;
+        } else if (heroName[0]) {
+          snprintf(buf, sizeof(buf), "%u%s%s", (unsigned)c.pending, kDot, heroName);
+        }
+      }
+      C().text(X(10), Y(16), buf, f, color::BLACK, Align::Left, maxW);
     }
     head.end();
     clockRight(h, clk, Y(16), color::BLACK, color::AMBER);

@@ -134,6 +134,30 @@ static void test_main_screens_fit_any_resolution() {
   }
 }
 
+// A long session name never gets cut because of the "N WAITING" word beside the clock: the
+// header falls back to a smaller font, then to "2 · name"; the name stays whole.
+static void test_attention_header_keeps_the_name() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  attention();
+  strlcpy(snap.sessions[0].name, "checkout-service", sizeof(snap.sessions[0].name));
+  strlcpy(snap.sessions[1].name, "billing-service", sizeof(snap.sessions[1].name));  // both waiting
+  Pager pager(3, 5000);
+  for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+    screens::reset();
+    fc.clearLog();
+    screens::overview((Lang)l, snap, pager, 0, testClock(), false);
+    bool whole = false;  // the header line ends with the full name and wasn't cut
+    for (size_t i = 0; i < fc.texts.size(); i++) {
+      const std::string& s = fc.texts[i];
+      const bool named = s.size() > 16 && (s.compare(s.size() - 16, 16, "checkout-service") == 0 ||
+                                           s.compare(s.size() - 15, 15, "billing-service") == 0);
+      if (named && s.find("\xC2\xB7") != std::string::npos && !fc.cut[i]) whole = true;
+    }
+    TEST_ASSERT_TRUE_MESSAGE(whole, miblo::langCode((Lang)l));
+  }
+}
+
 static void test_overview_attention_content() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
@@ -1891,6 +1915,7 @@ int main() {
   RUN_TEST(test_mascot_new_poses_stay_in_box);
   RUN_TEST(test_main_screens_fit_any_resolution);
   RUN_TEST(test_overview_attention_content);
+  RUN_TEST(test_attention_header_keeps_the_name);
   RUN_TEST(test_discreet_mode_hides_details);
   RUN_TEST(test_limits_arc_and_cost_fallback);
   RUN_TEST(test_sessions_pages_and_flash_blinks);

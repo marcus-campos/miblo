@@ -44,6 +44,7 @@ const NOTES = [
   'permission_prompt', 'worker_permission_prompt', 'elicitation_dialog', 'elicitation_url_dialog',
   'agent_needs_input', 'idle_prompt', 'auth_success', 'agent_completed', 'push_notification',
   'computer_use_enter', 'quota_auto_resume_start', 'model_refusal_fallback', 'bogus',
+  'permission_denied', 'permission_granted', 'worker_permission_resolved', 'elicitation_complete', 'elicitation_response', 'input_received', 'dialog_closed',
 ];
 const TOOLS = ['Bash', 'Edit', 'Write', 'Read', 'NotebookEdit', 'Grep', 'Glob', 'WebFetch', 'WebSearch', 'Agent',
   'Task', 'AskUserQuestion', 'mcp__srv__do_it', 'mcp__', 'Monitor', '_compact', '_wait_agents', ''];

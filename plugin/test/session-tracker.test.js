@@ -882,7 +882,8 @@ test('an unknown prompt-like Notification follows the one-alert and late-notific
 test('unknown Notification types without a prompt-like name and known ignored ones change nothing', () => {
   const { tracker, ev } = setup();
   for (const type of ['idle_prompt', 'auth_success', 'agent_completed', 'push_notification', 'computer_use_enter',
-    'computer_use_exit', 'quota_auto_resume_fired', 'model_refusal_fallback', 'update_available', 'brand_new_thing', '', undefined]) {
+    'computer_use_exit', 'quota_auto_resume_fired', 'model_refusal_fallback', 'update_available', 'brand_new_thing',
+    'permission_denied', 'permission_granted', 'worker_permission_resolved', 'elicitation_complete', 'elicitation_response', 'input_received', 'dialog_closed', '', undefined]) {
     assert.equal(ev('s1', 'Notification', { notification_type: type }), false, String(type));
     assert.equal(ev('s1', 'Notification', { notification_type: type, agent_id: 'a1' }), false, String(type));
   }

@@ -37,8 +37,9 @@ const ANY_AGENT = '*';
 //   ignored on purpose: Notification idle_prompt, auth_success, agent_completed, push_notification,
 //     computer_use_enter/exit, quota_auto_resume_*, model_refusal_fallback.
 //   unknown Notification types, by name: one containing "permission" is perm; one containing
-//     "input", "dialog", "question", "elicitation" or "approval" is a question; any other is
-//     ignored. They follow the same one-alert-per-prompt and clearing rules as the known ones.
+//     "input", "dialog", "question", "elicitation" or "approval" is a question; any other, and
+//     any whose name says the prompt is settled (granted, denied, closed, complete, response...),
+//     is ignored. They follow the same one-alert-per-prompt and clearing rules as the known ones.
 //   unknown events (PostToolBatch, UserPromptExpansion, Pre/PostModelSwitch, Setup, TeammateIdle,
 //     TaskCreated, TaskCompleted, ConfigChange, WorktreeCreate/Remove, InstructionsLoaded,
 //     CwdChanged, FileChanged, DirectoryAdded, MessageDisplay, any later one) and ignored
@@ -50,6 +51,7 @@ const PERM_NOTES = new Set(['permission_prompt', 'worker_permission_prompt']);
 const QUESTION_NOTES = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
 const IGNORED_NOTES = new Set(['idle_prompt', 'auth_success', 'agent_completed', 'push_notification',
   'computer_use_enter', 'computer_use_exit', 'model_refusal_fallback']);
+const SETTLED_WORDS = /grant|denied|deny|close|resolv|dismiss|cancel|success|complete|done|finish|response|result|received|answered|expire|timeout|ended/;
 const QUESTION_WORDS = /input|dialog|question|elicitation|approval/;
 
 // The prompt kind ('perm' | 'question') a Notification type shows, or null when it shows none.
@@ -59,6 +61,8 @@ export function noteKind(type) {
   if (QUESTION_NOTES.has(type)) return 'question';
   if (IGNORED_NOTES.has(type) || type.startsWith('quota_auto_resume_')) return null;
   const t = type.toLowerCase();
+  // A name telling a prompt ended or never needs the user (permission_denied, dialog_closed...).
+  if (SETTLED_WORDS.test(t)) return null;
   if (t.includes('permission')) return 'perm';
   return QUESTION_WORDS.test(t) ? 'question' : null;
 }

@@ -202,15 +202,35 @@ void pageStart(String& out, Lang lang, const char* title) {
   out += F("</style></head><body>");
 }
 
+// How long one piece of a response may wait for room in the send window before the
+// connection is given up. The core's sendContent() reads through a stream whose timeout is the
+// Stream default, 1 s, and on that timeout it stops mid-chunk yet still writes the chunk's
+// closing "\r\n": the browser gets a chunk shorter than its size line, i.e. a silently corrupt
+// page. On Wi-Fi a lost segment with only two segments in flight waits for lwIP's retransmit
+// timer (~1-1.5 s), so a plain retransmit was enough to hit it. 5 s outlasts a few retransmits.
+static constexpr uint32_t kPageSendTimeoutMs = 5000;
+
+// Sends one piece of the current response (RAM or PROGMEM, no copy) and makes sure it went out
+// whole. If it still came up short, the connection is closed: a page that fails to load beats a
+// page broken in the middle. Later sends on the closed connection return at once.
+static void sendPiece(const char* data, size_t len) {
+  // Nothing to send: a zero-length chunk would end the response. HEAD: sendContent() sends no body.
+  if (!len || srv->method() == HTTP_HEAD) return;
+  StreamConstPtr piece(data, len);  // detects a PROGMEM pointer by itself
+  piece.setTimeout(kPageSendTimeoutMs);
+  srv->sendContent(&piece, len);
+  if (piece.streamRemaining() > 0) srv->client().stop();
+}
+
 void pageFlush(String& out, bool force) {
   if (!out.length() || (!force && out.length() < kPageChunk)) return;
-  srv->sendContent(out);
+  sendPiece(out.c_str(), out.length());
   out.remove(0);  // keeps the reserved buffer for the next chunk
 }
 
 void pageSendP(String& out, PGM_P blob) {
   pageFlush(out, true);
-  srv->sendContent_P(blob);
+  sendPiece(blob, strlen_P(blob));
 }
 
 void pageEnd(String& out) {
@@ -1320,14 +1340,14 @@ static void handleZones() {
   while (names.next()) {
     const size_t len = strlen(names.name);
     if (n + len + 1 > sizeof(buf)) {
-      srv->sendContent(buf, n);
+      sendPiece(buf, n);
       n = 0;
     }
     memcpy(buf + n, names.name, len);
     n += len;
     buf[n++] = '\n';
   }
-  if (n) srv->sendContent(buf, n);
+  if (n) sendPiece(buf, n);
 }
 
 static void handleRoot() {

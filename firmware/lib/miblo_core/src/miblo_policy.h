@@ -205,6 +205,22 @@ class PetLatch {
   uint32_t sinceMs_ = 0;  // when pet mode started
 };
 
+// Ends a demo (/miblo:demo) when real activity starts, as pet mode ends. Work already going on when
+// the demo begins (the very prompt that asked for it) doesn't count: only a start does.
+class DemoBreak {
+ public:
+  // Call on every frame with whether the demo is on and whether there is real activity (as for
+  // PetLatch). Returns true on the frame the demo should end.
+  bool update(bool demo, bool activity) {
+    const bool start = demo && activity && !was_;
+    was_ = activity;
+    return start;
+  }
+
+ private:
+  bool was_ = true;  // at boot nothing has "started" yet
+};
+
 // Once per boot, when the first snapshot that names the latest release shows a newer version
 // than this firmware, the screen says so for kShowMs, then carries on.
 class UpdateNotice {

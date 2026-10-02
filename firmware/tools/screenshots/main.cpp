@@ -463,7 +463,7 @@ void renderAll(Lang L) {
   {
     idle();
     static const char* const kAnticNames[] = {"",        "bat",      "spill",   "cursor",  "nap",     "sneeze",
-                                              "peek",    "heart",    "glasses", "stamp",   "laptop",  "tail",
+                                              "peek",    "heart",    "glasses", "wave",    "laptop",  "tail",
                                               "stretch", "lick",     "fly",     "yarn",    "mug",     "box",
                                               "keys",    "laser",    "bubbles", "fish",    "duck",    "coffee",
                                               "butterfly", "balloon", "plane",  "bowl",    "deploy",  "cucumber",

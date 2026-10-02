@@ -39,6 +39,7 @@ static miblo::Pager sessionPager(3, 5000);  // Sessions mode: 3 big cards per pa
 static miblo::RotationClock rotation;  // optional Overview/Limits alternation
 static miblo::QuietClock quiet;        // All done -> Desk while nothing happens
 static bool mainLimits = false;        // Main shows the Limits arc instead of the mode's screen
+static miblo::DemoBreak demoBreak;
 static uint32_t awaySinceMs = 0;       // when the Disconnected screen came up
 static uint32_t limitResetMs = 0;      // when the "limit freed" screen came up
 
@@ -351,19 +352,20 @@ void loop() {
   const uint32_t idleMs = !idleScreen ? 0 : screen == ScreenId::Disconnected ? now - awaySinceMs : quiet.quietMs(now);
   const uint32_t sinceSeen = now - ctx.lastInteractionMs;
   const bool away = screen == ScreenId::Disconnected;
-  // Demo (/miblo:demo): pet mode now, over any ordinary screen (alerts and setup still win).
-  if (ctx.demo && (int32_t)(now - ctx.demoUntilMs) >= 0) {
-    ctx.demo = false;
-    ctx.demoKick = true;
-  }
-  const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
-                                 screen == ScreenId::Summary || screen == ScreenId::Disconnected);
   // Once pet mode starts it stays until real activity (see miblo::PetLatch): a session running or
   // waiting (not a stale one while the computer is away), an alert, setup, pairing or an update.
   // A limit reset, an update notice or the computer dropping out for a moment don't count.
   const bool ordinaryScreen = idleScreen || screen == ScreenId::Main || screen == ScreenId::LimitReset ||
                               screen == ScreenId::UpdateAvailable;
   const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0));
+  // Demo (/miblo:demo): pet mode now, over any ordinary screen (alerts and setup still win), until
+  // its minutes are up or real activity starts.
+  if (demoBreak.update(ctx.demo, activity) || (ctx.demo && (int32_t)(now - ctx.demoUntilMs) >= 0)) {
+    if (ctx.demo) ctx.demoKick = true;
+    ctx.demo = false;
+  }
+  const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
+                                 screen == ScreenId::Summary || screen == ScreenId::Disconnected);
   const bool petOn = petLatch.update(activity, idleMs, sinceSeen, ctx.cfg.petMin, now);
   const bool pet = petOn || demo;
   if (pet) screen = ScreenId::Roam;

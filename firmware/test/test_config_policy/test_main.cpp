@@ -717,6 +717,25 @@ static void test_screen_care() {
 }
 
 // Version order and the once-per-boot "update available" notice.
+// The demo ends on its own after its minutes, or as soon as real activity starts: work already
+// going on when it was asked for (the prompt that ran /miblo:demo) doesn't end it, the next does.
+static void test_demo_ends_on_new_activity() {
+  DemoBreak d;
+  TEST_ASSERT_FALSE(d.update(true, true));   // asked for mid-turn: that turn doesn't count
+  TEST_ASSERT_FALSE(d.update(true, true));
+  TEST_ASSERT_FALSE(d.update(true, false));  // the turn ended: pet mode plays
+  TEST_ASSERT_TRUE(d.update(true, true));    // a new prompt: the demo ends
+  TEST_ASSERT_FALSE(d.update(true, true));   // once
+  // outside a demo, activity coming and going ends nothing
+  DemoBreak o;
+  TEST_ASSERT_FALSE(o.update(false, false));
+  TEST_ASSERT_FALSE(o.update(false, true));
+  // a demo asked for while all was quiet ends at the first activity
+  DemoBreak q;
+  TEST_ASSERT_FALSE(q.update(false, false));
+  TEST_ASSERT_TRUE(q.update(true, true));
+}
+
 static void test_update_notice() {
   TEST_ASSERT_TRUE(compareVersions("1.1.0", "1.0.9") > 0);
   TEST_ASSERT_TRUE(compareVersions("1.0.2", "1.0.10") < 0);
@@ -912,6 +931,7 @@ int main() {
   RUN_TEST(test_blue_filter);
   RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);
+  RUN_TEST(test_demo_ends_on_new_activity);
   RUN_TEST(test_update_notice);
   RUN_TEST(test_all_done_only_after_a_finish);
   RUN_TEST(test_flash_blinks);

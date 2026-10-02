@@ -187,13 +187,13 @@ void hello(const char* line1, const char* line2, bool party, uint32_t ms);
 void roamPosition(uint32_t ms, int& cx, int& cy);
 // Pet mode antics, now and then while it is calm. With the sign in its paws: batting at it,
 // spilling a coffee on it, chasing the mouse cursor across it, a nap on it, a sneeze, peekaboo
-// behind it, a heart, sunglasses, an "LGTM" stamp. Away from the sign (put down on the floor
+// behind it, a heart, sunglasses, a wave. Away from the sign (put down on the floor
 // first, picked up again after): a laptop and a bug, its tail, a stretch, licking a paw, a fly, a
 // ball of yarn, a mug pushed off the edge, a cardboard box, a little keyboard, a laser dot, soap
 // bubbles, a fish snack, a rubber duck, a coffee, a butterfly, a balloon, a paper plane, a fish
 // bowl, a deploy button and its rocket, a cucumber, a blanket.
 enum class RoamAntic : uint8_t {
-  None, Bat, Spill, Cursor, Nap, Sneeze, Peek, Heart, Glasses, Stamp,
+  None, Bat, Spill, Cursor, Nap, Sneeze, Peek, Heart, Glasses, Wave,
   Laptop, Tail, Stretch, Lick, Fly, Yarn, Mug, Box, Keys,
   Laser, Bubbles, Fish, Duck, Coffee, Butterfly, Balloon, Plane, Bowl, Deploy, Cucumber, Blanket
 };

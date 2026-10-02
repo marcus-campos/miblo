@@ -959,8 +959,10 @@ static void test_pet_mode_card_and_path() {
   fc.clearLog();
   screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Calm);
   TEST_ASSERT_TRUE(fc.drew("14:32"));
-  TEST_ASSERT_TRUE(fc.drew("5h 62%"));
-  TEST_ASSERT_TRUE(fc.drew("7d 38%"));
+  // each window marked by an icon, not a label: the percentages are drawn on their own (bold)
+  TEST_ASSERT_TRUE(fc.drew("62%"));
+  TEST_ASSERT_TRUE(fc.drew("38%"));
+  TEST_ASSERT_FALSE(fc.drew("5h 62%"));
   TEST_ASSERT_TRUE(fc.drew("resets "));
   TEST_ASSERT_TRUE(fc.drew("infra"));             // the most recently finished session
   TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
@@ -970,7 +972,7 @@ static void test_pet_mode_card_and_path() {
   screens::reset();
   fc.clearLog();
   screens::roam(Lang::En, snap, later, 0, screens::DeskMood::Calm);
-  TEST_ASSERT_TRUE(fc.drew("5h 0%"));
+  TEST_ASSERT_TRUE(fc.drew("0%"));
   TEST_ASSERT_TRUE(fc.drew("LIMIT FREED"));
   // It moves: later on it is somewhere else.
   int x0, y0, x1, y1;
@@ -991,10 +993,10 @@ static void test_pet_mode_shows_computer_away() {
   screens::reset();
   screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Searching);
   const int plain = fc.colorAt(ix + iw / 2, iy);  // the top of the laptop's lid
-  TEST_ASSERT_NOT_EQUAL(ui::color::DIM, plain);
+  TEST_ASSERT_NOT_EQUAL(ui::color::MUTED, plain);
   screens::reset();
   screens::roam(Lang::En, snap, testClock(), 0, screens::DeskMood::Searching, nullptr, UINT32_MAX, true);
-  TEST_ASSERT_EQUAL_INT(ui::color::DIM, fc.colorAt(ix + iw / 2, iy));
+  TEST_ASSERT_EQUAL_INT(ui::color::MUTED, fc.colorAt(ix + iw / 2, iy));  // readable, not DIM
   for (uint32_t ms = 0; ms < 400000; ms += 997)
     screens::roam(Lang::En, snap, testClock(), ms, screens::DeskMood::Searching, nullptr, UINT32_MAX, true);
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
@@ -1087,13 +1089,23 @@ static void test_floor_sign_keeps_lines_and_icon() {
   const uint32_t play = c * screens::kAnticEveryMs + screens::kAnticPutMs + 4000;
   screens::roam(Lang::En, snap, testClock(), play, screens::DeskMood::Calm, nullptr, UINT32_MAX, true);
   TEST_ASSERT_TRUE(fc.drew("14:32"));
-  TEST_ASSERT_TRUE(fc.drew("5h 62%"));
+  TEST_ASSERT_TRUE(fc.drew("62%"));
   TEST_ASSERT_TRUE(fc.drew("finished 2m ago"));
-  int dimLid = 0;  // the crossed-out laptop's lid (DIM) is somewhere in the bottom half
-  for (int y = 120; y < 240; y++)
-    for (int x = 0; x < 240; x++) dimLid += fc.colorAt(x, y) == ui::color::DIM;
-  TEST_ASSERT_TRUE(dimLid > 0);
+  // the crossed-out laptop's outline (MUTED, like the labels) is somewhere in the bottom half:
+  // more MUTED there than on the same frame with the computer present
+  auto mutedBelow = [&] {
+    int n = 0;
+    for (int y = 120; y < 240; y++)
+      for (int x = 0; x < 240; x++) n += fc.colorAt(x, y) == ui::color::MUTED;
+    return n;
+  };
+  const int withIcon = mutedBelow();
   TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  screens::reset();
+  screens::roam(Lang::En, snap, testClock(), play, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(withIcon > mutedBelow());
+  screens::reset();
+  screens::roam(Lang::En, snap, testClock(), play, screens::DeskMood::Calm, nullptr, UINT32_MAX, true);
   // The held sign comes back without blinking: no clear straight on the panel, the whole screen
   // recomposed in strips with the sign in its paws again.
   fc.clearLog();

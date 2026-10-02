@@ -1046,7 +1046,7 @@ void roamPosition(uint32_t ms, int& cx, int& cy) {
   cy = roamH() / 2 + bounce(ms / kRoamVyMs, Y(240) - roamH());
 }
 
-bool anticOnSign(RoamAntic a) { return a >= RoamAntic::Bat && a <= RoamAntic::Stamp; }
+bool anticOnSign(RoamAntic a) { return a >= RoamAntic::Bat && a <= RoamAntic::Wave; }
 
 uint32_t anticLength(RoamAntic a) {
   return a == RoamAntic::None ? 0 : anticOnSign(a) ? kAnticMs : kAnticFloorMs;
@@ -1114,7 +1114,6 @@ struct RoamScene {
   bool blot;           // coffee spilled on the sign
   int drops;           // coffee drops falling (0..3)
   int curX, curY;      // the mouse cursor on the sign, 0..100 (curX -1: none)
-  bool stamp;          // "LGTM" stamped on the sign
   Prop props[5];
   uint8_t nProps;
 };
@@ -1278,14 +1277,12 @@ static void signAntic(RoamAntic a, uint32_t at, RoamScene& sc) {
       addProp(sc, PropKind::Glasses, sc.catX, gy);
       break;
     }
-    case RoamAntic::Stamp:  // stamps "LGTM" on the sign
-      if (at < 1500) {
-        k = MascotLook{0, -3, 0, 3, Eyes::Open, Paws::ReachRight, 0};
-      } else if (at < 7500) {
-        k = MascotLook{0, 0, 0, 3, Eyes::Happy, Paws::Down, 0};
-        sc.stamp = true;
-      } else {
+    case RoamAntic::Wave:  // looks at you and waves a paw, head tilted, happy
+      if (at < 1000 || at >= kAnticMs - 1000) {
         k = MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+      } else {
+        const bool up = (at / 400) % 2 == 0;
+        k = MascotLook{0, 0, 0, 3, Eyes::Happy, up ? Paws::ReachRight : Paws::TapRight, 0};
       }
       break;
     default: break;
@@ -1548,18 +1545,58 @@ static void floorAntic(RoamAntic a, uint32_t p, RoamScene& sc) {
 }
 
 // The sign's face: clock, limits, next reset (or "limit freed"), the last task, the away icon,
-// and what an antic did to it (coffee, cursor, stamp).
-static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, const char* reset, uint16_t resetFg,
+// and what an antic did to it (coffee, cursor).
+// The sign's limits on one line, each window marked by an icon instead of a label ("5h 82%" read
+// as one number, and 5h was easy to mix up with 7d): a clock for the 5-hour session, a calendar
+// for the week, each followed by its percentage in bold, coloured by level.
+struct SignLimits {
+  char v5[8], v7[8];  // "82%", or "--" when unknown
+  uint16_t c5, c7;
+  bool shown;
+};
+
+constexpr int kSignIconW = 9;  // both icons, at screen scale 1
+
+static void signClockIcon(int x, int y) {  // (top-left) a round clock, hands at ten past
+  szDisc(x, y, 4, 4, 4, color::MUTED);
+  szDisc(x, y, 4, 4, 3, kSignFill);
+  szRect(x, y, 4, 2, 1, 3, color::MUTED);  // the minute hand, up
+  szRect(x, y, 4, 4, 2, 1, color::MUTED);  // the hour hand, right
+}
+
+static void signCalendarIcon(int x, int y) {  // (top-left) a wall calendar: rings, a header, a page
+  szRect(x, y, 0, 1, 9, 8, color::MUTED);
+  szRect(x, y, 1, 4, 7, 4, kSignFill);
+  szRect(x, y, 2, 0, 1, 2, color::MUTED);
+  szRect(x, y, 6, 0, 1, 2, color::MUTED);
+  szRect(x, y, 2, 5, 2, 2, color::MUTED);  // today
+}
+
+static void drawSignLimits(int cx, int y, const SignLimits& L) {
+  const int icon = Sz(kSignIconW), pad = Sz(4), gap = Sz(14);
+  const int b = C().textWidth(L.v5, Font::SmallBold), d = C().textWidth(L.v7, Font::SmallBold);
+  int x = cx - (icon + pad + b + gap + icon + pad + d) / 2;
+  const int iy = y - Sz(9);  // the icons sit on the text's baseline
+  signClockIcon(x, iy);
+  x += icon + pad;
+  C().text(x, y, L.v5, Font::SmallBold, L.c5, Align::Left, b + 1);
+  x += b + gap;
+  signCalendarIcon(x, iy);
+  x += icon + pad;
+  C().text(x, y, L.v7, Font::SmallBold, L.c7, Align::Left, d + 1);
+}
+
+static void drawSign(const RoamScene& sc, const char* hhmm, const SignLimits& lim, const char* reset, uint16_t resetFg,
                      const char* lastName, uint16_t nameFg, const char* lastWhen, bool computerAway) {
   const int sx = sc.sx + sc.signDx, sy = sc.sy, sw = sc.sw, sh = sc.sh;
   C().fillRoundRect(sx, sy, sw, sh, Sz(6), kSignEdge);
   C().fillRoundRect(sx + 1, sy + 1, sw - 2, sh - 2, Sz(5), kSignFill);
   const int w = sw - 2 * X(kRoamMargin), tx = sx + sw / 2, y0 = sy + Sz(10);
   C().text(tx, y0 + Y(16), hhmm, Font::BodyBold, color::TEXT, Align::Center, w);
-  if (lim[0]) C().text(tx, y0 + Y(33), lim, Font::Small, color::MUTED, Align::Center, w);
+  if (lim.shown) drawSignLimits(tx, y0 + Y(33), lim);
   if (reset[0]) C().text(tx, y0 + Y(49), reset, Font::Small, resetFg, Align::Center, w);
   if (lastName[0]) C().text(tx, y0 + Y(66), lastName, Font::SmallBold, nameFg, Align::Center, w);
-  if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::DIM, Align::Center, w);
+  if (lastWhen[0]) C().text(tx, y0 + Y(81), lastWhen, Font::Small, color::MUTED, Align::Center, w);
   if (sc.blot) {  // a coffee stain across the top of the sign
     szDisc(tx, sy, -14, 9, 6, kCoffeeBrown);
     szDisc(tx, sy, -3, 12, 8, kCoffeeBrown);
@@ -1567,17 +1604,16 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const char* lim, con
     szDisc(tx, sy, 22, 14, 2, kCoffeeBrown);
   }
   for (int i = 0; i < sc.drops; i++) C().fillCircle(sc.catX + Sz(22), sy - Sz(4) + i * Sz(5), Sz(2), kCoffeeBrown);
-  if (sc.stamp) drawProp(Prop{PropKind::Lgtm, sx + sw - Sz(50), sy + sh - Sz(22), 0, 0});
   if (computerAway) {  // a small laptop, crossed out: discreet, and the same in every language
     int ix, iy, iw, ih;
     signAwayIcon(sx, sy, sw, ix, iy, iw, ih);
     const int t1 = Sz(1) > 0 ? Sz(1) : 1;
     const int lw = iw - Sz(4), lh = ih - Sz(4), lx = ix + Sz(2);  // the lid, above the base
-    C().fillRect(lx, iy, lw, t1, color::DIM);
-    C().fillRect(lx, iy + lh - t1, lw, t1, color::DIM);
-    C().fillRect(lx, iy, t1, lh, color::DIM);
-    C().fillRect(lx + lw - t1, iy, t1, lh, color::DIM);
-    C().fillRect(ix, iy + lh + t1, iw, Sz(2), color::DIM);  // the base
+    C().fillRect(lx, iy, lw, t1, color::MUTED);
+    C().fillRect(lx, iy + lh - t1, lw, t1, color::MUTED);
+    C().fillRect(lx, iy, t1, lh, color::MUTED);
+    C().fillRect(lx + lw - t1, iy, t1, lh, color::MUTED);
+    C().fillRect(ix, iy + lh + t1, iw, Sz(2), color::MUTED);  // the base
     // The slash, set off from the outline by a gap in the sign's colour.
     const int inset = Sz(3);
     C().wideLine(ix + inset, iy - Sz(1), ix + iw - inset, iy + ih, Sz(4), kSignFill, kSignFill);
@@ -1598,14 +1634,22 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
 
   // The card's lines (empty when unknown).
-  char lim[48] = "", reset[48] = "", lastName[48] = "", lastWhen[64] = "";
-  uint16_t resetFg = color::DIM;
+  SignLimits lim{"--", "--", color::TEXT, color::TEXT, false};
+  char reset[48] = "", lastName[48] = "", lastWhen[64] = "";
+  uint16_t resetFg = color::MUTED;
   const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
   if (usage) {
-    char a[16] = "--", b[16] = "--";
-    if (s.h5.present) snprintf(a, sizeof(a), "%u%%", deskPct(s.h5, now));
-    if (s.d7.present) snprintf(b, sizeof(b), "%u%%", deskPct(s.d7, now));
-    snprintf(lim, sizeof(lim), "%s %s%s%s %s", t(lang, S::Short5h), a, kDot, t(lang, S::Short7d), b);
+    lim.shown = true;
+    if (s.h5.present) {
+      const unsigned p = deskPct(s.h5, now);
+      snprintf(lim.v5, sizeof(lim.v5), "%u%%", p);
+      lim.c5 = levelColor(p, color::TEXT);
+    }
+    if (s.d7.present) {
+      const unsigned p = deskPct(s.d7, now);
+      snprintf(lim.v7, sizeof(lim.v7), "%u%%", p);
+      lim.c7 = levelColor(p, color::TEXT);
+    }
     if (s.h5.present && s.h5.reset && now >= s.h5.reset) {  // the 5h window has reset since
       snprintf(reset, sizeof(reset), "%s", t(lang, S::LimitFreed));
       resetFg = color::GREEN;
@@ -1635,9 +1679,10 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
 
   uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(sc.catX * 1000 + sc.catY)), sc.k);
   h = hashInt(h, (uint32_t)(sc.sx * 1000 + sc.sy));
-  h = hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim), reset), lastName), lastWhen);
+  h = hashStr(hashStr(hashStr(hashStr(hashStr(hashStr(h, clk.hhmm), lim.v5), lim.v7), reset), lastName), lastWhen);
   h = hashInt(h, mascotAccessory());
-  h = hashInt(h, (uint32_t)sc.floor | (uint32_t)sc.catBehind << 1 | (uint32_t)sc.blot << 2 | (uint32_t)sc.stamp << 3 |
+  h = hashInt(h, (uint32_t)lim.c5 << 16 | lim.c7);
+  h = hashInt(h, (uint32_t)sc.floor | (uint32_t)sc.catBehind << 1 | (uint32_t)sc.blot << 2 |
                      (uint32_t)sc.drops << 4 | (uint32_t)(sc.signDx + 16) << 8 | (uint32_t)computerAway << 16);
   h = hashInt(h, (uint32_t)((sc.curX + 1) * 1000 + sc.curY));
   for (uint8_t i = 0; i < sc.nProps; i++) {

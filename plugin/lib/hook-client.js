@@ -8,6 +8,13 @@ const TOOL_FIELD_MAX = 200;
 const TASK_FIELDS = ['type', 'status'];
 const TASKS_MAX = 64;
 const PID_EVENTS = new Set(['SessionStart', 'UserPromptSubmit']);
+// A permission Notification has no tool_name, only a message ("Claude needs your permission to use
+// Bash", "researcher needs permission for Bash"). Only a tool name read from it is forwarded, never
+// the text itself.
+const PERM_TOOL = {
+  permission_prompt: /\bpermission to use ([A-Za-z][\w-]{0,63})$/,
+  worker_permission_prompt: /\bneeds permission for ([A-Za-z][\w-]{0,63})$/,
+};
 
 export const POLL_EVERY_MS = 100;
 export const POLL_MAX_MS = 1500;
@@ -17,6 +24,12 @@ export function pickEvent(raw) {
   const evt = raw && typeof raw === 'object' ? raw : {};
   const out = {};
   for (const k of TOP_FIELDS) if (typeof evt[k] === 'string') out[k] = evt[k];
+  const toolIn = out.hook_event_name === 'Notification' && Object.hasOwn(PERM_TOOL, out.notification_type)
+    ? PERM_TOOL[out.notification_type] : null;
+  if (toolIn && !out.tool_name && typeof evt.message === 'string') {
+    const m = toolIn.exec(evt.message.trim());
+    if (m) out.tool_name = m[1];
+  }
   if (evt.tool_input && typeof evt.tool_input === 'object') {
     const ti = {};
     for (const k of TOOL_FIELDS) {

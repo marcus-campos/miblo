@@ -17,6 +17,9 @@
     "PermissionRequest": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
+    "PermissionDenied": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
+    ],
     "PostToolUse": [
       { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
@@ -24,7 +27,13 @@
       { "matcher": "*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
     "Notification": [
-      { "matcher": "elicitation_dialog", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
+      { "matcher": "permission_prompt|worker_permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
+    ],
+    "Elicitation": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
+    ],
+    "ElicitationResult": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
     "SubagentStart": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
@@ -33,6 +42,9 @@
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
     "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
+    ],
+    "StopFailure": [
       { "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/hook.js\"", "async": true }] }
     ],
     "PreCompact": [

@@ -165,3 +165,28 @@ test('pickEvent forwards the compaction trigger and the SessionStart source', ()
   assert.deepEqual(pickEvent({ session_id: 's', hook_event_name: 'SessionStart', source: 'compact' }),
     { session_id: 's', hook_event_name: 'SessionStart', source: 'compact' });
 });
+
+test('pickEvent turns a permission_prompt message into a tool name only, never the text', () => {
+  const note = (message, extra = {}) => pickEvent({
+    session_id: 's', hook_event_name: 'Notification', notification_type: 'permission_prompt', message, title: 'secret', ...extra,
+  });
+  const base = { session_id: 's', hook_event_name: 'Notification', notification_type: 'permission_prompt' };
+  assert.deepEqual(note('Claude needs your permission to use Bash'), { ...base, tool_name: 'Bash' });
+  assert.deepEqual(note('Claude needs your permission to use mcp__github__create_issue'),
+    { ...base, tool_name: 'mcp__github__create_issue' });
+  assert.deepEqual(note('Claude needs your permission to use Bash', { agent_id: 'a1' }), { ...base, agent_id: 'a1', tool_name: 'Bash' });
+  // Anything else in the message stays local.
+  assert.deepEqual(note('Run `curl -H "Authorization: abc"`?'), base);
+  assert.deepEqual(note(42), base);
+  assert.deepEqual(note('Claude needs your permission to use ' + 'x'.repeat(100)), base);
+  // Other notifications never get a tool from their message.
+  assert.deepEqual(
+    pickEvent({ session_id: 's', hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'Claude needs your permission to use Bash' }),
+    { session_id: 's', hook_event_name: 'Notification', notification_type: 'idle_prompt' });
+});
+
+test('pickEvent takes only the tool from a worker_permission_prompt message', () => {
+  const base = { session_id: 's', hook_event_name: 'Notification', notification_type: 'worker_permission_prompt' };
+  assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for Bash' }), { ...base, tool_name: 'Bash' });
+  assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for rm -rf secret' }), base);
+});

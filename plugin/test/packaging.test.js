@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p) => JSON.parse(fs.readFileSync(path.join(root, p), 'utf8'));
-const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PostToolUse', 'Notification', 'SubagentStart', 'SubagentStop', 'Stop', 'PreCompact', 'PostCompact', 'SessionEnd'];
+const EVENTS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PermissionRequest', 'PermissionDenied', 'PostToolUse', 'PostToolUseFailure',
+  'Notification', 'Elicitation', 'ElicitationResult', 'SubagentStart', 'SubagentStop', 'Stop', 'StopFailure', 'PreCompact', 'PostCompact', 'SessionEnd'];
 
 test('manifest and marketplace agree on the plugin name', () => {
   assert.equal(read('.claude-plugin/plugin.json').name, 'miblo');
@@ -25,7 +26,10 @@ test('every tracked event runs hook.js asynchronously', () => {
     assert.ok(h, ev);
     assert.equal(h.async, true, ev);
   }
-  assert.equal(hooks.Notification[0].matcher, 'elicitation_dialog');
+  assert.equal(hooks.Notification[0].matcher,
+    'permission_prompt|worker_permission_prompt|elicitation_dialog|elicitation_url_dialog|agent_needs_input');
+  // Every registration spawns a hook process: nothing the tracker ignores is registered.
+  assert.deepEqual(Object.keys(hooks).sort(), [...EVENTS].sort());
   const onboard = hooks.SessionStart.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/onboard.js'));
   assert.ok(onboard);
   assert.notEqual(onboard.async, true);

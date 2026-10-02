@@ -31,7 +31,7 @@ static void test_every_language_has_every_string_with_same_placeholders() {
   for (int l = 0; l < (int)Lang::Count; l++) {
     // the table has exactly S::Count entries: the entry after the last one is the empty string
     // the compiler puts at the end of the literal (the final "\0" plus the implicit terminator).
-    const char* p = kLangTables[l];
+    const char* p = kLangSource[l];
     for (int i = 0; i < (int)S::Count; i++) {
       TEST_ASSERT_TRUE_MESSAGE(strlen(p) > 0, langCode((Lang)l));
       p += strlen(p) + 1;
@@ -41,10 +41,35 @@ static void test_every_language_has_every_string_with_same_placeholders() {
       TEST_ASSERT_TRUE_MESSAGE(markers(T(Lang::En, (S)i)) == markers(T((Lang)l, (S)i)), langCode((Lang)l));
     }
     // web.cpp's tr() copies into a 256-byte buffer: no entry may be cut there.
-    p = kLangTables[l];
+    p = kLangSource[l];
     for (int i = 0; i < (int)S::Count; i++) {
       TEST_ASSERT_TRUE_MESSAGE(strlen(p) < 256, langCode((Lang)l));
       p += strlen(p) + 1;
+    }
+  }
+}
+
+// The firmware reads the packed tables (scripts/pack_strings.py): every entry must expand to the
+// text of miblo_strings.cpp, whole and cut at every length.
+static void test_packed_tables_match_the_source() {
+  for (int l = 0; l < (int)Lang::Count; l++) {
+    const char* p = kLangSource[l];
+    for (int i = 0; i < (int)S::Count; i++) {
+      char b[300];
+      tr((Lang)l, (S)i, b, sizeof(b));
+      TEST_ASSERT_EQUAL_STRING_MESSAGE(p, b, "miblo_strings.cpp changed: run python3 firmware/scripts/pack_strings.py");
+      const size_t n = strlen(p);
+      for (size_t cap = 1; cap <= n + 1; cap++) {
+        size_t len = n;  // the old reader's cut: cap - 1 bytes, then back to a character start
+        if (len >= cap) {
+          len = cap - 1;
+          while (len > 0 && ((uint8_t)p[len] & 0xC0) == 0x80) len--;
+        }
+        tr((Lang)l, (S)i, b, cap);
+        TEST_ASSERT_EQUAL_size_t(len, strlen(b));
+        if (len) TEST_ASSERT_EQUAL_MEMORY(p, b, len);
+      }
+      p += n + 1;
     }
   }
 }
@@ -233,6 +258,7 @@ int main() {
   UNITY_BEGIN();
   RUN_TEST(test_page_language);
   RUN_TEST(test_every_language_has_every_string_with_same_placeholders);
+  RUN_TEST(test_packed_tables_match_the_source);
   RUN_TEST(test_known_strings);
   RUN_TEST(test_tr_truncates_on_utf8_boundary);
   RUN_TEST(test_lang_codes_roundtrip);

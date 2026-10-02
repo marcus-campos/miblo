@@ -284,7 +284,10 @@ enum class S : uint16_t {
   Count
 };
 
-// Per-language tables (MIBLO_ROM), indexed by Lang.
+// Per-language tables (MIBLO_ROM), indexed by Lang: the text as written (miblo_strings.cpp; only
+// the tests read it, the firmware leaves it out) and the packed copy tr() reads
+// (miblo_strings_packed.cpp, made by scripts/pack_strings.py).
+extern const char* const kLangSource[];
 extern const char* const kLangTables[];
 
 // "en", "pt-BR", "pt-PT", "es", "fr", "it", "de", "ru", "zh".

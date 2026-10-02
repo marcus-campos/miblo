@@ -116,7 +116,7 @@ static void catWithGlass(int cx, int cy, int half, const MascotLook& k, uint32_t
   const bool sip = ms / 2000 % 2;
   const uint8_t sips = (uint8_t)(ms / 4000);
   // The look follows `sip`; a hat or colour change redraws too.
-  const uint32_t h = hashInt(hashInt(kHashSeed + 229, (uint32_t)mascotStyle() | mascotAccessory() << 8),
+  const uint32_t h = hashInt(hashInt(kHashSeed + 229, mascotPaintHash() ^ mascotAccessory()),
                              (uint32_t)sip | (uint32_t)(sips < 4 ? sips : 4) << 1);
   if (!dirty(R_BODY, h)) return;
   const int px = Sz(half);

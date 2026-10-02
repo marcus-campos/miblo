@@ -36,6 +36,7 @@ size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap) {
     out[n++] = p.offset;
     if (p.type == FriendPacket::Invite && !putStr(out, cap, n, p.host)) return 0;
   }
+  if (n < cap) out[n++] = p.pet;  // optional: a full packet goes out without it (a cat)
   return n;
 }
 
@@ -133,6 +134,7 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
     if (p.type == FriendPacket::Invite && n < len && !getStr(in, len, n, p.host, sizeof(p.host))) return false;
     if (!validId(p.host, true)) return false;
   }
+  if (n < len) p.pet = knownPet(in[n++]);  // absent (an older firmware): the cat
   if (!validId(p.id, false) || !validId(p.to, true) || !validName(p.name)) return false;
   cleanName(p.name, sizeof(p.name), p.id);
   // Addressed to itself, or an invitation to visit its own addressee: nothing sends these.
@@ -147,7 +149,7 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
 
 // ---- FriendPlay ----
 
-void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot) {
+void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet) {
   // The name as the other Miblos will read it: one they would refuse (the settings accept any
   // printable bytes; decodeFriendPacket wants valid UTF-8 without C1 controls) goes out as the
   // default name, or every packet of ours would be dropped.
@@ -155,10 +157,11 @@ void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot) {
   utf8Copy(clean, sizeof(clean), name, 20);
   if (!validName(clean)) clean[0] = 0;
   cleanName(clean, sizeof(clean), id);
-  if (strcmp(id, id_) != 0 || strcmp(clean, name_) != 0 || mascot != mascot_) {
+  if (strcmp(id, id_) != 0 || strcmp(clean, name_) != 0 || mascot != mascot_ || pet != pet_) {
     strncpy(id_, id, sizeof(id_) - 1);
     strcpy(name_, clean);
     mascot_ = mascot;
+    pet_ = pet;
     announce_ = true;
   }
 }
@@ -266,6 +269,7 @@ bool FriendPlay::nextPacket(FriendPacket& out) {
   strcpy(out.id, id_);
   strcpy(out.name, name_);
   out.mascot = mascot_;
+  out.pet = pet_;
   out.flags = o.flags;
   strcpy(out.to, o.to);
   out.gift = o.gift;
@@ -374,6 +378,7 @@ void FriendPlay::startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs
   visit_.role = role;
   strcpy(visit_.name, f.name);
   visit_.mascot = f.mascot;
+  visit_.pet = f.pet;
   visit_.gift = gift;
   visitMs_ = nowMs;
   strcpy(visitWith_, f.id);
@@ -532,6 +537,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
   }
   strcpy(f->name, p.name[0] ? p.name : p.id);
   f->mascot = p.mascot;
+  f->pet = p.pet;
   f->flags = p.flags;
   f->seenMs = nowMs;
   if (p.type == FriendPacket::Beacon) return;
@@ -609,6 +615,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
       } else if (visit_.role == VisitRole::Host && invited(p.id) && nowMs - visitMs_ < kVisitArriveMs &&
                  visit_.extra < kMaxGuests - 1) {
         strcpy(extraIds_[visit_.extra], p.id);
+        visit_.extraPet[visit_.extra] = p.pet;
         visit_.extraMascot[visit_.extra++] = p.mascot;
       } else {
         // Too late, too many, or not invited: do not wait. Once per sender per rate window, and
@@ -645,9 +652,11 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
         strcpy(visitWith_, extraIds_[0]);
         if (Friend* nf = find(visitWith_)) strcpy(visit_.name, nf->name);
         visit_.mascot = visit_.extraMascot[0];
+        visit_.pet = visit_.extraPet[0];
         for (uint8_t j = 1; j < visit_.extra; j++) {
           strcpy(extraIds_[j - 1], extraIds_[j]);
           visit_.extraMascot[j - 1] = visit_.extraMascot[j];
+          visit_.extraPet[j - 1] = visit_.extraPet[j];
         }
         visit_.extra--;
         break;
@@ -657,6 +666,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
         for (uint8_t j = i + 1; j < visit_.extra; j++) {
           strcpy(extraIds_[j - 1], extraIds_[j]);
           visit_.extraMascot[j - 1] = visit_.extraMascot[j];
+          visit_.extraPet[j - 1] = visit_.extraPet[j];
         }
         visit_.extra--;
         break;

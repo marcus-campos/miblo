@@ -143,11 +143,35 @@ enum class S : uint16_t {
   SumResponses,         // daily summary: label under the number of responses
   SumWorked,            // daily summary: label under the time worked
   SumSpent,             // daily summary: label under the cost
-  WebMascot,            // settings: mascot colours
-  WebMascotSphynx,      // settings: mascot style 0
+  WebMascot,            // settings: the mascot's colour (every pet's body)
+  WebMascotSphynx,      // settings: mascot style 0 (peach, Miblo's own)
   WebMascotOrange,      // settings: mascot style 1
   WebMascotBlack,       // settings: mascot style 2
   WebMascotGrey,        // settings: mascot style 3
+  WebPet,               // settings: the pet select's label (which animal the mascot is)
+  WebPetCat,            // settings: pet 0 cat
+  WebPetDuck,           // settings: pet 1 rubber duck
+  WebPetBug,            // settings: pet 2 bug (a beetle)
+  WebPetDaemon,         // settings: pet 3 daemon (a little ghost)
+  WebPetRobot,          // settings: pet 4 robot
+  WebPetMug,            // settings: pet 5 coffee mug (with a face)
+  WebPetPenguin,        // settings: pet 6 penguin
+  WebPetCrab,           // settings: pet 7 crab
+  WebPetOwl,            // settings: pet 8 owl
+  WebPetDog,            // settings: pet 9 dog
+  WebPetAlien,          // settings: pet 10 Miblo alien (one big eye, antennae)
+  WebPetRiff,           // settings: pet 11 Riff, an original little rocker (a name: the same in every language)
+  WebSlotBody,          // settings: colour slot: the body
+  WebSlotLine,          // settings: colour slot: outlines
+  WebSlotDetail,        // settings: colour slot: inner ears, tongue, inside of the mouth
+  WebSlotNose,          // settings: colour slot: nose, beak
+  WebSlotLid,           // settings: colour slot: lines on the face (closed eyes, mouth)
+  WebSlotEye,           // settings: colour slot: the eyes (iris)
+  WebSlotAccent,        // settings: colour slot: the pet's own extra (antenna tips, patches...)
+  WebEyeShape,          // settings: the eye shape select's label
+  WebEyeRound,          // settings: eye shape 0
+  WebEyeBig,            // settings: eye shape 1
+  WebEyeSleepy,         // settings: eye shape 2
   UpdateAvailable,      // boot notice title: a newer firmware was released
   UpdateVersions,       // boot notice: "v%s (you have v%s)" (latest, current)
   WebCheckUpdates,      // settings: button that asks GitHub (from the browser) for the latest release

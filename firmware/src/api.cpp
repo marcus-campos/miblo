@@ -133,6 +133,7 @@ static void handleInfo() {
   doc[F("blueFrom")] = ctx.cfg.blueFrom;
   doc[F("blueTo")] = ctx.cfg.blueTo;
   doc[F("mascot")] = ctx.cfg.mascot;
+  doc[F("pet")] = ctx.cfg.pet;  // the pet's eye shape and colours: /settings (configToJson)
   doc[F("sleepMin")] = ctx.cfg.sleepMin;
   doc[F("petMin")] = ctx.cfg.petMin;
   doc[F("flashBlinks")] = ctx.cfg.flashBlinks;

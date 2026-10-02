@@ -108,6 +108,24 @@ void setMascotAccessory(uint8_t accessory);
 uint8_t mascotAccessory();
 // The current mascot colour's skin (props drawn in the cat's colour, like its tail).
 uint16_t mascotSkin();
+// Which animal the mascot is (config "pet", miblo::Pet; an unknown value is the cat), on every
+// mascot drawn from then on, in the colour above (ui_pet.h).
+void setMascotPet(uint8_t pet);
+uint8_t mascotPet();
+// Everything that sets how the mascot looks (config "mascot", "pet", "petEyes", "petColors"): the
+// preset colours, the pet, the eye shape (miblo::EyeShape) and the colour slots (miblo::PetSlot:
+// miblo::kPetAuto or 0xRRGGBB + 1). MascotPaint{style, pet}: a preset, every slot Auto (a guest
+// from another Miblo, the stranger cat).
+struct MascotPaint {
+  uint8_t style = 0;
+  uint8_t pet = 0;
+  uint8_t eyeShape = 0;
+  uint32_t slots[miblo::kPetSlots] = {};
+};
+void setMascotPaint(const MascotPaint& p);
+MascotPaint mascotPaint();
+// Changes whenever the paint does (region hashes: a new colour redraws the mascot).
+uint32_t mascotPaintHash();
 // Desk mascot with front paws: flat primitives only, inside the square
 // (cx - Sz(half), cy - Sz(half), 2 * Sz(half)), background included (half on the 240 grid).
 // `table`: the table edge under the paws (left out when the mascot moves around the screen).

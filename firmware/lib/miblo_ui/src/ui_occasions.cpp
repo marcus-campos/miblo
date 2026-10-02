@@ -33,7 +33,7 @@ void tail(int x, int y, uint8_t f) {
 
 // A stranger: a black cat (mascot style 2) with a swinging tail walks along the bottom of the
 // screen from left to right in kPasserbyMs, stopping halfway to look at you. No sign, only the
-// clock. Our own hat, tie and mood are not its own: it is drawn without them.
+// clock. Our own pet, hat, tie and mood are not its own: it is a cat, drawn without them.
 void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms) {
   (void)lang;
   (void)s;
@@ -65,7 +65,8 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
                      (uint32_t)k.paws << 24);
   if (!dirty(R_BODY, h)) return;
   const int top = cy - half, bh = 2 * half;
-  const uint8_t style = mascotStyle(), hat = mascotAccessory(), mood = catMood();
+  const uint8_t hat = mascotAccessory(), mood = catMood();
+  const MascotPaint paint = mascotPaint();
   const bool tie = mascotTie();
   auto draw = [&] {
     C().fillRect(0, top, X(240), bh, color::BG);
@@ -73,7 +74,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
     tail(cx - Sz(30), cy + Sz(24), swing);
     deskMascot(cx, cy, k, kPassHalf, false, false);
   };
-  setMascotStyle(2);
+  setMascotPaint(MascotPaint{2, 0});  // the black preset, a cat
   setMascotAccessory(0);
   setMascotTie(false);
   setCatMood(0);
@@ -88,7 +89,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
     C().endLayer();
   }
   C().releaseLayer();
-  setMascotStyle(style);
+  setMascotPaint(paint);
   setMascotAccessory(hat);
   setMascotTie(tie);
   setCatMood(mood);

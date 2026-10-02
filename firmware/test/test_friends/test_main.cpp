@@ -100,12 +100,63 @@ static void test_packet_round_trip() {
   TEST_ASSERT_TRUE(decodeFriendPacket(buf, n + 1, q));
 }
 
+// The pet (which animal the mascot is) rides in one byte after everything else: an older
+// firmware ignores it (extra bytes), a packet without it (an older firmware's) is a cat, and a
+// pet this firmware does not know is drawn as the cat too.
+static void test_packet_carries_the_pet() {
+  const FriendPacket::Type kTypes[] = {FriendPacket::Beacon, FriendPacket::VisitOk, FriendPacket::Invite,
+                                       FriendPacket::Host, FriendPacket::Who};
+  for (FriendPacket::Type type : kTypes) {
+    FriendPacket p = packet(type, "miblo-4f2a", "Tofu", kFriendRoaming, type == FriendPacket::Who ? "" : "miblo-b452");
+    p.pet = (uint8_t)Pet::Duck;
+    p.offset = 12;
+    strcpy(p.host, type == FriendPacket::Invite ? "miblo-cccc" : "");
+    uint8_t buf[kFriendPacketMax + 1];
+    const size_t n = encodeFriendPacket(p, buf, kFriendPacketMax);
+    TEST_ASSERT_TRUE(n > 9);
+    FriendPacket q;
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Duck, q.pet);
+    TEST_ASSERT_EQUAL_UINT8(1, q.mascot);
+    if (type == FriendPacket::Invite || type == FriendPacket::Host) TEST_ASSERT_EQUAL_UINT8(12, q.offset);
+    if (type == FriendPacket::Invite) TEST_ASSERT_EQUAL_STRING("miblo-cccc", q.host);
+    TEST_ASSERT_EQUAL_UINT8(1, buf[n - 1]);  // the last byte
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n - 1, q));  // an older firmware's packet: a cat
+    TEST_ASSERT_EQUAL_UINT8(0, q.pet);
+    buf[n - 1] = kPetKinds;  // a newer firmware's pet
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+    TEST_ASSERT_EQUAL_UINT8(0, q.pet);
+  }
+  // A packet with no room left for the pet still goes out, without it.
+  FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", "Tofu", 0);
+  p.pet = (uint8_t)Pet::Owl;
+  uint8_t buf[kFriendPacketMax];
+  const size_t full = encodeFriendPacket(p, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_size_t(full - 1, encodeFriendPacket(p, buf, full - 1));
+}
+
+// A visiting Miblo shows its own pet (and its extra guests theirs).
+static void test_visit_shows_the_guests_pet() {
+  FriendPlay a, b;
+  a.setSelf("miblo-aaaa", "Tofu", 1, (uint8_t)Pet::Dog);
+  b.setSelf("miblo-bbbb", "Nina", 2, (uint8_t)Pet::Alien);
+  Sim sim;
+  sim.add(a);
+  sim.add(b);
+  TEST_ASSERT_TRUE(sim.untilVisit(kFirstVisitMinMs + kFirstVisitSpanMs + 5000));
+  const bool aVisits = a.visit(sim.t).role == VisitRole::Visitor;
+  FriendPlay& host = aVisits ? b : a;
+  TEST_ASSERT_EQUAL_UINT8(aVisits ? (uint8_t)Pet::Dog : (uint8_t)Pet::Alien, host.visit(sim.t).pet);
+  TEST_ASSERT_EQUAL_UINT8(aVisits ? 1 : 2, host.visit(sim.t).mascot);
+}
+
 static void test_malformed_packets_are_rejected() {
   FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", "Tofu", kFriendRoaming);
   uint8_t buf[kFriendPacketMax];
   const size_t n = encodeFriendPacket(p, buf, sizeof(buf));
   FriendPacket q;
-  for (size_t cut = 0; cut < n; cut++) TEST_ASSERT_FALSE(decodeFriendPacket(buf, cut, q));  // truncated
+  // Truncated (the last byte, the pet, is optional: without it the packet is an older firmware's).
+  for (size_t cut = 0; cut + 1 < n; cut++) TEST_ASSERT_FALSE(decodeFriendPacket(buf, cut, q));
   uint8_t bad[kFriendPacketMax];
   memcpy(bad, buf, n);
   bad[0] = 'X';  // magic
@@ -968,6 +1019,8 @@ static void test_own_name_others_would_refuse_goes_out_as_the_default() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_packet_round_trip);
+  RUN_TEST(test_packet_carries_the_pet);
+  RUN_TEST(test_visit_shows_the_guests_pet);
   RUN_TEST(test_malformed_packets_are_rejected);
   RUN_TEST(test_beacons_on_schedule_and_on_change);
   RUN_TEST(test_friends_expire_and_own_packets_are_ignored);

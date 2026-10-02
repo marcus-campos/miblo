@@ -747,7 +747,8 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
                                  (uint32_t)(uint8_t)k.gy << 24);
   h = hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
-  // A hat, colour, tie or mood change redraws (the mood draws dark circles: ui_base.cpp).
+  // A hat, colour, tie, mood or pet change redraws (the mood draws dark circles: ui_base.cpp).
+  h = hashInt(h, mascotPaintHash());
   return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8 | (uint32_t)mascotTie() << 16 |
                         (uint32_t)catMood() << 24);
 }
@@ -2019,27 +2020,29 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     h = hashInt(hashInt(h, (uint32_t)it.kind | (uint32_t)it.f << 8), (uint32_t)(it.x * 1000 + it.y));
   }
   for (uint8_t e = 0; e < extras; e++) {
-    h = hashInt(lookHash(hashInt(h, (uint32_t)(exX[e] * 1000 + exY[e])), exLook[e]), v.extraMascot[e]);
+    h = hashInt(lookHash(hashInt(h, (uint32_t)(exX[e] * 1000 + exY[e])), exLook[e]),
+                (uint32_t)v.extraMascot[e] | (uint32_t)v.extraPet[e] << 8);
   }
   if (dirty(R_BODY, h)) {
     const int top = vertical ? 0 : tall ? Y(30) : cy - half;
     const int bh = vertical ? Y(240) : tall ? cy + half - Y(30) : 2 * half;
-    const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory(), myMood = catMood();
+    const uint8_t myHat = mascotAccessory(), myMood = catMood();
+    const MascotPaint myPaint = mascotPaint();
     const bool myTie = mascotTie();
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
       if (mine) deskMascot(myX, myY, me, catHalf, false);
-      if (guest) {  // in their own colours, no hat, tie or tired eyes (the day, the meeting are ours)
+      if (guest) {  // their own pet and colours, no hat, tie or tired eyes (the day, the meeting are ours)
         setMascotAccessory(0);
         setMascotTie(false);
         setCatMood(0);
-        setMascotStyle(v.mascot);
+        setMascotPaint(MascotPaint{v.mascot, v.pet});  // their preset and pet (our own colours stay ours)
         deskMascot(guestX, guestY, them, catHalf, false);
         for (uint8_t e = 0; e < extras; e++) {
-          setMascotStyle(v.extraMascot[e]);
+          setMascotPaint(MascotPaint{v.extraMascot[e], v.extraPet[e]});
           deskMascot(exX[e], exY[e], exLook[e], catHalf, false);
         }
-        setMascotStyle(myStyle);
+        setMascotPaint(myPaint);
         setMascotAccessory(myHat);
         setMascotTie(myTie);
         setCatMood(myMood);

@@ -56,7 +56,7 @@ static void test_config_accepts_owner_birthday_and_friends() {
   // Round trip through the stored JSON.
   strcpy(c.owner, "Zoë");
   strcpy(c.birthday, "12-01");
-  StaticJsonDocument<1024> out;
+  StaticJsonDocument<1536> out;  // the whole stored config
   configToStored(c, out.to<JsonObject>());
   Config back;
   TEST_ASSERT_TRUE(applyConfigPatch(back, out.as<JsonObjectConst>(), nullptr));

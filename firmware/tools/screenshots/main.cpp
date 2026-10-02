@@ -596,6 +596,7 @@ void renderAll(Lang L) {
   shots::renderNotes(L);
   shots::renderCues(L);
   shots::renderLook(L);
+  shots::renderPets(L);
 }
 
 // ---------------- animations ----------------

@@ -627,6 +627,68 @@ static void test_mascot_style_config() {
   TEST_ASSERT_EQUAL_UINT8(3, b.mascot);
 }
 
+// The pet (which animal the mascot is): 0..kPetKinds-1, default 0 (the cat), round trip; the
+// colour stays its own setting.
+static void test_pet_config() {
+  Config c;
+  TEST_ASSERT_EQUAL_UINT8(0, c.pet);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":10}"));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Alien, c.pet);
+  TEST_ASSERT_EQUAL_UINT8(0, c.mascot);
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":11}"));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Riff, c.pet);
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":10}"));
+  TEST_ASSERT_FALSE(patch(c, "{\"pet\":12}", &bad));
+  TEST_ASSERT_EQUAL_STRING("pet", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"pet\":-1}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"pet\":\"duck\"}", &bad));
+  TEST_ASSERT_EQUAL_UINT8(10, c.pet);
+  StaticJsonDocument<1024> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL(10, doc["pet"].as<int>());
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL_UINT8(10, b.pet);
+  StaticJsonDocument<4096> stored;
+  configToStored(c, stored.to<JsonObject>());
+  TEST_ASSERT_EQUAL(10, stored["pet"].as<int>());
+  TEST_ASSERT_EQUAL_UINT8(0, knownPet(kPetKinds));
+  TEST_ASSERT_EQUAL_UINT8(kPetKinds - 1, knownPet(kPetKinds - 1));
+}
+
+// The pet's colours, one slot per part (PetSlot), stored as one string: "rrggbb" or "" (Auto, as
+// before custom colours) per slot; all Auto by default. The eye shape: 0 round (default) .. 2.
+static void test_pet_colors_config() {
+  Config c;
+  for (uint32_t v : c.petColors) TEST_ASSERT_EQUAL_UINT32(kPetAuto, v);
+  TEST_ASSERT_EQUAL_UINT8(0, c.petEyes);
+  const char* bad = nullptr;
+  TEST_ASSERT_TRUE(patch(c, "{\"petColors\":\"FF4510,,000000,,,ffffff,\",\"petEyes\":2}"));
+  TEST_ASSERT_EQUAL_UINT32(0xFF4510 + 1, c.petColors[kSlotBody]);
+  TEST_ASSERT_EQUAL_UINT32(kPetAuto, c.petColors[kSlotLine]);
+  TEST_ASSERT_EQUAL_UINT32(1, c.petColors[kSlotDetail]);  // black
+  TEST_ASSERT_EQUAL_UINT32(kPetColorMax, c.petColors[kSlotEye]);  // white
+  TEST_ASSERT_EQUAL_UINT32(kPetAuto, c.petColors[kSlotAccent]);
+  TEST_ASSERT_EQUAL_UINT8(2, c.petEyes);
+  const char* const kBad[] = {"{\"petColors\":\",,,,,\"}",          "{\"petColors\":\",,,,,,,\"}",
+                              "{\"petColors\":\"fff,,,,,,\"}",      "{\"petColors\":\"ff45100,,,,,,\"}",
+                              "{\"petColors\":\"#f4510,,,,,,\"}",   "{\"petColors\":\"gg0000,,,,,,\"}",
+                              "{\"petColors\":[0,0,0,0,0,0,0]}",  "{\"petColors\":5}",
+                              "{\"petEyes\":3}"};
+  for (const char* b : kBad) TEST_ASSERT_FALSE_MESSAGE(patch(c, b, &bad), b);
+  TEST_ASSERT_EQUAL_UINT32(0xFF4510 + 1, c.petColors[kSlotBody]);  // unchanged
+  StaticJsonDocument<1536> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING("ff4510,,000000,,,ffffff,", doc["petColors"]);
+  Config b;
+  TEST_ASSERT_TRUE(applyConfigPatch(b, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL_MEMORY(c.petColors, b.petColors, sizeof(c.petColors));
+  TEST_ASSERT_EQUAL_UINT8(2, b.petEyes);
+  configToJson(Config(), doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_STRING(",,,,,,", doc["petColors"]);
+}
+
 // Screen care: the pixel shift goes round 9 distinct positions within 2 px; after a long idle the
 // mascot wanders (pet mode, after petMin minutes) and after sleepMin minutes the panel sleeps
 // (0 = never); a page view or a code request keeps the normal screens up.
@@ -1115,6 +1177,7 @@ static void test_stored_config_fits_on_the_gadget() {
   c.langSet = false;        // stored with "langAuto" too
   c.breakAfterMin = 235;    // not an old choice: stored with "breakAfterExact" too
   c.waterMin = 235;         // and "waterExact"
+  for (uint32_t& v : c.petColors) v = kPetColorMax;  // every colour slot custom: "ffffff,..."
   StaticJsonDocument<4096> out;
   configToStored(c, out.to<JsonObject>());
   char text[2048];
@@ -1163,6 +1226,8 @@ int main() {
   RUN_TEST(test_quiet_clock_phases);
   RUN_TEST(test_night_mode_config_and_brightness);
   RUN_TEST(test_mascot_style_config);
+  RUN_TEST(test_pet_config);
+  RUN_TEST(test_pet_colors_config);
   RUN_TEST(test_screen_care);
   RUN_TEST(test_blue_filter);
   RUN_TEST(test_blue_strength_legacy_levels);

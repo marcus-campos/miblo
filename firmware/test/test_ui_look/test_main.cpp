@@ -1,5 +1,7 @@
 // The mascot's daily-life look: special-day accessories, the meeting tie, focus headphones, tired
 // eye bags, and Friday the 13th's black cat.
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unity.h>
 
@@ -7,6 +9,7 @@
 #include "miblo_mood.h"
 #include "miblo_occasions.h"
 #include "ui_internal.h"
+#include "ui_pet.h"
 #include "ui_screens.h"
 
 using namespace miblo;
@@ -15,6 +18,7 @@ using screens::MascotLook;
 using screens::Paws;
 
 void setUp() {
+  screens::setMascotPaint(screens::MascotPaint{});
   screens::setMascotStyle(0);
   screens::setMascotAccessory(0);
   screens::setMascotTie(false);
@@ -67,6 +71,109 @@ static void test_every_look_stays_in_its_box() {
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, "out of bounds");
   }
+}
+
+// Every pet, in every eye shape, preset and custom colours, with every accessory, in poses that
+// hop (dy -5), sink (dy 1), shiver (dx +-3) and look around, the box touching two corners:
+// nothing outside it (the cat's own reach: a pet may reach as far, never further).
+static void test_every_pet_stays_in_its_box() {
+  const MascotLook looks[] = {
+      {0, 0, 0, 0, Eyes::Open, Paws::Down, 0},
+      {0, -5, 3, 0, Eyes::Wide, Paws::Up, (uint16_t)(screens::kFluffed | screens::kAlarm | screens::kMouthWide)},
+      {3, 0, -3, 3, Eyes::Sleepy, Paws::ReachLeft, (uint16_t)(screens::kSweat | screens::kZ1 | screens::kZ2)},
+      {-3, 0, 3, -3, Eyes::Happy, Paws::ReachRight, (uint16_t)(screens::kHeart | screens::kStars | screens::kMouthO)},
+      {0, 1, 0, 0, Eyes::Dizzy, Paws::Cover, screens::kCoffee},
+      {0, -3, 0, 0, Eyes::Closed, Paws::Lick, (uint16_t)(screens::kTongue | screens::kGrumpy)},
+      {0, 0, 0, 3, Eyes::Open, Paws::TapLeft, screens::kCrossEyed},
+      {0, 0, 0, 3, Eyes::Wide, Paws::TapRight, 0},
+  };
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+    for (uint8_t shape = 0; shape < kEyeShapes; shape++) {
+      for (int custom = 0; custom < 2; custom++) {
+        screens::MascotPaint p;
+        p.pet = pet;
+        p.style = (uint8_t)(pet % 4);
+        p.eyeShape = shape;
+        if (custom) {
+          for (uint8_t i = 0; i < kPetSlots; i++) p.slots[i] = 0x102030u * (i + 1) + 1;
+        }
+        screens::setMascotPaint(p);
+        for (uint8_t a = 0; a <= (uint8_t)Accessory::Hearts; a++) {
+          screens::setMascotAccessory(a);
+          screens::setMascotTie(a & 1);
+          for (const auto& base : looks) {
+            MascotLook k = base;
+            if (a & 2) k.extras |= (uint16_t)(screens::kHeadphones | screens::kEyeBags);
+            screens::deskMascot(36, 36, k, 36, false, false);
+            screens::deskMascot(204, 204, k, 36, true, true);
+          }
+          screens::mascot(192, 48, 2, false);
+          screens::mascot(24, 216, 1, true);
+        }
+        char msg[48];
+        snprintf(msg, sizeof(msg), "pet %u, eyes %u, custom %d: out of bounds", pet, shape, custom);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, msg);
+      }
+    }
+  }
+}
+
+// The pet's colours: Auto slots (every one by default) come from the preset, or from a custom
+// body; a slot the user sets is drawn as it is; an unknown pet is the cat.
+static void test_pet_colours() {
+  using screens::MascotPaint;
+  TEST_ASSERT_EQUAL_HEX16(0xF282, screens::mascotColorsFor(0xF55110).skin);  // the orange preset's
+  // A dark body: light lines on the face, outlines lighter than the body (they show on the BG).
+  const screens::MascotColors dark = screens::mascotColorsFor(0x101014);
+  TEST_ASSERT_TRUE(screens::luma565(dark.lid) > screens::luma565(dark.skin) + 80);
+  TEST_ASSERT_TRUE(screens::luma565(dark.line) > screens::luma565(dark.skin));
+  // A light one: dark lines, darker outlines.
+  const screens::MascotColors light = screens::mascotColorsFor(0xFFFFFF);
+  TEST_ASSERT_EQUAL_HEX16(ui::color::PUPIL, light.lid);
+  TEST_ASSERT_TRUE(screens::luma565(light.line) + 60 < screens::luma565(light.skin));
+
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  const MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+  const int cx = 120, cy = 120;  // half 48: one design unit per pixel
+  screens::deskMascot(cx, cy, k, 48, false, true);
+  TEST_ASSERT_EQUAL_HEX16(ui::color::SKIN, fc.colorAt(cx, cy - 10));        // the forehead
+  TEST_ASSERT_EQUAL_HEX16(ui::color::EYE_GREEN, screens::petColors(screens::kPetCat).eye);
+  MascotPaint p;
+  p.slots[kSlotBody] = 0x9BD84E + 1;  // the eyes' own green
+  screens::setMascotPaint(p);
+  screens::deskMascot(cx, cy, k, 48, false, true);
+  TEST_ASSERT_EQUAL_HEX16(ui::color::EYE_GREEN, fc.colorAt(cx, cy - 10));
+  const screens::PetColors pc = screens::petColors(screens::kPetCat);
+  TEST_ASSERT_TRUE(abs((int)screens::luma565(pc.eye) - (int)screens::luma565(pc.skin)) >= 48);  // Auto eyes keep apart
+  TEST_ASSERT_EQUAL_HEX16(ui::color::PUPIL, pc.lid);  // a light body: dark lines
+  p.slots[kSlotEye] = 0x9BD84E + 1;  // the user's pick is respected
+  p.slots[kSlotNose] = 0x0000FF + 1;
+  screens::setMascotPaint(p);
+  TEST_ASSERT_EQUAL_HEX16(ui::color::EYE_GREEN, screens::petColors(screens::kPetCat).eye);
+  screens::deskMascot(cx, cy, k, 48, false, true);
+  TEST_ASSERT_EQUAL_HEX16(0x001F, fc.colorAt(cx, cy + 19));  // the nose
+  TEST_ASSERT_EQUAL_HEX16(ui::color::EYE_GREEN, screens::mascotSkin());
+  // Every slot changes the paint hash (the desk mascot redraws).
+  uint32_t seen = screens::mascotPaintHash();
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    p.slots[i] = 0x123456 + i;
+    screens::setMascotPaint(p);
+    TEST_ASSERT_TRUE(screens::mascotPaintHash() != seen);
+    seen = screens::mascotPaintHash();
+  }
+  p.eyeShape = 1;
+  screens::setMascotPaint(p);
+  TEST_ASSERT_TRUE(screens::mascotPaintHash() != seen);
+  screens::setMascotPet(kPetKinds);
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPet());
+  p.slots[kSlotBody] = kPetColorMax + 1;  // never set by the config: Auto
+  p.eyeShape = kEyeShapes;
+  screens::setMascotPaint(p);
+  TEST_ASSERT_EQUAL_UINT32(kPetAuto, screens::mascotPaint().slots[kSlotBody]);
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPaint().eyeShape);
 }
 
 // Each piece is actually drawn where it belongs (240 grid, half 48: one design unit per pixel).
@@ -131,7 +238,11 @@ static void test_black_cat_crosses_inside_the_screen() {
     FakeCanvas fc(spec);
     screens::bind(fc);
     screens::reset();
-    screens::setMascotStyle(1);
+    screens::MascotPaint paint;
+    paint.style = 1;
+    paint.pet = (uint8_t)Pet::Owl;
+    paint.slots[kSlotBody] = 0x336699 + 1;
+    screens::setMascotPaint(paint);
     screens::setMascotAccessory((uint8_t)Accessory::PartyHat);
     screens::setMascotTie(true);
     screens::setCatMood((uint8_t)CatMood::Tired);
@@ -152,6 +263,8 @@ static void test_black_cat_crosses_inside_the_screen() {
     TEST_ASSERT_EQUAL_INT(0, first);
     TEST_ASSERT_TRUE(last >= (int)kPasserbyMs - 200);
     TEST_ASSERT_EQUAL_UINT8(1, screens::mascotStyle());
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Owl, screens::mascotPet());
+    TEST_ASSERT_EQUAL_UINT32(0x336699 + 1, screens::mascotPaint().slots[kSlotBody]);
     TEST_ASSERT_EQUAL_UINT8((uint8_t)Accessory::PartyHat, screens::mascotAccessory());
     TEST_ASSERT_TRUE(screens::mascotTie());
     TEST_ASSERT_EQUAL_UINT8((uint8_t)CatMood::Tired, screens::catMood());
@@ -161,6 +274,8 @@ static void test_black_cat_crosses_inside_the_screen() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_every_look_stays_in_its_box);
+  RUN_TEST(test_every_pet_stays_in_its_box);
+  RUN_TEST(test_pet_colours);
   RUN_TEST(test_pieces_are_drawn);
   RUN_TEST(test_tie_and_mood_redraw_the_cat);
   RUN_TEST(test_black_cat_crosses_inside_the_screen);

@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "miblo_pet.h"
+
 // Miblos on the same network find each other and play while in pet mode (an easter egg): a
 // "hi" when another one shows up, visits (the mascot walks off one screen and into the other's),
 // a coffee for a friend whose limits are running low, and naps in sync.
 //
 // Each gadget broadcasts a small UDP packet (kFriendPort) every kBeaconEveryMs with its id, name,
-// mascot colour and a few flags (pet mode, napping, tired). Nothing about sessions, limits or the
+// mascot colour and pet, and a few flags (pet mode, napping, tired). Nothing about sessions, limits or the
 // owner travels: "tired" only says its limits are past 80%. Packets only ever start animations.
 namespace miblo {
 
@@ -116,9 +118,12 @@ struct FriendPacket {
   uint8_t chance = 255;  // Who only: each free Miblo answers with probability chance/255
   uint8_t offset = 0;    // Invite/Host: time into the visit, in 100 ms steps
   char host[16] = "";    // Invite: the host (empty: the sender itself)
+  uint8_t pet = 0;       // sender's pet (miblo::Pet; absent or unknown: the cat)
 };
 
-// "MBLO", version, type, mascot, flags, gift, then id, name and to as length-prefixed strings.
+// "MBLO", version, type, mascot, flags, gift, then id, name and to as length-prefixed strings,
+// (Invite, Host) the offset (and Invite's host), and last the pet: one byte that older firmware
+// ignores (anything after the known fields), left out when the packet has no room for it.
 // encode returns the length (0 if it does not fit); decode rejects anything malformed.
 size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap);
 bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out);
@@ -130,16 +135,18 @@ struct VisitView {
   uint32_t ms = 0;     // time into the visit (see kVisit*)
   char name[64] = "";  // the other gadget (for a host: the first guest)
   uint8_t mascot = 0;
+  uint8_t pet = 0;     // its pet (miblo::Pet)
   Gift gift = Gift::None;
   bool turnedAway = false;                  // visitor: the host got busy, coming back early
   uint8_t extra = 0;                        // host: more guests besides the first (0..kMaxGuests-1)
   uint8_t extraMascot[kMaxGuests - 1] = {};  // their colours
+  uint8_t extraPet[kMaxGuests - 1] = {};     // and pets
 };
 
 class FriendPlay {
  public:
   // Our own identity (cheap to call every frame; a change is announced).
-  void setSelf(const char* id, const char* name, uint8_t mascot);
+  void setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet = 0);
   // Every frame. `enabled`: the setting is on and the network is up (off: everything is
   // forgotten and nothing is sent). `flags`: kFriendRoaming | kFriendNapping | kFriendTired.
   // `rnd`: any random number (timing and choice of friend).
@@ -176,6 +183,7 @@ class FriendPlay {
     char id[16] = "";
     char name[64] = "";
     uint8_t mascot = 0;
+    uint8_t pet = 0;
     uint8_t flags = 0;
     uint32_t seenMs = 0;
     bool greeted = false;
@@ -202,7 +210,7 @@ class FriendPlay {
     f.startedMs = nowMs;
   }
   bool invited(const char* id) const;
-  // An outgoing packet, without what nextPacket() fills in (our id, name and mascot).
+  // An outgoing packet, without what nextPacket() fills in (our id, name, mascot and pet).
   struct Out {
     FriendPacket::Type type;
     uint8_t flags;
@@ -233,6 +241,7 @@ class FriendPlay {
   char id_[16] = "";
   char name_[64] = "";
   uint8_t mascot_ = 0;
+  uint8_t pet_ = 0;
   uint8_t flags_ = 0;
   bool enabled_ = false;
   uint32_t rnd_ = 0;

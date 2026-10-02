@@ -145,11 +145,35 @@ static const char kEn[] MIBLO_ROM =
     "responses\0"  // SumResponses
     "worked\0"  // SumWorked
     "spent\0"  // SumSpent
-    "Mascot\0"  // WebMascot
-    "Sphynx (peach)\0"  // WebMascotSphynx
+    "Colour\0"  // WebMascot
+    "Peach\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Black\0"  // WebMascotBlack
     "Grey\0"  // WebMascotGrey
+    "Pet\0"  // WebPet
+    "Cat\0"  // WebPetCat
+    "Rubber duck\0"  // WebPetDuck
+    "Bug (beetle)\0"  // WebPetBug
+    "Daemon (little ghost)\0"  // WebPetDaemon
+    "Robot\0"  // WebPetRobot
+    "Coffee mug\0"  // WebPetMug
+    "Penguin\0"  // WebPetPenguin
+    "Crab\0"  // WebPetCrab
+    "Owl\0"  // WebPetOwl
+    "Dog\0"  // WebPetDog
+    "Miblo alien\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Body\0"  // WebSlotBody
+    "Outline\0"  // WebSlotLine
+    "Inner ears, tongue\0"  // WebSlotDetail
+    "Nose, beak\0"  // WebSlotNose
+    "Face lines\0"  // WebSlotLid
+    "Eyes\0"  // WebSlotEye
+    "Accent\0"  // WebSlotAccent
+    "Eyes\0"  // WebEyeShape
+    "Round\0"  // WebEyeRound
+    "Big and shiny\0"  // WebEyeBig
+    "Sleepy\0"  // WebEyeSleepy
     "Update available\0"  // UpdateAvailable
     "v%s (you have v%s)\0"  // UpdateVersions
     "Check for updates\0"  // WebCheckUpdates
@@ -421,11 +445,35 @@ static const char kPtBR[] MIBLO_ROM =
     "respostas\0"  // SumResponses
     "trabalhando\0"  // SumWorked
     "gasto\0"  // SumSpent
-    "Mascote\0"  // WebMascot
-    "Sphynx (pêssego)\0"  // WebMascotSphynx
+    "Cor\0"  // WebMascot
+    "Pêssego\0"  // WebMascotSphynx
     "Laranja\0"  // WebMascotOrange
     "Preto\0"  // WebMascotBlack
     "Cinza\0"  // WebMascotGrey
+    "Bichinho\0"  // WebPet
+    "Gato\0"  // WebPetCat
+    "Patinho de borracha\0"  // WebPetDuck
+    "Bug (besouro)\0"  // WebPetBug
+    "Daemon (fantasminha)\0"  // WebPetDaemon
+    "Robô\0"  // WebPetRobot
+    "Caneca de café\0"  // WebPetMug
+    "Pinguim\0"  // WebPetPenguin
+    "Caranguejo\0"  // WebPetCrab
+    "Coruja\0"  // WebPetOwl
+    "Cachorro\0"  // WebPetDog
+    "Alienígena Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Corpo\0"  // WebSlotBody
+    "Contorno\0"  // WebSlotLine
+    "Orelhas por dentro, língua\0"  // WebSlotDetail
+    "Nariz, bico\0"  // WebSlotNose
+    "Traços do rosto\0"  // WebSlotLid
+    "Olhos\0"  // WebSlotEye
+    "Detalhe\0"  // WebSlotAccent
+    "Olhos\0"  // WebEyeShape
+    "Redondos\0"  // WebEyeRound
+    "Grandes e brilhantes\0"  // WebEyeBig
+    "Sonolentos\0"  // WebEyeSleepy
     "Atualização disponível\0"  // UpdateAvailable
     "v%s (você tem v%s)\0"  // UpdateVersions
     "Buscar atualizações\0"  // WebCheckUpdates
@@ -697,11 +745,35 @@ static const char kPtPT[] MIBLO_ROM =
     "respostas\0"  // SumResponses
     "a trabalhar\0"  // SumWorked
     "gasto\0"  // SumSpent
-    "Mascote\0"  // WebMascot
-    "Sphynx (pêssego)\0"  // WebMascotSphynx
+    "Cor\0"  // WebMascot
+    "Pêssego\0"  // WebMascotSphynx
     "Laranja\0"  // WebMascotOrange
     "Preto\0"  // WebMascotBlack
     "Cinzento\0"  // WebMascotGrey
+    "Animal de estimação\0"  // WebPet
+    "Gato\0"  // WebPetCat
+    "Patinho de borracha\0"  // WebPetDuck
+    "Bug (escaravelho)\0"  // WebPetBug
+    "Daemon (fantasminha)\0"  // WebPetDaemon
+    "Robô\0"  // WebPetRobot
+    "Caneca de café\0"  // WebPetMug
+    "Pinguim\0"  // WebPetPenguin
+    "Caranguejo\0"  // WebPetCrab
+    "Mocho\0"  // WebPetOwl
+    "Cão\0"  // WebPetDog
+    "Extraterrestre Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Corpo\0"  // WebSlotBody
+    "Contorno\0"  // WebSlotLine
+    "Interior das orelhas, língua\0"  // WebSlotDetail
+    "Nariz, bico\0"  // WebSlotNose
+    "Traços do rosto\0"  // WebSlotLid
+    "Olhos\0"  // WebSlotEye
+    "Detalhe\0"  // WebSlotAccent
+    "Olhos\0"  // WebEyeShape
+    "Redondos\0"  // WebEyeRound
+    "Grandes e brilhantes\0"  // WebEyeBig
+    "Ensonados\0"  // WebEyeSleepy
     "Atualização disponível\0"  // UpdateAvailable
     "v%s (tem a v%s)\0"  // UpdateVersions
     "Procurar atualizações\0"  // WebCheckUpdates
@@ -973,11 +1045,35 @@ static const char kEs[] MIBLO_ROM =
     "respuestas\0"  // SumResponses
     "trabajando\0"  // SumWorked
     "gastado\0"  // SumSpent
-    "Mascota\0"  // WebMascot
-    "Sphynx (melocotón)\0"  // WebMascotSphynx
+    "Color\0"  // WebMascot
+    "Melocotón\0"  // WebMascotSphynx
     "Naranja\0"  // WebMascotOrange
     "Negro\0"  // WebMascotBlack
     "Gris\0"  // WebMascotGrey
+    "Mascota\0"  // WebPet
+    "Gato\0"  // WebPetCat
+    "Patito de goma\0"  // WebPetDuck
+    "Bug (escarabajo)\0"  // WebPetBug
+    "Daemon (fantasmita)\0"  // WebPetDaemon
+    "Robot\0"  // WebPetRobot
+    "Taza de café\0"  // WebPetMug
+    "Pingüino\0"  // WebPetPenguin
+    "Cangrejo\0"  // WebPetCrab
+    "Búho\0"  // WebPetOwl
+    "Perro\0"  // WebPetDog
+    "Alienígena Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Cuerpo\0"  // WebSlotBody
+    "Contorno\0"  // WebSlotLine
+    "Orejas por dentro, lengua\0"  // WebSlotDetail
+    "Nariz, pico\0"  // WebSlotNose
+    "Trazos de la cara\0"  // WebSlotLid
+    "Ojos\0"  // WebSlotEye
+    "Detalle\0"  // WebSlotAccent
+    "Ojos\0"  // WebEyeShape
+    "Redondos\0"  // WebEyeRound
+    "Grandes y brillantes\0"  // WebEyeBig
+    "Somnolientos\0"  // WebEyeSleepy
     "Actualización disponible\0"  // UpdateAvailable
     "v%s (tienes v%s)\0"  // UpdateVersions
     "Buscar actualizaciones\0"  // WebCheckUpdates
@@ -1249,11 +1345,35 @@ static const char kFr[] MIBLO_ROM =
     "réponses\0"  // SumResponses
     "de travail\0"  // SumWorked
     "dépensé\0"  // SumSpent
-    "Mascotte\0"  // WebMascot
-    "Sphynx (pêche)\0"  // WebMascotSphynx
+    "Couleur\0"  // WebMascot
+    "Pêche\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Noir\0"  // WebMascotBlack
     "Gris\0"  // WebMascotGrey
+    "Compagnon\0"  // WebPet
+    "Chat\0"  // WebPetCat
+    "Canard en caoutchouc\0"  // WebPetDuck
+    "Bug (scarabée)\0"  // WebPetBug
+    "Daemon (petit fantôme)\0"  // WebPetDaemon
+    "Robot\0"  // WebPetRobot
+    "Tasse de café\0"  // WebPetMug
+    "Manchot\0"  // WebPetPenguin
+    "Crabe\0"  // WebPetCrab
+    "Hibou\0"  // WebPetOwl
+    "Chien\0"  // WebPetDog
+    "Alien Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Corps\0"  // WebSlotBody
+    "Contour\0"  // WebSlotLine
+    "Intérieur des oreilles, langue\0"  // WebSlotDetail
+    "Nez, bec\0"  // WebSlotNose
+    "Traits du visage\0"  // WebSlotLid
+    "Yeux\0"  // WebSlotEye
+    "Détail\0"  // WebSlotAccent
+    "Yeux\0"  // WebEyeShape
+    "Ronds\0"  // WebEyeRound
+    "Grands et brillants\0"  // WebEyeBig
+    "Endormis\0"  // WebEyeSleepy
     "Mise à jour disponible\0"  // UpdateAvailable
     "v%s (vous avez v%s)\0"  // UpdateVersions
     "Rechercher des mises à jour\0"  // WebCheckUpdates
@@ -1525,11 +1645,35 @@ static const char kIt[] MIBLO_ROM =
     "risposte\0"  // SumResponses
     "di lavoro\0"  // SumWorked
     "spesi\0"  // SumSpent
-    "Mascotte\0"  // WebMascot
-    "Sphynx (pesca)\0"  // WebMascotSphynx
+    "Colore\0"  // WebMascot
+    "Pesca\0"  // WebMascotSphynx
     "Arancione\0"  // WebMascotOrange
     "Nero\0"  // WebMascotBlack
     "Grigio\0"  // WebMascotGrey
+    "Animaletto\0"  // WebPet
+    "Gatto\0"  // WebPetCat
+    "Paperella di gomma\0"  // WebPetDuck
+    "Bug (scarabeo)\0"  // WebPetBug
+    "Daemon (fantasmino)\0"  // WebPetDaemon
+    "Robot\0"  // WebPetRobot
+    "Tazza di caffè\0"  // WebPetMug
+    "Pinguino\0"  // WebPetPenguin
+    "Granchio\0"  // WebPetCrab
+    "Gufo\0"  // WebPetOwl
+    "Cane\0"  // WebPetDog
+    "Alieno Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Corpo\0"  // WebSlotBody
+    "Contorno\0"  // WebSlotLine
+    "Interno orecchie, lingua\0"  // WebSlotDetail
+    "Naso, becco\0"  // WebSlotNose
+    "Tratti del viso\0"  // WebSlotLid
+    "Occhi\0"  // WebSlotEye
+    "Dettaglio\0"  // WebSlotAccent
+    "Occhi\0"  // WebEyeShape
+    "Rotondi\0"  // WebEyeRound
+    "Grandi e luminosi\0"  // WebEyeBig
+    "Assonnati\0"  // WebEyeSleepy
     "Aggiornamento disponibile\0"  // UpdateAvailable
     "v%s (hai la v%s)\0"  // UpdateVersions
     "Cerca aggiornamenti\0"  // WebCheckUpdates
@@ -1801,11 +1945,35 @@ static const char kDe[] MIBLO_ROM =
     "Antworten\0"  // SumResponses
     "gearbeitet\0"  // SumWorked
     "ausgegeben\0"  // SumSpent
-    "Maskottchen\0"  // WebMascot
-    "Sphynx (Pfirsich)\0"  // WebMascotSphynx
+    "Farbe\0"  // WebMascot
+    "Pfirsich\0"  // WebMascotSphynx
     "Orange\0"  // WebMascotOrange
     "Schwarz\0"  // WebMascotBlack
     "Grau\0"  // WebMascotGrey
+    "Haustier\0"  // WebPet
+    "Katze\0"  // WebPetCat
+    "Quietscheente\0"  // WebPetDuck
+    "Bug (Käfer)\0"  // WebPetBug
+    "Daemon (Gespenst)\0"  // WebPetDaemon
+    "Roboter\0"  // WebPetRobot
+    "Kaffeetasse\0"  // WebPetMug
+    "Pinguin\0"  // WebPetPenguin
+    "Krabbe\0"  // WebPetCrab
+    "Eule\0"  // WebPetOwl
+    "Hund\0"  // WebPetDog
+    "Miblo-Alien\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Körper\0"  // WebSlotBody
+    "Umriss\0"  // WebSlotLine
+    "Innenohren, Zunge\0"  // WebSlotDetail
+    "Nase, Schnabel\0"  // WebSlotNose
+    "Gesichtslinien\0"  // WebSlotLid
+    "Augen\0"  // WebSlotEye
+    "Akzent\0"  // WebSlotAccent
+    "Augen\0"  // WebEyeShape
+    "Rund\0"  // WebEyeRound
+    "Groß und glänzend\0"  // WebEyeBig
+    "Verschlafen\0"  // WebEyeSleepy
     "Update verfügbar\0"  // UpdateAvailable
     "v%s (du hast v%s)\0"  // UpdateVersions
     "Nach Updates suchen\0"  // WebCheckUpdates
@@ -2077,11 +2245,35 @@ static const char kRu[] MIBLO_ROM =
     "ответов\0"  // SumResponses
     "в работе\0"  // SumWorked
     "потрачено\0"  // SumSpent
-    "Талисман\0"  // WebMascot
-    "Сфинкс (персик)\0"  // WebMascotSphynx
+    "Цвет\0"  // WebMascot
+    "Персиковый\0"  // WebMascotSphynx
     "Рыжий\0"  // WebMascotOrange
     "Чёрный\0"  // WebMascotBlack
     "Серый\0"  // WebMascotGrey
+    "Питомец\0"  // WebPet
+    "Кошка\0"  // WebPetCat
+    "Резиновая уточка\0"  // WebPetDuck
+    "Жучок\0"  // WebPetBug
+    "Демон (привидение)\0"  // WebPetDaemon
+    "Робот\0"  // WebPetRobot
+    "Кружка кофе\0"  // WebPetMug
+    "Пингвин\0"  // WebPetPenguin
+    "Краб\0"  // WebPetCrab
+    "Сова\0"  // WebPetOwl
+    "Собака\0"  // WebPetDog
+    "Пришелец Miblo\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "Тело\0"  // WebSlotBody
+    "Контур\0"  // WebSlotLine
+    "Уши внутри, язык\0"  // WebSlotDetail
+    "Нос, клюв\0"  // WebSlotNose
+    "Черты лица\0"  // WebSlotLid
+    "Глаза\0"  // WebSlotEye
+    "Акцент\0"  // WebSlotAccent
+    "Глаза\0"  // WebEyeShape
+    "Круглые\0"  // WebEyeRound
+    "Большие и блестящие\0"  // WebEyeBig
+    "Сонные\0"  // WebEyeSleepy
     "Доступно обновление\0"  // UpdateAvailable
     "v%s (у вас v%s)\0"  // UpdateVersions
     "Проверить обновления\0"  // WebCheckUpdates
@@ -2353,11 +2545,35 @@ static const char kZh[] MIBLO_ROM =
     "次回复\0"  // SumResponses
     "工作时长\0"  // SumWorked
     "花费\0"  // SumSpent
-    "吉祥物\0"  // WebMascot
-    "斯芬克斯（桃色）\0"  // WebMascotSphynx
+    "颜色\0"  // WebMascot
+    "桃色\0"  // WebMascotSphynx
     "橙色\0"  // WebMascotOrange
     "黑色\0"  // WebMascotBlack
     "灰色\0"  // WebMascotGrey
+    "宠物\0"  // WebPet
+    "猫\0"  // WebPetCat
+    "小黄鸭\0"  // WebPetDuck
+    "小甲虫\0"  // WebPetBug
+    "守护进程（小幽灵）\0"  // WebPetDaemon
+    "机器人\0"  // WebPetRobot
+    "咖啡杯\0"  // WebPetMug
+    "企鹅\0"  // WebPetPenguin
+    "螃蟹\0"  // WebPetCrab
+    "猫头鹰\0"  // WebPetOwl
+    "小狗\0"  // WebPetDog
+    "Miblo 外星人\0"  // WebPetAlien
+    "Riff\0"  // WebPetRiff
+    "身体\0"  // WebSlotBody
+    "轮廓\0"  // WebSlotLine
+    "耳朵内侧、舌头\0"  // WebSlotDetail
+    "鼻子、嘴\0"  // WebSlotNose
+    "脸部线条\0"  // WebSlotLid
+    "眼睛\0"  // WebSlotEye
+    "点缀\0"  // WebSlotAccent
+    "眼睛\0"  // WebEyeShape
+    "圆眼\0"  // WebEyeRound
+    "大眼闪亮\0"  // WebEyeBig
+    "睡眼\0"  // WebEyeSleepy
     "有可用更新\0"  // UpdateAvailable
     "v%s (当前 v%s)\0"  // UpdateVersions
     "检查更新\0"  // WebCheckUpdates

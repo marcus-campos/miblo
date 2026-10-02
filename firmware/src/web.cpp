@@ -46,6 +46,12 @@ static const char kCss[] PROGMEM =
     // Work days: seven small day columns, a checkbox under each name.
     ".wd{display:flex;gap:4px}.wd label{flex:1;margin:6px 0 0;text-align:center;font-size:13px}"
     ".wd input{display:block;margin:6px auto 0}"
+    // The pet's colours: preset swatches, then one row per part (a colour, or Auto).
+    ".sw{display:flex;gap:10px;margin:4px 0 6px}.sw button{margin:0;width:40px;height:40px;flex:none;"
+    "border-radius:50%;border:2px solid #333}.sw button.on{border-color:#f5a524}"
+    ".sl{display:flex;align-items:center;gap:10px;margin:8px 0}.sl span{flex:1;color:#aaa;font-size:14px}"
+    ".sl input[type=color]{flex:none;width:56px;height:36px;padding:2px}"
+    ".sl label{display:flex;align-items:center;gap:6px;margin:0;color:#eee}"
     "summary{cursor:pointer;font-weight:600;color:#aaa}details[open] summary{margin-bottom:12px}"
     "details h2{margin-top:16px}.bar{position:fixed;left:0;right:0;bottom:0;background:#0b0b0df0;"
     "border-top:1px solid #26262c;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}"
@@ -599,7 +605,18 @@ static const char kSetJs[] PROGMEM =
     "for(const o of e.options){const n=Number(o.value);if((n===0)!==(v===0))continue;"
     "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}"
     // Work days: bit 0 = Sunday … bit 6 = Saturday, one checkbox each (#wd0..#wd6).
-    "if('workDays'in C)for(let i=0;i<7;i++)$('wd'+i).checked=!!(C.workDays>>i&1);}fill();"
+    "if('workDays'in C)for(let i=0;i<7;i++)$('wd'+i).checked=!!(C.workDays>>i&1);pcf();}"
+    // The pet's colours: a slot shows its colour, or Auto (a colour picked turns Auto off); a
+    // swatch picks a preset and puts every slot back on Auto.
+    "const PR=['#f2b8a8','#f55110','#4a4a55','#9aa3b0'];"
+    "function sws(){for(const e of $('sw').children)e.classList.toggle('on',e.dataset.m===$('mascot').value&&$('pa0').checked);}"
+    "function pcf(){const v=(C.petColors||'').split(',');for(let i=0;i<7;i++){const c=v[i]||'';$('pa'+i).checked=!c;"
+    "$('pc'+i).value=c?'#'+c:i?'#888888':PR[Number(C.mascot)||0];}sws();}"
+    "for(const e of $('sw').children){e.style.background=PR[e.dataset.m];e.onclick=()=>{$('mascot').value=e.dataset.m;"
+    "for(let i=0;i<7;i++)$('pa'+i).checked=true;$('pc0').value=PR[e.dataset.m];sws();st('');};}"
+    "for(let i=0;i<7;i++){$('pc'+i).addEventListener('input',()=>{$('pa'+i).checked=false;sws();});"
+    "$('pa'+i).addEventListener('change',sws);}"
+    "fill();"
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
@@ -646,13 +663,15 @@ static const char kSetJs[] PROGMEM =
     "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','blueFilter','blueFrom','blueTo','blueStrength','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
+    "'nightBrightness','blueFilter','blueFrom','blueTo','blueStrength','mascot','pet','petEyes','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
     "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','breakLenMin','eyesEveryMin','eyesSec','focusQuiet',"
     "'endOfDay','weekly','workFrom','workTo',"
     "'tz2','tz2Label','deskQr']){let v=val(k);if(k==='tz'&&!v||k==='tz2'&&!$('tz2').dataset.f)continue;"
     // A select whose values are numbers (mascot, delays, levels…) sends a number.
     "if($(k).tagName==='SELECT'&&/^\\d+$/.test(v))v=Number(v);b[k]=v;}"
     "{let m=0;for(let i=0;i<7;i++)if($('wd'+i).checked)m|=1<<i;if(m)b.workDays=m;}"
+    // The pet's colours: "rrggbb" or "" (Auto) per slot (miblo::PetSlot), comma separated.
+    "b.petColors=[0,1,2,3,4,5,6].map(i=>$('pa'+i).checked?'':$('pc'+i).value.slice(1).toLowerCase()).join(',');"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -798,18 +817,6 @@ static void settingsPage() {
   out += F("</div></div>");
   pageFlush(out);
   slider(out, lang, S::WebBrightness, F("brightness"), 5);
-  label(out, lang, S::WebMascot, F("mascot"));
-  out += F("<select id=\"mascot\">");
-  static const S kStyles[] = {S::WebMascotSphynx, S::WebMascotOrange, S::WebMascotBlack, S::WebMascotGrey};
-  static_assert(sizeof(kStyles) / sizeof(kStyles[0]) == miblo::kMascotStyles, "one name per mascot style");
-  for (uint8_t i = 0; i < miblo::kMascotStyles; i++) {
-    out += F("<option value=\"");
-    out += i;
-    out += F("\">");
-    text(out, lang, kStyles[i]);
-    out += F("</option>");
-  }
-  out += F("</select>");
   label(out, lang, S::WebPetAfter, F("petMin"));
   out += F("<select id=\"petMin\"><option value=\"1\">1 min</option><option value=\"2\">2 min</option>"
            "<option value=\"5\">5 min</option><option value=\"10\">10 min</option>"
@@ -824,6 +831,69 @@ static void settingsPage() {
            "<option value=\"60\">1 h</option><option value=\"120\">2 h</option><option value=\"240\">4 h</option>"
            "</select>");
   toggle(out, lang, S::WebDiscreet, F("discreet"));
+  out += F("</div>");
+  pageFlush(out);
+
+  // Pet: which animal, its colours (a preset, then each part on its own: Auto or a colour of the
+  // user's) and its eyes. #mascot stays a (hidden) select: the preset the swatches pick.
+  out += F("<div class=\"c\"><h2>");
+  text(out, lang, S::WebPet);
+  out += F("</h2>");
+  label(out, lang, S::WebPet, F("pet"));
+  out += F("<select id=\"pet\">");
+  static const S kPetNames[] = {S::WebPetCat,     S::WebPetDuck, S::WebPetBug, S::WebPetDaemon,
+                                S::WebPetRobot,   S::WebPetMug,  S::WebPetPenguin, S::WebPetCrab,
+                                S::WebPetOwl,     S::WebPetDog,  S::WebPetAlien, S::WebPetRiff};
+  static_assert(sizeof(kPetNames) / sizeof(kPetNames[0]) == miblo::kPetKinds, "one name per pet");
+  for (uint8_t i = 0; i < miblo::kPetKinds; i++) {
+    out += F("<option value=\"");
+    out += i;
+    out += F("\">");
+    text(out, lang, kPetNames[i]);
+    out += F("</option>");
+  }
+  out += F("</select>");
+  label(out, lang, S::WebEyeShape, F("petEyes"));
+  out += F("<select id=\"petEyes\">");
+  option(out, lang, F("0"), S::WebEyeRound);
+  option(out, lang, F("1"), S::WebEyeBig);
+  option(out, lang, F("2"), S::WebEyeSleepy);
+  out += F("</select>");
+  label(out, lang, S::WebMascot, F("mascot"));
+  out += F("<select id=\"mascot\" hidden>");
+  static const S kStyles[] = {S::WebMascotSphynx, S::WebMascotOrange, S::WebMascotBlack, S::WebMascotGrey};
+  static_assert(sizeof(kStyles) / sizeof(kStyles[0]) == miblo::kMascotStyles, "one name per mascot style");
+  for (uint8_t i = 0; i < miblo::kMascotStyles; i++) {
+    out += F("<option value=\"");
+    out += i;
+    out += F("\">");
+    text(out, lang, kStyles[i]);
+    out += F("</option>");
+  }
+  // The swatches: kPresetRgb (the presets' bodies) in the script paints them.
+  out += F("</select><div class=\"sw\" id=\"sw\">");
+  for (uint8_t i = 0; i < miblo::kMascotStyles; i++) {
+    out += F("<button type=\"button\" data-m=\"");
+    out += i;
+    out += F("\" title=\"");
+    text(out, lang, kStyles[i]);
+    out += F("\"></button>");
+  }
+  out += F("</div>");
+  static const S kSlots[] = {S::WebSlotBody, S::WebSlotLine, S::WebSlotDetail, S::WebSlotNose,
+                             S::WebSlotLid,  S::WebSlotEye,  S::WebSlotAccent};
+  static_assert(sizeof(kSlots) / sizeof(kSlots[0]) == miblo::kPetSlots, "one name per colour slot");
+  for (uint8_t i = 0; i < miblo::kPetSlots; i++) {
+    out += F("<div class=\"sl\"><span>");
+    text(out, lang, kSlots[i]);
+    out += F("</span><input type=\"color\" id=\"pc");
+    out += i;
+    out += F("\"><label><input type=\"checkbox\" id=\"pa");
+    out += i;
+    out += F("\">");
+    text(out, lang, S::WebAuto);
+    out += F("</label></div>");
+  }
   out += F("</div>");
   pageFlush(out);
 

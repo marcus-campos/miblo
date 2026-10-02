@@ -5,6 +5,7 @@
 
 #include "miblo_alerts.h"
 #include "miblo_i18n.h"
+#include "miblo_pet.h"
 #include "miblo_policy.h"
 
 namespace miblo {
@@ -47,6 +48,10 @@ struct Config {
   uint16_t blueFrom = 21 * 60;   // local minute of the day, 0..1439
   uint16_t blueTo = 7 * 60;      // 0..1439, != blueFrom; may be earlier than blueFrom (overnight)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
+  uint8_t pet = 0;               // which animal the mascot is (miblo::Pet, < kPetKinds); 0 the cat.
+                                 // Every pet wears the colour above on its body.
+  uint32_t petColors[kPetSlots] = {};  // per part (PetSlot): kPetAuto or 0xRRGGBB + 1
+  uint8_t petEyes = 0;           // eye shape (miblo::EyeShape): 0 round, 1 big and shiny, 2 sleepy
   uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
   uint8_t petMin = 15;           // pet mode after this many idle minutes, 1..60 (the page keeps sleepMin later)
   char owner[64] = "";           // the owner's name, <= 20 characters (greetings); empty = unknown

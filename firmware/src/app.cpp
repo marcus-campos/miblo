@@ -275,7 +275,9 @@ static void applyConfig() {
   const int minute = minuteOfDay();
   updateBacklight(minute);
   updateWarmth(minute);
-  screens::setMascotStyle(ctx.cfg.mascot);
+  screens::MascotPaint paint{ctx.cfg.mascot, ctx.cfg.pet, ctx.cfg.petEyes};
+  memcpy(paint.slots, ctx.cfg.petColors, sizeof(paint.slots));
+  screens::setMascotPaint(paint);
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 
@@ -540,7 +542,7 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   const screens::DeskMood limitsMood = screens::deskMoodFor(ctx.snap, nowEpoch ? nowEpoch : ctx.snap.now);
   const bool tired = ctx.usageEverSeen &&
                      (limitsMood == screens::DeskMood::Worried || limitsMood == screens::DeskMood::Scared);
-  ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot);
+  ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot, ctx.cfg.pet);
   // Not roaming while the panel sleeps (displayOff is still last frame's): nobody visits a dark
   // screen, and a visit in progress ends the way it does when our human comes back.
   ctx.friends.update(now, ctx.cfg.friends && net::connected(),

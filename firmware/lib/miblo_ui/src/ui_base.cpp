@@ -2,6 +2,7 @@
 
 #include "miblo_mood.h"
 #include "miblo_rom.h"
+#include "ui_pet.h"
 #include "ui_screens.h"
 
 namespace screens {
@@ -96,61 +97,153 @@ uint8_t mascotPose(uint8_t frame) {
   return mibloRomByte((const char*)&kSeq[frame % 8]);
 }
 
-namespace {
-// Mascot drawing helper: design units (a 96x96 box centred on the anchor) scaled by
-// u = num / den with round-half-up.
-struct MascotPen {
-  ui::Canvas& g;
-  int cx, cy, num, den;
-  int s(int v) const {
-    const long n = 2L * v * num + den;  // floor(v * u + 0.5)
-    const long d = 2L * den;
-    return (int)(n >= 0 ? n / d : -((-n + d - 1) / d));
-  }
-  int w(int v) const { return s(v) < 1 ? 1 : s(v); }
-  void rect(int x, int y, int ww, int h, uint16_t c) { g.fillRect(cx + s(x), cy + s(y), w(ww), w(h), c); }
-  void rrect(int x, int y, int ww, int h, int r, uint16_t c) {
-    g.fillRoundRect(cx + s(x), cy + s(y), w(ww), w(h), s(r), c);
-  }
-  void circle(int x, int y, int r, uint16_t c) { g.fillCircle(cx + s(x), cy + s(y), w(r), c); }
-  void tri(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
-    g.fillTriangle(cx + s(x0), cy + s(y0), cx + s(x1), cy + s(y1), cx + s(x2), cy + s(y2), c);
-  }
-};
-}  // namespace
-
-// Mascot colours per style (see setMascotStyle): skin, inner ears, outlines/wrinkles, nose, and
-// the dark lines drawn on the skin (closed eyes, mouth), which must contrast with it.
-struct MascotColors {
-  uint16_t skin, earIn, line, nose, lid;
-};
+// Mascot colours per style (MascotColors, ui_pet.h).
 const MascotColors kMascotColors[] MIBLO_ROM = {
     {color::SKIN, color::EAR_IN, color::WRINKLE, color::NOSE, color::PUPIL},  // sphynx #f2b8a8
     {0xF282, 0xFD2F, 0xB1C1, 0xFD2F, color::PUPIL},                         // orange #f55110 (the logo's)
     {0x4A4A, 0x7ACC, 0x2946, 0xD3D1, 0xCE5A},                               // black (#4a4a55: shows on the dark bg)
     {0x9D16, 0xCD15, 0x5B2E, 0xB3D1, color::PUPIL},                         // grey #9aa3b0
 };
-static uint8_t g_style = 0;
 static uint8_t g_accessory = 0;
+static MascotPaint g_paint;
 
-void setMascotStyle(uint8_t style) {
-  g_style = style < sizeof(kMascotColors) / sizeof(kMascotColors[0]) ? style : 0;
+// One per miblo::Pet, in its order.
+static const PetDef* const kPets[] MIBLO_ROM = {&kPetCat,   &kPetDuck,    &kPetBug,  &kPetDaemon,
+                                                &kPetRobot, &kPetMug,     &kPetPenguin, &kPetCrab,
+                                                &kPetOwl,   &kPetDog,     &kPetAlien, &kPetRiff};
+static_assert(sizeof(kPets) / sizeof(kPets[0]) == miblo::kPetKinds, "one drawing per miblo::Pet");
+constexpr uint8_t kStyles = sizeof(kMascotColors) / sizeof(kMascotColors[0]);
+
+void setMascotPet(uint8_t pet) { g_paint.pet = miblo::knownPet(pet); }
+uint8_t mascotPet() { return g_paint.pet; }
+
+void setMascotStyle(uint8_t style) { g_paint.style = style < kStyles ? style : 0; }
+uint8_t mascotStyle() { return g_paint.style; }
+
+void setMascotPaint(const MascotPaint& p) {
+  g_paint = p;
+  setMascotStyle(p.style);
+  setMascotPet(p.pet);
+  if (g_paint.eyeShape >= miblo::kEyeShapes) g_paint.eyeShape = 0;
+  for (uint32_t& v : g_paint.slots) {
+    if (v > miblo::kPetColorMax) v = miblo::kPetAuto;
+  }
 }
-uint8_t mascotStyle() { return g_style; }
+MascotPaint mascotPaint() { return g_paint; }
+uint32_t mascotPaintHash() {
+  uint32_t h = miblo::hashInt(miblo::kHashSeed + 31, (uint32_t)g_paint.style | (uint32_t)g_paint.pet << 8 |
+                                           (uint32_t)g_paint.eyeShape << 16);
+  for (uint32_t v : g_paint.slots) h = miblo::hashInt(h, v);
+  return h;
+}
+
 void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
 uint8_t mascotAccessory() { return g_accessory; }
-// The current style's colours (copied out of flash).
-static MascotColors mascotColors() {
+
+// ---- Colours (integer only) ----
+static uint16_t rgb565(uint32_t rgb) {
+  return (uint16_t)(((rgb >> 8) & 0xF800) | ((rgb >> 5) & 0x07E0) | ((rgb >> 3) & 0x001F));
+}
+static void channels(uint16_t c, int& r, int& g, int& b) {
+  r = (c >> 11) << 3 | (c >> 13);
+  g = ((c >> 5) & 63) << 2 | ((c >> 9) & 3);
+  b = (c & 31) << 3 | ((c >> 2) & 7);
+}
+static uint16_t pack(int r, int g, int b) {
+  return rgb565((uint32_t)(r < 0 ? 0 : r > 255 ? 255 : r) << 16 | (uint32_t)(g < 0 ? 0 : g > 255 ? 255 : g) << 8 |
+                (uint32_t)(b < 0 ? 0 : b > 255 ? 255 : b));
+}
+uint8_t luma565(uint16_t c) {
+  int r, g, b;
+  channels(c, r, g, b);
+  return (uint8_t)((77 * r + 150 * g + 29 * b) >> 8);
+}
+// `a` moved towards `b` by num/16.
+static uint16_t mix(uint16_t a, uint16_t b, int num) {
+  int r0, g0, b0, r1, g1, b1;
+  channels(a, r0, g0, b0);
+  channels(b, r1, g1, b1);
+  return pack(r0 + (r1 - r0) * num / 16, g0 + (g1 - g0) * num / 16, b0 + (b1 - b0) * num / 16);
+}
+constexpr uint16_t kPink = 0xFC75;     // #ff8ca8: where inner ears and noses lean
+constexpr uint16_t kLightLid = 0xCE5A;  // the lines on a dark face (the black preset's)
+constexpr uint8_t kDarkSkin = 110;      // a skin darker than this gets light lines
+
+MascotColors mascotColorsFor(uint32_t rgb) {
   MascotColors mc;
-  mibloRomCopy(&mc, &kMascotColors[g_style], sizeof(mc));
+  mc.skin = rgb565(rgb);
+  const uint8_t y = luma565(mc.skin);
+  const bool dark = y < kDarkSkin;
+  // Outlines: darker on a light body; lighter on a dark one, so its edge still shows on the BG.
+  mc.line = dark ? mix(mc.skin, color::WHITE, 6) : mix(mc.skin, color::BLACK, y > 200 ? 8 : 6);
+  mc.earIn = mix(mc.skin, kPink, 8);
+  mc.nose = mix(mc.skin, kPink, 11);
+  mc.lid = dark ? kLightLid : color::PUPIL;
   return mc;
 }
-uint16_t mascotSkin() { return mascotColors().skin; }
+
+// `c` moved away from `bg` until their brightness differs by 48 or more (an Auto colour that
+// would vanish into the body).
+static uint16_t apart(uint16_t c, uint16_t bg) {
+  const int d = (int)luma565(c) - (int)luma565(bg);
+  if (d >= 48 || d <= -48) return c;
+  return luma565(bg) >= 128 ? mix(c, color::BLACK, 9) : mix(c, color::WHITE, 9);
+}
+
+PetColors petColors(const PetDef& pet) {
+  MascotColors base;
+  mibloRomCopy(&base, &kMascotColors[g_paint.style], sizeof(base));
+  const uint32_t* slot = g_paint.slots;
+  if (slot[miblo::kSlotBody] != miblo::kPetAuto) base = mascotColorsFor(slot[miblo::kSlotBody] - 1);
+  PetColors pc;
+  pc.skin = base.skin;
+  pc.earIn = base.earIn;
+  pc.line = base.line;
+  pc.nose = base.nose;
+  pc.lid = base.lid;
+  pc.eye = pet.eye;
+  pc.pupil = color::PUPIL;
+  pc.accent = pet.accent;
+  pc.eyeShape = g_paint.eyeShape;
+  // The eye bags: subtle but visible on every colour (the presets' own; a custom body's lines).
+  pc.bag = slot[miblo::kSlotBody] != miblo::kPetAuto ? base.line
+           : g_paint.style == 1                      ? (uint16_t)0x9900
+           : g_paint.style == 2                      ? (uint16_t)0x7BCF
+                                                     : base.line;
+  // Readability: an Auto eye, nose or accent that would vanish into a custom body or another
+  // pet's body moves away from it (the cat on the presets stays exactly as it always was).
+  if (slot[miblo::kSlotBody] != miblo::kPetAuto || g_paint.pet != 0) {
+    if (slot[miblo::kSlotEye] == miblo::kPetAuto) pc.eye = apart(pc.eye, pc.skin);
+    if (slot[miblo::kSlotNose] == miblo::kPetAuto) pc.nose = apart(pc.nose, pc.skin);
+    if (slot[miblo::kSlotAccent] == miblo::kPetAuto) pc.accent = apart(pc.accent, pc.skin);
+  }
+  // The user's own picks, as they are.
+  uint16_t* const target[miblo::kPetSlots] = {&pc.skin, &pc.line, &pc.earIn, &pc.nose, &pc.lid, &pc.eye, &pc.accent};
+  for (uint8_t i = 0; i < miblo::kPetSlots; i++) {
+    if (slot[i] != miblo::kPetAuto) *target[i] = rgb565(slot[i] - 1);
+  }
+  if (slot[miblo::kSlotLine] != miblo::kPetAuto) pc.bag = pc.line;
+  return pc;
+}
+
+static const PetDef* currentPet() {
+  const PetDef* pet;
+  mibloRomCopy(&pet, &kPets[g_paint.pet], sizeof(pet));
+  return pet;
+}
+uint16_t mascotSkin() {
+  PetDef def;
+  mibloRomCopy(&def, currentPet(), sizeof(def));
+  return petColors(def).skin;
+}
 
 // Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
 // even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
 // `phase` moves the Valentine's hearts (it changes with the look).
-static void drawHat(MascotPen& d, int x, int b, uint8_t phase) {
+// `at`: where they sit on the pet (hats down by hatDy, glasses on its eyes).
+// `dark`: the face is dark (light glasses).
+static void drawHat(MascotPen& d, int x, int b0, uint8_t phase, const PetAnchors& at, bool dark) {
+  const int b = b0 + at.hatDy;
   switch (g_accessory) {
     case 1:  // Santa hat: red, white brim and pompom, tipped to the right
       d.tri(-15 + x, -18 + b, 15 + x, -18 + b, 11 + x, -40 + b, color::RED);
@@ -178,17 +271,29 @@ static void drawHat(MascotPen& d, int x, int b, uint8_t phase) {
       }
       break;
     case 5: {  // nerdy square glasses over the eyes: 2-unit rims, a bridge and the temples
-      const uint16_t rim = g_style == 2 ? color::MUTED : color::PUPIL;  // light rims on the black cat
-      for (int e = -14; e <= 14; e += 28) {
-        d.rect(e - 9 + x, -5 + b, 18, 2, rim);
-        d.rect(e - 9 + x, 15 + b, 18, 2, rim);
-        d.rect(e - 11 + x, -3 + b, 2, 18, rim);
-        d.rect(e + 9 + x, -3 + b, 2, 18, rim);
-        d.rect(e - 8 + x, -1 + b, 2, 4, color::WHITE);  // a glint on the lens
+      const uint16_t rim = dark ? color::MUTED : color::PUPIL;  // light rims on a dark face
+      const int g = b0 + at.eyeY - 6;  // on the pet's eyes, wherever its hats go
+      if (at.eyeDx == 0) {  // one eye: one wide lens, no bridge
+        d.rect(-14 + x, -5 + g, 28, 2, rim);
+        d.rect(-14 + x, 15 + g, 28, 2, rim);
+        d.rect(-16 + x, -3 + g, 2, 18, rim);
+        d.rect(14 + x, -3 + g, 2, 18, rim);
+        d.rect(-13 + x, -1 + g, 2, 4, color::WHITE);
+        d.rect(-32 + x, 1 + g, 16, 2, rim);
+        d.rect(16 + x, 1 + g, 16, 2, rim);
+        break;
       }
-      d.rect(-3 + x, 1 + b, 6, 2, rim);
-      d.rect(-32 + x, 1 + b, 7, 2, rim);
-      d.rect(25 + x, 1 + b, 7, 2, rim);
+      const int ex = at.eyeDx;
+      for (int e = -ex; e <= ex; e += 2 * ex) {
+        d.rect(e - 9 + x, -5 + g, 18, 2, rim);
+        d.rect(e - 9 + x, 15 + g, 18, 2, rim);
+        d.rect(e - 11 + x, -3 + g, 2, 18, rim);
+        d.rect(e + 9 + x, -3 + g, 2, 18, rim);
+        d.rect(e - 8 + x, -1 + g, 2, 4, color::WHITE);  // a glint on the lens
+      }
+      d.rect(-ex + 11 + x, 1 + g, 2 * ex - 22, 2, rim);  // the bridge
+      d.rect(-32 + x, 1 + g, 21 - ex, 2, rim);  // the temples
+      d.rect(ex + 11 + x, 1 + g, 21 - ex, 2, rim);
       break;
     }
     case 6: {  // hearts floating around the head; they bob with each change of look
@@ -221,151 +326,41 @@ static void drawTie(MascotPen& d, int x, int b) {
 // outside the head's rounded corner) and a cup on each side. Under any hat.
 static const int8_t kBand[][2] MIBLO_ROM = {{8, -22}, {13, -22}, {17, -20}, {21, -19},
                                             {25, -16}, {28, -13}, {31, -9}, {32, -5}};
-static void drawHeadphones(MascotPen& d, int x, int b) {
+// `wide`: the cups (and the band's ends with them) that much further out.
+static void drawHeadphones(MascotPen& d, int x, int b, int wide) {
   d.rect(-13 + x, -24 + b, 26, 5, color::DIM);
   for (size_t i = 0; i < sizeof(kBand) / sizeof(kBand[0]); i++) {
     int8_t p[2];
     mibloRomCopy(p, kBand[i], sizeof(p));
-    d.circle(-p[0] + x, p[1] + b, 2, color::DIM);
-    d.circle(p[0] + x, p[1] + b, 2, color::DIM);
+    const int px = p[0] + wide * (int)i / (int)(sizeof(kBand) / sizeof(kBand[0]) - 1);
+    d.circle(-px + x, p[1] + b, 2, color::DIM);
+    d.circle(px + x, p[1] + b, 2, color::DIM);
   }
   for (int s = -1; s <= 1; s += 2) {
     const int o = s < 0 ? -1 : 0;  // mirror a w-unit-wide piece: left edge s * a + o * w
-    d.rrect(s * 30 + o * 9 + x, -7 + b, 9, 19, 4, color::DIM);
-    d.rect(s * 30 + o * 2 + x, -4 + b, 2, 13, color::FAINT);  // the cushion against the head
+    d.rrect(s * (30 + wide) + o * 9 + x, -7 + b, 9, 19, 4, color::DIM);
+    d.rect(s * (30 + wide) + o * 2 + x, -4 + b, 2, 13, color::FAINT);  // the cushion against the head
   }
 }
 
-// The cat itself. `desk` adds what only the big Desk mascot has: a table edge, front paws and
-// the extras (sweat, alarm, zzz, open mouth).
-static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk, bool table = true,
-                    bool box = true) {
-  const MascotColors mc = mascotColors();
+// Every mascot: the pet (ui_pet.h) and what all pets share around it. `desk` adds what only the
+// big Desk mascot has: a table edge, front paws and the extras (sweat, alarm, zzz, open mouth).
+static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk, bool table = true,
+                       bool box = true) {
+  PetDef def;
+  mibloRomCopy(&def, currentPet(), sizeof(def));
+  const PetCtx c{d, k, petColors(def), k.dx, k.dy, detail, desk};
   const int x = k.dx;
   const int b = k.dy;
   if (box) d.rect(-48, -48, 96, 96, color::BG);
   if (desk && table) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
-  d.tri(-36 + x, -42 + b, -32 + x, -4 + b, -8 + x, -18 + b, mc.skin);  // ears
-  d.tri(36 + x, -42 + b, 32 + x, -4 + b, 8 + x, -18 + b, mc.skin);
-  if (innerEars) {
-    d.tri(-31 + x, -33 + b, -28 + x, -10 + b, -14 + x, -17 + b, mc.earIn);
-    d.tri(31 + x, -33 + b, 28 + x, -10 + b, 14 + x, -17 + b, mc.earIn);
-  }
-  d.rrect(-32 + x, -20 + b, 64, 52, 24, mc.skin);  // head
-  if (desk && (k.extras & kFluffed)) {  // fur standing up on both cheeks
-    for (int s = -1; s <= 1; s += 2) {
-      d.tri(s * 31 + x, -8 + b, s * 40 + x, -2 + b, s * 31 + x, 4 + b, mc.skin);
-      d.tri(s * 31 + x, 6 + b, s * 41 + x, 12 + b, s * 31 + x, 18 + b, mc.skin);
-    }
-  }
-  switch (k.eyes) {
-    case Eyes::Closed:
-      d.rect(-22 + x, 5 + b, 16, 3, mc.lid);
-      d.rect(6 + x, 5 + b, 16, 3, mc.lid);
-      break;
-    case Eyes::Happy:  // "^ ^": a chevron cut out of a lid-coloured triangle
-      for (int e = -14; e <= 14; e += 28) {
-        d.tri(e - 9 + x, 10 + b, e + x, 1 + b, e + 9 + x, 10 + b, mc.lid);
-        d.tri(e - 5 + x, 10 + b, e + x, 5 + b, e + 5 + x, 10 + b, mc.skin);
-      }
-      break;
-    case Eyes::Wide:  // big irises, tiny pupils
-      d.circle(-14 + x, 6 + b, 10, color::EYE_GREEN);
-      d.circle(14 + x, 6 + b, 10, color::EYE_GREEN);
-      d.circle(-14 + x + k.gx, 6 + b + k.gy, 3, color::PUPIL);
-      d.circle(14 + x + k.gx, 6 + b + k.gy, 3, color::PUPIL);
-      break;
-    case Eyes::Open:
-    case Eyes::Sleepy: {
-      const int cross = (k.extras & kCrossEyed) ? 3 : 0;
-      d.circle(-14 + x, 6 + b, 8, color::EYE_GREEN);
-      d.circle(14 + x, 6 + b, 8, color::EYE_GREEN);
-      d.circle(-14 + x + k.gx + cross, 6 + b + k.gy, 4, color::PUPIL);
-      d.circle(14 + x + k.gx - cross, 6 + b + k.gy, 4, color::PUPIL);
-      if (k.eyes == Eyes::Sleepy) {  // heavy lids over the top half
-        d.rect(-23 + x, -3 + b, 18, 8, mc.skin);
-        d.rect(5 + x, -3 + b, 18, 8, mc.skin);
-        d.rect(-22 + x, 4 + b, 16, 2, mc.lid);
-        d.rect(6 + x, 4 + b, 16, 2, mc.lid);
-      }
-      if (k.extras & kGrumpy) {  // lids slanting down towards the nose
-        d.tri(-23 + x, -3 + b, -5 + x, -3 + b, -5 + x, 5 + b, mc.skin);
-        d.tri(23 + x, -3 + b, 5 + x, -3 + b, 5 + x, 5 + b, mc.skin);
-      }
-      break;
-    }
-    case Eyes::Dizzy:  // hypnotised: rings in the eyes
-      for (int e = -14; e <= 14; e += 28) {
-        d.circle(e + x, 6 + b, 8, color::EYE_GREEN);
-        d.circle(e + x, 6 + b, 6, color::PUPIL);
-        d.circle(e + x, 6 + b, 4, color::EYE_GREEN);
-        d.circle(e + x, 6 + b, 2, color::PUPIL);
-      }
-      break;
-  }
-  // Tired (8 h of Claude working today, or kEyeBags): faint bags under the eyes.
-  if ((k.extras & kEyeBags) || catMood() == (uint8_t)miblo::CatMood::Tired) {
-    const int low = k.eyes == Eyes::Wide ? 2 : 0;
-    // Subtle but visible on every colour: the black cat's line colour is darker than its skin.
-    const uint16_t bag = g_style == 1 ? 0x9900 : g_style == 2 ? 0x7BCF : mc.line;
-    for (int e = -14; e <= 14; e += 28) {
-      d.rect(e - 6 + x, 16 + low + b, 2, 1, bag);
-      d.rect(e - 4 + x, 17 + low + b, 8, 1, bag);
-      d.rect(e + 4 + x, 16 + low + b, 2, 1, bag);
-    }
-  }
-  d.rrect(-4 + x, 17 + b, 8, 5, 2, mc.nose);
-  if (k.extras & kHeadphones) drawHeadphones(d, x, b);
-  if (mascotTie()) drawTie(d, x, b);
-  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64));
+  def.head(c);
+  if (k.extras & kHeadphones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
+  if (mascotTie()) drawTie(d, x, b + def.at.neckDy);
+  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64), def.at,
+          luma565(c.mc.skin) < kDarkSkin);
   if (!desk) return;
-  if (k.extras & kMouthO) d.circle(x, 26 + b, 3, mc.lid);
-  if (k.extras & kMouthWide) {  // a yawn or a sneeze
-    d.rrect(-7 + x, 22 + b, 14, 11, 5, mc.lid);
-    d.rect(-4 + x, 28 + b, 8, 4, mc.earIn);
-  }
-  // A paw: a skin pad with a darker outline and toe lines, so it reads as a paw even over the
-  // (skin) head.
-  auto paw = [&](int px, int py, int pw, int ph, int r) {
-    d.rrect(px + x - 1, py + b - 1, pw + 2, ph + 2, r + 1, mc.line);
-    d.rrect(px + x, py + b, pw, ph, r, mc.skin);
-    for (int t = 1; t <= 2; t++) d.rect(px + x + pw * t / 3, py + b + 1, 1, ph / 2, mc.line);
-  };
-  switch (k.paws) {
-    case Paws::Down:
-      paw(-26, 28, 16, 11, 5);
-      paw(10, 28, 16, 11, 5);
-      break;
-    case Paws::ReachLeft:  // batting at the left gauge
-      paw(-46, 24, 16, 11, 5);
-      paw(10, 28, 16, 11, 5);
-      break;
-    case Paws::ReachRight:
-      paw(-26, 28, 16, 11, 5);
-      paw(30, 24, 16, 11, 5);
-      break;
-    case Paws::Cover:  // can't look: both paws over the eyes, all of them
-      paw(-28, -5, 24, 21, 6);
-      paw(4, -5, 24, 21, 6);
-      break;
-    case Paws::Up:  // stretching: both paws up beside the ears
-      paw(-46, -34, 16, 11, 5);
-      paw(30, -34, 16, 11, 5);
-      break;
-    case Paws::Lick:  // the left paw raised under the mouth, beside the tongue (over the mouth it read as a snout)
-      paw(-17, 20, 14, 17, 5);
-      paw(10, 28, 16, 11, 5);
-      break;
-    case Paws::TapLeft:  // the left paw lifted (typing, playing keys)
-      paw(-26, 23, 16, 11, 5);
-      paw(10, 28, 16, 11, 5);
-      break;
-    case Paws::TapRight:
-      paw(-26, 28, 16, 11, 5);
-      paw(10, 23, 16, 11, 5);
-      break;
-  }
-  if (k.extras & kTongue) d.rrect(-3 + x, 22 + b, 6, 6, 2, mc.earIn);
+  def.front(c);
   if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming
     d.rect(29 + x, 6 + b, 2, 5, color::MUTED);
     d.rect(34 + x, 4 + b, 2, 6, color::MUTED);
@@ -415,7 +410,7 @@ constexpr int kLogoW = 22;
 constexpr int kLogoH = 20;
 
 void logo(int cx, int cy, int size) {
-  const uint16_t c = mascotSkin();
+  const uint16_t c = mascotSkin();  // Miblo's logo is always the cat, in the mascot's colour
   const int px = size / kLogoW < 1 ? 1 : size / kLogoW;  // whole pixels: crisp at any scale
   const int left = cx - kLogoW * px / 2;
   const int top = cy - kLogoH * px / 2;
@@ -447,12 +442,12 @@ void mascot(int cx, int cy, uint8_t frame, bool small) {
   if (pose == 1) k.eyes = Eyes::Closed;
   if (pose == 2) k.dy = -4;
   if (pose == 3) k.gx = 3;
-  drawCat(d, k, !small, false);
+  drawMascot(d, k, !small, false);
 }
 
 void deskMascot(int cx, int cy, const MascotLook& look, int half, bool table, bool box) {
   MascotPen d{*g_canvas, cx, cy, Sz(half), 48};  // the 96-unit box drawn exactly 2 * Sz(half) wide
-  drawCat(d, look, true, true, table, box);
+  drawMascot(d, look, true, true, table, box);
 }
 
 void qr(const char* payload, int x, int y, int scale) {

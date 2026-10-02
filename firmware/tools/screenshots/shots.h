@@ -60,5 +60,6 @@ void renderDayRhythm(miblo::Lang L);  // wellness, end of the day, Monday recap
 void renderNotes(miblo::Lang L);      // say, reminders, timer, countdown, find
 void renderCues(miblo::Lang L);       // strong cue, status frame
 void renderLook(miblo::Lang L);       // special days, meeting tie, extras
+void renderPets(miblo::Lang L);       // every pet: looks, dress, colours, main screens (70-pet-*)
 
 }  // namespace shots

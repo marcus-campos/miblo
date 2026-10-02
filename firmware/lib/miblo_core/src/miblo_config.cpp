@@ -1,5 +1,7 @@
 #include "miblo_config.h"
 
+#include <stdio.h>
+
 #include <string.h>
 
 #include "miblo_tz.h"
@@ -82,6 +84,32 @@ static bool oneOf(JsonVariantConst v, uint8_t& out, int a, int b, int c, int d =
   const int x = v.as<int>();
   if (x < 0 || (x != a && x != b && x != c && x != d)) return false;
   out = (uint8_t)x;
+  return true;
+}
+
+// The pet's colour slots: kPetSlots comma-separated entries, each "" (kPetAuto) or "rrggbb".
+static bool petColors(JsonVariantConst v, uint32_t (&out)[kPetSlots]) {
+  if (!v.is<const char*>()) return false;
+  const char* p = v.as<const char*>();
+  uint32_t next[kPetSlots];
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    if (i && *p++ != ',') return false;
+    if (*p == ',' || *p == 0) {
+      next[i] = kPetAuto;
+      continue;
+    }
+    uint32_t rgb = 0;
+    for (int d = 0; d < 6; d++, p++) {
+      const char c = *p;
+      const int n = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10
+                    : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+      if (n < 0) return false;
+      rgb = rgb << 4 | (uint32_t)n;
+    }
+    next[i] = rgb + 1;
+  }
+  if (*p) return false;
+  memcpy(out, next, sizeof(next));
   return true;
 }
 
@@ -208,6 +236,12 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn16(v, 0, 1439, next.blueTo);
     } else if (strcmp(k, "mascot") == 0) {
       ok = intIn(v, 0, kMascotStyles - 1, next.mascot);
+    } else if (strcmp(k, "pet") == 0) {
+      ok = intIn(v, 0, kPetKinds - 1, next.pet);
+    } else if (strcmp(k, "petColors") == 0) {
+      ok = petColors(v, next.petColors);
+    } else if (strcmp(k, "petEyes") == 0) {
+      ok = intIn(v, 0, kEyeShapes - 1, next.petEyes);
     } else if (strcmp(k, "sleepMin") == 0) {
       ok = intIn16(v, 0, 240, next.sleepMin);
     } else if (strcmp(k, "petMin") == 0) {
@@ -301,6 +335,16 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["blueFrom"] = cfg.blueFrom;
   out["blueTo"] = cfg.blueTo;
   out["mascot"] = cfg.mascot;
+  out["pet"] = cfg.pet;
+  char colors[kPetSlots * 7];  // "rrggbb," per slot (the last one's comma is the NUL)
+  char* w = colors;
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    if (i) *w++ = ',';
+    if (cfg.petColors[i] != kPetAuto) w += snprintf(w, 7, "%06lx", (unsigned long)(cfg.petColors[i] - 1));
+  }
+  *w = 0;
+  out["petColors"] = colors;  // copied into the document
+  out["petEyes"] = cfg.petEyes;
   out["sleepMin"] = cfg.sleepMin;
   out["petMin"] = cfg.petMin;
   if (includePrivate) {

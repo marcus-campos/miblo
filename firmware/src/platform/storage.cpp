@@ -86,14 +86,19 @@ bool loadConfig(miblo::Config& cfg) {
   miblo::Config loaded;
   // A time zone saved by an older firmware that today's rules reject must not cost the user
   // every other setting: drop just that field (back to UTC; the settings page re-detects it), and
-  // the same for the second clock's zone (back to off). Both may be rejected: up to two retries.
-  for (int attempt = 0;; attempt++) {
+  // the same for the second clock's zone (back to off) and for a pet, its colours or eye shape
+  // saved by a newer firmware that this one does not draw (back to the cat, Auto, round).
+  static const char* const kDroppable[] = {"tz", "tz2", "pet", "petColors", "petEyes"};
+  for (size_t attempt = 0;; attempt++) {
     const char* bad = nullptr;
     if (miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), &bad)) break;
-    if (attempt == 2 || !bad) return false;
-    if (strcmp(bad, "tz") == 0) doc.remove("tz");
-    else if (strcmp(bad, "tz2") == 0) doc.remove("tz2");
-    else return false;
+    if (attempt == sizeof(kDroppable) / sizeof(kDroppable[0]) || !bad) return false;
+    const char* drop = nullptr;
+    for (const char* k : kDroppable) {
+      if (strcmp(bad, k) == 0) drop = k;
+    }
+    if (!drop) return false;
+    doc.remove(drop);
     loaded = miblo::Config();
   }
   miblo::restoreStored(loaded, doc.as<JsonObjectConst>());

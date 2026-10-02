@@ -12,6 +12,7 @@
 #include "miblo_focus.h"
 #include "miblo_format.h"
 #include "miblo_friends.h"
+#include "miblo_headers.h"
 #include "miblo_info.h"
 #include "miblo_limits.h"
 #include "miblo_mdns.h"
@@ -793,6 +794,43 @@ void fuzzHttp(const uint8_t* d, size_t n) {
   char small[3];
   FUZZ_CHECK(checkRequestHeaders(hdr.p, hdr.n, small, sizeof(small)) == v, "verdict depends on the buffer");
   FUZZ_CHECK(strlen(small) < sizeof(small), "small boundary overflow");
+  // The read-ahead: the input arrives in segments (sizes from its first byte); whatever the
+  // gather ends with, the bytes replay unchanged and in order, never more than the cap at once.
+  struct Segmented : ByteSource {
+    const char* p;
+    size_t n, pos = 0, seg;
+    uint32_t now = 0;
+    size_t available() override {
+      const size_t arrived = seg * (now + 1);
+      return (arrived < n ? arrived : n) - pos;
+    }
+    size_t read(char* dst, size_t k) override {
+      const size_t a = available();
+      if (k > a) k = a;
+      memcpy(dst, p + pos, k);
+      pos += k;
+      return k;
+    }
+    bool connected() override { return true; }
+    uint32_t nowMs() override { return now; }
+    void wait() override { now += 7; }
+  } src;
+  src.p = hdr.p;
+  src.n = hdr.n;
+  src.seg = n ? 1 + d[0] * 4 : 1;
+  HeaderBuffer ahead;
+  const GatherResult r = gatherHeaders(ahead, src, kHeaderWaitMs);
+  FUZZ_CHECK(ahead.pending() <= HeaderBuffer::kCap, "read ahead %zu", ahead.pending());
+  FUZZ_CHECK(ahead.pending() == src.pos, "read ahead %zu of %zu read", ahead.pending(), src.pos);
+  if (r == GatherResult::Ready) {
+    fuzz::reached();
+    FUZZ_CHECK(ahead.verdict() != HeaderVerdict::Incomplete, "ready without a block");
+  }
+  FUZZ_CHECK(ahead.pending() == 0 || memcmp(ahead.data(), hdr.p, ahead.pending()) == 0, "replay differs");
+  HeaderBuffer copy(ahead);
+  FUZZ_CHECK(copy.pending() == ahead.pending(), "copy");
+  while (ahead.pending()) ahead.readByte();
+  FUZZ_CHECK(!ahead.allocated(), "not freed once drained");
   CStr s(d, n);
   for (size_t cap : {(size_t)1, (size_t)8, (size_t)33, (size_t)64}) {
     char* tok = static_cast<char*>(malloc(cap));

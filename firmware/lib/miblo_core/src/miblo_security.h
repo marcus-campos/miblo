@@ -17,7 +17,7 @@ bool constantTimeEquals(const char* a, const char* b);
 bool findContentLength(const char* headers, size_t len, uint32_t& out);
 
 // What ESP8266WebServer will make of a request's header block, judged from raw header bytes (the
-// first TCP segment, peeked before the server reads it). The scan follows the server's own reading
+// first TCP segment, or the block read ahead: miblo_headers.h). The scan follows the server's own reading
 // exactly: a line ends at '\r' and the rest up to '\n' is skipped; an empty line, or a line
 // without ':', ends the headers. For every body method the server parses a multipart/... body with
 // _parseForm, which puts the boundary on the stack (a VLA): an unbounded boundary is a crash.

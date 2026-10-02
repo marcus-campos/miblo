@@ -150,7 +150,7 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
 
 // Second layer for the human pages. The server hook installed in begin() refuses most POST
 // bodies over kMaxPostBody before ESP8266WebServer buffers them (from the Content-Length in the
-// first TCP segment); by the time a handler runs the body is already in RAM, so this check
+// header block); by the time a handler runs the body is already in RAM, so this check
 // enforces the pages' tighter limit. The
 // settings page's worst-case save is ~910 B (every field at its longest, CJK names): 1.5 KiB
 // leaves room for the next fields without a large transient copy.
@@ -1283,7 +1283,7 @@ static bool captiveRedirect() {
 #if defined(ESP8266)
 // A reply from the hook, before the server read the headers: JSON body, then the connection
 // closes. `status` and `bodyFmt` are in flash; `bodyFmt` may take one unsigned argument.
-static ESP8266WebServer::ClientFuture refuse(WiFiClient* client, PGM_P status, PGM_P bodyFmt, unsigned arg = 0) {
+static WebServerT::ClientFuture refuse(WiFiClient* client, PGM_P status, PGM_P bodyFmt, unsigned arg = 0) {
   char st[28];
   char body[48];
   strncpy_P(st, status, sizeof(st) - 1);
@@ -1294,66 +1294,77 @@ static ESP8266WebServer::ClientFuture refuse(WiFiClient* client, PGM_P status, P
              PSTR("HTTP/1.1 %s\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %u\r\n\r\n%s"),
              st, (unsigned)strlen(body), body);
   client->print(out);
-  return ESP8266WebServer::CLIENT_MUST_STOP;
+  return WebServerT::CLIENT_MUST_STOP;
 }
 
 // First layer for request bodies. Runs right after the request line, before ESP8266WebServer
-// reads the headers, and peeks at the header bytes already received without consuming them.
+// reads the headers.
 //
 // Multipart guard. For POST, PUT, PATCH and DELETE alike the server parses a multipart/... body
 // with _parseForm, which puts `4 + boundary length` bytes on the 4 KB loop stack (a VLA,
-// Parsing-impl.h): a multi-KB boundary from any LAN client crashes the unit. So, before the server
-// sees anything:
-//   - the whole header block must be in the peeked bytes: headers it cannot see could carry a
-//     Content-Type (the last one wins in the server), so they cannot be judged. The peek is the
-//     first TCP segment only (lwIP low memory: MSS 536 B, minus the request line); real clients
-//     (the plugin, ESP8266HTTPClient, browsers on these pages' fetch()) send ~250-480 B of headers
-//     in one write. A browser that sends more (very long cookies or Accept-Language for this
-//     address) is refused with 400 "headers too large".
-//   - a multipart body is accepted only on POST /update while an upload window is open
-//     (ota::uploadArmed: the update code is on the screen), and only with one Content-Type whose
-//     boundary is 1..70 characters (RFC 2046) as the server will read it.
-// Residual risk: anyone on the LAN can open a window (POST /update/open, which lights the code on
-// the screen for 5 min), so the window narrows the exposure but the boundary check is what keeps
-// _parseForm's stack array bounded. The price is functional: a client whose headers do not fit the
-// first segment cannot POST at all (measured: Node's fetch sends 256 B of headers).
+// Parsing-impl.h): a multi-KB boundary from any LAN client crashed the unit. So the hook judges
+// the WHOLE header block first, read the way the server will read it (miblo::checkRequestHeaders;
+// the last Content-Type wins there):
+//   - usually the first TCP segment holds it, judged in place (no copy);
+//   - otherwise (a browser's ~1.1 KB of headers spans 2-3 segments of 536 B) the connection reads
+//     it ahead into a 2 KB heap buffer (LookaheadClient), waiting at most kHeaderWaitMs, and
+//     replays those bytes to the server unchanged. No complete block within 2 KB → 431; not
+//     within the wait, or the peer closed → 400; no memory for the buffer → 503.
+// A multipart body then passes only as POST /update while an upload window is open
+// (ota::uploadArmed: the update code is active) and with one Content-Type whose boundary is 1..70
+// characters (RFC 2046), else 400 (429 while the update code is locked out). See
+// miblo::decideBody.
+// Residual: anyone on the LAN can open a window (POST /update/open lights the code on the screen
+// for 5 min); the boundary limit is what keeps _parseForm's stack array bounded.
 //
 // Size guard (best effort). Refuses non-multipart bodies over kMaxPostBody (largest Content-Length
 // if duplicated) before the server buffers them in RAM; the handler checks remain as a second
 // layer.
-static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* client,
-                                                     ESP8266WebServer::ContentTypeFunction) {
+static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
+                                              WebServerT::ContentTypeFunction) {
+  using miblo::BodyAction;
   if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
-    return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;  // the server parses no body for these
+    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the server parses no body for these
   }
-  const char* peek = client->peekBuffer();
-  const size_t peekLen = client->peekAvailable();
+  // The server passes its own connection, whose type is WebServerT::ClientType.
+  auto* client = static_cast<LookaheadClient*>(wifiClient);
   static const char kBad[] PROGMEM = "400 Bad Request";
-  const miblo::HeaderVerdict verdict = miblo::checkRequestHeaders(peek, peekLen);
-  switch (verdict) {
-    case miblo::HeaderVerdict::Incomplete:
-      return refuse(client, kBad, PSTR("{\"error\":\"headers too large\"}"));
-    case miblo::HeaderVerdict::Malformed:
-      return refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
-    case miblo::HeaderVerdict::Multipart:
-    case miblo::HeaderVerdict::BadMultipart: {
-      if (method != F("POST") || url != F("/update")) return refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
-      if (!ota::uploadArmed(*client)) {
-        const uint32_t now = millis();
-        if (ctx.presence.locked(now)) {  // too many wrong codes: say so, as the upload itself would
-          return refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
-                        (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
-        }
-        return refuse(client, kBad, PSTR("{\"error\":\"update not open\"}"));
-      }
-      if (verdict != miblo::HeaderVerdict::Multipart) return refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
-      return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;  // streamed to flash by the upload handler
+  miblo::HeaderVerdict verdict = miblo::checkRequestHeaders(client->peekBuffer(), client->peekAvailable());
+  if (verdict == miblo::HeaderVerdict::Incomplete) {
+    if (!client->hasAhead() && heapLowForRequest(miblo::HeaderBuffer::kCap)) {
+      return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
     }
-    case miblo::HeaderVerdict::Plain:
-      break;
+    const BodyAction gathered = miblo::decideGather(client->gatherHeaders(miblo::kHeaderWaitMs));
+    if (gathered == BodyAction::HeadersTooLarge) {
+      return refuse(client, PSTR("431 Request Header Fields Too Large"), PSTR("{\"error\":\"headers too large\"}"));
+    }
+    if (gathered == BodyAction::HeadersIncomplete) return refuse(client, kBad, PSTR("{\"error\":\"incomplete headers\"}"));
+    if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
+    verdict = client->aheadVerdict();
   }
+  const uint32_t now = millis();
+  const bool multipart =
+      verdict == miblo::HeaderVerdict::Multipart || verdict == miblo::HeaderVerdict::BadMultipart;
+  const bool isUpload = method == F("POST") && url == F("/update");
+  const bool armed = multipart && isUpload && ota::uploadArmed(*client);
+  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(now))) {
+    case BodyAction::Continue:
+      return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the firmware upload, streamed to flash
+    case BodyAction::NotOpen:
+      return refuse(client, kBad, PSTR("{\"error\":\"update not open\"}"));
+    case BodyAction::Locked:  // too many wrong codes: say so, as the upload itself would
+      return refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
+                    (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+    case BodyAction::BadBoundary:
+      return refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
+    case BodyAction::CheckSize:
+      break;
+    default:  // BadRequest (HeadersIncomplete cannot happen with a judged block)
+      return refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
+  }
+  // The header block is now complete in peekBuffer() (in place, or the read-ahead bytes).
   uint32_t len = 0;
-  const bool haveLen = miblo::findContentLength(peek, peekLen, len);
+  const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);
   if (haveLen && len > kMaxPostBody) {
     return refuse(client, PSTR("413 Payload Too Large"), PSTR("{\"error\":\"too large\"}"));
   }
@@ -1363,7 +1374,7 @@ static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const 
   if (haveLen && len > 512 && heapLowForRequest(len)) {
     return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
   }
-  return ESP8266WebServer::CLIENT_REQUEST_CAN_CONTINUE;
+  return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
 }
 #endif
 

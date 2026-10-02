@@ -283,6 +283,8 @@ def main():
         (r'TableHandler::upload', g.matching(r'^void ota::upload\(')),
         (r'::_handleRequest\(', g.matching(r'TableHandler::handle\(') | g.matching(r'^web::begin.*<lambda')),
         (r'::_parseForm\(', g.matching(r'TableHandler::upload\(')),
+        # The request hook (web.cpp, server.addHook), called through a std::function.
+        (r'::_parseRequest\(', g.matching(r'web::limitPostBody\(')),
         # The wrappers' layering (app.cpp, ui_daily_state.cpp): GuardCanvas > ShiftCanvas > TftCanvas.
         (r'GuardCanvas::', shift_canvas | tft_canvas),
         (r'ShiftCanvas::', tft_canvas),

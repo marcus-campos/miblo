@@ -283,18 +283,24 @@ notes.
       denies goes back to running with no alert; a turn ended by an API error stops showing
       running.
 26. **Multipart guard (security):** a multipart body is only ever the firmware upload, and only
-    while an update is open. From a computer on the same network, with no update open (no code on
-    the screen), each of these gets `400` at once and the gadget keeps running (no reboot, the
-    screen does not stall):
-    - `curl -i -F x=1 http://<ip>/update` → `{"error":"update not open"}`;
-    - `curl -i -F x=1 http://<ip>/settings` (and `-X PUT`) → `{"error":"bad request"}`;
-    - `curl -i -F x=1 -H "Content-Type: multipart/form-data; boundary=$(head -c 3000 /dev/zero | tr '\0' a)" http://<ip>/update`
-      → `{"error":"headers too large"}`, also with an update open, never a crash;
-    - the same with a 100-character boundary (`head -c 100`) → `update not open`; with an update
-      open (code on the screen) → `{"error":"bad boundary"}`;
-    - `curl -i -H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)" -d '{}' http://<ip>/settings` → `{"error":"headers too large"}`.
-    Then check that both update paths still work inside the window: `/miblo:update` (open, type
-    the code, send) flashes and reboots; the browser page `http://<ip>/update` (desktop Chrome or
-    Firefox and a phone) flashes with the code. A send more than 5 minutes after `update open`
-    says the update window closed and flashes nothing. With 5 wrong codes the next upload reports
-    the lockout (`429`), not `update not open`.
+    while an update is open. The gadget reads each request's whole header block (up to 2 KB, over
+    several TCP segments) before deciding. From a computer on the same network, with no update
+    open (no code on the screen), check each answer, and that the gadget keeps running (no
+    reboot, the screen does not stall):
+    - `curl -i -F x=1 http://<ip>/update` → `400 {"error":"update not open"}`;
+    - `curl -i -F x=1 http://<ip>/settings` (and `-X PUT`) → `400 {"error":"bad request"}`;
+    - the same with `-H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)"` (the multipart Content-Type
+      lands in a later segment) → still `400 {"error":"bad request"}`;
+    - `curl -i -F x=1 -H "Content-Type: multipart/form-data; boundary=$(head -c 100 /dev/zero | tr '\0' a)" http://<ip>/update`
+      → `update not open`; with an update open (code on the screen) → `{"error":"bad boundary"}`;
+      with `head -c 3000` → `431 {"error":"headers too large"}`, never a crash;
+    - `curl -i -H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)" -H 'Content-Type: application/json' -d '{}' http://<ip>/settings-unlock`
+      → the page's normal answer (not 400/431): large headers are fine up to 2 KB;
+    - `(printf 'POST /settings HTTP/1.1\r\nHost: x\r\n'; sleep 2) | nc <ip> 80` → `400 {"error":"incomplete headers"}`
+      within about 0.3 s.
+    Then the real browsers, whose headers often span 2-3 segments: save the settings page and
+    join a Wi-Fi from the setup portal with desktop Chrome or Edge, Firefox, and a phone (iOS
+    captive sheet, Android Chrome); both update paths work inside the window: `/miblo:update`
+    (open, type the code, send) and the browser page `http://<ip>/update` flash and reboot. A send
+    more than 5 minutes after `update open` says the update window closed and flashes nothing.
+    With 5 wrong codes the next upload reports the lockout (`429`), not `update not open`.

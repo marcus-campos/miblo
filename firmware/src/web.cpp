@@ -10,6 +10,7 @@
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
+#include "platform/routes.h"
 #include "platform/storage.h"
 
 namespace web {
@@ -1229,6 +1230,37 @@ static ESP8266WebServer::ClientFuture limitPostBody(const String& method, const 
 }
 #endif
 
+// Captive-portal detection (Android, iOS/macOS, Windows): everything goes to the setup page.
+static void captiveProbe() {
+  if (!captiveRedirect()) handleRoot();
+}
+
+static const routes::Route kRoutes[] PROGMEM = {
+    {"/", HTTP_GET, handleRoot},
+    {"/wifi", HTTP_POST, handleWifi},
+    {"/wifi-code", HTTP_POST, handleWifiCode},
+    {"/settings", HTTP_POST, handleSettings},
+    {"/settings-code", HTTP_POST, handleSettingsCode},
+    {"/settings-unlock", HTTP_POST, handleSettingsUnlock},
+    {"/settings-secret", HTTP_GET, handleSettingsSecret},
+    {"/settings-system", HTTP_GET, handleSettingsSystem},
+    {"/settings-computers", HTTP_GET, handleSettingsComputers},
+    {"/settings-computer-remove", HTTP_POST, handleSettingsComputerRemove},
+    {"/api/zones", HTTP_GET, handleZones},
+    {"/api/wifi-status", HTTP_GET, handleWifiStatus},
+    {"/pair-code", HTTP_POST, handlePairCode},
+    {"/reset-code", HTTP_POST, handleResetCode},
+    {"/factory-reset", HTTP_POST, handleFactoryReset},
+    {"/generate_204", HTTP_GET, captiveProbe},
+    {"/gen_204", HTTP_GET, captiveProbe},
+    {"/hotspot-detect.html", HTTP_GET, captiveProbe},
+    {"/library/test/success.html", HTTP_GET, captiveProbe},
+    {"/ncsi.txt", HTTP_GET, captiveProbe},
+    {"/connecttest.txt", HTTP_GET, captiveProbe},
+    {"/redirect", HTTP_GET, captiveProbe},
+    {"/fwlink", HTTP_GET, captiveProbe},
+};
+
 void begin(WebServerT& server) {
   srv = &server;
 #if defined(ESP8266)
@@ -1237,28 +1269,7 @@ void begin(WebServerT& server) {
   // Content-Length: OTA progress (ota.cpp) and the body-size checks above; Authorization: the API
   // (api.cpp); Content-Type: the CSRF check on the pages' state-changing POSTs (requireJson).
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type", "X-Miblo-Web");
-  server.on(F("/"), HTTP_GET, handleRoot);
-  server.on(F("/wifi"), HTTP_POST, handleWifi);
-  server.on(F("/wifi-code"), HTTP_POST, handleWifiCode);
-  server.on(F("/settings"), HTTP_POST, handleSettings);
-  server.on(F("/settings-code"), HTTP_POST, handleSettingsCode);
-  server.on(F("/settings-unlock"), HTTP_POST, handleSettingsUnlock);
-  server.on(F("/settings-secret"), HTTP_GET, handleSettingsSecret);
-  server.on(F("/settings-system"), HTTP_GET, handleSettingsSystem);
-  server.on(F("/settings-computers"), HTTP_GET, handleSettingsComputers);
-  server.on(F("/settings-computer-remove"), HTTP_POST, handleSettingsComputerRemove);
-  server.on(F("/api/zones"), HTTP_GET, handleZones);
-  server.on(F("/api/wifi-status"), HTTP_GET, handleWifiStatus);
-  server.on(F("/pair-code"), HTTP_POST, handlePairCode);
-  server.on(F("/reset-code"), HTTP_POST, handleResetCode);
-  server.on(F("/factory-reset"), HTTP_POST, handleFactoryReset);
-  // Captive-portal detection (Android, iOS/macOS, Windows): everything goes to the setup page.
-  for (const char* path : {"/generate_204", "/gen_204", "/hotspot-detect.html", "/library/test/success.html",
-                           "/ncsi.txt", "/connecttest.txt", "/redirect", "/fwlink"}) {
-    server.on(path, HTTP_GET, [] {
-      if (!captiveRedirect()) handleRoot();
-    });
-  }
+  routes::add(server, kRoutes);
   server.onNotFound([] {
     if (captiveRedirect()) return;
     sendJson(*srv, 404, "{\"error\":\"not found\"}");

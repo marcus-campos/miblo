@@ -7,6 +7,7 @@
 #include "miblo_version.h"
 #include "net.h"
 #include "platform.h"
+#include "routes.h"
 #include "storage.h"
 
 namespace ota {
@@ -184,9 +185,12 @@ static void done() {
 void begin(WebServerT& server, ProgressHook onProgress) {
   srv = &server;
   hook = onProgress;
-  server.on(F("/update"), HTTP_GET, page);
-  server.on(F("/update/open"), HTTP_POST, openGate);
-  server.on(F("/update"), HTTP_POST, done, upload);
+  static const routes::Route kRoutes[] PROGMEM = {
+      {"/update", HTTP_GET, page},
+      {"/update/open", HTTP_POST, openGate},
+      {"/update", HTTP_POST, done, upload},
+  };
+  routes::add(server, kRoutes);
 }
 
 }  // namespace ota

@@ -13,6 +13,7 @@
 #include "miblo_version.h"
 #include "platform/crashlog.h"
 #include "platform/net.h"
+#include "platform/routes.h"
 #include "platform/storage.h"
 #include "web.h"
 
@@ -251,14 +252,15 @@ static void handleReset() {
   ctx.factoryResetRequested = true;
 }
 
+static const routes::Route kRoutes[] PROGMEM = {
+    {"/api/info", HTTP_GET, handleInfo},     {"/api/pair", HTTP_POST, handlePair},
+    {"/api/state", HTTP_POST, handleState},  {"/api/config", HTTP_POST, handleConfig},
+    {"/api/reset", HTTP_POST, handleReset},  {"/api/demo", HTTP_POST, handleDemo},
+};
+
 void begin(WebServerT& server) {
   srv = &server;
-  server.on(F("/api/info"), HTTP_GET, handleInfo);
-  server.on(F("/api/pair"), HTTP_POST, handlePair);
-  server.on(F("/api/state"), HTTP_POST, handleState);
-  server.on(F("/api/config"), HTTP_POST, handleConfig);
-  server.on(F("/api/reset"), HTTP_POST, handleReset);
-  server.on(F("/api/demo"), HTTP_POST, handleDemo);
+  routes::add(server, kRoutes);
 }
 
 }  // namespace api

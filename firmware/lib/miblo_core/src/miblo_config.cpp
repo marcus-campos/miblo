@@ -3,12 +3,16 @@
 #include <string.h>
 
 #include "miblo_tz.h"
+#include "miblo_tz_table.h"
 #include "miblo_utf8.h"
 #include "miblo_rom.h"
 
 namespace miblo {
 
 Config::Config() = default;
+
+// tz2 only takes names from the table (no POSIX rules): it is sized for the longest one.
+static_assert(sizeof(Config::tz2) > kTzNameMax, "Config::tz2 must hold the longest IANA name in the table");
 
 const char* modeCode(Mode m) {
   switch (m) {

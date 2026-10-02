@@ -51,6 +51,8 @@ struct Shot {
 // Writes <lang dir>/<name>.png and <name>@4x.png, and checks the margins (make check-margins).
 void save(Shot& s, const std::string& name);
 
+// The foundation's own daily-life overlays (shots_daily.cpp): the waiting mark.
+void renderDaily(miblo::Lang L);
 // One per daily-life track (shots_<track>.cpp).
 void renderFocus(miblo::Lang L);      // track A
 void renderAlerts(miblo::Lang L);     // track B

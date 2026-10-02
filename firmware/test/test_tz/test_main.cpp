@@ -103,6 +103,27 @@ static void test_config_patch_tz() {
   TEST_ASSERT_EQUAL_STRING("EST5EDT,M3.2.0,M11.1.0", c.tz);  // unchanged by the failures
 }
 
+// kTzNameMax (generated) is the longest name in the table: Config::tz2 is sized from it.
+static void test_longest_name_constant() {
+  size_t longest = 0, cur = 0;
+  for (size_t i = 0; i < kTzNamesLen; i++) {
+    if (kTzNames[i] == '\n') {
+      if (cur > longest) longest = cur;
+      cur = 0;
+    } else {
+      cur++;
+    }
+  }
+  TEST_ASSERT_EQUAL_UINT(longest, kTzNameMax);
+  Config c;
+  TEST_ASSERT_TRUE(sizeof(c.tz2) > kTzNameMax);
+  TEST_ASSERT_TRUE(applyConfigPatch(c, [] {
+    static StaticJsonDocument<128> d;
+    deserializeJson(d, "{\"tz2\":\"America/Argentina/Buenos_Aires\"}");  // 30 characters
+    return d.as<JsonObjectConst>();
+  }(), nullptr));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_lookup_known_zones);
@@ -111,5 +132,6 @@ int main(int, char**) {
   RUN_TEST(test_looks_posix);
   RUN_TEST(test_resolve);
   RUN_TEST(test_config_patch_tz);
+  RUN_TEST(test_longest_name_constant);
   return UNITY_END();
 }

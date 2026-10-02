@@ -54,6 +54,7 @@ static miblo::WellnessClock wellness;   // break, water, eye rest nudges
 static miblo::EndOfDay dayEnd;          // the day's summary at the end of the work hours
 static miblo::WeeklyRecap weekly;       // Monday: last week's summary
 static miblo::FrameColor frameShown = miblo::FrameColor::None;  // the status frame last drawn
+static bool markShown = false;  // the "needs you" mark is over a daily screen
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -179,10 +180,17 @@ static void updateOccasion(uint32_t now) {
 // second clock and the Desk's extras (countdown line, settings QR). A changed mood, label,
 // countdown or QR redraws everything; the second clock's time alone does not (the screens draw it
 // as a field).
+// While the time is unknown it still runs once a minute of uptime (the mood, the QR).
 static int dailyLookMinute = -2;  // -2: recompute now
-static void updateDailyLook(int minuteNow, const miblo::Date& day, bool timeKnown, uint32_t epoch) {
-  if (minuteNow == dailyLookMinute) return;
-  dailyLookMinute = minuteNow;
+static bool lookConnected = false;  // the Wi-Fi state the QR was decided with
+static void updateDailyLook(int minuteNow, const miblo::Date& day, bool timeKnown, uint32_t epoch, uint32_t nowMs) {
+  if (net::connected() != lookConnected) {  // the QR's address appeared or went away
+    lookConnected = net::connected();
+    dailyLookMinute = -2;
+  }
+  const int key = minuteNow >= 0 ? minuteNow : -3 - (int)((nowMs / 60000) & 0xFFFF);
+  if (key == dailyLookMinute) return;
+  dailyLookMinute = key;
   bool changed = false;
   const uint8_t mood = (uint8_t)miblo::catMoodFor(ctx.snap, epoch ? epoch : ctx.snap.now);
   if (mood != screens::catMood()) {
@@ -286,7 +294,8 @@ void setup() {
   hardResetRemaining = boot.remaining;
 
   board::begin();
-  screens::bind(shifted);
+  // Through the waiting mark's guard: it notices drawing under its band (screens::waitingMark).
+  screens::bind(screens::waitingGuard(shifted));
   if (boot.factoryReset) {
     // Escape hatch: touch as little as possible (a corrupt config must not block the reset), so
     // the message is always in English. Keep it readable for a moment, then wipe and restart.
@@ -385,7 +394,10 @@ void loop() {
   if (fired == miblo::NoteKind::Timer) cue.fire(miblo::CueKind::Timer, now);
   else if (fired == miblo::NoteKind::Alarm) cue.fire(miblo::CueKind::Alarm, now);
   else if (fired == miblo::NoteKind::Reminder) cue.fire(miblo::CueKind::Reminder, now);
-  if (ctx.notes.takeDirty()) storage::saveNotes(ctx.notes);
+  if (ctx.notes.takeDirty()) {
+    storage::saveNotes(ctx.notes);
+    dailyLookMinute = -2;  // the countdown may have changed: the Desk's line too
+  }
   // Alerts: insistence, a single blink in meetings, "finished" waits out a focus round.
   ctx.alerts.setModifiers({ctx.cfg.insist, ctx.meeting.on(),
                            ctx.focus.phase() == miblo::FocusPhase::Focus && ctx.cfg.focusQuiet});
@@ -534,7 +546,7 @@ void loop() {
                 miblo::passerbyAt(now - roamSinceMs, &passAt);
   di.screen = screen;
   screen = miblo::dailyScreen(di);
-  updateDailyLook(minuteNow, day, timeKnown, clockNow().epoch);
+  updateDailyLook(minuteNow, day, timeKnown, clockNow().epoch, now);
 
   // The panel stays on while a /miblo:say note is up (it is meant for passers-by).
   const bool asleep = !ctx.demo && petLatch.asleep(ctx.cfg.sleepMin, petMin, now) && !di.say;
@@ -708,16 +720,36 @@ void loop() {
       break;
   }
 
-  // Overlays, every frame (never over the full-screen pulse or the alert flash).
-  if (screen != ScreenId::Cue && screen != ScreenId::AlertFlash) {
-    const miblo::FrameColor fc = ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch) : miblo::FrameColor::None;
-    if (fc == miblo::FrameColor::None && frameShown != miblo::FrameColor::None) {
-      firstFrame = true;  // the frame went away: redraw the screen under it next frame
-    }
-    frameShown = fc;
-    if (fc != miblo::FrameColor::None) screens::stateFrame(fc);
-    if (ctx.meeting.on()) screens::meetingBadge(lang);
+  // Overlays, every frame, only over the ordinary and daily-life screens and the alert hero:
+  // never over setup, codes, updates, the alert flash or the full-screen pulse.
+  const bool overlays = (miblo::dailyMayReplace(screen) || screen >= ScreenId::Focus || screen == ScreenId::AlertHero) &&
+                        screen != ScreenId::Cue;
+  const miblo::FrameColor fc =
+      overlays && ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch) : miblo::FrameColor::None;
+  if (overlays && fc == miblo::FrameColor::None && frameShown != miblo::FrameColor::None) {
+    firstFrame = true;  // the frame went away: redraw the screen under it next frame
   }
+  frameShown = fc;
+  if (fc != miblo::FrameColor::None) screens::stateFrame(fc);
+  if (overlays && ctx.meeting.on()) screens::meetingBadge(lang);
+  // A session waiting for you is never hidden by daily life: an amber mark on the daily screens.
+  const bool mark = miblo::waitingMarkOn(screen, counts.pending);
+  if (mark) {
+    const char* name = "";
+    if (!ctx.meeting.on()) {  // meeting mode: no names
+      for (uint8_t i = 0; i < ctx.snap.count; i++) {
+        const miblo::SessionState st = ctx.snap.sessions[i].st;
+        if (st == miblo::SessionState::Perm || st == miblo::SessionState::Question) {
+          name = ctx.snap.sessions[i].name;
+          break;
+        }
+      }
+    }
+    screens::waitingMark(lang, name, counts.pending);
+  } else if (markShown && miblo::dailyFullScreen(screen)) {
+    firstFrame = true;  // nobody waits any more: redraw the screen under the band
+  }
+  markShown = mark;
 }
 
 }  // namespace app

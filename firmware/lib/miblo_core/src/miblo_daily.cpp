@@ -47,4 +47,19 @@ bool dailyActivity(const DailyInputs& in) {
   return in.focus != FocusPhase::Off || in.timer || in.held != NoteKind::None || in.cue != CueKind::None || in.find;
 }
 
+bool dailyFullScreen(ScreenId s) {
+  switch (s) {
+    case ScreenId::Focus:
+    case ScreenId::Timer:
+    case ScreenId::Note:
+    case ScreenId::Find:
+    case ScreenId::Nudge:
+    case ScreenId::DayEnd:
+    case ScreenId::WeekRecap: return true;
+    default: return false;
+  }
+}
+
+bool waitingMarkOn(ScreenId s, uint8_t pending) { return pending > 0 && dailyFullScreen(s); }
+
 }  // namespace miblo

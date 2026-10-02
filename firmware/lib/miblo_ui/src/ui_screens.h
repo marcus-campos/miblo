@@ -265,6 +265,16 @@ const char* secondClockTime();
 void setDeskExtras(const char* countdownLine, const char* qrUrl);  // "" = none
 const char* deskCountdown();
 const char* deskQrUrl();
+// A session waiting for you, over a daily full screen (miblo::waitingMarkOn; ui_daily_state.cpp):
+// an amber band across the top with a "!" and the waiting session's name (`name` "" in meeting
+// mode: "NEEDS YOU"), "+N" when more wait. Drawn after the screen, every frame; it repaints only
+// when it changes, after a screen switch, or when the screen drew over its band (the canvas from
+// waitingGuard() notices). Without that canvas it repaints on every call. Daily screens keep
+// their own content out of the top Y(30) when they can: it sits under the band.
+void waitingMark(Lang lang, const char* name, uint8_t pending);
+// Wraps `inner` (app.cpp binds the result) so the waiting mark knows when anything was drawn under
+// its band. One wrapper for the whole firmware; calling it again rewraps another canvas.
+ui::Canvas& waitingGuard(ui::Canvas& inner);
 // Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp, track F).
 enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384 };
 

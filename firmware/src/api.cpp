@@ -322,7 +322,8 @@ static uint32_t epochNow() {
 }
 
 // A module's request handler: fills `out` (200 only) and returns the HTTP status; on 400/409
-// *bad names the field or the reason ("clock", "full", ...).
+// *bad names the field or the reason ("clock", "full", ...): always a string literal, since it
+// goes into the reply raw (no JSON escaping) and after the handler returned.
 using DailyHandler = int (*)(JsonObjectConst body, JsonObject out, const char** bad);
 
 // Daily-life routes: token, a small JSON body (absent = {}), then the module's own handler. One

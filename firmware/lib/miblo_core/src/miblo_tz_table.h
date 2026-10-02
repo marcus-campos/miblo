@@ -7,6 +7,7 @@ namespace miblo {
 
 constexpr size_t kTzCount = 461;
 constexpr size_t kTzNamesLen = 7390;  // bytes, without the terminating NUL
+constexpr size_t kTzNameMax = 30;  // the longest name, bytes
 // Sorted IANA names, each followed by '\n' (MIBLO_ROM: read with mibloRomByte).
 extern const char kTzNames[];
 // POSIX TZ rules in the same order, each followed by '\n' (MIBLO_ROM).

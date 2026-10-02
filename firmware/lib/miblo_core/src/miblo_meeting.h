@@ -23,6 +23,7 @@ class MeetingMode {
 };
 
 // POST /api/meeting: {"min":1..480} (absent = 60) or {"off":true}. 200, or 400 with *bad.
+// *bad must be a string literal (api.cpp puts it in the JSON reply as is, unescaped).
 int meetingRequest(MeetingMode& m, JsonObjectConst body, uint32_t nowMs, const char** bad);
 
 }  // namespace miblo

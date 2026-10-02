@@ -47,6 +47,12 @@ static void copyStr(char* dst, size_t cap, JsonVariantConst v, size_t maxChars) 
   utf8Copy(dst, cap, s, maxChars);
 }
 
+// A cost: finite and >= 0, else 0 (a negative, NaN or overflowing number from a bad bridge).
+static float money(JsonVariantConst v) {
+  const float f = v.as<float>();
+  return f > 0 && f < 1e9f ? f : 0;
+}
+
 static uint8_t clampPct(JsonVariantConst v) {
   float f = v.as<float>();
   if (!(f > 0)) return 0;
@@ -72,8 +78,10 @@ uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch) {
 ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   if (len > kSnapshotMaxBytes) return ParseResult::TooLarge;
 
-  // Exact size on any platform: 11 top-level keys, a 10-key session template, a 3-key alert one.
-  DynamicJsonDocument filter(JSON_OBJECT_SIZE(11) + 2 * JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(10) +
+  // Sized on any platform: 11 top-level keys (+1 slot of headroom), a 10-key session template, a
+  // 3-key alert one. A key added without growing it would be dropped silently, so an overflowed
+  // filter refuses every parse (test_every_filtered_field_arrives catches it).
+  DynamicJsonDocument filter(JSON_OBJECT_SIZE(12) + 2 * JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(10) +
                              JSON_OBJECT_SIZE(3));
   filter["v"] = true;
   filter["seq"] = true;
@@ -88,6 +96,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   for (const char* k : {"id", "name", "st", "tool", "det", "since", "ts", "model", "ctx", "tok"}) fs[k] = true;
   JsonObject fa = filter["alerts"].createNestedObject();
   for (const char* k : {"id", "kind", "sid"}) fa[k] = true;
+  if (filter.overflowed()) return ParseResult::BadJson;
 
   const size_t cap = (len + 1024) * (sizeof(void*) == 4 ? 1 : 2);
   DynamicJsonDocument doc(cap < kDocMax ? cap : kDocMax);
@@ -108,7 +117,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   readWindow(usage["d7"], out.d7);
   out.hasUsage = out.hasUsage && (out.h5.present || out.d7.present);
 
-  out.todayUsd = doc["today"]["usd"].as<float>();
+  out.todayUsd = money(doc["today"]["usd"]);
   out.todayTurns = doc["today"]["turns"].as<uint16_t>();
   out.todayWorkSec = doc["today"]["work"].as<uint32_t>();
   copyStr(out.latest, sizeof(out.latest), doc["latest"], 15);
@@ -117,7 +126,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   out.week.present = week.is<JsonObjectConst>();
   out.week.workSec = week["work"].as<uint32_t>();
   out.week.turns = week["turns"].as<uint16_t>();
-  out.week.usd = week["usd"].as<float>();
+  out.week.usd = money(week["usd"]);
   const int top = week["top"].is<int>() ? week["top"].as<int>() : -1;
   out.week.busiest = top >= 0 && top <= 6 ? (uint8_t)top : 255;
 

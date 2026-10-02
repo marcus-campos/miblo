@@ -539,7 +539,8 @@ void renderAll(Lang L) {
   mascotFrames("41-disconnected-asleep", screens::DeskMood::Asleep, [&](uint32_t ms) {
     screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", ms, 3600000);
   });
-  // Daily life, one file per track (shots.h).
+  // Daily life: the foundation's overlays, then one file per track (shots.h).
+  shots::renderDaily(L);
   shots::renderFocus(L);
   shots::renderAlerts(L);
   shots::renderDayRhythm(L);

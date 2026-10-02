@@ -84,6 +84,42 @@ static void test_daily_activity_keeps_pet_mode_away() {
   TEST_ASSERT_TRUE(dailyActivity(in));
 }
 
+// Exactly the ordinary screens may be taken over; never setup, codes, updates, alerts or the
+// daily screens themselves.
+static void test_daily_may_replace_exactly_the_ordinary_screens() {
+  for (int i = 0; i <= (int)ScreenId::Passerby; i++) {
+    const ScreenId s = (ScreenId)i;
+    const bool want = s == ScreenId::Main || s == ScreenId::Desk || s == ScreenId::Summary ||
+                      s == ScreenId::Disconnected || s == ScreenId::Roam || s == ScreenId::Visit ||
+                      s == ScreenId::Hello || s == ScreenId::LimitReset || s == ScreenId::UpdateAvailable;
+    TEST_ASSERT_EQUAL_MESSAGE(want, dailyMayReplace(s), "screen id");
+  }
+}
+
+// A session waiting for you is never hidden by a daily screen: every daily full screen carries
+// the amber waiting mark while something is pending, and no other screen does (alerts, pet
+// mode and the ordinary screens show it their own way).
+static void test_waiting_mark_on_every_daily_screen() {
+  const ScreenId daily[] = {ScreenId::Focus, ScreenId::Timer, ScreenId::Note,     ScreenId::Find,
+                            ScreenId::Nudge, ScreenId::DayEnd, ScreenId::WeekRecap};
+  for (int i = 0; i <= (int)ScreenId::Passerby; i++) {
+    const ScreenId s = (ScreenId)i;
+    bool isDaily = false;
+    for (ScreenId d : daily) isDaily = isDaily || d == s;
+    TEST_ASSERT_EQUAL_MESSAGE(isDaily, dailyFullScreen(s), "daily full screen");
+    TEST_ASSERT_EQUAL_MESSAGE(isDaily, waitingMarkOn(s, 1), "mark with one waiting");
+    TEST_ASSERT_EQUAL_MESSAGE(isDaily, waitingMarkOn(s, 3), "mark with three waiting");
+    TEST_ASSERT_FALSE_MESSAGE(waitingMarkOn(s, 0), "no mark when nobody waits");
+  }
+  // And through the arbiter: focus with a session waiting (no alert on screen right now).
+  DailyInputs in;
+  in.focus = FocusPhase::Focus;
+  TEST_ASSERT_TRUE(waitingMarkOn(dailyScreen(in), 1));
+  in = DailyInputs{};
+  in.held = NoteKind::Reminder;
+  TEST_ASSERT_TRUE(waitingMarkOn(dailyScreen(in), 1));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_alerts_beat_every_daily_screen);
@@ -91,5 +127,7 @@ int main() {
   RUN_TEST(test_daily_priority_order);
   RUN_TEST(test_pet_mode_rules);
   RUN_TEST(test_daily_activity_keeps_pet_mode_away);
+  RUN_TEST(test_daily_may_replace_exactly_the_ordinary_screens);
+  RUN_TEST(test_waiting_mark_on_every_daily_screen);
   return UNITY_END();
 }

@@ -64,7 +64,7 @@ struct Config {
   uint8_t workDays = 0x3E;       // bit 0 = Sunday .. bit 6 = Saturday; Mon..Fri by default; never 0
   uint8_t fanfareMin = 5;        // a response that took this long ends with a party: 0 (off), 3, 5, 10
   bool frame = false;            // thin status-coloured frame around the screen
-  char tz2[48] = "";             // second time zone, an IANA name from the table ("" = off)
+  char tz2[32] = "";             // second time zone, an IANA name from the table ("" = off; kTzNameMax)
   char tz2Label[37] = "";        // its name on screen, <= 12 characters ("" = the city of tz2)
   bool deskQr = false;           // settings QR on the Desk screen (always on /miblo:find)
   bool weekly = true;            // Monday: last week's summary

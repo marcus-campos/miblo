@@ -76,7 +76,8 @@ class DeskNotes {
 void countdownLine(Lang lang, const Countdown& c, const Date& today, char* out, size_t cap);
 
 // Request handlers: return the HTTP status (200; 400 with *bad = the field; 409 with *bad =
-// "clock" (time unknown) or "full").
+// "clock" (time unknown) or "full"). *bad must be a string literal (api.cpp puts it in the JSON
+// reply as is, unescaped, after the handler returned).
 int sayRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, const char** bad);
 int remindRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, int nowMinute, JsonObject reply,
                   const char** bad);

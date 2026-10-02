@@ -42,7 +42,8 @@ class FocusTimer {
 
 // POST /api/focus: {"focusMin":25,"breakMin":5,"rounds":4} (each optional; breakMin defaults to
 // defaultBreakFor(focusMin)) or {"stop":true}. Returns the HTTP status: 200, or 400 with *bad =
-// the field. Starts/stops `t` only on 200.
+// the field. Starts/stops `t` only on 200. *bad must be a string literal (api.cpp puts it in the
+// JSON reply as is, unescaped, after the handler returned).
 int focusRequest(FocusTimer& t, JsonObjectConst body, uint32_t nowMs, const char** bad);
 
 }  // namespace miblo

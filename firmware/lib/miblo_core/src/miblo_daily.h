@@ -32,5 +32,11 @@ ScreenId dailyScreen(const DailyInputs& in);
 // Counts as someone at the desk for pet mode and the panel's sleep: focus (any phase), a timer,
 // a held text, a cue, find.
 bool dailyActivity(const DailyInputs& in);
+// The daily-life screens that take the whole screen for a while: Focus, Timer, Note, Find, Nudge,
+// DayEnd, WeekRecap (not the short Cue pulse, the Fanfare, which is an alert, or Passerby, pet mode).
+bool dailyFullScreen(ScreenId s);
+// A session waiting for you ("needs you") is never hidden by daily life: on a daily full screen
+// app.cpp draws screens::waitingMark() while `pending` > 0.
+bool waitingMarkOn(ScreenId s, uint8_t pending);
 
 }  // namespace miblo

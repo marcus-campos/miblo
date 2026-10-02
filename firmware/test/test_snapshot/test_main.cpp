@@ -204,6 +204,41 @@ static void test_long_command_seconds() {
   TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 5000));
 }
 
+// Every field the filter keeps arrives, the last ones declared included (alerts' sid, more):
+// a filter document too small would drop them silently, so it is sized with headroom and an
+// overflowed filter refuses the parse instead.
+static void test_every_filtered_field_arrives() {
+  char json[] =
+      "{\"v\":1,\"seq\":3,\"now\":5,\"host\":\"mac\",\"latest\":\"1.2.3\",\"more\":2,"
+      "\"usage\":{\"h5\":{\"pct\":1,\"reset\":9,\"eta\":0}},\"today\":{\"usd\":1.5,\"turns\":2,\"work\":3},"
+      "\"week\":{\"work\":1,\"turns\":2,\"usd\":3,\"top\":0},"
+      "\"sessions\":[{\"id\":\"abcdefgh\",\"name\":\"n\",\"st\":\"perm\",\"tool\":\"Bash\",\"det\":\"d\",\"since\":4,"
+      "\"ts\":4,\"model\":\"Opus\",\"ctx\":7,\"tok\":8}],\"alerts\":[{\"id\":11,\"kind\":\"perm\",\"sid\":\"abcdefgh\"}]}";
+  Snapshot s{};
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
+  TEST_ASSERT_EQUAL_STRING("mac", s.host);
+  TEST_ASSERT_EQUAL_STRING("1.2.3", s.latest);
+  TEST_ASSERT_EQUAL_UINT16(2, s.more);
+  TEST_ASSERT_TRUE(s.week.present);
+  TEST_ASSERT_EQUAL_UINT32(4, s.sessions[0].ts);
+  TEST_ASSERT_EQUAL_INT32(8, s.sessions[0].tok);
+  TEST_ASSERT_EQUAL_UINT8(1, s.alertCount);
+  TEST_ASSERT_EQUAL_STRING("abcdefgh", s.alerts[0].sid);
+}
+
+// Costs are never negative, NaN or infinite, whatever the bridge sends.
+static void test_costs_are_clamped() {
+  char json[] = "{\"v\":1,\"today\":{\"usd\":-3},\"week\":{\"usd\":1e999}}";
+  Snapshot s{};
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, s.todayUsd);
+  TEST_ASSERT_EQUAL_FLOAT(0.0f, s.week.usd);
+  char ok[] = "{\"v\":1,\"today\":{\"usd\":4.25},\"week\":{\"usd\":31.5}}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(ok, strlen(ok), s));
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 4.25f, s.todayUsd);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 31.5f, s.week.usd);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_attention_fixture);
@@ -215,5 +250,7 @@ int main() {
   RUN_TEST(test_errors_leave_previous_snapshot_untouched);
   RUN_TEST(test_daily_life_snapshot_fields);
   RUN_TEST(test_long_command_seconds);
+  RUN_TEST(test_every_filtered_field_arrives);
+  RUN_TEST(test_costs_are_clamped);
   return UNITY_END();
 }

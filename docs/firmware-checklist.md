@@ -170,6 +170,31 @@ notes.
 <!-- daily:rhythm -->
 
 <!-- daily:notes -->
+    - **Say:** `/miblo:say "back in 10 min"`: the cat holds it on a violet sign over Main, Desk,
+      Summary and Disconnected, and the panel doesn't go dark while it is up; in pet mode it shows
+      on the pet's card instead. It goes away after 30 min, or `/miblo:say off`. A 40-character
+      text of `W`s and 15 Chinese characters both fit on the sign without being cut; 41 characters
+      or a control character is refused by the CLI.
+    - **Remind:** `/miblo:remind 1 "call the client"`: one minute later the screen pulses and the
+      cat holds it on an amber sign; `/miblo:remind off` puts it down (otherwise after 5 min).
+      `/miblo:remind 16:30 "daily"` with the time known fires at 16:30 (tomorrow if 16:30 has
+      passed). Right after a power cycle with no Wi-Fi, it answers that the gadget has no time
+      yet. A permission request while a reminder is up still takes the screen.
+    - **Recurring alarms:** `/miblo:remind every day HH:MM "standup"` (two minutes ahead) and
+      `/miblo:remind weekdays ...`: `/miblo:remind` lists them with their ids; power-cycle the
+      gadget and list again: they are still there, and the alarm fires at its minute, once.
+      `/miblo:remind off N` deletes one. A fifth one of either kind is refused as full.
+    - **Timer:** `/miblo:timer 2`: the cat watches an hourglass with the time left and a bar; at
+      the end the screen pulses and the cat holds "Time's up!" on a green sign. `/miblo:timer
+      stop` cancels it; an alert during the timer shows and the timer comes back after it.
+    - **Countdown:** `/miblo:countdown "release" 15/10`: the Desk shows "release in N days"
+      ("tomorrow", "is today!"); it survives a power cycle and `/miblo:countdown off` removes it.
+    - **Daylight saving (expected, not a bug):** a recurring alarm at a time the clock skips
+      when it springs forward (e.g. 02:30) does not fire that day; one at a time that repeats
+      when the clock falls back fires once. A one-off `remind HH:MM` is counted in minutes from
+      when it was set, so it fires 1 h early or late if the clock changes before it is due.
+    - **Find:** `/miblo:find`: for 10 s the top and bottom bands pulse, the cat waves, and the QR
+      code opens the settings page on a phone on the same Wi-Fi.
 
 <!-- daily:cues -->
 

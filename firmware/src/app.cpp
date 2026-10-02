@@ -395,7 +395,7 @@ void loop() {
   else if (fired == miblo::NoteKind::Alarm) cue.fire(miblo::CueKind::Alarm, now);
   else if (fired == miblo::NoteKind::Reminder) cue.fire(miblo::CueKind::Reminder, now);
   if (ctx.notes.takeDirty()) {
-    storage::saveNotes(ctx.notes);
+    if (!storage::saveNotes(ctx.notes)) Serial.println(F("notes: save failed"));
     dailyLookMinute = -2;  // the countdown may have changed: the Desk's line too
   }
   // Alerts: insistence, a single blink in meetings, "finished" waits out a focus round.

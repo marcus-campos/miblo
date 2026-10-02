@@ -171,12 +171,14 @@ export function startFakeDevice({
   // ---- Daily life: the firmware's request handlers (miblo_focus/meeting/desknotes.cpp), each
   // -> [status, field]. Every field present is validated before anything is applied.
   const intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi;
-  // miblo_desknotes.cpp cleanText: a string, not blank after trimming spaces, no control
-  // character, at most `maxChars` characters and fewer than `cap` UTF-8 bytes.
+  // miblo_desknotes.cpp cleanText: a string, not blank after trimming spaces, well-formed (no
+  // lone surrogate), no control character (C0 incl. NUL, DEL, C1), at most `maxChars` characters
+  // and fewer than `cap` UTF-8 bytes.
   const cleanText = (v, maxChars, cap) => {
     if (typeof v !== 'string') return null;
     const t = v.replace(/^ +| +$/g, '');
-    if (!t || /[\u0000-\u001f\u007f]/.test(t) || [...t].length > maxChars || Buffer.byteLength(t, 'utf8') >= cap) return null;
+    if (!t || !t.isWellFormed() || /[\u0000-\u001f\u007f-\u009f]/.test(t) || [...t].length > maxChars ||
+        Buffer.byteLength(t, 'utf8') >= cap) return null;
     return t;
   };
   const isTrue = (b, k) => k in b && b[k] !== true;  // a flag present but not `true`

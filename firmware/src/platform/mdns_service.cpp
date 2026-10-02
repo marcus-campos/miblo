@@ -19,7 +19,9 @@ static bool bound = false;
 static uint8_t announcesLeft = 0;
 static uint32_t nextAnnounceMs = 0;
 // Packet buffers live on the loop's stack, only while this module runs (static, they held 1 KB
-// of RAM for good): mdns::loop() is called straight from the app loop, far from the 4 KB limit.
+// of RAM for good): mdns::loop() is called straight from the app loop, never from a handler.
+// Measured (-fstack-usage): ~2.1 KB deep on that path, below the deepest existing one
+// (api::handleInfo ~2 KB plus the loop's frames) within the 4 KB stack.
 constexpr size_t kPacketMax = 512;
 static char txtId[32];
 

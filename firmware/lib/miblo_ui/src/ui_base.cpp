@@ -379,6 +379,9 @@ void qr(const char* payload, int x, int y, int scale) {
   // Version 3 (29x29 modules), the one the firmware builds the QR library for (LOCK_VERSION=3).
   static_assert(LOCK_VERSION == 0 || LOCK_VERSION == 3, "the QR library is locked to another version");
   uint8_t data[(29 * 29 + 7) / 8];  // = qrcode_getBufferSize(3)
+  // The library never checks capacity: a payload longer than version 3 holds (53 bytes in byte
+  // mode, ECC_LOW) would overrun its buffers. Such a QR is not drawn at all.
+  if (strlen(payload) > 53) return;
   qrcode_initText(&code, data, 3, ECC_LOW, payload);
   const int quiet = 2;
   const int size = (code.size + quiet * 2) * scale;

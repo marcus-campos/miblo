@@ -105,6 +105,12 @@ static void handleInfo() {
   doc[F("flashBlinks")] = ctx.cfg.flashBlinks;
   doc[F("friends")] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
+  // ~1.36 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
+  // dropped silently, so a document that overflowed is an error, never a partial answer.
+  if (doc.overflowed()) {
+    json(500, "{\"error\":\"info too large\"}");
+    return;
+  }
   String out;
   serializeJson(doc, out);
   json(200, out.c_str());

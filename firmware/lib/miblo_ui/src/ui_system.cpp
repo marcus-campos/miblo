@@ -19,6 +19,7 @@ static ui::Canvas& C() { return canvas(); }
 
 // Project repository (install instructions), shown as a QR code on the welcome screen.
 static const char kRepoUrl[] = "https://github.com/marcus-campos/miblo";
+static_assert(sizeof(kRepoUrl) - 1 <= 53, "a version-3 QR holds 53 bytes (ui_base.cpp qr())");
 static const char* const kRepoLabel = kRepoUrl + 8;  // without "https://"
 
 void boot(Lang lang, uint8_t frame) {

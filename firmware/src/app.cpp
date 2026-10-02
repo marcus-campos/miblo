@@ -5,11 +5,17 @@
 #include "api.h"
 #include "board.h"
 #include "context.h"
+#include "miblo_cues.h"
+#include "miblo_daily.h"
+#include "miblo_dayend.h"
 #include "miblo_format.h"
+#include "miblo_mood.h"
 #include "miblo_overview.h"
 #include "miblo_policy.h"
 #include "miblo_version.h"
 #include "miblo_occasions.h"
+#include "miblo_wellness.h"
+#include "miblo_zone.h"
 #include "platform/friends_net.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
@@ -42,6 +48,12 @@ static bool mainLimits = false;        // Main shows the Limits arc instead of t
 static miblo::DemoBreak demoBreak;
 static uint32_t awaySinceMs = 0;       // when the Disconnected screen came up
 static uint32_t limitResetMs = 0;      // when the "limit freed" screen came up
+// Daily life, timed here (focus, meeting and the notes live in ctx: the API changes them).
+static miblo::StrongCue cue;            // slow full-screen pulses: end of focus, timer, alarms
+static miblo::WellnessClock wellness;   // break, water, eye rest nudges
+static miblo::EndOfDay dayEnd;          // the day's summary at the end of the work hours
+static miblo::WeeklyRecap weekly;       // Monday: last week's summary
+static miblo::FrameColor frameShown = miblo::FrameColor::None;  // the status frame last drawn
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -121,18 +133,23 @@ static uint32_t ownerHash() {
   return miblo::hashStr(miblo::hashStr(miblo::kHashSeed, ctx.cfg.owner), ctx.cfg.birthday);
 }
 static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
+static miblo::Occasion occasion = miblo::Occasion::None;  // today's special day
 static uint32_t occasionAtMs = 0;
 
-// Local date and minute of the day; false while the time is unknown.
-static bool today(miblo::Date& d, int& minute) {
+// Local date, minute of the day and weekday (0 = Sunday); false while the time is unknown.
+static bool today(miblo::Date& d, int& minute, uint8_t* weekday = nullptr) {
   const time_t now = time(nullptr);
   if (now <= 1600000000) return false;
   struct tm lt;
   localtime_r(&now, &lt);
   d = miblo::Date{(uint16_t)(lt.tm_year + 1900), (uint8_t)(lt.tm_mon + 1), (uint8_t)lt.tm_mday};
   minute = lt.tm_hour * 60 + lt.tm_min;
+  if (weekday) *weekday = (uint8_t)lt.tm_wday;
   return true;
 }
+
+// One number per local day (miblo_dayend.h, miblo_desknotes.h); 0 = the time is unknown.
+static uint32_t dayKeyOf(const miblo::Date& d) { return d.year * 400u + d.month * 32u + d.day; }
 
 // Once a minute: today's hat, and the gadget's own birthday noted on the first day it is used.
 static void updateOccasion(uint32_t now) {
@@ -141,8 +158,10 @@ static void updateOccasion(uint32_t now) {
   miblo::Date d;
   int minute;
   uint8_t want = 0;
+  occasion = miblo::Occasion::None;
   if (today(d, minute)) {
-    want = (uint8_t)miblo::accessoryFor(miblo::occasionOn(ctx.cfg, d));
+    occasion = miblo::occasionOn(ctx.cfg, d);
+    want = (uint8_t)miblo::accessoryFor(occasion);
     if (!ctx.cfg.born[0] && ctx.tokens.count() > 0) {
       snprintf_P(ctx.cfg.born, sizeof(ctx.cfg.born), PSTR("%04u-%02u-%02u"), (unsigned)d.year, (unsigned)d.month,
                (unsigned)d.day);
@@ -156,6 +175,36 @@ static void updateOccasion(uint32_t now) {
   }
 }
 
+// Once a minute (when the local minute changes, or after a settings change): the cat's mood, the
+// second clock and the Desk's extras (countdown line, settings QR). A changed mood, label,
+// countdown or QR redraws everything; the second clock's time alone does not (the screens draw it
+// as a field).
+static int dailyLookMinute = -2;  // -2: recompute now
+static void updateDailyLook(int minuteNow, const miblo::Date& day, bool timeKnown, uint32_t epoch) {
+  if (minuteNow == dailyLookMinute) return;
+  dailyLookMinute = minuteNow;
+  bool changed = false;
+  const uint8_t mood = (uint8_t)miblo::catMoodFor(ctx.snap, epoch ? epoch : ctx.snap.now);
+  if (mood != screens::catMood()) {
+    screens::setCatMood(mood);
+    changed = true;
+  }
+  char label[37] = "", hhmm[6] = "";
+  if (ctx.cfg.tz2[0] && miblo::zoneHHMM(ctx.cfg.tz2, epoch, hhmm, sizeof(hhmm))) {
+    miblo::zoneLabel(ctx.cfg, label, sizeof(label));
+  } else {
+    hhmm[0] = 0;
+  }
+  if (strcmp(label, screens::secondClockLabel()) != 0) changed = true;
+  screens::setSecondClock(label, hhmm);
+  char line[64] = "", url[32] = "";
+  if (timeKnown) miblo::countdownLine(uiLang(), ctx.notes.countdown(), day, line, sizeof(line));
+  if (ctx.cfg.deskQr && net::connected()) snprintf_P(url, sizeof(url), PSTR("http://%s/"), net::ip().c_str());
+  if (strcmp(line, screens::deskCountdown()) != 0 || strcmp(url, screens::deskQrUrl()) != 0) changed = true;
+  screens::setDeskExtras(line, url);
+  if (changed) firstFrame = true;
+}
+
 // Local minute of the day, or -1 while the time is unknown.
 static int minuteOfDay() {
   miblo::Date d;
@@ -167,7 +216,9 @@ static int minuteOfDay() {
 // board when it changes.
 static void updateBacklight(int minute) {
   if (displayOff) return;  // stays dark until the panel wakes
-  const uint8_t want = miblo::brightnessAt(ctx.cfg, minute);
+  // A strong cue lights the screen up (never more than twice the night brightness at night).
+  const uint8_t want = cue.active(millis()) != miblo::CueKind::None ? miblo::cueBrightness(ctx.cfg, minute)
+                                                                       : miblo::brightnessAt(ctx.cfg, minute);
   if (want == backlight) return;
   backlight = want;
   board::setBacklight(want);
@@ -247,6 +298,7 @@ void setup() {
   }
 
   storage::loadConfig(ctx.cfg);
+  storage::loadNotes(ctx.notes);  // recurring alarms and the countdown (the rest never survives a reboot)
   storage::loadTokens(ctx.tokens);
   applyConfig();
   shownName = nameHash();
@@ -291,6 +343,7 @@ void loop() {
       ctx.greeter.rearm();
     }
     occasionAtMs = 0;  // a birthday may have been set
+    dailyLookMinute = -2;  // the second clock, the QR...
     firstFrame = true;  // language/mode may have changed: redraw everything
   }
   if (ctx.factoryResetRequested) {
@@ -315,12 +368,45 @@ void loop() {
   // The local date and time, read once per frame (night dimming, the filter, greetings).
   miblo::Date day{};
   int minute = 0;
-  const bool timeKnown = today(day, minute);
+  uint8_t weekday = 0;
+  const bool timeKnown = today(day, minute, &weekday);
   const int minuteNow = timeKnown ? minute : -1;
+  const uint32_t dayKey = timeKnown ? dayKeyOf(day) : 0;
+
+  // Daily life: the timers move first, so a phase that ended this frame shows its cue now.
+  ctx.meeting.update(now);
+  const miblo::FocusEvent fe = ctx.focus.update(now);
+  if (fe == miblo::FocusEvent::BreakStarted || fe == miblo::FocusEvent::Finished) {
+    cue.fire(miblo::CueKind::FocusEnd, now);
+  } else if (fe == miblo::FocusEvent::BackPrompt) {
+    cue.fire(miblo::CueKind::BreakEnd, now);
+  }
+  const miblo::NoteKind fired = ctx.notes.update(now, dayKey, weekday, minuteNow);
+  if (fired == miblo::NoteKind::Timer) cue.fire(miblo::CueKind::Timer, now);
+  else if (fired == miblo::NoteKind::Alarm) cue.fire(miblo::CueKind::Alarm, now);
+  else if (fired == miblo::NoteKind::Reminder) cue.fire(miblo::CueKind::Reminder, now);
+  if (ctx.notes.takeDirty()) storage::saveNotes(ctx.notes);
+  // Alerts: insistence, a single blink in meetings, "finished" waits out a focus round.
+  ctx.alerts.setModifiers({ctx.cfg.insist, ctx.meeting.on(),
+                           ctx.focus.phase() == miblo::FocusPhase::Focus && ctx.cfg.focusQuiet});
+  const bool discreet = ctx.cfg.discreet || ctx.meeting.on();  // meeting mode hides commands too
+  if (ctx.meeting.on() != screens::mascotTie()) {  // the tie goes on/off every mascot
+    screens::setMascotTie(ctx.meeting.on());
+    firstFrame = true;
+  }
+
   updateBacklight(minuteNow);
   updateWarmth(minuteNow);
   // Before the first snapshot ctx.snap is all zeros (parseSnapshot only writes it on success).
   const miblo::AlertView& alert = ctx.alerts.update(ctx.snap, now);
+  // A response that took long ends with a party: its hero becomes the fanfare, and stays longer.
+  bool fanfare = false;
+  uint32_t fanDur = 0;
+  if (alert.phase == miblo::AlertPhase::Hero && alert.kind == miblo::AlertKind::Done && ctx.cfg.fanfareMin &&
+      ctx.runs.stats(alert.sid, fanDur) && fanDur >= ctx.cfg.fanfareMin * 60u) {
+    fanfare = true;
+    ctx.alerts.extendHero(miblo::kFanfareMs);
+  }
 
   miblo::ScreenInputs in;
   in.nowMs = now;
@@ -369,7 +455,19 @@ void loop() {
   // A limit reset, an update notice or the computer dropping out for a moment don't count.
   const bool ordinaryScreen = idleScreen || screen == ScreenId::Main || screen == ScreenId::LimitReset ||
                               screen == ScreenId::UpdateAvailable;
-  const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0));
+  // Daily life: what is on (the screen it lands on is decided further down). Focus, a timer, a
+  // held text, a cue or find count as someone at the desk.
+  miblo::DailyInputs di;
+  di.fanfare = fanfare;
+  di.cue = cue.active(now);
+  di.find = ctx.notes.finding(now);
+  di.held = ctx.notes.held(now);
+  di.focus = ctx.focus.phase();
+  di.timer = ctx.notes.timerRunning();
+  di.say = ctx.notes.saying(now) != nullptr;
+  const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0)) ||
+                        miblo::dailyActivity(di);
+  const uint8_t petMin = dayEnd.petMinutes(ctx.cfg, dayKey);  // sooner once the work day ended
   // Demo (/miblo:demo): pet mode now, over any ordinary screen (alerts and setup still win), until
   // its minutes are up or real activity starts.
   if (demoBreak.update(ctx.demo, activity) || (ctx.demo && (int32_t)(now - ctx.demoUntilMs) >= 0)) {
@@ -378,7 +476,7 @@ void loop() {
   }
   const bool demo = ctx.demo && (screen == ScreenId::Main || screen == ScreenId::Desk ||
                                  screen == ScreenId::Summary || screen == ScreenId::Disconnected);
-  const bool petOn = petLatch.update(activity, idleMs, sinceSeen, ctx.cfg.petMin, now);
+  const bool petOn = petLatch.update(activity, idleMs, sinceSeen, petMin, now);
   const bool pet = petOn || demo;
   if (pet) screen = ScreenId::Roam;
   if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
@@ -414,7 +512,32 @@ void loop() {
        screen == ScreenId::Paired)) {
     screen = ScreenId::Hello;
   }
-  const bool asleep = !ctx.demo && petLatch.asleep(ctx.cfg.sleepMin, ctx.cfg.petMin, now);
+
+  // Wellness, the end of the day and Monday's recap only take a plain screen: no alert, focus,
+  // meeting, pet mode, timer, note or cue.
+  const bool plainScreen = screen == ScreenId::Main || screen == ScreenId::Desk || screen == ScreenId::Summary ||
+                           screen == ScreenId::Disconnected;
+  const bool quietDesk = plainScreen && alert.phase == miblo::AlertPhase::None &&
+                         di.focus == miblo::FocusPhase::Off && !ctx.meeting.on() && !di.timer &&
+                         di.held == miblo::NoteKind::None && !di.say && di.cue == miblo::CueKind::None && !di.find;
+  dayEnd.update(now, ctx.cfg, dayKey, weekday, minuteNow, counts.running > 0, quietDesk);
+  weekly.update(now, ctx.cfg.weekly, dayKey, weekday, minuteNow, counts.running > 0, ctx.snap.week.present,
+                quietDesk);
+  di.dayEnd = dayEnd.showing(now);
+  di.weekRecap = weekly.showing(now);
+  wellness.update(now, ctx.cfg, counts.running > 0, miblo::inWorkHours(ctx.cfg, weekday, minuteNow),
+                  quietDesk && !di.dayEnd && !di.weekRecap);
+  di.nudge = wellness.showing(now);
+  // Friday the 13th: now and then a black cat crosses pet mode.
+  uint32_t passAt = 0;
+  di.passerby = occasion == miblo::Occasion::Friday13 && screen == ScreenId::Roam &&
+                miblo::passerbyAt(now - roamSinceMs, &passAt);
+  di.screen = screen;
+  screen = miblo::dailyScreen(di);
+  updateDailyLook(minuteNow, day, timeKnown, clockNow().epoch);
+
+  // The panel stays on while a /miblo:say note is up (it is meant for passers-by).
+  const bool asleep = !ctx.demo && petLatch.asleep(ctx.cfg.sleepMin, petMin, now) && !di.say;
   if (asleep != displayOff) {
     displayOff = asleep;
     board::setDisplay(!asleep);
@@ -436,6 +559,7 @@ void loop() {
 
   const Lang lang = uiLang();
   const screens::Clock clk = clockNow();
+  const uint32_t eta = miblo::etaFor(ctx.snap, ctx.limits);  // the bridge's forecast, else ours
   switch (screen) {
     case ScreenId::Boot:
       screens::boot(lang, (uint8_t)((now - bootMs) / 400));
@@ -473,7 +597,7 @@ void loop() {
       screens::disconnected(lang, clk, net::ip().c_str(), ctx.ident.id, ctx.pairing.code(), now, now - awaySinceMs);
       break;
     case ScreenId::Desk:
-      screens::desk(lang, ctx.snap, clk, now, ctx.limits.exhaustAt());
+      screens::desk(lang, ctx.snap, clk, now, eta);
       break;
     case ScreenId::LimitReset:
       screens::limitReset(lang, ctx.snap, clk, now - limitResetMs);
@@ -498,6 +622,8 @@ void loop() {
         snprintf(note, sizeof(note), screens::t(lang, S::FriendNap), buddy);
         mood = screens::DeskMood::Asleep;
         if (clk.valid) lookMs = (clk.epoch % 86400) * 1000;
+      } else if (const char* say = ctx.notes.saying(now)) {
+        snprintf(note, sizeof(note), "%s", say);  // /miblo:say rides on the pet's sign
       }
       screens::roam(lang, ctx.snap, clk, now - roamSinceMs, mood, note, lookMs, away);
       break;
@@ -513,30 +639,84 @@ void loop() {
     }
     case ScreenId::AlertFlash: {
       int idx = miblo::findSession(ctx.snap, alert.sid);
-      screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs);
+      screens::flash(lang, alert.kind, idx >= 0 ? ctx.snap.sessions[idx].name : "", now - alert.phaseStartMs,
+                     alert.level, ctx.meeting.on());
       break;
     }
     case ScreenId::AlertHero:
-      screens::hero(lang, ctx.snap, miblo::findSession(ctx.snap, alert.sid), alert.kind, ctx.cfg.discreet, clk,
-                    ctx.runs);
+      screens::hero(lang, ctx.snap, miblo::findSession(ctx.snap, alert.sid), alert.kind, discreet, clk, ctx.runs,
+                    ctx.meeting.on());
+      break;
+    case ScreenId::Fanfare: {
+      const int idx = miblo::findSession(ctx.snap, alert.sid);
+      const char* name = idx >= 0 && !ctx.meeting.on() ? ctx.snap.sessions[idx].name : "";
+      screens::fanfare(lang, name, fanDur, now - alert.phaseStartMs);
+      break;
+    }
+    case ScreenId::Focus: {
+      const uint32_t left = ctx.focus.leftMs(now);
+      screens::focus(lang, clk, ctx.focus.phase(), ctx.focus.round(), ctx.focus.plan().rounds, left,
+                     ctx.focus.phaseLenMs(), clk.epoch ? clk.epoch + left / 1000 : 0, now);
+      break;
+    }
+    case ScreenId::Timer:
+      screens::timer(lang, clk, ctx.notes.timerLeftMs(now), ctx.notes.timerLenMs(), now);
+      break;
+    case ScreenId::Note: {
+      const bool held = di.held != miblo::NoteKind::None;
+      const char* text = held ? ctx.notes.heldText(now) : ctx.notes.saying(now);
+      screens::note(lang, held ? di.held : miblo::NoteKind::Say, text ? text : "", clk, now);
+      break;
+    }
+    case ScreenId::Cue:
+      screens::cue(di.cue, cue.elapsed(now));
+      break;
+    case ScreenId::Find: {
+      char url[32];
+      snprintf_P(url, sizeof(url), PSTR("http://%s/"), net::ip().c_str());
+      screens::findMe(lang, url, ctx.notes.findElapsed(now));
+      break;
+    }
+    case ScreenId::Nudge:
+      screens::nudge(lang, di.nudge, wellness.elapsed(now));
+      break;
+    case ScreenId::DayEnd:
+      screens::dayEnd(lang, ctx.snap, ctx.cfg.owner, dayEnd.elapsed(now));
+      break;
+    case ScreenId::WeekRecap:
+      screens::weekRecap(lang, ctx.snap, weekly.elapsed(now));
+      break;
+    case ScreenId::Passerby:
+      screens::passerby(lang, ctx.snap, clk, passAt);
       break;
     case ScreenId::Main:
       if (mainLimits) {  // a rotation slot, or the arc's turn in the Desk cycle
-        screens::limits(lang, ctx.snap, clk, ctx.limits.exhaustAt());
+        screens::limits(lang, ctx.snap, clk, eta);
         break;
       }
       switch (ctx.cfg.mode) {
         case miblo::Mode::Overview:
-          screens::overview(lang, ctx.snap, listPager, now, clk, ctx.cfg.discreet);
+          screens::overview(lang, ctx.snap, listPager, now, clk, discreet, eta);
           break;
         case miblo::Mode::Limits:
-          screens::limits(lang, ctx.snap, clk, ctx.limits.exhaustAt());
+          screens::limits(lang, ctx.snap, clk, eta);
           break;
         case miblo::Mode::Sessions:
-          screens::sessions(lang, ctx.snap, sessionPager, now, clk, ctx.cfg.discreet);
+          screens::sessions(lang, ctx.snap, sessionPager, now, clk, discreet);
           break;
       }
       break;
+  }
+
+  // Overlays, every frame (never over the full-screen pulse or the alert flash).
+  if (screen != ScreenId::Cue && screen != ScreenId::AlertFlash) {
+    const miblo::FrameColor fc = ctx.cfg.frame ? miblo::frameColorFor(ctx.snap, clk.epoch) : miblo::FrameColor::None;
+    if (fc == miblo::FrameColor::None && frameShown != miblo::FrameColor::None) {
+      firstFrame = true;  // the frame went away: redraw the screen under it next frame
+    }
+    frameShown = fc;
+    if (fc != miblo::FrameColor::None) screens::stateFrame(fc);
+    if (ctx.meeting.on()) screens::meetingBadge(lang);
   }
 }
 

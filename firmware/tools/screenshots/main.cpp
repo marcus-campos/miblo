@@ -25,6 +25,7 @@
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
 #include "platform/tft_canvas.h"
+#include "shots.h"
 #include "ui_screens.h"
 
 using miblo::AlertKind;
@@ -108,13 +109,17 @@ bool writePng(const std::string& path, const std::vector<uint16_t>& px, int w, i
   return fclose(f) == 0 && ok;
 }
 
+}  // namespace
+
+namespace shots {
+
 // ---------------- sample data ----------------
 
 uint32_t gNow = 0;  // "now" in Unix seconds: 14:32 local time
 Snapshot snap;
 
 void session(const char* id, const char* name, SessionState st, const char* tool, const char* det, uint32_t ago,
-             int ctx = 42, int64_t tok = 186000, const char* model = "Opus") {
+             int ctx, int64_t tok, const char* model) {
   miblo::SessionRow& r = snap.sessions[snap.count++];
   memset(&r, 0, sizeof(r));
   snprintf(r.id, sizeof(r.id), "%s", id);
@@ -168,21 +173,23 @@ screens::Clock clock() {
   return c;
 }
 
-// ---------------- rendering ----------------
+}  // namespace shots
 
-// Drawn like on the gadget: through a ShiftCanvas (no shift here), which applies the blue light
-// filter when `warmth` > 0.
-struct Shot {
-  TFT_eSPI tft{240, 240};
-  TftCanvas canvas{tft, {240, 240}, board::fonts::kStacks};
-  ui::ShiftCanvas shifted{canvas};
-  explicit Shot(uint8_t warmth = 0) {
-    canvas.begin();
-    shifted.setWarmth(warmth);
-    screens::bind(shifted);
-    screens::reset();
-  }
-};
+namespace {
+
+// What the per-track files (shots.h) share, used here unqualified.
+using shots::attention;
+using shots::clock;
+using shots::gNow;
+using shots::idle;
+using shots::save;
+using shots::session;
+using shots::Shot;
+using shots::snap;
+using shots::usage;
+using shots::working;
+
+// ---------------- rendering ----------------
 
 std::string gDir;
 int gCount = 0;
@@ -213,6 +220,10 @@ void checkMargins(const std::vector<uint16_t>& px, int w, int h, const std::stri
   if (m < kMinMargin) gMarginErrors.push_back(name + ": content " + std::to_string(m) + " px from an edge");
 }
 
+}  // namespace
+
+namespace shots {
+
 void save(Shot& s, const std::string& name) {
   checkMargins(s.tft.pixels(), 240, 240, gDir + "/" + name, s.shifted.warmth());
   const std::string base = gDir + "/" + name;
@@ -223,6 +234,10 @@ void save(Shot& s, const std::string& name) {
   }
   gCount++;
 }
+
+}  // namespace shots
+
+namespace {
 
 // Every distinct expression of a mood's loop, in order (desk or disconnected).
 template <typename Draw>
@@ -524,6 +539,13 @@ void renderAll(Lang L) {
   mascotFrames("41-disconnected-asleep", screens::DeskMood::Asleep, [&](uint32_t ms) {
     screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", ms, 3600000);
   });
+  // Daily life, one file per track (shots.h).
+  shots::renderFocus(L);
+  shots::renderAlerts(L);
+  shots::renderDayRhythm(L);
+  shots::renderNotes(L);
+  shots::renderCues(L);
+  shots::renderLook(L);
 }
 
 // ---------------- animations ----------------

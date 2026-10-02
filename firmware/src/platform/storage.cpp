@@ -83,6 +83,18 @@ bool loadConfig(miblo::Config& cfg) {
   return true;
 }
 
+// Stub (daily-life foundation): track D implements it.
+bool loadNotes(miblo::DeskNotes& n) {
+  (void)n;
+  return false;
+}
+
+// Stub (daily-life foundation): track D implements it.
+bool saveNotes(const miblo::DeskNotes& n) {
+  (void)n;
+  return false;
+}
+
 bool saveConfig(const miblo::Config& cfg) {
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   miblo::configToStored(cfg, doc.to<JsonObject>());

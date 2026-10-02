@@ -7,7 +7,10 @@
 #include "board.h"
 #include "platform/platform.h"
 #include "context.h"
+#include "miblo_desknotes.h"
+#include "miblo_focus.h"
 #include "miblo_info.h"
+#include "miblo_meeting.h"
 #include "miblo_snapshot.h"
 #include "miblo_utf8.h"
 #include "miblo_version.h"
@@ -34,6 +37,18 @@ static bool authorized() {
   return true;
 }
 
+// /api/info "focus.phase".
+static const __FlashStringHelper* focusPhaseName(miblo::FocusPhase p) {
+  switch (p) {
+    case miblo::FocusPhase::Focus: return F("focus");
+    case miblo::FocusPhase::Break: return F("break");
+    case miblo::FocusPhase::Back: return F("back");
+    case miblo::FocusPhase::LongBreak: return F("long");
+    case miblo::FocusPhase::Off: break;
+  }
+  return F("off");
+}
+
 static void handleInfo() {
   // A paired gadget tells someone without its token only who it is (miblo::infoView): its name,
   // version, settings and diagnostics are for the computers paired with it.
@@ -52,10 +67,11 @@ static void handleInfo() {
     json(200, out.c_str());
     return;
   }
-  // 37 top-level members + screen{2} + caps + copied strings (flash, reset): ~660 B on the
-  // ESP8266, plus ~350 B for the keys, which are copied in from flash (F()) so they never sit in
-  // RAM for good; 1536 still leaves room for "crash" and future caps.
-  StaticJsonDocument<1536> doc;  // + "crash" (~300 B) after a crash
+  // 42 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
+  // phase, the countdown date): ~830 B on the ESP8266, plus ~440 B for the keys, which are copied
+  // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
+  // ~1.57 KB at worst.
+  StaticJsonDocument<1792> doc;
   doc[F("id")] = ctx.ident.id;
   doc[F("name")] = deviceName();
   doc[F("fw")] = MIBLO_FW_VERSION;
@@ -104,8 +120,26 @@ static void handleInfo() {
   doc[F("petMin")] = ctx.cfg.petMin;
   doc[F("flashBlinks")] = ctx.cfg.flashBlinks;
   doc[F("friends")] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
+  // Daily life (read back by /miblo:focus, meeting, timer, countdown; "daily" = these routes exist).
+  const uint32_t nowMs = millis();
+  JsonObject focus = doc.createNestedObject(F("focus"));
+  focus[F("phase")] = focusPhaseName(ctx.focus.phase());
+  focus[F("round")] = ctx.focus.round();
+  focus[F("rounds")] = ctx.focus.plan().rounds;
+  focus[F("left")] = ctx.focus.leftMs(nowMs) / 1000;  // seconds left in the phase
+  doc[F("meetingLeft")] = ctx.meeting.on() ? ctx.meeting.leftMs(nowMs) / 1000 : 0;
+  doc[F("timerLeft")] = ctx.notes.timerRunning() ? ctx.notes.timerLeftMs(nowMs) / 1000 : 0;
+  const miblo::Countdown& cd = ctx.notes.countdown();
+  doc[F("countdown")] = (const char*)cd.label;  // "" = none (stable memory: not copied)
+  char date[11] = "";
+  if (cd.label[0]) {
+    snprintf_P(date, sizeof(date), PSTR("%04u-%02u-%02u"), (unsigned)cd.date.year, (unsigned)cd.date.month,
+               (unsigned)cd.date.day);
+  }
+  doc[F("countdownDate")] = date;  // char[]: copied
+  doc[F("daily")] = 1;
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
-  // ~1.36 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
+  // ~1.57 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
   // dropped silently, so a document that overflowed is an error, never a partial answer.
   if (doc.overflowed()) {
     json(500, "{\"error\":\"info too large\"}");
@@ -260,10 +294,141 @@ static void handleReset() {
   ctx.factoryResetRequested = true;
 }
 
+// ---- Daily life: focus, meeting, notes on the desk ----
+
+// The local clock, like app.cpp: known once NTP (or a snapshot) set it.
+static bool localNow(struct tm& lt) {
+  const time_t now = time(nullptr);
+  if (now <= 1600000000) return false;
+  localtime_r(&now, &lt);
+  return true;
+}
+// Local minute of the day, or -1 while the time is unknown.
+static int minuteNow() {
+  struct tm lt;
+  return localNow(lt) ? lt.tm_hour * 60 + lt.tm_min : -1;
+}
+// Today's local date in `d`, or null while the time is unknown.
+static const miblo::Date* todayOrNull(miblo::Date& d) {
+  struct tm lt;
+  if (!localNow(lt)) return nullptr;
+  d = miblo::Date{(uint16_t)(lt.tm_year + 1900), (uint8_t)(lt.tm_mon + 1), (uint8_t)lt.tm_mday};
+  return &d;
+}
+// Now in Unix seconds, or 0 while the time is unknown.
+static uint32_t epochNow() {
+  const time_t now = time(nullptr);
+  return now > 1600000000 ? (uint32_t)now : 0;
+}
+
+// A module's request handler: fills `out` (200 only) and returns the HTTP status; on 400/409
+// *bad names the field or the reason ("clock", "full", ...).
+using DailyHandler = int (*)(JsonObjectConst body, JsonObject out, const char** bad);
+
+// Daily-life routes: token, a small JSON body (absent = {}), then the module's own handler. One
+// function for every route (each route is a captureless lambda), so the parsing exists once.
+static void dailyRoute(DailyHandler handle) {
+  if (!authorized()) {
+    json(401, F("{\"error\":\"unauthorized\"}"));
+    return;
+  }
+  StaticJsonDocument<384> doc;  // texts are <= 47 bytes: a body over 300 bytes is not ours
+  const String& body = srv->arg(F("plain"));
+  if (body.length() > 300 || (body.length() && (deserializeJson(doc, body) || !doc.is<JsonObject>()))) {
+    json(400, F("{\"error\":\"bad json\"}"));
+    return;
+  }
+  if (!body.length()) doc.to<JsonObject>();
+  // The biggest reply is GET /api/remind: 8 items of 4 members (~690 B on the ESP8266; texts are
+  // not copied). Transient, on the stack like /api/info's document.
+  StaticJsonDocument<768> reply;
+  JsonObject out = reply.to<JsonObject>();
+  const char* bad = nullptr;
+  const int code = handle(doc.as<JsonObjectConst>(), out, &bad);
+  ctx.lastInteractionMs = millis();  // someone at the desk: wake the screen
+  if (code == 200) {
+    out[F("ok")] = true;
+    if (reply.overflowed()) {  // never a partial answer
+      json(500, F("{\"error\":\"reply too large\"}"));
+      return;
+    }
+    String s;
+    serializeJson(reply, s);
+    json(200, s.c_str());
+    return;
+  }
+  String s = String(F("{\"error\":\"")) + (code == 409 ? F("conflict") : F("invalid")) + F("\",\"field\":\"") +
+             (bad ? bad : "") + F("\"}");
+  json(code, s.c_str());
+}
+
+// POST /api/focus {"focusMin","breakMin","rounds"} | {"stop":true}
+static void handleFocus() {
+  dailyRoute([](JsonObjectConst b, JsonObject, const char** bad) {
+    return miblo::focusRequest(ctx.focus, b, millis(), bad);
+  });
+}
+
+// POST /api/meeting {"min":1..480} | {"off":true}
+static void handleMeeting() {
+  dailyRoute([](JsonObjectConst b, JsonObject, const char** bad) {
+    return miblo::meetingRequest(ctx.meeting, b, millis(), bad);
+  });
+}
+
+// POST /api/say {"text","min"} | {"off":true}
+static void handleSay() {
+  dailyRoute([](JsonObjectConst b, JsonObject, const char** bad) {
+    return miblo::sayRequest(ctx.notes, b, millis(), bad);
+  });
+}
+
+// POST /api/remind {"in"|"at"[,"days"],"text"} | {"dismiss":true} | {"delete":N}
+static void handleRemind() {
+  dailyRoute([](JsonObjectConst b, JsonObject out, const char** bad) {
+    return miblo::remindRequest(ctx.notes, b, millis(), minuteNow(), out, bad);
+  });
+}
+
+// GET /api/remind: {"items":[{"id":1,"in":840,"text":...},{"id":5,"at":"09:45","days":62,...}]}
+static void handleReminders() {
+  dailyRoute([](JsonObjectConst, JsonObject out, const char**) {
+    ctx.notes.listJson(out.createNestedArray(F("items")), millis(), epochNow());
+    return 200;
+  });
+}
+
+// POST /api/timer {"min":1..180} | {"stop":true}
+static void handleTimer() {
+  dailyRoute([](JsonObjectConst b, JsonObject, const char** bad) {
+    return miblo::timerRequest(ctx.notes, b, millis(), bad);
+  });
+}
+
+// POST /api/countdown {"label","date":"YYYY-MM-DD"} | {"label","md":"MM-DD"} | {"off":true}
+static void handleCountdown() {
+  dailyRoute([](JsonObjectConst b, JsonObject, const char** bad) {
+    miblo::Date d;
+    return miblo::countdownRequest(ctx.notes, b, todayOrNull(d), bad);
+  });
+}
+
+// POST /api/find: the cat waves with the settings QR for a few seconds.
+static void handleFind() {
+  dailyRoute([](JsonObjectConst, JsonObject, const char**) {
+    ctx.notes.find(millis());
+    return 200;
+  });
+}
+
 static const routes::Route kRoutes[] PROGMEM = {
-    {"/api/info", HTTP_GET, handleInfo},     {"/api/pair", HTTP_POST, handlePair},
-    {"/api/state", HTTP_POST, handleState},  {"/api/config", HTTP_POST, handleConfig},
-    {"/api/reset", HTTP_POST, handleReset},  {"/api/demo", HTTP_POST, handleDemo},
+    {"/api/info", HTTP_GET, handleInfo},        {"/api/pair", HTTP_POST, handlePair},
+    {"/api/state", HTTP_POST, handleState},     {"/api/config", HTTP_POST, handleConfig},
+    {"/api/reset", HTTP_POST, handleReset},     {"/api/demo", HTTP_POST, handleDemo},
+    {"/api/focus", HTTP_POST, handleFocus},     {"/api/meeting", HTTP_POST, handleMeeting},
+    {"/api/say", HTTP_POST, handleSay},         {"/api/remind", HTTP_POST, handleRemind},
+    {"/api/remind", HTTP_GET, handleReminders}, {"/api/timer", HTTP_POST, handleTimer},
+    {"/api/countdown", HTTP_POST, handleCountdown}, {"/api/find", HTTP_POST, handleFind},
 };
 
 void begin(WebServerT& server) {

@@ -2,10 +2,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "miblo_cues.h"
+#include "miblo_desknotes.h"
+#include "miblo_focus.h"
 #include "miblo_friends.h"
 #include "miblo_i18n.h"
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
+#include "miblo_wellness.h"
 #include "ui_canvas.h"
 
 // Layouts for all screens. Coordinates are designed on a 240x240 grid and scaled by the
@@ -136,11 +140,15 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap);
 // Alert flash: alternates colour/dark every kFlashPhaseMs; each phase repaints the whole
 // screen first, then draws the text (transparent) on that phase's colour.
 constexpr uint32_t kFlashPhaseMs = 375;  // half of miblo::kBlinkMs: config flashBlinks x 750 ms
-void flash(Lang lang, miblo::AlertKind kind, const char* name, uint32_t elapsedMs);
+// Both in ui_alerts.cpp. `level`: insistence (miblo_alerts.h); `anonymous`: meeting mode, no
+// session names, tools or commands.
+void flash(Lang lang, miblo::AlertKind kind, const char* name, uint32_t elapsedMs, uint8_t level = 0,
+           bool anonymous = false);
 void hero(Lang lang, const miblo::Snapshot& s, int idx, miblo::AlertKind kind, bool discreet, const Clock& clk,
-          const miblo::RunTracker& runs);
+          const miblo::RunTracker& runs, bool anonymous = false);
+// `exhaustAt` (miblo::etaFor): when the 5h window runs out at the current pace (0 = no forecast).
 void overview(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
-              bool discreet);
+              bool discreet, uint32_t exhaustAt = 0);
 // `exhaustAt` (LimitWatch): when the 5h window runs out at the recent pace (0 = not before it resets).
 void limits(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t exhaustAt = 0);
 void sessions(Lang lang, const miblo::Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk,
@@ -221,5 +229,43 @@ void summary(Lang lang, const miblo::Snapshot& s, const Clock& clk);
 // after kAwayNapMs away), "Waiting for the computer", and the address and pairing code.
 void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsHost, const char* pairCode,
                   uint32_t nowMs, uint32_t awayMs);
+
+// ---- Daily life ----
+// Focus (ui_focus.cpp): the cat with headphones, a progress ring, the time left big, "focus until
+// 15:30" and the rounds as dots; Break/LongBreak: stretching, "Break time" and its countdown;
+// Back: "Back to focus?". `leftMs`/`lenMs`: the phase; `untilEpoch`: when it ends (0 = unknown).
+void focus(Lang lang, const Clock& clk, miblo::FocusPhase phase, uint8_t round, uint8_t rounds, uint32_t leftMs,
+           uint32_t lenMs, uint32_t untilEpoch, uint32_t ms);
+// Wellness nudges and the day/week summaries (ui_dayrhythm.cpp).
+void nudge(Lang lang, miblo::Nudge kind, uint32_t ms);
+void dayEnd(Lang lang, const miblo::Snapshot& s, const char* owner, uint32_t ms);
+void weekRecap(Lang lang, const miblo::Snapshot& s, uint32_t ms);
+// Alerts (ui_alerts.cpp; flash() and hero() are declared with the main screens above).
+void fanfare(Lang lang, const char* name, uint32_t durSec, uint32_t ms);  // name "" in meeting mode
+void meetingBadge(Lang lang);  // overlay, every frame while meeting mode is on
+// Notes (ui_notes.cpp): the cat holding a text (say / reminder / alarm / "Time's up!"), the
+// timer with an hourglass, and find (waving + the settings QR).
+void note(Lang lang, miblo::NoteKind kind, const char* text, const Clock& clk, uint32_t ms);
+void timer(Lang lang, const Clock& clk, uint32_t leftMs, uint32_t lenMs, uint32_t ms);
+void findMe(Lang lang, const char* settingsUrl, uint32_t ms);
+// Cues (ui_cues.cpp): the full-screen slow pulse; the status frame overlay (None clears nothing:
+// the caller redraws the screen when it goes away).
+void cue(miblo::CueKind kind, uint32_t elapsedMs);
+void stateFrame(miblo::FrameColor c);
+// Friday the 13th (ui_occasions.cpp): a black cat crossing the pet mode screen.
+void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms);
+// State for every mascot drawn from now on (ui_daily_state.cpp), like setMascotAccessory().
+void setMascotTie(bool on);
+bool mascotTie();
+void setCatMood(uint8_t mood);  // miblo::CatMood
+uint8_t catMood();
+void setSecondClock(const char* label, const char* hhmm);  // "" = none
+const char* secondClockLabel();
+const char* secondClockTime();
+void setDeskExtras(const char* countdownLine, const char* qrUrl);  // "" = none
+const char* deskCountdown();
+const char* deskQrUrl();
+// Look extras used by the new screens (MascotLook::extras; drawn by ui_base.cpp, track F).
+enum : uint16_t { kHeadphones = 8192, kEyeBags = 16384 };
 
 }  // namespace screens

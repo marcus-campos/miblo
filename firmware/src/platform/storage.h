@@ -2,6 +2,7 @@
 #include <stdint.h>
 
 #include "miblo_config.h"
+#include "miblo_desknotes.h"
 #include "miblo_security.h"
 
 // Persistence on LittleFS (small JSON files). Wi-Fi credentials stay in the SDK.
@@ -12,6 +13,10 @@ bool loadConfig(miblo::Config& cfg);
 bool saveConfig(const miblo::Config& cfg);
 bool loadTokens(miblo::TokenStore& tokens);
 bool saveTokens(const miblo::TokenStore& tokens);
+// The saved part of the desk notes (recurring alarms, the countdown) in /notes.json, apart from
+// the config. False when there is nothing saved or it could not be read/written.
+bool loadNotes(miblo::DeskNotes& n);
+bool saveNotes(const miblo::DeskNotes& n);
 uint8_t readBootCount();
 void writeBootCount(uint8_t n);
 // "Ever configured" marker (/.configured at the LittleFS root, outside /miblo): set the first time

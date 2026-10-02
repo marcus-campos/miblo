@@ -3,9 +3,12 @@
 
 #include "miblo_alerts.h"
 #include "miblo_config.h"
+#include "miblo_desknotes.h"
+#include "miblo_focus.h"
 #include "miblo_friends.h"
 #include "miblo_i18n.h"
 #include "miblo_limits.h"
+#include "miblo_meeting.h"
 #include "miblo_occasions.h"
 #include "miblo_policy.h"
 #include "miblo_overview.h"
@@ -38,6 +41,9 @@ struct Context {
   miblo::UpdateNotice update;  // "update available" once per boot
   miblo::FriendPlay friends;   // other Miblos on the network (pet mode visits)
   miblo::Greeter greeter;      // "Hi! I'm Tofu", "Good morning, Ana", birthdays
+  miblo::FocusTimer focus;      // /miblo:focus
+  miblo::MeetingMode meeting;   // /miblo:meeting
+  miblo::DeskNotes notes;       // say, reminders, alarms, timer, countdown, find
 
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;

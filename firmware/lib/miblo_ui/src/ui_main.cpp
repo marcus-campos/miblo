@@ -7,6 +7,7 @@
 #include "miblo_format.h"
 #include "miblo_policy.h"
 #include "miblo_rom.h"
+#include "ui_internal.h"
 #include "ui_screens.h"
 #include "ui_visit_kit.h"
 
@@ -25,30 +26,20 @@ using ui::Align;
 using ui::Font;
 namespace color = ui::color;
 
-// Regions (RegionCache ids) of the main screens.
-// Values that change in place (clock, timers, countdowns, page) have their own field regions
-// (see field()), so a tick never clears the block they sit in.
-enum : uint8_t {
-  R_HEADER = 0, R_LIMITS = 1, R_WEEK = 2, R_DIVIDER = 3, R_ROW0 = 4, R_BODY = 9, R_FOOT = 10, R_TIME0 = 11,
-  R_CLOCK = 14, R_RESET5 = 15, R_RESET7 = 16, R_PAGE = 17, R_BURN = 18
-};
 // Session cards per page, in the Overview (Working / Needs you) and in the Sessions mode.
 constexpr uint8_t kRows = 3;
 
-static const char* const kDot = " \xC2\xB7 ";  // " · "
-
-// Shapes at (x + Sz(dx), y + Sz(dy)) in 240-grid units, out of line: each one costs a call rather
-// than its own scaling code. (Sz is odd, Sz(-v) == -Sz(v), so x - Sz(v) is x + Sz(-v).)
-__attribute__((noinline)) static void szRect(int x, int y, int dx, int dy, int w, int h, uint16_t c) {
+// Shapes (ui_internal.h), out of line on purpose.
+__attribute__((noinline)) void szRect(int x, int y, int dx, int dy, int w, int h, uint16_t c) {
   C().fillRect(x + Sz(dx), y + Sz(dy), Sz(w), Sz(h), c);
 }
-__attribute__((noinline)) static void szRound(int x, int y, int dx, int dy, int w, int h, int r, uint16_t c) {
+__attribute__((noinline)) void szRound(int x, int y, int dx, int dy, int w, int h, int r, uint16_t c) {
   C().fillRoundRect(x + Sz(dx), y + Sz(dy), Sz(w), Sz(h), Sz(r), c);
 }
-__attribute__((noinline)) static void szDisc(int x, int y, int dx, int dy, int r, uint16_t c) {
+__attribute__((noinline)) void szDisc(int x, int y, int dx, int dy, int r, uint16_t c) {
   C().fillCircle(x + Sz(dx), y + Sz(dy), Sz(r), c);
 }
-__attribute__((noinline)) static void szTri(int x, int y, int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
+__attribute__((noinline)) void szTri(int x, int y, int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c) {
   C().fillTriangle(x + Sz(x0), y + Sz(y0), x + Sz(x1), y + Sz(y1), x + Sz(x2), y + Sz(y2), c);
 }
 
@@ -58,7 +49,7 @@ static uint16_t levelColor(uint8_t pct, uint16_t base) {
   return base;
 }
 
-static uint16_t stateColor(SessionState st) {
+uint16_t stateColor(SessionState st) {
   switch (st) {
     case SessionState::Perm:
     case SessionState::Question: return color::AMBER;
@@ -71,18 +62,18 @@ static uint16_t stateColor(SessionState st) {
 
 static bool isPending(SessionState st) { return st == SessionState::Perm || st == SessionState::Question; }
 
-static uint32_t since(const SessionRow& r, const Clock& clk) {
+uint32_t sessionSince(const SessionRow& r, const Clock& clk) {
   return (clk.epoch && clk.epoch > r.since) ? clk.epoch - r.since : 0;
 }
 
 // Clock at the right of a header (baseline y), on the header's colour. `parent` = the header
 // region's hash, so a redrawn header always gets its clock back.
-static void clockRight(uint32_t parent, const Clock& clk, int y, uint16_t fg, uint16_t bg) {
+void clockRight(uint32_t parent, const Clock& clk, int y, uint16_t fg, uint16_t bg) {
   field(R_CLOCK, parent, X(228), y, clk.hhmm, Font::Small, fg, bg, Align::Right, X(44));
 }
 
 // "Opus · ctx 71% · 412k tok" (missing parts are omitted; tok = the session's context tokens).
-static void metaLine(const SessionRow& r, char* out, size_t cap) {
+void metaLine(const SessionRow& r, char* out, size_t cap) {
   char tmp[48];
   out[0] = 0;
   if (r.model[0]) snprintf(out, cap, "%s", r.model);
@@ -111,96 +102,6 @@ void formatWhen(Lang lang, uint32_t epoch, uint32_t now, char* out, size_t cap) 
     snprintf(out, cap, "%s", hhmm);
   } else {
     snprintf(out, cap, "%s %s", t(lang, (S)((int)S::WdSun + a.tm_wday)), hhmm);
-  }
-}
-
-// ---------------- alerts ----------------
-
-void flash(Lang lang, AlertKind kind, const char* name, uint32_t elapsedMs) {
-  (void)lang;
-  const bool amber = kind != AlertKind::Done;
-  const bool on = ((elapsedMs / kFlashPhaseMs) % 2) == 0;
-  const uint16_t bg = on ? (amber ? color::AMBER : color::FLASH_BLUE) : color::BG;
-  const uint16_t fg = on ? (amber ? color::BLACK : color::WHITE) : (amber ? color::AMBER : color::BLUE);
-  if (!region(R_BODY, hashStr(hashInt(hashInt(kHashSeed, amber), on), name), 0, 0, X(240), Y(240), bg)) return;
-  if (amber) {  // "!" in a circle
-    C().fillCircle(X(120), Y(90), Sz(30), fg);
-    C().fillRect(X(116), Y(70), Sz(8), Y(26), bg);
-    C().fillRect(X(116), Y(102), Sz(8), Sz(8), bg);
-  } else {
-    C().wideLine(X(96), Y(92), X(112), Y(108), Sz(8), fg, bg);
-    C().wideLine(X(112), Y(108), X(146), Y(72), Sz(8), fg, bg);
-  }
-  C().text(X(120), Y(160), name, Font::Hero, fg, Align::Center, X(224));
-}
-
-void hero(Lang lang, const Snapshot& s, int idx, AlertKind kind, bool discreet, const Clock& clk,
-          const miblo::RunTracker& runs) {
-  if (idx < 0 || idx >= s.count) return;
-  const SessionRow& r = s.sessions[idx];
-  const bool amber = kind != AlertKind::Done;
-  char buf[160];
-  char tmp[48];
-
-  // Only what is displayed goes into the hash (the model/ctx/tokens line is only on "Finished").
-  uint32_t h = hashStr(hashInt(hashInt(kHashSeed, (uint32_t)lang), (uint32_t)kind), r.id);
-  h = hashStr(hashStr(hashStr(h, r.name), discreet ? "" : r.det), r.tool);
-  if (!amber) {
-    uint32_t dur = 0;
-    h = hashStr(hashInt(hashInt(hashInt(h, (uint32_t)r.ctx), (uint32_t)r.tok), runs.stats(r.id, dur) ? dur : 0), r.model);
-  }
-  Compose head;
-  if (head.begin(R_HEADER, h, 0, 0, X(240), Y(150))) {
-    if (amber) {
-      C().fillRect(0, 0, X(240), Y(4), color::AMBER);
-      C().fillCircle(X(16), Y(15), Sz(4), color::AMBER);
-      C().text(X(26), Y(20), t(lang, S::NeedsYou), Font::SmallBold, color::AMBER, Align::Left, X(200));
-    } else {
-      check(X(18), Y(14), Sz(12), color::BLUE);
-      C().text(X(30), Y(20), t(lang, S::Finished), Font::SmallBold, color::BLUE, Align::Left, X(200));
-    }
-    C().text(X(12), Y(62), r.name, Font::Hero, color::TEXT, Align::Left, X(216));
-    if (amber) {
-      C().text(X(12), Y(92), t(lang, kind == AlertKind::Perm ? S::AskedPermission : S::AskedQuestion), Font::Body,
-               color::AMBER, Align::Left, X(216));
-      if (r.tool[0]) {
-        C().fillRoundRect(X(12), Y(104), X(216), Y(32), Sz(4), color::CMD_BG);
-        if (discreet || !r.det[0]) snprintf(buf, sizeof(buf), "%s", r.tool);
-        else snprintf(buf, sizeof(buf), "%s: %s", r.tool, r.det);
-        C().text(X(20), Y(125), buf, Font::Body, color::TEXT, Align::Left, X(200));
-      }
-    } else {
-      uint32_t dur;
-      if (runs.stats(r.id, dur)) {
-        miblo::formatElapsed(dur, tmp, sizeof(tmp));
-        snprintf(buf, sizeof(buf), t(lang, S::Took), tmp);
-        C().text(X(12), Y(92), buf, Font::Body, color::TEXT, Align::Left, X(216));
-      }
-      metaLine(r, buf, sizeof(buf));
-      C().text(X(12), Y(118), buf, Font::Small, color::MUTED, Align::Left, X(216));
-    }
-  }
-
-  head.end();
-
-  if (amber) {  // "Waiting for 3m": minute granularity, updated in place
-    miblo::formatInState(since(r, clk), tmp, sizeof(tmp));
-    snprintf(buf, sizeof(buf), t(lang, S::WaitingFor), tmp);
-    field(R_BODY, kHashSeed, X(12), Y(166), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));
-  }
-
-  const miblo::StateCounts c = miblo::countStates(s);
-  Compose foot;
-  if (foot.begin(R_FOOT, hashInt(hashInt(hashInt(kHashSeed, c.running), c.idle), (uint32_t)lang), 0, Y(210),
-                 X(240), Y(30))) {
-    buf[0] = 0;
-    if (c.running) snprintf(buf, sizeof(buf), t(lang, S::PlusRunning), (unsigned)c.running);
-    if (c.idle) {
-      snprintf(tmp, sizeof(tmp), t(lang, S::NIdle), (unsigned)c.idle);
-      if (buf[0]) strncat(buf, kDot, sizeof(buf) - strlen(buf) - 1);
-      strncat(buf, tmp, sizeof(buf) - strlen(buf) - 1);
-    }
-    C().text(X(12), Y(228), buf, Font::Small, color::FAINT, Align::Left, X(216));
   }
 }
 
@@ -284,7 +185,7 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
 
 // Compact limits strip (one row, baseline y): "5h ▓▓░ 30%   7d ▓░ 13%". Without usage data
 // (account without a subscription) it shows today's cost instead. Drawn in region `id`.
-static void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg) {
+void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg) {
   uint32_t hs = hashInt(hashInt(kHashSeed + 3, (uint32_t)lang), s.hasUsage);
   hs = hashInt(hashInt(hs, s.h5.present ? s.h5.pct : 255), s.d7.present ? s.d7.pct : 255);
   hs = hashInt(hashInt(hs, (uint32_t)(s.todayUsd * 100)), (uint32_t)top);
@@ -345,7 +246,7 @@ static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock
   timeStr[0] = 0;
   if (r) {
     miblo::sessionLine(lang, *r, discreet, line, sizeof(line));
-    miblo::formatInState(since(*r, clk), timeStr, sizeof(timeStr));
+    miblo::formatInState(sessionSince(*r, clk), timeStr, sizeof(timeStr));
   }
   const bool pending = r && isPending(r->st);
   const uint16_t cardBg = r ? (pending ? color::CARD_AMBER : color::CARD) : color::BG;
@@ -403,7 +304,7 @@ static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
   const int last = miblo::lastFinished(s);
   buf[0] = 0;
   if (last >= 0) {
-    miblo::formatInState(since(s.sessions[last], clk), tmp, sizeof(tmp));
+    miblo::formatInState(sessionSince(s.sessions[last], clk), tmp, sizeof(tmp));
     snprintf(buf, sizeof(buf), t(lang, S::FinishedAgo), s.sessions[last].name, tmp);
   }
   field(R_ROW0, kHashSeed, X(12), Y(168), buf, Font::Small, color::MUTED, color::BG, Align::Left, X(216));
@@ -415,7 +316,9 @@ static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
   field(R_ROW0 + 1, kHashSeed, X(12), Y(186), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));
 }
 
-void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet) {
+void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet,
+              uint32_t exhaustAt) {
+  (void)exhaustAt;  // track U shows the forecast here
   const OverviewKind kind = miblo::classifyOverview(s);
   // The three layouts tile the screen differently: switching layout clears everything.
   static bool haveKind = false;
@@ -744,7 +647,7 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
 // direct fallback flashed the background before each frame.
 constexpr int kCatStrips = 8;
 
-static void deskCat(uint8_t id, int cx, int cy, int half240, const MascotLook& k) {
+void deskCat(uint8_t id, int cx, int cy, int half240, const MascotLook& k) {
   if (!dirty(id, lookHash(kHashSeed + 17, k))) return;
   const int half = Sz(half240);
   const int stripH = (2 * half + kCatStrips - 1) / kCatStrips;
@@ -1662,7 +1565,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   const int lf = miblo::lastFinished(s);
   if (lf >= 0) {
     char ago[16];
-    miblo::formatInState(since(s.sessions[lf], clk), ago, sizeof(ago));
+    miblo::formatInState(sessionSince(s.sessions[lf], clk), ago, sizeof(ago));
     snprintf(lastName, sizeof(lastName), "%s", s.sessions[lf].name);
     // "finished 12m ago" without the name (it has its own line): the phrase with an empty name.
     snprintf(lastWhen, sizeof(lastWhen), t(lang, S::FinishedAgo), "", ago);
@@ -2052,27 +1955,29 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
 
 // ---- greetings ----
 
-void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
-  deskCat(R_BODY, X(120), Y(90), 56, deskLook(DeskMood::Celebrate, true, ms));
-  if (party) {
-    // Confetti along the top and the bottom, reshuffled a few times a second.
-    static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
-                                                 color::CORAL, color::VIOLET, color::RED};
-    const uint32_t frame = ms / 250;
-    for (uint8_t band = 0; band < 2; band++) {
-      const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
-      if (!region(band ? R_FOOT : R_HEADER, hashInt(kHashSeed + 71 + band, frame), 0, y0, X(240), bandH)) continue;
-      uint32_t r = frame * 2654435761u + band * 97u + 1;
-      for (int i = 0; i < 14; i++) {
-        r = r * 1103515245u + 12345u;
-        const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
-        const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
-        uint16_t c;
-        mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
-        C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
-      }
+// Confetti along the top and the bottom bands (R_HEADER, R_FOOT), reshuffled when `frame`
+// changes (hello() passes ms / 250: a few times a second).
+void confettiBands(uint32_t frame) {
+  static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
+                                               color::CORAL, color::VIOLET, color::RED};
+  for (uint8_t band = 0; band < 2; band++) {
+    const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
+    if (!region(band ? R_FOOT : R_HEADER, hashInt(kHashSeed + 71 + band, frame), 0, y0, X(240), bandH)) continue;
+    uint32_t r = frame * 2654435761u + band * 97u + 1;
+    for (int i = 0; i < 14; i++) {
+      r = r * 1103515245u + 12345u;
+      const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
+      const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
+      uint16_t c;
+      mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
+      C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
     }
   }
+}
+
+void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
+  deskCat(R_BODY, X(120), Y(90), 56, deskLook(DeskMood::Celebrate, true, ms));
+  if (party) confettiBands(ms / 250);
   const uint32_t h = hashStr(hashStr(hashInt(kHashSeed + 73, party), line1), line2);
   if (region(R_LIMITS, h, 0, Y(152), X(240), Y(62))) {
     const bool two = line1 && line1[0];

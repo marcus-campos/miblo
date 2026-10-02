@@ -527,11 +527,10 @@ static const char kSysJs[] PROGMEM =
     "$('cpun').textContent=s.cpu+'%';$('ramn').textContent=ram+'%';"
     "bar('fwb','fwv',s.fw,s.fwMax);bar('fsb','fsv',s.fsUsed,s.fs);}"
     // The paired computers: label, "active now" / "seen 5 min ago", Rename and Remove. The computer
-    // that opened the page through /miblo:settings is marked (it puts its host name after #me=);
-    // once renamed here, this browser remembers the new label for it (miblo_me).
-    "const ME=(()=>{try{return decodeURIComponent((location.hash.match(/me=([^&]*)/)||[])[1]||'').slice(0,32)}catch(e){return ''}})();"
-    "let MEL=null;try{MEL=JSON.parse(localStorage.getItem('miblo_me')||'null')}catch(e){}"
-    "const isMe=c=>!!ME&&(c.host===ME||!!MEL&&MEL.h===ME&&c.host===MEL.l);"
+    // that opened the page through /miblo:settings is marked: it puts its token's tag after #me=
+    // (8 hex, miblo::tokenTag), so a renamed one stays marked in any browser.
+    "const ME=(location.hash.match(/me=([0-9a-f]{8})(?:&|$)/)||[])[1]||'';"
+    "const isMe=c=>!!ME&&c.tag===ME;"
     "const esc=s=>String(s).replace(/[&<>\"]/g,c=>'&#'+c.charCodeAt(0)+';');"
     "const dur=s=>s<3600?Math.max(1,Math.round(s/60))+' min':s<86400?Math.round(s/3600)+' h':Math.round(s/86400)+' d';"
     "let PCE=false;"  // a label is being edited: the list is not redrawn under it
@@ -560,7 +559,6 @@ static const char kSysJs[] PROGMEM =
     "if([...v].length>20||/[\\x00-\\x1f\\x7f]/.test(v)){x.classList.add('bad');return;}"
     "const q=await areq('/settings-computer-rename',JSON.stringify({i:c.i,host:c.host,name:v})).catch(()=>null);"
     "if(q&&q.status===400){x.classList.add('bad');return;}"
-    "if(q&&q.ok&&v&&isMe(c)){MEL={h:ME,l:v};try{localStorage.setItem('miblo_me',JSON.stringify(MEL))}catch(e){}}"
     "pcs();};"
     // Its own Enter: the page's Enter (save the settings) must not see it.
     "b.onclick=go;x.onkeydown=e=>{e.stopPropagation();if(e.key==='Enter')go();else if(e.key==='Escape')pcs();};}"
@@ -1181,13 +1179,14 @@ static void handleSettingsSystem() {
 }
 
 // GET /settings-computers: the paired computers, for the settings page (no tokens, ever): each
-// one's host name and how long ago its token last came in (-1: not since the gadget started).
+// one's label, how long ago its token last came in (-1: not since the gadget started) and its
+// token's tag (miblo::tokenTag: 32 bits, cannot give the token back) for "(this computer)".
 static void handleSettingsComputers() {
   if (!webAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<640> doc;  // 4 entries: 5 members each, the tags copied
   JsonArray list = doc.createNestedArray("list");
   const uint32_t now = millis();
   for (uint8_t i = 0; i < ctx.tokens.count(); i++) {
@@ -1195,6 +1194,9 @@ static void handleSettingsComputers() {
     e["i"] = i;
     e["host"] = (const char*)ctx.tokens.at(i).host;
     if (ctx.tokens.at(i).custom) e["c"] = true;  // named by the user (else: its host name)
+    char tag[9];
+    miblo::tokenTag(ctx.tokens.at(i).token, tag);  // "(this computer)": never more of the token
+    e["tag"] = tag;
     e["ago"] = ctx.tokens.everSeen(i) ? (long)((now - ctx.tokens.seenAt(i)) / 1000) : -1L;
   }
   String out;

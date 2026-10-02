@@ -11,6 +11,10 @@ void formatCode(uint32_t rnd, char out[5]);
 void makeToken(const uint8_t rnd[16], char out[33]);
 // "Bearer <token>" → token. false if the header isn't in that format or the token doesn't fit.
 bool bearerToken(const char* header, char* out, size_t cap);
+// The settings page's "(this computer)" tag: the first 8 hex of FNV-1a-64 over the token (the
+// plugin puts the same after #me=). Only 32 bits of a 128-bit random token: it tells the rows
+// apart and cannot give the token back (2^96 tokens share each tag). nullptr hashes as "".
+void tokenTag(const char* token, char out[9]);
 // Constant-time comparison (doesn't leak the length of the matching prefix).
 bool constantTimeEquals(const char* a, const char* b);
 // Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the

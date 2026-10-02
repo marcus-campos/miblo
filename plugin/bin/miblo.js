@@ -74,7 +74,16 @@ export function openInBrowser(url, platform = process.platform) {
 // The stored addr is "ip:port"; the default HTTP port is dropped for a clean URL.
 export const settingsUrl = (addr) => `http://${cleanAddr(addr).replace(/^(\[[^\]]*\]|[^:]*):80$/, '$1')}/`;
 
-async function settings(args, store, openUrl, hostname = '') {
+// The tag the settings page marks "(this computer)" by: the first 8 hex of FNV-1a-64 over the
+// pairing token, as the gadget computes it (miblo::tokenTag). Only 32 bits of a 128-bit random
+// token: it says which row is ours and cannot give the token back (2^96 tokens share each tag).
+export function tokenTag(token) {
+  let h = 0xcbf29ce484222325n;
+  for (const b of Buffer.from(String(token ?? ''), 'utf8')) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
+  return h.toString(16).padStart(16, '0').slice(0, 8);
+}
+
+async function settings(args, store, openUrl) {
   const ok = (out) => ({ code: 0, out: out + '\n' });
   const fail = (code, out) => ({ code, out: out + '\n' });
   const devices = store.list();
@@ -96,8 +105,9 @@ async function settings(args, store, openUrl, hostname = '') {
     `(also at http://${cleanId(d.id)}.local if the IP changed and your network resolves .local names)`,
   ];
   try {
-    // The page marks this computer in its paired computers' list: the host name sent when pairing.
-    await openUrl(hostname ? `${url}#me=${encodeURIComponent(hostname)}` : url);
+    // The page marks this computer in its paired computers' list by its token's tag (never the
+    // token): it survives renaming the computer on the page.
+    await openUrl(d.token ? `${url}#me=${tokenTag(d.token)}` : url);
     lines.push('Opened in your browser.');
   } catch {
     lines.push('Could not open a browser: open the URL by hand.');
@@ -613,7 +623,7 @@ export async function run(argv, deps) {
     case 'night':
       return night(args, store, client);
     case 'settings':
-      return settings(args, store, deps.openUrl ?? openInBrowser, hostname);
+      return settings(args, store, deps.openUrl ?? openInBrowser);
     case 'rename':
       return rename(args, store, client);
     case 'owner':

@@ -24,6 +24,12 @@ void makeToken(const uint8_t rnd[16], char out[33]) {
   out[32] = 0;
 }
 
+void tokenTag(const char* token, char out[9]) {
+  uint64_t h = 0xcbf29ce484222325ull;
+  for (const char* p = token ? token : ""; *p; p++) h = (h ^ (uint8_t)*p) * 0x100000001b3ull;
+  snprintf(out, 9, "%08x", (unsigned)(h >> 32));
+}
+
 bool bearerToken(const char* header, char* out, size_t cap) {
   if (!header || strncmp(header, "Bearer ", 7) != 0) return false;
   const char* t = header + 7;

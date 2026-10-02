@@ -160,13 +160,14 @@ notes.
 24. **Paired computers:** on a paired gadget's settings page, once unlocked, a **Paired
     computers** card (after This device, before Advanced, no need to open Advanced) lists each
     paired computer with its host name and "active now" (the one sending snapshots) or how long
-    ago it was seen; opened through `/miblo:settings`, this computer is marked "(this computer)".
-    The list refreshes every 30 s.
+    ago it was seen; opened through `/miblo:settings`, this computer is marked "(this computer)"
+    (the URL ends in `#me=` and 8 hex characters, a tag of the token, never the token or the host
+    name). The list refreshes every 30 s.
     - **Rename:** press Rename on a row: the name becomes a field. Type "Work laptop" and press
       Enter (or Save): the row shows it, and it stays after a restart and after that computer's
       next snapshots. Escape cancels. 21 characters are refused (the field turns red); accents and
-      emoji are fine. Rename the computer that opened the page: it keeps "(this computer)" in this
-      browser. Clear the field and save: within a snapshot or two the row shows the computer's host
+      emoji are fine. Rename the computer that opened the page: it keeps "(this computer)", also
+      after `/miblo:settings` opens the page in another browser. Clear the field and save: within a snapshot or two the row shows the computer's host
       name again.
     - **Automatic name:** change a computer's host name (or pair with an older label in
       pairs.json) and let it send a snapshot: its row follows the new host name, and the change

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { startFakeDevice } from './fakes/fake-device.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
-import { run } from '../bin/miblo.js';
+import { run, tokenTag } from '../bin/miblo.js';
 
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -372,13 +372,21 @@ test('settings prints the gadget URL and opens it in the browser', async () => {
   new DeviceStore(d.dataDir).upsert({ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.176:80', token: 'secret' });
   const r = await run(['settings'], d);
   assert.equal(r.code, 0);
-  // The page it opens marks this computer in the paired computers' list (#me=, its host name as
-  // sent when pairing); the printed URL stays plain.
-  assert.deepEqual(opened, ['http://192.168.0.176/#me=test-host']);
+  // The page it opens marks this computer in the paired computers' list by its token's tag
+  // (#me=, the first 8 hex of FNV-1a-64 of the token: never the token); the printed URL stays plain.
+  assert.deepEqual(opened, ['http://192.168.0.176/#me=ab23f0ee']);
+  assert.ok(!opened[0].includes('secret'));
   assert.match(r.out, /Miblo-4F2A settings: http:\/\/192\.168\.0\.176\/\n/);
   assert.match(r.out, /http:\/\/miblo-4f2a\.local/);
   assert.match(r.out, /Opened in your browser/);
   assert.ok(!r.out.includes('secret'));
+});
+
+test('tokenTag is FNV-1a-64 of the token, first 8 hex (the gadget computes the same)', () => {
+  assert.equal(tokenTag(''), 'cbf29ce4');
+  assert.equal(tokenTag('a'), 'af63dc4c');
+  assert.equal(tokenTag('00112233445566778899aabbccddeeff'), 'de18ad43');
+  assert.equal(tokenTag('ffeeddccbbaa99887766554433221100'), '789a7dc7');
 });
 
 test('settings keeps a non-default port and picks a gadget by id', async () => {
@@ -389,7 +397,7 @@ test('settings keeps a non-default port and picks a gadget by id', async () => {
   store.upsert({ id: 'b', name: 'B', addr: '10.0.0.6:8080', token: 't' });
   const r = await run(['settings', 'b'], d);
   assert.equal(r.code, 0);
-  assert.deepEqual(opened, ['http://10.0.0.6:8080/#me=test-host']);
+  assert.deepEqual(opened, ['http://10.0.0.6:8080/#me=af63e94c']);
   assert.equal((await run(['settings', 'zzz'], d)).code, 2);
 });
 

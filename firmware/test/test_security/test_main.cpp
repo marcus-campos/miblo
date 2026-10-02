@@ -317,6 +317,24 @@ static void test_system_json_fields() {
   TEST_ASSERT_EQUAL_UINT32(1024000, doc["fs"].as<uint32_t>());
 }
 
+// The settings page marks the computer that opened it by a tag of its token (FNV-1a-64, first 8
+// hex): stable, different per token, and only 32 bits of a 128-bit random token.
+static void test_token_tag() {
+  char tag[9];
+  tokenTag("", tag);
+  TEST_ASSERT_EQUAL_STRING("cbf29ce4", tag);  // FNV-1a-64 of "": cbf29ce484222325
+  tokenTag("a", tag);
+  TEST_ASSERT_EQUAL_STRING("af63dc4c", tag);
+  tokenTag("00112233445566778899aabbccddeeff", tag);
+  TEST_ASSERT_EQUAL_STRING("de18ad43", tag);
+  tokenTag("00112233445566778899aabbccddeeff", tag);
+  TEST_ASSERT_EQUAL_STRING("de18ad43", tag);  // stable
+  tokenTag("ffeeddccbbaa99887766554433221100", tag);
+  TEST_ASSERT_EQUAL_STRING("789a7dc7", tag);  // another token, another tag
+  tokenTag(nullptr, tag);
+  TEST_ASSERT_EQUAL_STRING("cbf29ce4", tag);
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
@@ -720,6 +738,7 @@ int main() {
   RUN_TEST(test_token_store_auto_label);
   RUN_TEST(test_tokens_json_round_trip);
   RUN_TEST(test_system_json_fields);
+  RUN_TEST(test_token_tag);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_headers_plain_and_complete);
   RUN_TEST(test_headers_incomplete);

@@ -330,6 +330,30 @@ static void test_poll_closed_too_large_and_body_counts_socket_bytes() {
   TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b3, full, kBodyWaitMs));
 }
 
+// A header block that spans segments needs the 2 KB buffer. When the heap cannot spare it the
+// request is refused (503 busy, the plugin retries) instead of left waiting until the server drops
+// it; the buffer is not even tried. A connection that sent nothing yet, or whose buffer already
+// holds its first bytes, is not refused.
+static void test_poll_no_heap_for_the_buffer_is_refused() {
+  FakeSource idle;
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, idle, kBodyWaitMs, true));
+  FakeSource half;
+  half.segments = {"POST /api/say HTTP/1.1\r\nHost: x\r\n"};
+  HeaderBuffer b2;
+  TEST_ASSERT_EQUAL(RequestReadiness::NoMemory, pollRequest(b2, half, kBodyWaitMs, true));
+  TEST_ASSERT_FALSE(b2.allocated());
+  TEST_ASSERT_EQUAL(0, half.waits);
+  FakeSource started;  // the buffer was allocated before the heap ran low: finish the request
+  started.segments = {"GET / HTTP/1.1\r\nHost: x\r\n", "\r\n"};
+  started.gapMs = 10;
+  HeaderBuffer b3;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b3, started, kBodyWaitMs));
+  TEST_ASSERT_TRUE(b3.allocated());
+  started.now = 10;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b3, started, kBodyWaitMs, true));
+}
+
 // The hook reads two things from the gathered block before a large body is read: its length and
 // the caller's credentials.
 static void test_request_body_length_and_header_lookup() {
@@ -454,6 +478,7 @@ int main() {
   RUN_TEST(test_poll_does_not_wait_for_headers_after_the_body_rule);
   RUN_TEST(test_poll_a_large_body_is_not_held_back);
   RUN_TEST(test_poll_closed_too_large_and_body_counts_socket_bytes);
+  RUN_TEST(test_poll_no_heap_for_the_buffer_is_refused);
   RUN_TEST(test_request_body_length_and_header_lookup);
   RUN_TEST(test_request_in_place);
   RUN_TEST(test_body_decisions);

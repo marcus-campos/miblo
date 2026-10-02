@@ -189,13 +189,14 @@ RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32
   return waitForBytes(src, n + bodyToCome(p, end, n), bodyWaitMs);
 }
 
-RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs) {
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs, bool heapLow) {
   for (;;) {
     const size_t end = headerBlockEnd(buf.data(), buf.pending());
     if (end) return waitForBytes(src, bodyToCome(buf.data(), end, buf.pending()), bodyWaitMs);
     if (buf.pending() >= HeaderBuffer::kCap) return RequestReadiness::TooLarge;
     const size_t avail = src.available();
     if (!avail) return src.connected() ? RequestReadiness::Waiting : RequestReadiness::Closed;
+    if (heapLow && !buf.allocated()) return RequestReadiness::NoMemory;
     size_t room;
     char* tail = buf.reserveTail(room);
     if (!tail) return RequestReadiness::NoMemory;

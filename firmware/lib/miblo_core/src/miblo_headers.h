@@ -101,7 +101,7 @@ enum class RequestReadiness : uint8_t {
   TooLarge,     // no header block within HeaderBuffer::kCap: refuse (431)
   BodyTimeout,  // a small body did not arrive within the wait: refuse (408)
   Closed,       // the peer closed before sending it all
-  NoMemory,     // no heap for the buffer: ask again later
+  NoMemory,     // no heap for the buffer: refuse (503 busy, which the plugin retries)
 };
 // A body larger than this is not held back: the TCP window (lwIP low memory: 4 x 536 B) cannot
 // hold more unread, so waiting for it could never end. The server reads it with its own 5 s wait
@@ -117,7 +117,10 @@ constexpr uint32_t kBodyWaitMs = 350;
 RequestReadiness waitForBytes(ByteSource& src, size_t want, uint32_t budgetMs);
 // Reads what has arrived (never waits) into `buf` until it holds the header block, then waits up to
 // bodyWaitMs for a small body still to come. Body bytes are counted in the socket, not read.
-RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs);
+// heapLow: the heap cannot spare the buffer (HeaderBuffer::kCap) right now, so a request that would
+// allocate it is NoMemory without trying (a fragmented heap could still grant it and starve the
+// Wi-Fi SDK). A buffer already allocated is used as usual.
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs, bool heapLow = false);
 // The same on the bytes p[0..n) judged in place (the first received segment, no copy; `src`
 // counts them among its unread bytes): Waiting when they do not hold the whole header block (then
 // use pollRequest), else as pollRequest. The usual request never touches the heap.

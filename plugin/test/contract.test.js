@@ -22,8 +22,9 @@ function world(day = { turns: 12, work: 4380 }) {
     metrics.ingest({ session_id: sid, model: { display_name: model }, cost: { total_cost_usd: usd },
       context_window: { used_percentage: ctx, total_input_tokens: inTok, total_output_tokens: outTok }, ...(rl ? { rate_limits: rl } : {}) }, { fresh: true });
   const rl = { five_hour: { used_percentage: 62, resets_at: S + 7800 }, seven_day: { used_percentage: 38, resets_at: S + 240000 } };
-  const finish = () => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics, day: { today: () => day }, latest: '1.0.2' }); };
-  return { ev, sl, rl, finish };
+  // `extra`: the daily-life fields the bridge adds on its own (eta from LimitForecast, week on Mondays).
+  const finish = (extra = {}) => { clock.set(NOW); return buildSnapshot({ seq: 42, nowMs: NOW, host: 'MacBook-Marcus', tracker, metrics, day: { today: () => day }, latest: '1.0.2', ...extra }); };
+  return { ev, sl, rl, clock, finish };
 }
 
 const scenarios = {
@@ -39,10 +40,22 @@ const scenarios = {
   },
   working() {
     const w = world({ turns: 31, work: 12420 });
+    w.clock.set(NOW - 150_000);
     w.ev('33333333-c', 'PreToolUse', '/w/front-app', { tool_name: 'Edit', tool_input: { file_path: '/w/front-app/src/Header.tsx' } });
+    w.clock.set(NOW - 102_000);  // the command has been running for 1:42 (sessions[].ts)
     w.ev('55555555-e', 'PreToolUse', '/w/worker', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
     w.sl('33333333-c', 'Sonnet', 34, 90000, 8000, 0.4, w.rl);
     return w.finish();
+  },
+  // A Monday: last week's totals (week) and the 5-hour forecast (usage.h5.eta).
+  monday() {
+    const w = world({ turns: 3, work: 1260 });
+    w.clock.set(NOW - 900_000);
+    w.ev('77777777-g', 'PreToolUse', '/w/api-server', { tool_name: 'Bash', tool_input: { command: 'npm run build' } });
+    w.clock.set(NOW - 10_000);
+    w.ev('88888888-h', 'PreToolUse', '/w/front-app', { tool_name: 'Read', tool_input: { file_path: '/w/front-app/README.md' } });
+    w.sl('77777777-g', 'Opus', 41, 150000, 9000, 2.75, w.rl);
+    return w.finish({ eta: S + 5280, week: { work: 61200, turns: 212, usd: 31.5, top: 3 } });
   },
   idle() {
     const w = world({ turns: 0, work: 0 });

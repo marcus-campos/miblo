@@ -121,3 +121,91 @@ test('alerting sessions are kept over quiet working ones when trimming', () => {
   // Every alert points at a session that is actually present, so the gadget can name it.
   for (const a of s.alerts) assert.ok(ids.includes(a.sid), `alert ${a.sid} has its session`);
 });
+
+test('eta goes into usage.h5 only with a forecast and a 5-hour window', () => {
+  const { tracker, metrics } = world();
+  const build = (eta) => buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, eta });
+  assert.equal(build(1790611200).usage, null);  // no usage.h5 yet: eta ignored
+  metrics.ingest({ session_id: 's', rate_limits: {
+    five_hour: { used_percentage: 62, resets_at: 1_790_613_720 }, seven_day: { used_percentage: 38, resets_at: 1_790_900_000 } } });
+  assert.deepEqual(build(1790611200).usage, {
+    h5: { pct: 62, reset: 1_790_613_720, eta: 1790611200 }, d7: { pct: 38, reset: 1_790_900_000 } });
+  assert.ok(!('eta' in build(null).usage.h5));
+  assert.ok(!('eta' in build(undefined).usage.h5));
+  // The store's own reading is never changed.
+  assert.ok(!('eta' in metrics.usage().h5));
+});
+
+test('the alert-only snapshot keeps the forecast in usage', async () => {
+  const { alertOnlySnapshot } = await import('../lib/snapshot-builder.js');
+  const { tracker, metrics } = world();
+  tracker.handle({ session_id: 's', hook_event_name: 'PermissionRequest', cwd: '/w/a', tool_name: 'Bash', tool_input: {} });
+  metrics.ingest({ session_id: 's', rate_limits: { five_hour: { used_percentage: 62, resets_at: 1_790_613_720 } } });
+  const full = buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, eta: 1790611200 });
+  assert.equal(alertOnlySnapshot(full).usage.h5.eta, 1790611200);
+});
+
+test('ts only for a running Bash command', async () => {
+  const { alertOnlySnapshot } = await import('../lib/snapshot-builder.js');
+  let t = NOW - 90_000;
+  const tracker = new SessionTracker({ now: () => t, isAlive: () => true });
+  const metrics = new MetricsStore({ now: () => t });
+  tracker.handle({ session_id: 'bash-run', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  t = NOW - 60_000;
+  tracker.handle({ session_id: 'edit-run', hook_event_name: 'PreToolUse', cwd: '/w/b', tool_name: 'Edit', tool_input: { file_path: '/w/b/x.js' } });
+  t = NOW - 10_000;  // the permission alert is still fresh at NOW
+  tracker.handle({ session_id: 'bash-perm', hook_event_name: 'PermissionRequest', cwd: '/w/c', tool_name: 'Bash', tool_input: { command: 'rm x' } });
+  t = NOW;
+  const s = buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics });
+  const by = Object.fromEntries(s.sessions.map((r) => [r.name, r]));
+  assert.equal(by.a.ts, Math.floor((NOW - 90_000) / 1000));
+  assert.ok(!('ts' in by.b));
+  assert.ok(!('ts' in by.c));
+  const small = alertOnlySnapshot(s);
+  assert.equal(small.sessions.length, 1);
+  assert.ok(!('ts' in small.sessions[0]) && !('week' in small));
+});
+
+test('week is sent only when given', () => {
+  const { tracker, metrics } = world();
+  const week = { work: 61200, turns: 212, usd: 31.5, top: 3 };
+  assert.deepEqual(buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, week }).week, week);
+  assert.ok(!('week' in buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, week: null })));
+});
+
+test('worst case with the daily-life fields still fits 6144 bytes (and 3072 for old gadgets)', async () => {
+  const { trimSnapshot } = await import('../lib/snapshot-builder.js');
+  const { tracker, metrics } = world();
+  for (let i = 0; i < 24; i++) {
+    tracker.handle({ session_id: `session-${i}`, hook_event_name: 'PreToolUse', cwd: `/w/${'项'.repeat(30)}${i}`, tool_name: 'Bash', tool_input: { command: '命'.repeat(40) } });
+    metrics.ingest({ session_id: `session-${i}`, model: { display_name: '模型模型模型模型模型模型模型' }, cost: { total_cost_usd: 9999.99 },
+      context_window: { used_percentage: 100, total_input_tokens: 999999999, total_output_tokens: 1 },
+      rate_limits: { five_hour: { used_percentage: 99, resets_at: 1_790_613_720 }, seven_day: { used_percentage: 99, resets_at: 1_790_900_000 } } });
+  }
+  for (let i = 0; i < 3; i++) tracker.handle({ session_id: `ask-${i}`, hook_event_name: 'PermissionRequest', cwd: `/w/a${i}`, tool_name: 'Bash', tool_input: {} });
+  const s = buildSnapshot({ seq: 4_294_967_295, nowMs: NOW, host: '主机'.repeat(10), tracker, metrics, latest: '10.10.10',
+    day: { today: () => ({ turns: 99999, work: 86399 }) }, eta: 1_790_611_200, week: { work: 604800, turns: 99999, usd: 99999.99, top: 6 } });
+  assert.ok(s.sessions.every((r) => r.st !== 'running' || r.ts));
+  assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 6144);
+  assert.equal(s.usage.h5.eta, 1_790_611_200);
+  assert.ok(s.week);
+  const legacy = trimSnapshot(s, 8, 3072);
+  assert.ok(Buffer.byteLength(JSON.stringify(legacy)) <= 3072);
+  assert.ok(legacy.sessions.length > 0);
+});
+
+test('ts stops when the command ends, even while Claude keeps working', () => {
+  let t = NOW - 90_000;
+  const tracker = new SessionTracker({ now: () => t, isAlive: () => true });
+  const metrics = new MetricsStore({ now: () => t });
+  const ev = (name, extra = {}) => tracker.handle({ session_id: 's', hook_event_name: name, cwd: '/w/a', ...extra });
+  const snap = () => buildSnapshot({ seq: 1, nowMs: t, host: 'h', tracker, metrics }).sessions[0];
+  ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  t += 60_000;
+  assert.equal(snap().ts, Math.floor((NOW - 90_000) / 1000));
+  assert.equal(ev('PostToolUse'), true);  // the timer disappears: a change to push
+  assert.equal(snap().st, 'running');
+  assert.ok(!('ts' in snap()));
+  ev('PreToolUse', { tool_name: 'Read', tool_input: { file_path: '/w/a/x' } });
+  assert.equal(ev('PostToolUse'), false);  // another tool's end changes nothing on the gadget
+});

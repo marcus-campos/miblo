@@ -7,9 +7,17 @@ const cut = (s, n) => {
 const shortId = (id) => String(id).replace(/-/g, '').slice(0, 8);
 const toSec = (ms) => Math.floor(ms / 1000);
 
+// `usage` (MetricsStore.usage()) with the 5-hour forecast `eta` (epoch s) in `h5`; unchanged when
+// there is no forecast or no 5-hour window to put it in.
+export function withEta(usage, eta) {
+  return eta && usage?.h5 ? { ...usage, h5: { ...usage.h5, eta } } : usage;
+}
+
 // `day` (a DayStats) is optional: without it `today` only carries the cost. `latest` is the
-// newest released version ("X.Y.Z"); the field is omitted when unknown.
-export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest }) {
+// newest released version ("X.Y.Z"); the field is omitted when unknown. `eta` (epoch s, from
+// LimitForecast) goes into `usage.h5` when there is a forecast and a 5-hour window to put it in.
+// `week` (DayStats.week(): last week's totals) is sent as given; the bridge passes it on Mondays.
+export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest, eta, week }) {
   const all = tracker.sessions();
   const rows = all.map((s) => {
     const m = metrics.forSession(s.id);
@@ -23,6 +31,8 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest 
       model: m ? cut(m.model, MODEL_LEN) : '',
       ctx: m?.ctx ?? null,
       tok: m?.tok ?? null,
+      // When a running shell command started, so the gadget can show how long it has been going.
+      ...(s.st === 'running' && s.tool === 'Bash' && s.cmdLive && s.toolSince ? { ts: toSec(s.toolSince) } : {}),
     };
   });
 
@@ -31,8 +41,9 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest 
     seq,
     now: toSec(nowMs),
     host: cut(host, NAME_LEN),
-    usage: metrics.usage(),
+    usage: withEta(metrics.usage(), eta),
     today: { ...metrics.today(), ...(day ? day.today() : {}) },
+    ...(week ? { week } : {}),
     sessions: rows.slice(0, MAX_SESSIONS),
     more: Math.max(0, rows.length - MAX_SESSIONS),
     alerts: tracker.alerts().map((a) => ({ id: a.id, kind: a.kind, sid: shortId(a.sid) })),

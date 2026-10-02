@@ -58,11 +58,16 @@ export class SessionTracker {
     const s = this.#ensure(id, evt.cwd);
     this.#lastSeen.set(id, this.now());
     const before = JSON.stringify(s);
+    const activity = [s.tool, s.det];
     if (evt.pid !== undefined && evt.pid !== null) s.pid = evt.pid;
 
     const agentId = typeof evt.agent_id === 'string' && evt.agent_id ? evt.agent_id : null;
     if (name === 'SubagentStart' || name === 'SubagentStop' || agentId) {
       this.#subagentEvent(s, name, agentId, evt);
+      // A subagent that changes the activity shown (its permission prompt) replaces the main
+      // thread's command, and the gadget never sees when the subagent's command runs or ends.
+      if (s.tool !== activity[0] || s.det !== activity[1]) s.cmdLive = false;
+      this.#markTool(s, activity, false);
       return created || JSON.stringify(s) !== before;
     }
     // Any main-thread event other than Stop means the main agent is working again.
@@ -107,6 +112,7 @@ export class SessionTracker {
         this.#enter(s, 'question');
         break;
       case 'PostToolUse':
+      case 'PostToolUseFailure':  // the tool failed (a command exiting non-zero, an interrupt)
         this.#enter(s, 'running');
         break;
       case 'Stop': {
@@ -128,7 +134,19 @@ export class SessionTracker {
       default:
         return created;
     }
+    // A main-thread PreToolUse is always a new tool call, even one repeating the last command;
+    // its PermissionRequest (same call) only moves the mark if it names something else.
+    this.#markTool(s, activity, name === 'PreToolUse');
+    // cmdLive: a main-thread shell command is in flight (from its PreToolUse until the next
+    // main-thread event, normally its PostToolUse or PostToolUseFailure), so the gadget's command
+    // timer stops when the command does, not when Claude moves on.
+    s.cmdLive = (name === 'PreToolUse' || name === 'PermissionRequest') && s.tool === 'Bash';
     return created || JSON.stringify(s) !== before;
+  }
+
+  // toolSince = when the activity shown (tool, det) started: the gadget times long commands from it.
+  #markTool(s, [tool, det], fresh) {
+    if (fresh || s.tool !== tool || s.det !== det) s.toolSince = this.now();
   }
 
   sweep() {
@@ -179,7 +197,7 @@ export class SessionTracker {
       const taken = new Set([...this.#sessions.values()].map((x) => x.name));
       let name = base;
       for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
-      s = { id, name, st: 'idle', since: this.now(), tool: '', det: '', pid: null, waiting: false, permBy: null };
+      s = { id, name, st: 'idle', since: this.now(), tool: '', det: '', toolSince: this.now(), cmdLive: false, pid: null, waiting: false, permBy: null };
       this.#sessions.set(id, s);
     }
     return s;

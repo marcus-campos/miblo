@@ -423,3 +423,83 @@ test('a tool call after an automatic compaction replaces the compacting activity
   assert.equal(s.st, 'running');
   assert.equal(s.tool, 'Read');
 });
+
+test('toolSince marks when the current tool started', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  tr.handle({ session_id: 's', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  t = 5000;
+  tr.handle({ session_id: 's', hook_event_name: 'PostToolUse', cwd: '/w/a' });
+  assert.equal(tr.sessions()[0].toolSince, 1000);
+  tr.handle({ session_id: 's', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm run build' } });
+  assert.equal(tr.sessions()[0].toolSince, 5000);
+});
+
+test('toolSince: the same command run again starts over; its permission prompt does not', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  const ev = (name, extra = {}) => tr.handle({ session_id: 's', hook_event_name: name, cwd: '/w/a', ...extra });
+  const bash = { tool_name: 'Bash', tool_input: { command: 'npm test' } };
+  ev('PreToolUse', bash);
+  t = 2000;
+  ev('PermissionRequest', bash);  // the same call asking first
+  assert.equal(tr.sessions()[0].toolSince, 1000);
+  t = 3000;
+  ev('PostToolUse');
+  t = 4000;
+  assert.equal(ev('PreToolUse', bash), true);  // a new run of the same command: a change to push
+  assert.equal(tr.sessions()[0].toolSince, 4000);
+  t = 5000;
+  ev('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+  assert.equal(tr.sessions()[0].toolSince, 5000);
+});
+
+test('toolSince follows a subagent permission prompt that changes the activity', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  tr.handle({ session_id: 's', hook_event_name: 'UserPromptSubmit', cwd: '/w/a' });
+  t = 2000;
+  tr.handle({ session_id: 's', hook_event_name: 'PermissionRequest', agent_id: 'ag', tool_name: 'Bash', tool_input: { command: 'make' } });
+  assert.equal(tr.sessions()[0].toolSince, 2000);
+});
+
+test('a failed shell command ends its timer (PostToolUseFailure), and the hook is registered', async () => {
+  const { MetricsStore } = await import('../lib/metrics-store.js');
+  const { buildSnapshot } = await import('../lib/snapshot-builder.js');
+  const fs = await import('node:fs');
+  let t = 1_790_600_000_000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  const metrics = new MetricsStore({ now: () => t });
+  const row = () => buildSnapshot({ seq: 1, nowMs: t, host: 'h', tracker: tr, metrics }).sessions[0];
+  tr.handle({ session_id: 's', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  t += 5000;
+  assert.ok(row().ts);
+  assert.equal(tr.handle({ session_id: 's', hook_event_name: 'PostToolUseFailure', cwd: '/w/a', tool_name: 'Bash' }), true);
+  assert.equal(row().st, 'running');
+  assert.ok(!('ts' in row()));
+  const hooks = JSON.parse(fs.readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8')).hooks;
+  const h = hooks.PostToolUseFailure?.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/hook.js'));
+  assert.ok(h, 'PostToolUseFailure runs hook.js');
+  assert.equal(h.async, true);
+});
+
+test('cmdLive never outlives the shell command (Esc, a new prompt, a subagent asking for Bash)', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  const ev = (name, extra = {}) => tr.handle({ session_id: 's', hook_event_name: name, cwd: '/w/a', ...extra });
+  ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  assert.equal(tr.sessions()[0].cmdLive, true);
+  ev('UserPromptSubmit');  // Esc and a new prompt: no PostToolUse ever came
+  assert.equal(tr.sessions()[0].cmdLive, false);
+  // A subagent's approved Bash: the gadget does not see its run, so no command timer.
+  ev('PermissionRequest', { agent_id: 'ag', tool_name: 'Bash', tool_input: { command: 'make' } });
+  ev('PostToolUse', { agent_id: 'ag', tool_name: 'Bash' });
+  const [s] = tr.sessions();
+  assert.equal(s.st, 'running');
+  assert.equal(s.tool, 'Bash');
+  assert.equal(s.cmdLive, false);
+  // Main thread Bash, then a subagent event that leaves the activity alone: still live.
+  ev('PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm run build' } });
+  ev('PreToolUse', { agent_id: 'ag2', tool_name: 'Read', tool_input: {} });
+  assert.equal(tr.sessions()[0].cmdLive, true);
+});

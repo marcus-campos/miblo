@@ -10,6 +10,9 @@ namespace storage {
 
 bool begin();
 bool loadConfig(miblo::Config& cfg);
+// Saves write a temporary file and rename it (never half a file, never a short write over a good
+// one). false when the heap is too low for the document right now or the write failed: the app
+// loop tries again later (miblo::SaveRetry).
 bool saveConfig(const miblo::Config& cfg);
 bool loadTokens(miblo::TokenStore& tokens);
 bool saveTokens(const miblo::TokenStore& tokens);

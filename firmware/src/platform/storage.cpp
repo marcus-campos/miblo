@@ -8,7 +8,11 @@
 namespace storage {
 
 static const char* kConfig = "/miblo/config.json";
+static const char* kConfigTmp = "/miblo/config.tmp";
 static const char* kTokens = "/miblo/pairs.json";
+static const char* kTokensTmp = "/miblo/pairs.tmp";
+// The pairings document: 4 entries (32-character token, a host <= 20 characters, order, flag).
+static constexpr size_t kTokensJsonCapacity = 1024;
 static const char* kBoot = "/miblo/boot.cnt";
 // Recurring alarms and the countdown (miblo_desknotes.h), apart from the config.
 static const char* kNotes = "/miblo/notes.json";
@@ -64,8 +68,16 @@ void markConfigured() {
   configured = LittleFS.exists(kConfigured);
 }
 
+// The saved file, or its complete temporary copy when a power cut fell between removing the old
+// file and renaming the new one (writeAtomically's fallback): a damaged copy fails to parse.
+static File openSaved(const char* path, const char* tmp) {
+  File f = LittleFS.open(path, "r");
+  if (!f && LittleFS.exists(tmp)) f = LittleFS.open(tmp, "r");
+  return f;
+}
+
 bool loadConfig(miblo::Config& cfg) {
-  File f = LittleFS.open(kConfig, "r");
+  File f = openSaved(kConfig, kConfigTmp);
   if (!f) return false;
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   DeserializationError err = deserializeJson(doc, f);
@@ -92,7 +104,7 @@ bool loadConfig(miblo::Config& cfg) {
 // A missing, damaged or oversized file leaves the notes empty (DeskNotes::fromJson skips any
 // entry it does not trust).
 bool loadNotes(miblo::DeskNotes& n) {
-  File f = LittleFS.open(kNotes, "r");
+  File f = openSaved(kNotes, kNotesTmp);
   if (!f) return false;
   if (f.size() > 1024) {  // never ours: don't parse it
     f.close();
@@ -105,39 +117,51 @@ bool loadNotes(miblo::DeskNotes& n) {
   return n.fromJson(doc.as<JsonObjectConst>());
 }
 
-// Written to a temporary file and renamed, so a power cut never leaves half a file behind.
-bool saveNotes(const miblo::DeskNotes& n) {
-  DynamicJsonDocument doc(kNotesJsonCapacity);
-  n.toJson(doc.to<JsonObject>());
-  if (doc.overflowed()) return false;
-  File f = LittleFS.open(kNotesTmp, "w");
-  if (!f) return false;
+// Writes `doc` to `tmp` and renames it over `path`, so a power cut never leaves half a file
+// behind, and a short write (a full or failing flash) never replaces a good file: the temporary
+// file is kept only when every byte measureJson() promised was written.
+static bool writeAtomically(const JsonDocument& doc, const char* path, const char* tmp) {
   const size_t want = measureJson(doc);
-  const bool ok = want > 0 && serializeJson(doc, f) == want;  // a short write (full flash) never replaces a good file
+  if (want == 0) return false;
+  File f = LittleFS.open(tmp, "w");
+  if (!f) return false;
+  const bool ok = serializeJson(doc, f) == want;
   f.close();
   if (!ok) {
-    LittleFS.remove(kNotesTmp);
+    LittleFS.remove(tmp);
     return false;
   }
-  if (LittleFS.rename(kNotesTmp, kNotes)) return true;
-  LittleFS.remove(kNotes);  // in case this LittleFS won't rename over an existing file
-  return LittleFS.rename(kNotesTmp, kNotes);
+  if (LittleFS.rename(tmp, path)) return true;
+  LittleFS.remove(path);  // in case this LittleFS won't rename over an existing file
+  return LittleFS.rename(tmp, path);
+}
+
+// A save builds its JSON document on the heap. When the heap is too low for it (with the Wi-Fi
+// SDK's reserve) it is not even tried: the caller retries later (miblo::SaveRetry).
+static bool heapFor(size_t capacity) { return !heapLowForRequest(capacity); }
+
+bool saveNotes(const miblo::DeskNotes& n) {
+  if (!heapFor(kNotesJsonCapacity)) return false;
+  DynamicJsonDocument doc(kNotesJsonCapacity);
+  if (doc.capacity() == 0) return false;
+  n.toJson(doc.to<JsonObject>());
+  if (doc.overflowed()) return false;
+  return writeAtomically(doc, kNotes, kNotesTmp);
 }
 
 bool saveConfig(const miblo::Config& cfg) {
+  if (!heapFor(miblo::kConfigJsonCapacity)) return false;
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
+  if (doc.capacity() == 0) return false;
   miblo::configToStored(cfg, doc.to<JsonObject>());
-  File f = LittleFS.open(kConfig, "w");
-  if (!f) return false;
-  bool ok = serializeJson(doc, f) > 0;
-  f.close();
-  return ok;
+  if (doc.overflowed()) return false;  // never a config cut short
+  return writeAtomically(doc, kConfig, kConfigTmp);
 }
 
 bool loadTokens(miblo::TokenStore& tokens) {
-  File f = LittleFS.open(kTokens, "r");
+  File f = openSaved(kTokens, kTokensTmp);
   if (!f) return false;
-  DynamicJsonDocument doc(1024);
+  DynamicJsonDocument doc(kTokensJsonCapacity);
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
@@ -146,13 +170,12 @@ bool loadTokens(miblo::TokenStore& tokens) {
 }
 
 bool saveTokens(const miblo::TokenStore& tokens) {
-  DynamicJsonDocument doc(1024);
+  if (!heapFor(kTokensJsonCapacity)) return false;
+  DynamicJsonDocument doc(kTokensJsonCapacity);
+  if (doc.capacity() == 0) return false;
   miblo::tokensToJson(tokens, doc.to<JsonObject>());
-  File f = LittleFS.open(kTokens, "w");
-  if (!f) return false;
-  bool ok = serializeJson(doc, f) > 0;
-  f.close();
-  return ok;
+  if (doc.overflowed()) return false;  // never a pairing list cut short
+  return writeAtomically(doc, kTokens, kTokensTmp);
 }
 
 uint8_t readBootCount() {
@@ -173,7 +196,9 @@ void writeBootCount(uint8_t n) {
 void factoryReset() {
   // Only the files under /miblo: the root markers (kFsMarker, kConfigured) must survive.
   LittleFS.remove(kConfig);
+  LittleFS.remove(kConfigTmp);
   LittleFS.remove(kTokens);
+  LittleFS.remove(kTokensTmp);
   LittleFS.remove(kBoot);
   LittleFS.remove(kNotes);
   LittleFS.remove(kNotesTmp);

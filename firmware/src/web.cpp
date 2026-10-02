@@ -1219,11 +1219,20 @@ static void handleSettingsComputerRemove() {
     return;
   }
   const int i = doc["i"].as<int>();
-  if (i < 0 || !ctx.tokens.remove((uint8_t)i, doc["host"].as<const char*>())) {
+  miblo::TokenUndo undo;
+  if (i < 0 || i > 255 || !ctx.tokens.remove((uint8_t)i, doc["host"].as<const char*>(), &undo)) {
     sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
     return;
   }
-  storage::saveTokens(ctx.tokens);
+  // Saved before the reply: a removed computer must never come back after a power cut. A failed
+  // save (low heap, flash) puts it back and answers busy: the page reloads the list unchanged.
+  if (!storage::saveTokens(ctx.tokens)) {
+    ctx.tokens.undo(undo);
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  ctx.tokensSave.succeeded();  // any pending save (a rename, an automatic label) was in this one
+  ctx.tokens.saved(millis());
   char out[32];
   snprintf_P(out, sizeof(out), PSTR("{\"ok\":true,\"left\":%u}"), (unsigned)ctx.tokens.count());
   sendJson(*srv, 200, out);
@@ -1260,8 +1269,7 @@ static void handleSettingsComputerRename() {
     sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
     return;
   }
-  storage::saveTokens(ctx.tokens);
-  ctx.tokens.saved(millis());  // an automatic label pending is in this save too
+  ctx.tokensSave.request(millis());  // saved by the app loop, with any automatic label pending
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 

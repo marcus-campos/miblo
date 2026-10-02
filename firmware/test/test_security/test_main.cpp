@@ -195,6 +195,70 @@ static void test_token_store_remove_and_seen() {
   TEST_ASSERT_FALSE(s.remove(0, "linux"));
 }
 
+// The token store with a failed save is put back exactly as before (pairing: the new token is
+// gone and an evicted one is back; removing: the computer is back in its place, "seen" included),
+// so the RAM never lets in a computer the flash would forget, or keep out one it would restore.
+static bool same(const TokenStore& a, const TokenStore& b) {
+  if (a.count() != b.count()) return false;
+  for (uint8_t i = 0; i < a.count(); i++) {
+    const TokenEntry &x = a.at(i), &y = b.at(i);
+    if (strcmp(x.token, y.token) || strcmp(x.host, y.host) || x.custom != y.custom || x.order != y.order ||
+        a.everSeen(i) != b.everSeen(i) || (a.everSeen(i) && a.seenAt(i) != b.seenAt(i)))
+      return false;
+  }
+  return true;
+}
+
+static void test_token_store_undo_add() {
+  TokenStore s;
+  s.add("t1", "mac");
+  s.seen(0, 100);
+  TokenStore before = s;
+  TokenUndo u;
+  s.add("t2", "pc", &u);
+  TEST_ASSERT_TRUE(s.matches("t2"));
+  s.undo(u);
+  TEST_ASSERT_TRUE(same(before, s));
+  TEST_ASSERT_FALSE(s.matches("t2"));
+  // Full: the evicted oldest comes back in its place, with its "seen".
+  s.add("t2", "pc");
+  s.add("t3", "wsl");
+  s.add("t4", "linux");
+  s.seen(2, 300);
+  before = s;
+  s.add("t5", "new", &u);
+  TEST_ASSERT_FALSE(s.matches("t1"));
+  s.undo(u);
+  TEST_ASSERT_TRUE(same(before, s));
+  TEST_ASSERT_TRUE(s.matches("t1"));
+  TEST_ASSERT_FALSE(s.matches("t5"));
+  TEST_ASSERT_TRUE(s.everSeen(0));
+  TEST_ASSERT_EQUAL_UINT32(100, s.seenAt(0));
+}
+
+static void test_token_store_undo_remove() {
+  TokenStore s;
+  s.add("t1", "mac");
+  s.add("t2", "pc");
+  s.add("t3", "wsl");
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "Desk") == TokenStore::RenameResult::Ok);
+  s.seen(1, 500);
+  s.seen(2, 700);
+  for (uint8_t i = 0; i < 3; i++) {
+    const TokenStore before = s;
+    TokenUndo u;
+    TEST_ASSERT_TRUE(s.remove(i, before.at(i).host, &u));
+    TEST_ASSERT_FALSE(s.matches(before.at(i).token));
+    s.undo(u);
+    TEST_ASSERT_TRUE(same(before, s));
+  }
+  TokenUndo u;
+  TEST_ASSERT_FALSE(s.remove(1, "mac", &u));  // nothing removed: nothing to undo
+  const TokenStore before = s;
+  s.undo(u);
+  TEST_ASSERT_TRUE(same(before, s));
+}
+
 // The settings page renames a paired computer: by its place AND its current label (like remove).
 // The new label is the user's (custom): automatic labels from the computer's snapshots no longer
 // replace it. An empty name gives the label back to the computer. Same rules as a gadget name.
@@ -753,6 +817,8 @@ int main() {
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);
   RUN_TEST(test_token_store_remove_and_seen);
+  RUN_TEST(test_token_store_undo_add);
+  RUN_TEST(test_token_store_undo_remove);
   RUN_TEST(test_token_store_add_cleans_the_host);
   RUN_TEST(test_token_store_rename);
   RUN_TEST(test_token_store_auto_label);

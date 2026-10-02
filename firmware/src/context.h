@@ -11,6 +11,7 @@
 #include "miblo_meeting.h"
 #include "miblo_occasions.h"
 #include "miblo_policy.h"
+#include "miblo_saveretry.h"
 #include "miblo_overview.h"
 #include "miblo_security.h"
 #include "miblo_snapshot.h"
@@ -27,6 +28,9 @@ struct Context {
   Identity ident{};
   miblo::Config cfg;
   miblo::TokenStore tokens;
+  // Pairing and removing a computer save at once (and are undone if that fails); a rename or an
+  // automatic label asks here (request()) and the app loop saves it, with retries.
+  miblo::SaveRetry tokensSave;
   miblo::PairingGuard pairing;
   miblo::PresenceGate presence;
   // Throttles expensive UNAUTHENTICATED responses (the page and /api/info) so a flood from an

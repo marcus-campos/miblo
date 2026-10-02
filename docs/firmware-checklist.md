@@ -344,3 +344,12 @@ notes.
     upload's reply reaches the client (the gadget drops the rest of the body for up to 1 s first):
     `curl -i -F firmware=@miblo.bin http://<ip>/update` with no update open prints the `400`; when it
     is cut off anyway, `/miblo:update` says the gadget stopped the upload and to run it again.
+27. **Saves survive power cuts:** change a setting on the settings page, pair a computer and
+    rename one, then pull the power within a second of each: after the restart each change is
+    there (the config, pairings and notes are written to a `.tmp` file and renamed, never half
+    written). The serial log never shows `config: save failed`, `pairs: save failed` or
+    `notes: save failed` in normal use; when one does (very low heap, a failing flash), the save
+    is retried after 1, 2, 4... minutes, at most an hour apart (`miblo::SaveRetry`). Storage
+    itself (LittleFS) is not in the native tests: this check covers it. Pairing and removing a
+    computer are saved before the reply: when that save fails the gadget answers `503 busy` and
+    nothing changes (the pairing code stays valid; `/miblo:pair` resends it).

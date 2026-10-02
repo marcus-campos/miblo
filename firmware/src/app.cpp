@@ -56,9 +56,22 @@ static miblo::EndOfDay dayEnd;          // the day's summary at the end of the w
 static miblo::WeeklyRecap weekly;       // Monday: last week's summary
 static miblo::FrameColor frameShown = miblo::FrameColor::None;  // the status frame last drawn
 static bool markShown = false;  // the "needs you" mark is over a daily screen
-static bool notesUnsaved = false;   // notes.json is behind the alarms/countdown in RAM
-static uint32_t notesSaveAtMs = 0;  // when to (re)try saving it
-static uint8_t notesRetryMin = 1;   // the wait before the next retry, minutes
+// Saves to flash: at once on a change and, when one fails (no heap for its document at that
+// moment, a flash error), again after 1, 2, 4... minutes, at most an hour apart (miblo::SaveRetry).
+// The pairings' schedule is ctx.tokensSave (the API and the settings page change them).
+static miblo::SaveRetry notesSave;   // notes.json: the alarms/countdown in RAM
+static miblo::SaveRetry configSave;  // config.json
+
+// One save attempt's outcome on its schedule.
+static void saved(miblo::SaveRetry& r, bool ok, uint32_t now, const __FlashStringHelper* what) {
+  if (ok) {
+    r.succeeded();
+    return;
+  }
+  Serial.print(what);
+  Serial.println(F(": save failed, will retry"));
+  r.failed(now);
+}
 
 static void enter(ScreenId s) {
   if (!firstFrame && s == current && drawnLang == uiLang()) return;
@@ -343,13 +356,14 @@ void loop() {
     storage::writeBootCount(0);
     bootCountCleared = true;
   }
-  if (ctx.tokens.saveDue(now)) {  // a computer's new host name (its automatic label)
-    storage::saveTokens(ctx.tokens);
-    ctx.tokens.saved(now);
+  if (ctx.tokens.saveDue(now)) ctx.tokensSave.request(now);  // a computer's new host name (its automatic label)
+  if (ctx.tokensSave.due(now)) {
+    saved(ctx.tokensSave, storage::saveTokens(ctx.tokens), now, F("pairs"));
+    ctx.tokens.saved(now);  // any automatic label is in this save (or its retry); the next waits a minute
   }
   if (ctx.configChanged) {
     ctx.configChanged = false;
-    storage::saveConfig(ctx.cfg);
+    configSave.request(now);
     // The time zone first: night dimming and the blue light filter go by the local time, so a new
     // zone must not light the old zone's schedule for a frame (and redraw everything twice).
     net::applyTimezone();  // (no new mDNS announcement: it carries only the id, never the name)
@@ -366,6 +380,7 @@ void loop() {
     dailyLookMinute = -2;  // the second clock, the QR...
     firstFrame = true;  // language/mode may have changed: redraw everything
   }
+  if (configSave.due(now)) saved(configSave, storage::saveConfig(ctx.cfg), now, F("config"));
   if (ctx.factoryResetRequested) {
     ctx.webSession.clear();
     delay(300);  // let the HTTP response go out
@@ -412,23 +427,12 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   else if (fired == miblo::NoteKind::Alarm) cue.fire(miblo::CueKind::Alarm, now);
   else if (fired == miblo::NoteKind::Reminder) cue.fire(miblo::CueKind::Reminder, now);
   if (ctx.notes.takeDirty()) {
-    notesUnsaved = true;
-    notesSaveAtMs = now;  // save now
-    notesRetryMin = 1;
+    notesSave.request(now);
     dailyLookMinute = -2;  // the countdown may have changed: the Desk's line too
   }
-  // A save that failed (no heap for its document at that moment, a flash error) is tried again
-  // later, so an alarm or countdown set then still survives a reboot: after 1, 2, 4... minutes, at
-  // most an hour apart (a flash that keeps failing is not worn out by it).
-  if (notesUnsaved && (int32_t)(now - notesSaveAtMs) >= 0) {
-    if (storage::saveNotes(ctx.notes)) {
-      notesUnsaved = false;
-    } else {
-      Serial.println(F("notes: save failed, will retry"));
-      notesSaveAtMs = now + notesRetryMin * 60000u;
-      if (notesRetryMin < 60) notesRetryMin = notesRetryMin * 2 > 60 ? 60 : notesRetryMin * 2;
-    }
-  }
+  // A save that failed is tried again later, so an alarm or countdown set then still survives a
+  // reboot (a flash that keeps failing is not worn out by it).
+  if (notesSave.due(now)) saved(notesSave, storage::saveNotes(ctx.notes), now, F("notes"));
   // Alerts: insistence, a single blink in meetings, "finished" waits out a focus round.
   ctx.alerts.setModifiers({ctx.cfg.insist, ctx.meeting.on(),
                            ctx.focus.phase() == miblo::FocusPhase::Focus && ctx.cfg.focusQuiet});

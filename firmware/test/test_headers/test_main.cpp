@@ -216,13 +216,13 @@ static void test_poll_waits_without_blocking_for_the_header_block() {
   src.segments = {"GET /api/info HTTP/1.1\r\n", "Host: x\r\n", "\r\n"};
   src.gapMs = 300;
   HeaderBuffer b;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src, kBodyWaitMs));
   TEST_ASSERT_EQUAL(0, src.waits);  // never waited
   TEST_ASSERT_EQUAL(0, src.now);
   src.now = 300;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src, kBodyWaitMs));
   src.now = 600;
-  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src, kBodyWaitMs));
   TEST_ASSERT_EQUAL(0, src.waits);
   TEST_ASSERT_EQUAL_STRING_LEN("GET /api/info HTTP/1.1\r\nHost: x\r\n\r\n", b.data(), b.pending());
 }
@@ -233,35 +233,56 @@ static void test_poll_a_stalled_request_never_becomes_ready() {
   HeaderBuffer b;
   for (int i = 0; i < 100; i++) {
     src.now += 100;
-    TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
+    TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src, kBodyWaitMs));
   }
   TEST_ASSERT_EQUAL(0, src.waits);
   FakeSource bare;  // no request line end at all
   bare.segments = {"GET /api/info HTTP/1.1"};
   HeaderBuffer b2;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b2, bare));
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b2, bare, kBodyWaitMs));
 }
 
-static void test_poll_waits_for_a_small_body_too() {
-  FakeSource src;  // the body would be read with a blocking 5 s wait: hold it back until it is all here
-  src.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 11\r\n\r\n", "{\"text\":", "\"a\"}"};
-  src.gapMs = 100;
+// Once the header block is here, a small body still to come is waited for with a short blocking
+// wait (kBodyWaitMs): released in the server's non-blocking state, a request whose body was one
+// segment behind was dropped by its 30 ms rule whenever another client had data.
+static void test_poll_waits_briefly_for_a_small_body() {
+  FakeSource src;  // headers in one segment, the body in two more, a few ms apart (Node's fetch)
+  src.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", "{\"text\":", "\"a\"}"};
+  src.gapMs = 3;
   HeaderBuffer b;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
-  src.now = 100;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src));
-  src.now = 200;
-  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
-  FakeSource stalled;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(6, src.now);  // waited for the last segment only
+  // The body is counted in the socket, not read into the buffer.
+  TEST_ASSERT_EQUAL_STRING_LEN("POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", b.data(), b.pending());
+  TEST_ASSERT_EQUAL(12, src.rx.size());
+
+  FakeSource stalled;  // the body never comes: the attack costs kBodyWaitMs, then 408
   stalled.segments = {"POST /api/say HTTP/1.1\r\ncontent-length: 50\r\n\r\n{\"te"};
   HeaderBuffer b2;
-  stalled.now = 5000;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b2, stalled));
+  TEST_ASSERT_EQUAL(RequestReadiness::BodyTimeout, pollRequest(b2, stalled, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(kBodyWaitMs, stalled.now);
+
+  FakeSource gone;  // the peer closes mid-body
+  gone.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 50\r\n\r\n{"};
+  gone.closeAtEnd = true;
+  HeaderBuffer b3;
+  TEST_ASSERT_EQUAL(RequestReadiness::Closed, pollRequest(b3, gone, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(0, gone.waits);
+
   // Duplicated Content-Length: the largest counts.
   FakeSource dup;
   dup.segments = {"POST /x HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 9\r\n\r\nab"};
-  HeaderBuffer b3;
-  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b3, dup));
+  HeaderBuffer b4;
+  TEST_ASSERT_EQUAL(RequestReadiness::BodyTimeout, pollRequest(b4, dup, kBodyWaitMs));
+}
+
+// A slow header block is still never waited for: a half-sent header block costs nothing here.
+static void test_poll_does_not_wait_for_headers_after_the_body_rule() {
+  FakeSource src;
+  src.segments = {"POST /api/say HTTP/1.1\r\nContent-Len"};
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, pollRequest(b, src, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(0, src.waits);
 }
 
 static void test_poll_a_large_body_is_not_held_back() {
@@ -271,11 +292,11 @@ static void test_poll_a_large_body_is_not_held_back() {
   src.segments = {"POST /api/state HTTP/1.1\r\nContent-Length: 6000\r\n\r\n{"};
   HeaderBuffer b;
   TEST_ASSERT_GREATER_THAN(kBodyHoldMax, 6000);
-  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src));
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b, src, kBodyWaitMs));
   FakeSource none;  // no Content-Length: no body
   none.segments = {"POST /api/find HTTP/1.1\r\nHost: x\r\n\r\n"};
   HeaderBuffer b2;
-  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b2, none));
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b2, none, kBodyWaitMs));
 }
 
 static void test_poll_closed_too_large_and_body_counts_socket_bytes() {
@@ -283,12 +304,12 @@ static void test_poll_closed_too_large_and_body_counts_socket_bytes() {
   closed.segments = {"GET / HTTP/1.1\r\nHost"};
   closed.closeAtEnd = true;
   HeaderBuffer b;
-  TEST_ASSERT_EQUAL(RequestReadiness::Closed, pollRequest(b, closed));
+  TEST_ASSERT_EQUAL(RequestReadiness::Closed, pollRequest(b, closed, kBodyWaitMs));
   FakeSource big;
   big.segments = segments("GET / HTTP/1.1\r\nX-Pad: " + std::string(4000, 'a') + "\r\n\r\n");
   big.gapMs = 0;
   HeaderBuffer b2;
-  TEST_ASSERT_EQUAL(RequestReadiness::TooLarge, pollRequest(b2, big));
+  TEST_ASSERT_EQUAL(RequestReadiness::TooLarge, pollRequest(b2, big, kBodyWaitMs));
   TEST_ASSERT_EQUAL(HeaderBuffer::kCap, b2.pending());
   // A body already complete in the socket while the buffer is full of headers: ready, without
   // reading past the buffer.
@@ -298,7 +319,7 @@ static void test_poll_closed_too_large_and_body_counts_socket_bytes() {
   FakeSource full;
   full.segments = {head + std::string(100, 'b')};
   HeaderBuffer b3;
-  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b3, full));
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(b3, full, kBodyWaitMs));
 }
 
 // The hook reads two things from the gathered block before a large body is read: its length and
@@ -319,6 +340,43 @@ static void test_request_body_length_and_header_lookup() {
   TEST_ASSERT_FALSE(findHeader(body.data(), body.size(), "authorization", v, sizeof(v)));
   const std::string huge = "Content-Length: 99999999999999999999\r\n\r\n";
   TEST_ASSERT_GREATER_THAN(kBodyHoldMax, requestBodyLength(huge.data(), huge.size()));
+}
+
+// The first received segment judged in place (no heap buffer); the source counts it among its
+// unread bytes, as WiFiClient::available() does.
+static RequestReadiness inPlace(const std::string& first, FakeSource& src) {
+  src.segments.insert(src.segments.begin(), first);
+  return requestInPlace(first.data(), first.size(), src, kBodyWaitMs);
+}
+
+static void test_request_in_place() {
+  FakeSource a;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, inPlace("GET / HTTP/1.1\r\nHost: x\r\n\r\n", a));
+  TEST_ASSERT_EQUAL(0, a.waits);
+  FakeSource b;  // blank line missing: not judged here (pollRequest gathers it)
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, inPlace("GET / HTTP/1.1\r\nHost: x\r\n", b));
+  TEST_ASSERT_EQUAL(0, b.waits);
+  FakeSource none;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, requestInPlace(nullptr, 0, none, kBodyWaitMs));
+  const std::string post = "POST /api/say HTTP/1.1\r\nContent-Length: 10\r\n\r\nabcd";
+  FakeSource c;  // the rest of the body is already in the socket
+  c.segments = {"efghij"};
+  c.gapMs = 0;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, inPlace(post, c));
+  TEST_ASSERT_EQUAL(0, c.waits);
+  FakeSource d;  // it follows 5 ms later
+  d.segments = {"efghij"};
+  d.gapMs = 5;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, inPlace(post, d));
+  TEST_ASSERT_EQUAL(5, d.now);
+  FakeSource e;  // one byte short, for good
+  e.segments = {"efghi"};
+  e.gapMs = 0;
+  TEST_ASSERT_EQUAL(RequestReadiness::BodyTimeout, inPlace(post, e));
+  TEST_ASSERT_EQUAL(kBodyWaitMs, e.now);
+  FakeSource f;  // a large body is never held back
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, inPlace("POST /api/state HTTP/1.1\r\nContent-Length: 6000\r\n\r\n", f));
+  TEST_ASSERT_EQUAL(0, f.waits);
 }
 
 static void test_body_decisions() {
@@ -384,10 +442,12 @@ int main() {
   RUN_TEST(test_closed_connection_is_refused);
   RUN_TEST(test_poll_waits_without_blocking_for_the_header_block);
   RUN_TEST(test_poll_a_stalled_request_never_becomes_ready);
-  RUN_TEST(test_poll_waits_for_a_small_body_too);
+  RUN_TEST(test_poll_waits_briefly_for_a_small_body);
+  RUN_TEST(test_poll_does_not_wait_for_headers_after_the_body_rule);
   RUN_TEST(test_poll_a_large_body_is_not_held_back);
   RUN_TEST(test_poll_closed_too_large_and_body_counts_socket_bytes);
   RUN_TEST(test_request_body_length_and_header_lookup);
+  RUN_TEST(test_request_in_place);
   RUN_TEST(test_body_decisions);
   RUN_TEST(test_replay_and_copy);
   return UNITY_END();

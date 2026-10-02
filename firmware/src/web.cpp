@@ -1574,9 +1574,9 @@ void begin(WebServerT& server) {
   server.collectHeaders("Accept-Language", "Authorization", "Content-Length", "Content-Type", "X-Miblo-Web");
   routes::add(server, kRoutes);
   server.onNotFound([] {
-    srv->client().rearm();  // as routes.cpp: the next request on this connection waits until it is all here
-    if (captiveRedirect()) return;
-    sendJson(*srv, 404, F("{\"error\":\"not found\"}"));
+    if (!captiveRedirect()) sendJson(*srv, 404, F("{\"error\":\"not found\"}"));
+    // As routes.cpp, after the reply: the next request on this connection waits until it is ready.
+    srv->client().rearm();
   });
 }
 

@@ -24,7 +24,7 @@ class TableHandler : public esp8266webserver::RequestHandler<LookaheadServer> {
     Route r;
     if (!find(method, uri, r)) return false;
     r.fn();
-    server.client().rearm();  // a second request on this connection waits until it is all here
+    server.client().rearm();  // a second request on this connection waits until it is ready (lookahead_client.h)
     return true;
   }
   void upload(WebServerT&, const String& uri, HTTPUpload&) override {

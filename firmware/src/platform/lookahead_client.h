@@ -5,11 +5,18 @@
 //
 // Why (1): ESP8266WebServer parses a request with blocking reads, up to 5 s per header line and
 // per body: a client that sent half a request and stopped froze the whole loop() (screen, alerts,
-// every other client) for ~10 s per connection, minutes with a few dozen connections. So until
-// the whole request is here (miblo::pollRequest, which never waits) the connection reports no
-// data, and the server waits in its non-blocking state instead (dropping it after 5 s, or 30 ms
-// when another client has data). Re-armed after each request (routes.cpp, the not-found handler),
-// since a connection may carry a second one.
+// every other client) for ~10 s per connection, minutes with a few dozen connections. So until the
+// whole header block is here the connection reports no data, and the server waits in its
+// non-blocking state instead (dropping it after 5 s, or 30 ms when another client has data): a
+// half-sent header block costs nothing. Once it is here, a small body still to come is waited for
+// with a short blocking wait (miblo::kBodyWaitMs, 200 ms; a real client sends it within
+// milliseconds), then released; a body that does not come is answered 408. The residual cost of a
+// client that stalls mid-body is that wait, per connection. A body too large to hold back
+// (miblo::kBodyHoldMax) is read by the server itself, admitted only for a paired computer's
+// snapshot (web.cpp largeBodyRefusal). Holding the body in the non-blocking state too was tried
+// and dropped: a request whose body was one segment behind its headers (the bridge's snapshots)
+// fell to the 30 ms rule whenever a page was loading. See miblo_headers.h pollRequest. Re-armed
+// after each request (routes.cpp, the not-found handler), since a connection may carry a second one.
 //
 // Why (2): the server's request hook (web.cpp limitPostBody) must judge the whole header block before
 // the server parses it (a multipart Content-Type with a huge boundary crashes _parseForm), but
@@ -28,7 +35,7 @@ class LookaheadClient : public WiFiClient {
   LookaheadClient() = default;
   explicit LookaheadClient(const WiFiClient& c) : WiFiClient(c) {}
 
-  // Holds the next request back until it is all here (see Why (1) above).
+  // Holds the next request back until it is ready for the server (see Why (1) above).
   void rearm() { held_ = true; }
   LookaheadClient(const LookaheadClient&) = default;
   LookaheadClient& operator=(const LookaheadClient&) = default;
@@ -105,11 +112,18 @@ class LookaheadClient : public WiFiClient {
     LookaheadClient& c;
   };
 
-  // True once the request is all here. A request that can never be complete (no header block
-  // within the buffer, or the peer gone) is answered and closed here, so the server drops it.
+  // True once the request is ready for the server (Why (1) above). One that can never be (no
+  // header block within the buffer, a small body that does not come) is answered and closed here.
   bool releaseRequest() {
     Source src{*this};
-    switch (miblo::pollRequest(ahead_, src)) {
+    miblo::RequestReadiness r = miblo::RequestReadiness::Waiting;
+    // Usually the whole header block came in the first segment: judged in place, no heap buffer
+    // (a 2 KB allocation on every request fragmented the heap the TCP sender needs).
+    if (!ahead_.pending()) {
+      r = miblo::requestInPlace(WiFiClient::peekBuffer(), WiFiClient::peekAvailable(), src, miblo::kBodyWaitMs);
+    }
+    if (r == miblo::RequestReadiness::Waiting) r = miblo::pollRequest(ahead_, src, miblo::kBodyWaitMs);
+    switch (r) {
       case miblo::RequestReadiness::Ready:
         held_ = false;
         return true;
@@ -120,8 +134,18 @@ class LookaheadClient : public WiFiClient {
         stop();
         return false;
       }
+      case miblo::RequestReadiness::BodyTimeout: {
+        static const char kReply[] PROGMEM =
+            "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        WiFiClient::write_P(kReply, sizeof(kReply) - 1);
+        // Not stop(): its flush waits up to 300 ms more for a client that already stalled.
+        (void)stop(1);
+        return false;
+      }
       case miblo::RequestReadiness::Closed:
-        stop();
+        // Not stop(): its flush can wait up to 300 ms in the loop. Reporting no data is enough,
+        // the server drops the connection itself.
+        ahead_.clear();
         return false;
       case miblo::RequestReadiness::Waiting:
       case miblo::RequestReadiness::NoMemory:

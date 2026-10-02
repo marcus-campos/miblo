@@ -162,21 +162,40 @@ bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_
   return found;
 }
 
-RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src) {
+namespace {
+// Body bytes beyond p[0..n) (which starts with a header block ending at `end`) the request still
+// needs: 0 when all here, or when the body is larger than kBodyHoldMax (not held back).
+size_t bodyToCome(const char* p, size_t end, size_t n) {
+  const size_t body = contentLength(p, end);
+  if (body > kBodyHoldMax) return 0;
+  const size_t have = n - end;
+  return have >= body ? 0 : body - have;
+}
+}  // namespace
+
+RequestReadiness waitForBytes(ByteSource& src, size_t want, uint32_t budgetMs) {
+  const uint32_t start = src.nowMs();
+  for (;;) {
+    if (src.available() >= want) return RequestReadiness::Ready;
+    if (!src.connected()) return RequestReadiness::Closed;
+    if (src.nowMs() - start >= budgetMs) return RequestReadiness::BodyTimeout;
+    src.wait();
+  }
+}
+
+RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32_t bodyWaitMs) {
+  const size_t end = p ? headerBlockEnd(p, n) : 0;
+  if (!end) return RequestReadiness::Waiting;
+  return waitForBytes(src, n + bodyToCome(p, end, n), bodyWaitMs);
+}
+
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs) {
   for (;;) {
     const size_t end = headerBlockEnd(buf.data(), buf.pending());
-    if (end) {
-      const size_t body = contentLength(buf.data(), end);
-      if (body > kBodyHoldMax) return RequestReadiness::Ready;
-      const size_t have = buf.pending() - end + src.available();
-      if (have >= body) return RequestReadiness::Ready;
-    } else if (buf.pending() >= HeaderBuffer::kCap) {
-      return RequestReadiness::TooLarge;
-    }
+    if (end) return waitForBytes(src, bodyToCome(buf.data(), end, buf.pending()), bodyWaitMs);
+    if (buf.pending() >= HeaderBuffer::kCap) return RequestReadiness::TooLarge;
     const size_t avail = src.available();
-    if (!avail || buf.pending() >= HeaderBuffer::kCap) {
-      return src.connected() ? RequestReadiness::Waiting : RequestReadiness::Closed;
-    }
+    if (!avail) return src.connected() ? RequestReadiness::Waiting : RequestReadiness::Closed;
     size_t room;
     char* tail = buf.reserveTail(room);
     if (!tail) return RequestReadiness::NoMemory;

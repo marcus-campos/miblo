@@ -81,25 +81,45 @@ enum class GatherResult : uint8_t { Ready, TooLarge, TimedOut, Closed, NoMemory 
 // those bytes stay in `buf` and are replayed too.
 GatherResult gatherHeaders(HeaderBuffer& buf, ByteSource& src, uint32_t budgetMs);
 
-// Whether a connection's request is all there for ESP8266WebServer, whose parser reads every
-// header line, and then the body, with a blocking wait of up to 5 s each: one client that sends
-// half a request and stops froze the whole gadget (screen, alerts, other clients) for ~10 s per
-// connection, minutes with a few dozen. The connection reports no data until pollRequest says
-// Ready, so the server waits for it without blocking (its non-blocking HC_WAIT_READ state, which
-// drops it after 5 s, or after 30 ms when another client has data). See lookahead_client.h.
+// Whether a connection's request is ready for ESP8266WebServer, whose parser reads every header
+// line, and then the body, with a blocking wait of up to 5 s each: one client that sends half a
+// request and stops froze the whole gadget (screen, alerts, other clients) for ~10 s per
+// connection, minutes with a few dozen. See lookahead_client.h.
+//
+// Two steps. (1) Until the header block (through its blank line) is all here the connection reports
+// no data and the server waits without blocking (its HC_WAIT_READ state, which drops the client
+// after 5 s, or after 30 ms when another client has data): never waits here. (2) Once it is, a small
+// body (<= kBodyHoldMax) not all here yet is waited for with a short blocking wait, kBodyWaitMs,
+// counting the socket's unread bytes without reading them: a real client sends it within
+// milliseconds of its headers, often in the next TCP segment. Holding it back in the server's
+// non-blocking state instead let the 30 ms rule drop a request whose body was a segment behind
+// (the bridge's snapshots while a page loaded). A body that does not come in time is answered 408:
+// the residual cost of a client that stalls mid-body is kBodyWaitMs per connection, not 5 s.
 enum class RequestReadiness : uint8_t {
-  Ready,     // the header block (through its blank line), and a small body all here
-  Waiting,   // not yet: ask again later
-  TooLarge,  // no header block within HeaderBuffer::kCap: refuse (431)
-  Closed,    // the peer closed before sending it all
-  NoMemory,  // no heap for the buffer: ask again later
+  Ready,        // the header block, and a small body all here (or a large one that is not held)
+  Waiting,      // the header block is not all here: ask again later
+  TooLarge,     // no header block within HeaderBuffer::kCap: refuse (431)
+  BodyTimeout,  // a small body did not arrive within the wait: refuse (408)
+  Closed,       // the peer closed before sending it all
+  NoMemory,     // no heap for the buffer: ask again later
 };
 // A body larger than this is not held back: the TCP window (lwIP low memory: 4 x 536 B) cannot
-// hold more unread, so waiting for it would never end. The server reads it with its own 5 s wait.
+// hold more unread, so waiting for it could never end. The server reads it with its own 5 s wait
+// (web.cpp largeBodyRefusal admits that only for a paired computer's snapshot).
 constexpr size_t kBodyHoldMax = 1536;
-// Reads what has arrived (never waits) into `buf` and judges it. Body bytes still in the socket
-// count without being read.
-RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src);
+// How long a complete header block's small body may take to follow it.
+constexpr uint32_t kBodyWaitMs = 200;
+
+// Waits (src.wait()) until `src` has at least `want` unread bytes (never reads them): Ready, or
+// Closed if the peer closes first, or BodyTimeout after budgetMs.
+RequestReadiness waitForBytes(ByteSource& src, size_t want, uint32_t budgetMs);
+// Reads what has arrived (never waits) into `buf` until it holds the header block, then waits up to
+// bodyWaitMs for a small body still to come. Body bytes are counted in the socket, not read.
+RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWaitMs);
+// The same on the bytes p[0..n) judged in place (the first received segment, no copy; `src`
+// counts them among its unread bytes): Waiting when they do not hold the whole header block (then
+// use pollRequest), else as pollRequest. The usual request never touches the heap.
+RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32_t bodyWaitMs);
 
 // The body length of a complete header block (the largest Content-Length), 0 when the block has
 // not all arrived or has none.

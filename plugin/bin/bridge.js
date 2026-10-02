@@ -31,8 +31,11 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   const push = async () => {
     timer = null;
     if (tracker.hasActive()) lastActive = now();
-    day.observe(tracker.sessions());
-    const snapshot = buildSnapshot({ seq: ++seq, nowMs: now(), host, tracker, metrics, day, latest: release.get(), eta: forecast.eta() });
+    day.observe(tracker.sessions(), { usd: metrics.today().usd });
+    const t = now();
+    // Last week's summary goes out on Mondays (the computer's local day); the gadget shows it once.
+    const week = new Date(t).getDay() === 1 ? day.week() : null;
+    const snapshot = buildSnapshot({ seq: ++seq, nowMs: t, host, tracker, metrics, day, latest: release.get(), eta: forecast.eta(), week });
     await devices.pushAll(snapshot);
   };
   const schedule = () => {
@@ -57,7 +60,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
       return {
         sessions: tracker.sessions(),
         usage: withEta(metrics.usage(), eta),
-        today: { ...metrics.today(), ...day.today() },
+        today: { ...metrics.today(), ...day.today(), top: day.topSessions(3) },
         forecast: eta,  // epoch s when the 5-hour limit runs out at this pace, or null
         devices: devices.status(),
         statuslineSeen: metrics.hasReadings(),

@@ -112,7 +112,7 @@ test('a finished response and the time worked reach the snapshot, /status and th
     await bridge.push();
     assert.deepEqual(dev.state.snapshots.at(-1).today, { usd: 0, turns: 1, work: 20 });
     const status = await (await fetch(http.base + '/status')).json();
-    assert.deepEqual(status.today, { usd: 0, turns: 1, work: 20 });
+    assert.deepEqual(status.today, { usd: 0, turns: 1, work: 20, top: [{ name: 'a', work: 20 }] });
     assert.ok(fs.existsSync(path.join(dataDir, 'day-stats.json')));
   } finally {
     await http.stop();
@@ -230,6 +230,45 @@ test('a rising 5-hour limit is forecast in the snapshot and in /status', async (
     const status = await (await fetch(http.base + '/status')).json();
     assert.equal(status.forecast, eta);
     assert.equal(status.usage.h5.eta, eta);
+  } finally {
+    await http.stop();
+    await dev.close();
+  }
+});
+
+test('last week goes out on Mondays only; a running command carries when it started', async () => {
+  const dev = await startFakeDevice();
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const client = new DeviceClient();
+  const token = await client.pair(dev.addr, '4827', 'test');
+  new DeviceStore(dataDir).upsert({ id: 'x', name: 'X', addr: dev.addr, token });
+  let t = new Date(2026, 8, 25, 10).getTime();  // Friday 25/09
+  const bridge = createBridge({ dataDir, client, discoverFn: async () => [], now: () => t });
+  const http = await started(bridge);
+  try {
+    await http.post('/event', { session_id: 's1', hook_event_name: 'SessionStart', cwd: '/w/a' });
+    await http.post('/statusline', { session_id: 's1', cost: { total_cost_usd: 1.5 } });
+    await http.post('/event', { session_id: 's1', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+    const started_ = Math.floor(t / 1000);
+    await bridge.push();
+    t += 30_000;
+    await bridge.push();
+    let snap = dev.state.snapshots.at(-1);
+    assert.equal(snap.sessions[0].ts, started_);
+    assert.ok(!('week' in snap));  // Friday
+    await http.post('/event', { session_id: 's1', hook_event_name: 'Stop' });
+    await bridge.push();
+
+    t = new Date(2026, 8, 27, 10).getTime();   // Sunday: still no summary
+    await bridge.push();
+    assert.ok(!('week' in dev.state.snapshots.at(-1)));
+    t = new Date(2026, 8, 28, 9).getTime();    // Monday
+    await bridge.push();
+    snap = dev.state.snapshots.at(-1);
+    assert.deepEqual(snap.week, { work: 30, turns: 1, usd: 1.5, top: 5 });
+    t = new Date(2026, 8, 29, 9).getTime();    // Tuesday
+    await bridge.push();
+    assert.ok(!('week' in dev.state.snapshots.at(-1)));
   } finally {
     await http.stop();
     await dev.close();

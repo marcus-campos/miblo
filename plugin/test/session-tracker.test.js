@@ -423,3 +423,42 @@ test('a tool call after an automatic compaction replaces the compacting activity
   assert.equal(s.st, 'running');
   assert.equal(s.tool, 'Read');
 });
+
+test('toolSince marks when the current tool started', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  tr.handle({ session_id: 's', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm test' } });
+  t = 5000;
+  tr.handle({ session_id: 's', hook_event_name: 'PostToolUse', cwd: '/w/a' });
+  assert.equal(tr.sessions()[0].toolSince, 1000);
+  tr.handle({ session_id: 's', hook_event_name: 'PreToolUse', cwd: '/w/a', tool_name: 'Bash', tool_input: { command: 'npm run build' } });
+  assert.equal(tr.sessions()[0].toolSince, 5000);
+});
+
+test('toolSince: the same command run again starts over; its permission prompt does not', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  const ev = (name, extra = {}) => tr.handle({ session_id: 's', hook_event_name: name, cwd: '/w/a', ...extra });
+  const bash = { tool_name: 'Bash', tool_input: { command: 'npm test' } };
+  ev('PreToolUse', bash);
+  t = 2000;
+  ev('PermissionRequest', bash);  // the same call asking first
+  assert.equal(tr.sessions()[0].toolSince, 1000);
+  t = 3000;
+  ev('PostToolUse');
+  t = 4000;
+  assert.equal(ev('PreToolUse', bash), true);  // a new run of the same command: a change to push
+  assert.equal(tr.sessions()[0].toolSince, 4000);
+  t = 5000;
+  ev('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+  assert.equal(tr.sessions()[0].toolSince, 5000);
+});
+
+test('toolSince follows a subagent permission prompt that changes the activity', () => {
+  let t = 1000;
+  const tr = new SessionTracker({ now: () => t, isAlive: () => true });
+  tr.handle({ session_id: 's', hook_event_name: 'UserPromptSubmit', cwd: '/w/a' });
+  t = 2000;
+  tr.handle({ session_id: 's', hook_event_name: 'PermissionRequest', agent_id: 'ag', tool_name: 'Bash', tool_input: { command: 'make' } });
+  assert.equal(tr.sessions()[0].toolSince, 2000);
+});

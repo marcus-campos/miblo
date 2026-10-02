@@ -16,7 +16,8 @@ export function withEta(usage, eta) {
 // `day` (a DayStats) is optional: without it `today` only carries the cost. `latest` is the
 // newest released version ("X.Y.Z"); the field is omitted when unknown. `eta` (epoch s, from
 // LimitForecast) goes into `usage.h5` when there is a forecast and a 5-hour window to put it in.
-export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest, eta }) {
+// `week` (DayStats.week(): last week's totals) is sent as given; the bridge passes it on Mondays.
+export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest, eta, week }) {
   const all = tracker.sessions();
   const rows = all.map((s) => {
     const m = metrics.forSession(s.id);
@@ -30,6 +31,8 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest,
       model: m ? cut(m.model, MODEL_LEN) : '',
       ctx: m?.ctx ?? null,
       tok: m?.tok ?? null,
+      // When a running shell command started, so the gadget can show how long it has been going.
+      ...(s.st === 'running' && s.tool === 'Bash' && s.cmdLive && s.toolSince ? { ts: toSec(s.toolSince) } : {}),
     };
   });
 
@@ -40,6 +43,7 @@ export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest,
     host: cut(host, NAME_LEN),
     usage: withEta(metrics.usage(), eta),
     today: { ...metrics.today(), ...(day ? day.today() : {}) },
+    ...(week ? { week } : {}),
     sessions: rows.slice(0, MAX_SESSIONS),
     more: Math.max(0, rows.length - MAX_SESSIONS),
     alerts: tracker.alerts().map((a) => ({ id: a.id, kind: a.kind, sid: shortId(a.sid) })),

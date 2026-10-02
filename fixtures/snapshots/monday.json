@@ -1,0 +1,56 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790605920,
+  "host": "MacBook-Marcus",
+  "usage": {
+    "h5": {
+      "pct": 62,
+      "reset": 1790613720,
+      "eta": 1790611200
+    },
+    "d7": {
+      "pct": 38,
+      "reset": 1790845920
+    }
+  },
+  "today": {
+    "usd": 2.75,
+    "turns": 3,
+    "work": 1260
+  },
+  "week": {
+    "work": 61200,
+    "turns": 212,
+    "usd": 31.5,
+    "top": 3
+  },
+  "sessions": [
+    {
+      "id": "77777777",
+      "name": "api-server",
+      "st": "running",
+      "tool": "Bash",
+      "det": "npm run build",
+      "since": 1790605020,
+      "model": "Opus",
+      "ctx": 41,
+      "tok": 159000,
+      "ts": 1790605020
+    },
+    {
+      "id": "88888888",
+      "name": "front-app",
+      "st": "running",
+      "tool": "Read",
+      "det": "README.md",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 0,
+  "alerts": [],
+  "latest": "1.0.2"
+}

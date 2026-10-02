@@ -147,3 +147,80 @@ test('works without a data dir', () => {
   w.see('done');
   assert.equal(w.day.today().turns, 1);
 });
+
+test('last week totals, busiest day and only 14 days kept', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-day-'));
+  let t = new Date(2026, 8, 21, 10, 0).getTime();  // Monday 21/09/2026
+  const d = new DayStats({ dataDir: dir, now: () => t });
+  const run = (mins) => { for (let i = 0; i <= mins; i++) { d.observe([{ id: 'a', name: 'app', st: 'running' }], { usd: 1 }); t += 60_000; } };
+  for (let day = 0; day < 7; day++) { run(day === 2 ? 120 : 30); t = new Date(2026, 8, 22 + day, 10, 0).getTime(); }
+  // now Monday 28/09
+  const w = d.week();
+  assert.equal(w.top, 3);                  // Wednesday 23/09 had the most work
+  assert.ok(w.work >= (6 * 30 + 120) * 60);
+  assert.equal(w.usd, 7);
+  for (let i = 0; i < 20; i++) { t += 86_400_000; d.observe([], { usd: 0 }); }
+  const kept = JSON.parse(fs.readFileSync(path.join(dir, 'day-stats.json'), 'utf8')).days.length;
+  assert.ok(kept <= 14);
+});
+
+test('week: exactly the Monday-to-Sunday before this week, from any day, and survives a restart', () => {
+  const dir = tmp();
+  let t = new Date(2026, 8, 20, 10, 0).getTime();  // Sunday 20/09: the week before last
+  let d = new DayStats({ dataDir: dir, now: () => t });
+  const see = (st, name = 'app') => d.observe([{ id: name, name, st }], { usd: 2.5 });
+  see('running'); t += 60_000; see('done');
+  t = new Date(2026, 8, 27, 23, 0).getTime();     // Sunday 27/09: last week's last day
+  see('running'); t += 30_000; see('done');
+  t = new Date(2026, 8, 28, 9, 0).getTime();      // Monday 28/09
+  d = new DayStats({ dataDir: dir, now: () => t }); // a new bridge
+  assert.deepEqual(d.week(), { work: 30, turns: 1, usd: 2.5, top: 0 });
+  t = new Date(2026, 9, 4, 22, 0).getTime();      // Sunday 04/10: still the same "last week"
+  assert.deepEqual(d.week(), { work: 30, turns: 1, usd: 2.5, top: 0 });
+  t = new Date(2026, 9, 5, 9, 0).getTime();       // Monday 05/10: nothing recorded last week
+  assert.equal(d.week(), null);
+});
+
+test('week: cost alone counts, with no busiest day', () => {
+  let t = new Date(2026, 8, 22, 10, 0).getTime();
+  const d = new DayStats({ now: () => t });
+  d.observe([], { usd: 0.4 });
+  t = new Date(2026, 8, 28, 10, 0).getTime();
+  assert.deepEqual(d.week(), { work: 0, turns: 0, usd: 0.4, top: null });
+});
+
+test('today top sessions by work', () => {
+  let t = new Date(2026, 8, 29, 10, 0).getTime();
+  const d = new DayStats({ now: () => t });
+  for (let i = 0; i <= 20; i++) {
+    d.observe([{ id: '1', name: 'api', st: 'running' }, { id: '2', name: 'web', st: i < 5 ? 'running' : 'idle' }]);  // counted until seen idle
+    t += 60_000;
+  }
+  assert.deepEqual(d.topSessions(), [{ name: 'api', work: 1200 }, { name: 'web', work: 300 }]);
+  assert.deepEqual(d.topSessions(1), [{ name: 'api', work: 1200 }]);
+  assert.equal(d.today().work, 1200);
+  t = new Date(2026, 8, 30, 10, 0).getTime();
+  assert.deepEqual(d.topSessions(), []);  // a new day
+});
+
+test('today top sessions survive a restart', () => {
+  const dir = tmp();
+  let t = at(10);
+  const d = new DayStats({ dataDir: dir, now: () => t });
+  d.observe([{ id: '1', name: 'api', st: 'running' }]);
+  t += 40_000;
+  d.observe([{ id: '1', name: 'api', st: 'done' }]);
+  assert.deepEqual(new DayStats({ dataDir: dir, now: () => t }).topSessions(), [{ name: 'api', work: 40 }]);
+});
+
+test('an old day-stats.json (single day) still loads', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'day-stats.json'), JSON.stringify({ day: '2026-9-29', turns: 4, workMs: 90_000 }));
+  const d = new DayStats({ dataDir: dir, now: () => at(12) });
+  assert.deepEqual(d.today(), { turns: 4, work: 90 });
+  assert.deepEqual(d.topSessions(), []);
+  // An old file from an earlier day becomes history: last week's Tuesday for Monday 05/10.
+  const later = new DayStats({ dataDir: dir, now: () => new Date(2026, 9, 5, 9).getTime() });
+  assert.deepEqual(later.today(), { turns: 0, work: 0 });
+  assert.deepEqual(later.week(), { work: 90, turns: 4, usd: 0, top: 2 });
+});

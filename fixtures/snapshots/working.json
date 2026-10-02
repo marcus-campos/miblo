@@ -25,7 +25,7 @@
       "st": "running",
       "tool": "Edit",
       "det": "Header.tsx",
-      "since": 1790605910,
+      "since": 1790605770,
       "model": "Sonnet",
       "ctx": 34,
       "tok": 98000
@@ -36,10 +36,11 @@
       "st": "running",
       "tool": "Bash",
       "det": "npm test",
-      "since": 1790605910,
+      "since": 1790605818,
       "model": "",
       "ctx": null,
-      "tok": null
+      "tok": null,
+      "ts": 1790605818
     }
   ],
   "more": 0,

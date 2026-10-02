@@ -9,8 +9,8 @@
 // whole header block is here the connection reports no data, and the server waits in its
 // non-blocking state instead (dropping it after 5 s, or 30 ms when another client has data): a
 // half-sent header block costs nothing. Once it is here, a small body still to come is waited for
-// with a short blocking wait (miblo::kBodyWaitMs, 200 ms; a real client sends it within
-// milliseconds), then released; a body that does not come is answered 408. The residual cost of a
+// with a short blocking wait (miblo::kBodyWaitMs, 350 ms: a real client sends it within
+// milliseconds, or after a delayed ACK), then released; a body that does not come is answered 408. The residual cost of a
 // client that stalls mid-body is that wait, per connection. A body too large to hold back
 // (miblo::kBodyHoldMax) is read by the server itself, admitted only for a paired computer's
 // snapshot (web.cpp largeBodyRefusal). Holding the body in the non-blocking state too was tried
@@ -62,7 +62,7 @@ class LookaheadClient : public WiFiClient {
 
   // Reading: the read-ahead bytes first, then the socket.
   int available() override {
-    if (held_ && !releaseRequest()) return 0;
+    if (refused_ || (held_ && !releaseRequest())) return 0;
     return (int)ahead_.pending() + WiFiClient::available();
   }
   int read() override { return ahead_.pending() ? ahead_.readByte() : WiFiClient::read(); }
@@ -82,7 +82,10 @@ class LookaheadClient : public WiFiClient {
     if (ahead_.pending()) ahead_.consume(n);
     else WiFiClient::peekConsume(n);
   }
-  uint8_t connected() override { return ahead_.pending() ? 1 : WiFiClient::connected(); }
+  uint8_t connected() override {
+    if (refused_) return 0;
+    return ahead_.pending() ? 1 : WiFiClient::connected();
+  }
   void stop() override { (void)stop(0); }
   bool stop(unsigned int maxWaitMs) {  // WiFiClient's is not virtual: keep both in step
     ahead_.clear();
@@ -130,16 +133,13 @@ class LookaheadClient : public WiFiClient {
       case miblo::RequestReadiness::TooLarge: {
         static const char kReply[] PROGMEM =
             "HTTP/1.1 431 Request Header Fields Too Large\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
-        WiFiClient::write_P(kReply, sizeof(kReply) - 1);
-        stop();
+        refuse(kReply, sizeof(kReply) - 1);
         return false;
       }
       case miblo::RequestReadiness::BodyTimeout: {
         static const char kReply[] PROGMEM =
             "HTTP/1.1 408 Request Timeout\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
-        WiFiClient::write_P(kReply, sizeof(kReply) - 1);
-        // Not stop(): its flush waits up to 300 ms more for a client that already stalled.
-        (void)stop(1);
+        refuse(kReply, sizeof(kReply) - 1);
         return false;
       }
       case miblo::RequestReadiness::Closed:
@@ -154,8 +154,22 @@ class LookaheadClient : public WiFiClient {
     return false;
   }
 
+  // Answers a request that can never be served and closes the connection for good.
+  void refuse(PGM_P reply, size_t len) {
+    WiFiClient::write_P(reply, len);
+    ahead_.clear();
+    // Unread bytes would make lwIP reset the connection, losing the reply: drop them first.
+    while (size_t k = WiFiClient::peekAvailable()) WiFiClient::peekConsume(k);
+    // Not stop(): its flush waits up to 300 ms more for a client that already stalled.
+    (void)WiFiClient::stop(1);
+    // The closed socket may still show bytes (ClientContext keeps its receive buffer): never judge
+    // them again, or each of the server's later available() calls would wait kBodyWaitMs once more.
+    refused_ = true;
+  }
+
   miblo::HeaderBuffer ahead_;
   bool held_ = true;
+  bool refused_ = false;  // answered and closed by refuse(): no data, not connected
 };
 
 class LookaheadServer : public WiFiServer {

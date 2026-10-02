@@ -256,6 +256,14 @@ static void test_poll_waits_briefly_for_a_small_body() {
   TEST_ASSERT_EQUAL_STRING_LEN("POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", b.data(), b.pending());
   TEST_ASSERT_EQUAL(12, src.rx.size());
 
+  // A client using Nagle (Java, Arduino HTTPClient) writes the body only once its headers are
+  // ACKed; judged in place, nothing is ACKed early, so lwIP's delayed ACK (up to 250 ms) comes first.
+  FakeSource nagle;
+  nagle.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", "{\"text\":\"a\"}"};
+  nagle.gapMs = 250;
+  HeaderBuffer bn;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, pollRequest(bn, nagle, kBodyWaitMs));
+
   FakeSource stalled;  // the body never comes: the attack costs kBodyWaitMs, then 408
   stalled.segments = {"POST /api/say HTTP/1.1\r\ncontent-length: 50\r\n\r\n{\"te"};
   HeaderBuffer b2;

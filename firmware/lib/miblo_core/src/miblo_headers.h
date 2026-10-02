@@ -107,8 +107,10 @@ enum class RequestReadiness : uint8_t {
 // hold more unread, so waiting for it could never end. The server reads it with its own 5 s wait
 // (web.cpp largeBodyRefusal admits that only for a paired computer's snapshot).
 constexpr size_t kBodyHoldMax = 1536;
-// How long a complete header block's small body may take to follow it.
-constexpr uint32_t kBodyWaitMs = 200;
+// How long a complete header block's small body may take to follow it. Longer than lwIP's delayed
+// ACK (up to 250 ms): a client using Nagle writes the body only once its headers are ACKed, and
+// headers judged in place are not ACKed early. Also the residual cost of a stalled body.
+constexpr uint32_t kBodyWaitMs = 350;
 
 // Waits (src.wait()) until `src` has at least `want` unread bytes (never reads them): Ready, or
 // Closed if the peer closes first, or BodyTimeout after budgetMs.

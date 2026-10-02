@@ -176,6 +176,15 @@ notes.
 <!-- daily:look -->
 
 <!-- daily:screens -->
+    - **Forecast:** with the plugin from this branch, use the 5-hour limit fast: Limits shows
+      "at this pace, runs out at HH:MM" in amber; once that is under 30 min away the Overview's 5h
+      number turns amber and its reset line reads "runs out ~HH:MM".
+    - **Long command:** ask Claude to run `sleep 45` in Bash: after 30 s its Overview card reads
+      "sleep 45 · 0:31" with the time ticking each second (the card itself does not blink).
+    - **Second clock:** set "Other time zone" on the settings page (e.g. Europe/Lisbon, "Lisboa"):
+      the Desk shows "Lisboa" over its time in the top-right corner and the Overview (all done)
+      shows "Lisboa HH:MM" under today's cost; it changes with the minute, and the gadget's own
+      clock, night mode and resets stay in the gadget's zone.
 
 <!-- daily:settings -->
 

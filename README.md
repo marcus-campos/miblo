@@ -103,6 +103,9 @@
 <!-- daily:look -->
 
 <!-- daily:screens -->
+- **Limit forecast on the main screens:** with the plugin's forecast, the Limits arc says when the 5-hour window runs out at your current pace ("at this pace, runs out at 15:40", in amber). On the Overview, when that is less than 30 minutes away, the 5-hour number turns amber and "runs out ~15:40" takes the place of the reset time.
+- **Long commands in sight:** when Claude runs a shell command for more than 30 seconds, its card on the Overview shows the time running next to the command, in bold green ("npm test · 1:42"), so you can tell from across the room that it is still going. In discreet mode the time still shows, the command doesn't.
+- **Second clock:** pick another time zone on the settings page (with a nickname of up to 12 characters, for example "Lisboa") and its time shows small in the Desk's top corner and under the Overview's footer when everything is done ("Lisboa 19:32").
 
 <!-- daily:settings -->
 

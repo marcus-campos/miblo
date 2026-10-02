@@ -299,17 +299,28 @@ void renderAll(Lang L) {
 
   working();
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "14-overview-working"); }
+  // "worker" has been running `npm test` for 1:42: the time runs beside the command.
+  snap.sessions[1].ts = gNow - 102;
+  { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "14-overview-working-long-command"); }
+  snap.sessions[1].ts = 0;
   landingFinished(runs);
   { Shot s; screens::flash(L, AlertKind::Done, "landing-page", 0); save(s, "15-alert-flash-done"); }
   { Shot s; screens::hero(L, snap, 0, AlertKind::Done, false, clk, runs); save(s, "16-alert-finished"); }
 
   idle();
   { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "17-overview-all-done"); }
+  // At the current pace the 5h window runs out in 20 min: amber, "runs out ~14:52".
+  { Shot s; screens::overview(L, snap, pager, 0, clk, false, gNow + 20 * 60); save(s, "17-overview-all-done-forecast-soon"); }
+  // A second clock (settings: "Other time zone", here Lisbon) between the title and the clock.
+  screens::setSecondClock("Lisboa", "18:32");
+  { Shot s; screens::overview(L, snap, pager, 0, clk, false); save(s, "17-overview-all-done-second-zone"); }
+  { Shot s; screens::desk(L, snap, clk, 0); save(s, "22-desk-second-zone"); }
+  screens::setSecondClock("", "");
   attention();
   { Shot s; screens::limits(L, snap, clk); save(s, "18-limits"); }
   { Shot s; screens::sessions(L, snap, pager, 0, clk, false); save(s, "19-sessions"); }
   { Shot s; screens::overview(L, snap, pager, 0, clk, true); save(s, "20-overview-discreet"); }
-  // At the recent pace the 5h window runs out in 1h20, before its reset in 2h10.
+  // At the current pace the 5h window runs out in 1h20 (15:52), before its reset in 2h10.
   usage(78, 41);
   { Shot s; screens::limits(L, snap, clk, gNow + 80 * 60); save(s, "21-limits-runs-out"); }
   { Shot s; screens::desk(L, snap, clk, 0, gNow + 80 * 60); save(s, "22-desk-runs-out"); }

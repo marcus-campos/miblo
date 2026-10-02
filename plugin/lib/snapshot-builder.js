@@ -7,15 +7,17 @@ const cut = (s, n) => {
 const shortId = (id) => String(id).replace(/-/g, '').slice(0, 8);
 const toSec = (ms) => Math.floor(ms / 1000);
 
-// `usage` (MetricsStore.usage()) with the 5-hour forecast `eta` (epoch s) in `h5`; unchanged when
-// there is no forecast or no 5-hour window to put it in.
+// `usage` (MetricsStore.usage()) with the 5-hour forecast `eta` (epoch s) in `h5`, always present
+// when there is a 5-hour window: 0 = no forecast (the gadget then keeps quiet instead of falling
+// back to its own projection, which an older bridge without the field still gets). Unchanged
+// without a 5-hour window.
 export function withEta(usage, eta) {
-  return eta && usage?.h5 ? { ...usage, h5: { ...usage.h5, eta } } : usage;
+  return usage?.h5 ? { ...usage, h5: { ...usage.h5, eta: eta || 0 } } : usage;
 }
 
 // `day` (a DayStats) is optional: without it `today` only carries the cost. `latest` is the
 // newest released version ("X.Y.Z"); the field is omitted when unknown. `eta` (epoch s, from
-// LimitForecast) goes into `usage.h5` when there is a forecast and a 5-hour window to put it in.
+// LimitForecast; 0 or null = none) goes into `usage.h5` whenever there is a 5-hour window.
 // `week` (DayStats.week(): last week's totals) is sent as given; the bridge passes it on Mondays.
 export function buildSnapshot({ seq, nowMs, host, tracker, metrics, day, latest, eta, week }) {
   const all = tracker.sessions();

@@ -218,7 +218,7 @@ test('a rising 5-hour limit is forecast in the snapshot and in /status', async (
   try {
     await reading(40);
     await bridge.push();
-    assert.ok(!('eta' in dev.state.snapshots.at(-1).usage.h5));  // one reading is no pace
+    assert.equal(dev.state.snapshots.at(-1).usage.h5.eta, 0);  // one reading is no pace
     assert.equal((await (await fetch(http.base + '/status')).json()).forecast, null);
     for (let i = 1; i <= 20; i++) {
       t += 60_000;

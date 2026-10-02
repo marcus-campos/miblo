@@ -4,7 +4,10 @@ namespace miblo {
 
 uint32_t etaFor(const Snapshot& s, const LimitWatch& w) {
   if (!s.hasUsage || !s.h5.present) return 0;
-  return s.h5.eta ? s.h5.eta : w.exhaustAt();
+  if (!s.h5.etaSent) return w.exhaustAt();
+  const uint32_t eta = s.h5.eta;
+  if (!eta || (s.now && eta <= s.now) || (s.h5.reset && eta >= s.h5.reset)) return 0;
+  return eta;
 }
 
 void LimitWatch::observe(const Snapshot& s, uint32_t nowMs) {

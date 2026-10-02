@@ -122,7 +122,9 @@ test('alerting sessions are kept over quiet working ones when trimming', () => {
   for (const a of s.alerts) assert.ok(ids.includes(a.sid), `alert ${a.sid} has its session`);
 });
 
-test('eta goes into usage.h5 only with a forecast and a 5-hour window', () => {
+// eta is always sent with a 5-hour window, 0 = no forecast: the gadget then knows the bridge
+// decided (e.g. 100% won't come before the reset) and doesn't fall back to its own projection.
+test('eta goes into usage.h5 whenever there is a 5-hour window (0 = no forecast)', () => {
   const { tracker, metrics } = world();
   const build = (eta) => buildSnapshot({ seq: 1, nowMs: NOW, host: 'h', tracker, metrics, eta });
   assert.equal(build(1790611200).usage, null);  // no usage.h5 yet: eta ignored
@@ -130,8 +132,8 @@ test('eta goes into usage.h5 only with a forecast and a 5-hour window', () => {
     five_hour: { used_percentage: 62, resets_at: 1_790_613_720 }, seven_day: { used_percentage: 38, resets_at: 1_790_900_000 } } });
   assert.deepEqual(build(1790611200).usage, {
     h5: { pct: 62, reset: 1_790_613_720, eta: 1790611200 }, d7: { pct: 38, reset: 1_790_900_000 } });
-  assert.ok(!('eta' in build(null).usage.h5));
-  assert.ok(!('eta' in build(undefined).usage.h5));
+  assert.equal(build(null).usage.h5.eta, 0);
+  assert.equal(build(undefined).usage.h5.eta, 0);
   // The store's own reading is never changed.
   assert.ok(!('eta' in metrics.usage().h5));
 });

@@ -93,6 +93,9 @@ static void test_working_fixture() {
   TEST_ASSERT_EQUAL(SessionState::Running, snap.sessions[1].st);
   TEST_ASSERT_EQUAL_STRING("npm test", snap.sessions[1].det);
   TEST_ASSERT_EQUAL_UINT8(0, snap.alertCount);
+  // The bridge always sends eta with a 5h window; 0 = no forecast (never the gadget's own).
+  TEST_ASSERT_TRUE(snap.h5.etaSent);
+  TEST_ASSERT_EQUAL_UINT32(0, snap.h5.eta);
 }
 
 static void test_idle_fixture() {
@@ -163,6 +166,8 @@ static void test_daily_life_snapshot_fields() {
   Snapshot s{};
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
   TEST_ASSERT_EQUAL_UINT32(1790611200, s.h5.eta);
+  TEST_ASSERT_TRUE(s.h5.etaSent);
+  TEST_ASSERT_FALSE(s.d7.etaSent);
   TEST_ASSERT_EQUAL_UINT32(1790605818, s.sessions[0].ts);
   TEST_ASSERT_TRUE(s.week.present);
   TEST_ASSERT_EQUAL_UINT32(61200, s.week.workSec);
@@ -174,6 +179,7 @@ static void test_daily_life_snapshot_fields() {
                "\"sessions\":[{\"id\":\"1\",\"name\":\"a\",\"st\":\"running\",\"tool\":\"Bash\",\"det\":\"x\",\"since\":1}]}";
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(old, strlen(old), s));
   TEST_ASSERT_EQUAL_UINT32(0, s.h5.eta);
+  TEST_ASSERT_FALSE(s.h5.etaSent);  // older plugin: the gadget's own projection applies
   TEST_ASSERT_EQUAL_UINT32(0, s.sessions[0].ts);
   TEST_ASSERT_FALSE(s.week.present);
   TEST_ASSERT_EQUAL_UINT8(255, s.week.busiest);

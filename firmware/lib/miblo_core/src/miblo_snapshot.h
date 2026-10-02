@@ -35,6 +35,7 @@ struct UsageWindow {
   uint8_t pct;
   uint32_t reset;  // epoch in seconds
   uint32_t eta;    // h5 only: when the bridge expects 100% at the current pace (0 = no forecast)
+  bool etaSent;    // the bridge sent `eta` (even 0): it decides; an older plugin doesn't (see etaFor)
 };
 
 // Last week's totals, sent by the bridge on Mondays only (miblo_dayend.h WeeklyRecap).

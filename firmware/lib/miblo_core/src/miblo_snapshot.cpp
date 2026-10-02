@@ -58,7 +58,8 @@ static void readWindow(JsonVariantConst v, UsageWindow& w) {
   w.present = v.is<JsonObjectConst>() && v["pct"].is<float>();
   w.pct = w.present ? clampPct(v["pct"]) : 0;
   w.reset = w.present ? v["reset"].as<uint32_t>() : 0;
-  w.eta = w.present ? v["eta"].as<uint32_t>() : 0;  // 0 when absent (older plugin, d7)
+  w.etaSent = w.present && v.containsKey("eta");    // a new bridge always sends it with h5
+  w.eta = w.etaSent ? v["eta"].as<uint32_t>() : 0;  // 0 = no forecast
 }
 
 uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch) {

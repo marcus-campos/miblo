@@ -93,18 +93,35 @@ static void test_pace_window_and_reset_clear_history() {
   TEST_ASSERT_EQUAL_UINT32(0, w.exhaustAt());
 }
 
-// The bridge's forecast wins; without it (older plugin) the gadget's own projection.
+// The bridge's forecast wins; a bridge that sent eta 0 means "no forecast" (100% won't come
+// before the reset) and the gadget stays quiet; only an older plugin without the field gets the
+// gadget's own projection. A forecast in the past or at/after the reset is ignored.
 static void test_eta_prefers_the_bridge() {
-  miblo::Snapshot s{};
-  s.hasUsage = true;
-  s.h5 = {true, 70, 2000, 1500};
-  miblo::LimitWatch w;
-  TEST_ASSERT_EQUAL_UINT32(1500, miblo::etaFor(s, w));
+  const uint32_t reset = T0 + 3 * 3600;
+  LimitWatch w;  // its own projection: T0 + 1200 + 6000 (see test_burn_rate_projection)
+  w.observe(at(T0, 40, reset), 0);
+  w.observe(at(T0 + 1200, 50, reset), 0);
+  TEST_ASSERT_EQUAL_UINT32(T0 + 7200, w.exhaustAt());
+
+  Snapshot s = at(T0 + 1200, 50, reset);
+  s.h5.eta = T0 + 5000;
+  s.h5.etaSent = true;
+  TEST_ASSERT_EQUAL_UINT32(T0 + 5000, etaFor(s, w));
+  s.h5.eta = 0;  // the bridge has no forecast: no fallback
+  TEST_ASSERT_EQUAL_UINT32(0, etaFor(s, w));
+  s.h5.eta = T0 + 1000;  // already past
+  TEST_ASSERT_EQUAL_UINT32(0, etaFor(s, w));
+  s.h5.eta = T0 + 1200;  // now: past too
+  TEST_ASSERT_EQUAL_UINT32(0, etaFor(s, w));
+  s.h5.eta = reset;  // not before the reset
+  TEST_ASSERT_EQUAL_UINT32(0, etaFor(s, w));
+  s.h5.etaSent = false;  // older plugin: the gadget's own projection
   s.h5.eta = 0;
-  TEST_ASSERT_EQUAL_UINT32(w.exhaustAt(), miblo::etaFor(s, w));
-  s.h5.present = false;
-  s.h5.eta = 1500;
-  TEST_ASSERT_EQUAL_UINT32(0, miblo::etaFor(s, w));
+  TEST_ASSERT_EQUAL_UINT32(T0 + 7200, etaFor(s, w));
+  s.h5.present = false;  // no 5h window: nothing
+  s.h5.etaSent = true;
+  s.h5.eta = T0 + 5000;
+  TEST_ASSERT_EQUAL_UINT32(0, etaFor(s, w));
 }
 
 int main() {

@@ -42,7 +42,7 @@ The target functions also build as a libFuzzer entry point (`-DMIBLO_LIBFUZZER
 | Target | Untrusted input | Main invariants |
 | --- | --- | --- |
 | `snapshot` | `POST /api/state` body → `parseSnapshot` (in place, exact-size buffer), then every consumer (format helpers, overview, RunTracker, LimitWatch, etaFor) | Fields terminated and within their character caps; pct ≤ 100; costs finite; oversize → `TooLarge` |
-| `config` | `PATCH /api/config`, `POST /config` and a damaged `/config.json` (`loadConfig` retry logic) | A refused patch changes nothing; `badField` is a plain identifier; saved config fits `kConfigJsonCapacity` and loads back identical |
+| `config` | `PATCH /api/config`, `POST /config` (one patch after another on the running settings, one per input line, plus the Wi-Fi portal's tz/lang patch) and a damaged `/config.json` (`loadConfig` retry logic) | A refused patch changes nothing; `badField` is a plain identifier; saved config fits `kConfigJsonCapacity` and loads back identical |
 | `daily` | Scripts of `/api/focus`, `/api/meeting`, `/api/say`, `/api/remind`, `/api/timer`, `/api/countdown`, `/api/find` bodies (≤ 300 B, `StaticJsonDocument<384>`), with the clock moving (and wrapping) | Status ∈ {200, 400, 409}; error field is a plain identifier; replies and `notes.json` fit their documents; notes.json reloads identical |
 | `notes` | `/notes.json` (≤ 1024 B, 768 B document) → `DeskNotes::fromJson` | Same as above, plus `countdownLine` in every language |
 | `utf8` | `utf8Next`/`utf8Length`/`utf8Copy`, the `format*` helpers, `compareVersions`, `constantTimeEquals` | Always advances; copies stay in cap, are a prefix and never cut a sequence |
@@ -54,7 +54,8 @@ The target functions also build as a libFuzzer entry point (`-DMIBLO_LIBFUZZER
 | `http` | Raw header bytes (`findContentLength`, `checkRequestHeaders`: the multipart boundary guard; the header read-ahead `gatherHeaders`/`HeaderBuffer` over random segment sizes), `bearerToken`, `infoView`, TokenStore, PairingGuard, PresenceGate, WebSession | Within cap; read-ahead ≤ 2 KB, replayed unchanged, freed once drained |
 | `canvas_text` | Any bytes drawn with the real `TftCanvas` and u8g2 fonts (every font, width, alignment) | No out-of-bounds glyph lookup |
 | `ui_note` | Any text on the cat's sign (`wrap()`), fanfare, flash, hello, updateAvailable, paired | No crash or UB |
-| `screens` | A fuzzed snapshot drawn by overview, sessions, limits, hero, desk, summary, limitReset, roam, dayEnd and weekRecap | No crash or UB |
+| `screens` | A fuzzed snapshot drawn by overview, sessions, limits, hero, desk, summary, limitReset, roam, dayEnd and weekRecap; then again with meeting mode, the second clock, the desk's countdown and QR from its text, and the daily screens and overlays (focus, nudge, timer, find, cue, state frame, fanfare, waiting mark, meeting badge, passerby) | No crash, UB or hang |
+| `alerts` | Snapshots from two computers and an old plugin (sessions from a small id pool, alert records, bridge restarts) with settings, insistence, meeting and focus modifiers and the fanfare changing, into one `AlertSequencer` | Phase/level/queue bounded; a needs-you alert starts only for a waiting session; without reminders a wait alerts once; insistence only when on; nothing on screen past its length; with nothing on screen every waiting session has had its alert |
 
 Inputs that once found a bug live in `corpus/<target>/` and run first, as seeds, on every
 `make fuzz`. Add the crash file there when you fix something.

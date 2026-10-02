@@ -136,6 +136,8 @@ export function startFakeDevice({
       state.tokens = [...state.tokens, state.token].slice(-MAX_TOKENS);
       return send(200, { token: state.token });
     }
+    // An old firmware has no daily-life routes at all: 404 before any token check.
+    if (legacy && DAILY[`${req.method} ${url.pathname}`]) return send(404, { error: 'not found' });
     if (!authed(req)) return send(401, { error: 'unauthorized' });
     if (req.method === 'POST' && req.url === '/api/state') { state.snapshots.push(body); return send(200, { ok: true }); }
     if (req.method === 'POST' && req.url === '/api/config') {

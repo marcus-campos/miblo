@@ -36,7 +36,8 @@ export const printable = (s, max = 48) =>
 // line breaks) collapses to one space; any other control character is refused, as the gadget
 // refuses it; the length is checked in characters and in UTF-8 bytes.
 export function typedText(words, limits, what) {
-  const text = words.join(' ').replace(/\s+/g, ' ').trim();
+  // NFC first: an accent typed as a combining mark counts (and is stored) as one character.
+  const text = words.join(' ').normalize('NFC').replace(/\s+/g, ' ').trim();
   if (!text) return { error: `The ${what} is empty.` };
   if (!text.isWellFormed() || /[\p{Cc}]/u.test(text)) return { error: `The ${what} has a character the gadget cannot show: type it again without it.` };
   const chars = [...text].length;
@@ -201,12 +202,25 @@ async function focus(args, { store, client }) {
       for (const s of st) if (s.err) lines.push(problemLine(s.label, s.err));
       return st.some((s) => !s.err) ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
     }
+    // Starting: a gadget whose /api/info could not be reached (no HTTP status) gets no POST.
+    // (st is in the same order as targets.)
+    const down = st.map((x) => Boolean(x.err && !x.err.status));
+    if (down.some(Boolean)) {
+      const reachable = targets.filter((_, i) => !down[i]);
+      const offline = st.filter((_, i) => down[i]).map((x) => `${x.label} is offline.`);
+      if (!reachable.length) return fail(1, offline.join('\n'));
+      const res = await startFocus(reachable, client, parsed.body);
+      return { code: res.code, out: res.out + offline.join('\n') + '\n' };
+    }
   }
 
   if (parsed.stop) {
     return summarize(await each(targets, (d) => client.focus(d.addr, d.token, { stop: true })), (n) => `Focus off on ${n}.`);
   }
-  const { body } = parsed;
+  return startFocus(targets, client, parsed.body);
+}
+
+async function startFocus(targets, client, body) {
   const breakMin = body.breakMin ?? defaultBreakFor(body.focusMin);
   const rounds = body.rounds ?? ROUNDS.default;
   const results = await each(targets, (d) => client.focus(d.addr, d.token, body));
@@ -343,7 +357,15 @@ export function parseRemindArgs(args) {
     return t.error ? { error: t.error } : { body: { ...body, text: t.text }, kind };
   };
   if (isWhole(w[0])) {
-    const min = Number(w[0]);
+    // "0930" or "930" is a time typed without the colon, not 930 minutes: ask for HH:MM.
+    // Below 600 (10 h) a number stays minutes ("120" = 2 h).
+    const v = w[0];
+    const hh = Math.floor(Number(v) / 100);
+    const looksLikeTime = v.length >= 3 && v.length <= 4 && Number(v) >= 600 && hh <= 23 && Number(v) % 100 <= 59;
+    if ((v.length > 1 && v.startsWith('0')) || looksLikeTime) {
+      return { error: `"${quoteArg(v)}" looks like a time: write it as HH:MM (e.g. 09:30), or give the minutes from now (1-${REMIND_IN.max}).` };
+    }
+    const min = Number(v);
     if (!inRange(min, REMIND_IN)) return { error: `Minutes must be a whole number from ${REMIND_IN.min} to ${REMIND_IN.max} (got ${min}).` };
     return withText({ in: min }, 'in', w.slice(1));
   }
@@ -548,7 +570,8 @@ async function today(args, { fetchStatus, now }) {
   const t = st.today ?? {};
   const turns = Math.max(0, Math.floor(Number(t.turns) || 0));
   const parts = [`${turns} response${turns === 1 ? '' : 's'}`, `${durationText(Number(t.work) || 0)} with Claude working`];
-  if (Number.isFinite(Number(t.usd)) && t.usd !== null) parts.push(`US$ ${Number(t.usd).toFixed(2)}`);
+  // The bridge sends 0 when it has no cost readings: leave the cost out then.
+  if (Number.isFinite(Number(t.usd)) && Number(t.usd) > 0) parts.push(`US$ ${Number(t.usd).toFixed(2)}`);
   const lines = [`Today: ${parts.join(', ')}.`, limitsLine(st.usage, now()) ?? NO_LIMITS];
   const top = Array.isArray(t.top) ? t.top.filter((x) => printable(x?.name, 40) && Number(x?.work) > 0).slice(0, 3) : [];
   if (top.length >= 2) lines.push(`Most work: ${top.map((x) => `${printable(x.name, 40)} ${durationText(Number(x.work))}`).join(', ')}.`);

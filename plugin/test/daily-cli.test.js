@@ -352,3 +352,41 @@ test('limits without a forecast, and without the bridge', async () => {
   assert.match(stopped.out, /bridge isn't running/);
   assert.match((await run(['today'], deps())).out, /bridge isn't running/);
 });
+
+test('review fixes: HHMM-looking minutes, zero cost, NFC text, offline focus, legacy 404 before auth', async () => {
+  const a = await fake({ id: 'miblo-aaaa', name: 'Amon' });
+  const d = deps();
+  try {
+    pair(d, a);
+    // A time typed without the colon is refused, not read as minutes.
+    for (const v of ['0930', '1030', '930', '090', '00930']) {
+      const r = await run(['remind', v, 'x'], d);
+      assert.equal(r.code, 2, v);
+      assert.match(r.out, /HH:MM/, v);
+    }
+    assert.match((await run(['remind', '120', 'x'], d)).out, /in 120 min/);
+    assert.match((await run(['remind', '590', 'x'], d)).out, /in 590 min/);
+    // NFC: "é" typed as e + combining accent counts as one character.
+    const nfd = 'é'.repeat(20);
+    assert.equal((await run(['say', nfd], d)).code, 0);
+    assert.equal(a.state.say.text, 'é'.repeat(20));
+    // A gadget whose /api/info is unreachable gets no POST: one offline line only.
+    const calls = [];
+    const client = new DeviceClient();
+    const flaky = { info: async () => { throw new Error('ECONNREFUSED'); }, focus: async (...x) => { calls.push(x); return {}; } };
+    const r = await run(['focus'], { ...d, client: flaky });
+    assert.equal(r.code, 1);
+    assert.equal(r.out, 'Amon is offline.\n');
+    assert.equal(calls.length, 0);
+    assert.equal((await run(['focus'], { ...d, client })).code, 0);
+  } finally { await a.close(); }
+  // Today with no cost readings leaves the cost out.
+  const zero = { today: { turns: 2, work: 600, usd: 0 }, usage: null };
+  assert.match((await run(['today'], deps({ fetchStatus: async () => zero, now: () => NOW }))).out, /^Today: 2 responses, 10 min with Claude working\.$/m);
+  // An old firmware answers 404 on the daily routes even without a token.
+  const old = await startFakeDevice({ legacy: true, tokens: ['t'] });
+  try {
+    const res = await fetch(`http://${old.addr}/api/focus`, { method: 'POST', body: '{}' });
+    assert.equal(res.status, 404);
+  } finally { await old.close(); }
+});

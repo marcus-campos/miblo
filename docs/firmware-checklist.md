@@ -111,8 +111,13 @@ notes.
 16. **Mascot colours and settings command:** `/miblo:settings` opens the settings page; each
     mascot colour saves and applies at once (boot, desk and disconnected mascots), and survives a
     reboot. Night mode dims and restores the backlight at the configured times.
-    Blue light filter: set "Always" at each strength and check that the whole screen (text,
-    mascot, rings, pet mode) warms at once and stays readable. Set "Scheduled" with a start a
+    Blue light filter: set "Always" and drag the strength slider from 1% to 100%: the % next to
+    it follows the thumb, and after saving the whole screen (text, mascot, rings, pet mode)
+    warms at once and stays readable, a little warmer at each step (1% is barely different from
+    off, 100% is the warmest). A config saved by older firmware ("Medium") comes back at 63%.
+    `/miblo:blue` shows the setting; `/miblo:blue 30%`, `/miblo:blue high` (100%) and
+    `/miblo:blue 21:00 07:00` change it and the page shows the same values after a reload; on a
+    gadget with older firmware the command says to update it. Set "Scheduled" with a start a
     minute or two ahead and watch the boundary: the whole screen redraws warm at that minute (and
     back at the end time). Reboot inside the window: it comes back warm once the clock is set.
     Set "Off": the original colours return everywhere.

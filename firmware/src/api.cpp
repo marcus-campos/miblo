@@ -122,9 +122,11 @@ static void handleInfo() {
   doc[F("nightFrom")] = ctx.cfg.nightFrom;
   doc[F("nightTo")] = ctx.cfg.nightTo;
   doc[F("nightBrightness")] = ctx.cfg.nightBrightness;
-  // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..3; its own window).
+  // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..100 %; its own window).
+  // blueLevel (1..3, the nearest old level) for plugins from before the slider.
   doc[F("blueFilter")] = ctx.cfg.blueFilter;
-  doc[F("blueLevel")] = ctx.cfg.blueLevel;
+  doc[F("blueStrength")] = ctx.cfg.blueStrength;
+  doc[F("blueLevel")] = miblo::blueLevelForStrength(ctx.cfg.blueStrength);
   doc[F("blueFrom")] = ctx.cfg.blueFrom;
   doc[F("blueTo")] = ctx.cfg.blueTo;
   doc[F("mascot")] = ctx.cfg.mascot;

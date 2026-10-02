@@ -4,6 +4,7 @@
 #include "../support/fake_canvas.h"
 #include <time.h>
 
+#include "miblo_config.h"
 #include "miblo_mood.h"
 #include "miblo_zone.h"
 #include "ui_screens.h"
@@ -1277,45 +1278,58 @@ static void test_visit_add_item_drops_bad_kinds() {
   TEST_ASSERT_EQUAL_UINT8(screens::kItemsEnd - 1, f.items[3].kind);
 }
 
-// Blue light filter: the colour under a warmer white point. Off changes nothing, black stays
-// black, red is kept, and each level is warmer than the last (blue drops faster than green).
-// ShiftCanvas applies it to every colour it forwards, and switching it off restores the colours.
+// Blue light filter: the colour under a warmer white point, strength 1..100 %. Off changes
+// nothing, black stays black, red is kept, and the white gets warmer with the strength (blue drops
+// faster than green). The old three levels' strengths give exactly their old colours. ShiftCanvas
+// applies it to every colour it forwards, and switching it off restores the colours.
 static void test_warm_color() {
-  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ui::warmColor(0xFFFF, 0));
-  TEST_ASSERT_EQUAL_HEX16(0x1234, ui::warmColor(0x1234, 0));
-  TEST_ASSERT_EQUAL_HEX16(0x0000, ui::warmColor(0x0000, 3));
-  TEST_ASSERT_EQUAL_HEX16(0xF800, ui::warmColor(0xF800, 3));  // pure red is untouched
-  int prevG = 63, prevB = 31;
-  for (uint8_t level = 1; level <= 3; level++) {
-    const uint16_t w = ui::warmColor(0xFFFF, level);
-    const int r = w >> 11, g = (w >> 5) & 63, b = w & 31;
-    TEST_ASSERT_EQUAL_INT(31, r);
-    TEST_ASSERT_TRUE(g < prevG && b < prevB);
-    TEST_ASSERT_TRUE(b * 63 < g * 31);  // relative to its range, blue is lower than green
-    prevG = g, prevB = b;
-  }
-  TEST_ASSERT_EQUAL_HEX16(ui::warmColor(0xFFFF, 3), ui::warmColor(0xFFFF, 9));  // clamped
+  TEST_ASSERT_EQUAL_HEX16(0xFFFF, ui::warmColor(0xFFFF, ui::warmGains(0)));
+  TEST_ASSERT_EQUAL_HEX16(0x1234, ui::warmColor(0x1234, ui::warmGains(0)));
+  TEST_ASSERT_EQUAL_HEX16(0x0000, ui::warmColor(0x0000, ui::warmGains(100)));
+  TEST_ASSERT_EQUAL_HEX16(0xF800, ui::warmColor(0xF800, ui::warmGains(100)));  // pure red is untouched
+  TEST_ASSERT_EQUAL_HEX16(ui::warmColor(0xFFFF, ui::warmGains(100)), ui::warmColor(0xFFFF, ui::warmGains(200)));  // clamped
 
-  // Every colour at every level is exactly round(v * m / 255) per channel (warmColor computes it
-  // with a multiply and a shift): green and blue scaled by the level's multipliers, red kept.
-  static const uint32_t kGain[3][2] = {{222, 188}, {199, 139}, {173, 89}};  // green, blue (of 255)
+  // The old levels (1, 2, 3 = 4541 K, 3489 K, 2732 K): green and blue out of 255.
+  static const uint8_t kLegacy[3][2] = {{222, 188}, {199, 139}, {173, 89}};
   for (uint8_t level = 1; level <= 3; level++) {
-    const uint32_t gm = kGain[level - 1][0], bm = kGain[level - 1][1];
+    const ui::WarmGains g = ui::warmGains(miblo::blueStrengthForLevel(level));
+    TEST_ASSERT_EQUAL_UINT8(kLegacy[level - 1][0], g.g);
+    TEST_ASSERT_EQUAL_UINT8(kLegacy[level - 1][1], g.b);
+  }
+
+  // Monotonic: each step is at least as warm as the one before, blue never above green, 1 % is
+  // almost neutral and 100 % is the old strongest.
+  ui::WarmGains prev = ui::warmGains(0);
+  TEST_ASSERT_EQUAL_UINT8(255, prev.g);
+  TEST_ASSERT_EQUAL_UINT8(255, prev.b);
+  for (int s = 1; s <= 100; s++) {
+    const ui::WarmGains g = ui::warmGains((uint8_t)s);
+    TEST_ASSERT_TRUE(g.g <= prev.g && g.b <= prev.b);
+    TEST_ASSERT_TRUE(g.g + g.b < prev.g + prev.b);  // strictly warmer at every step
+    TEST_ASSERT_TRUE(g.b <= g.g);
+    prev = g;
+  }
+  TEST_ASSERT_TRUE(ui::warmGains(1).g >= 253 && ui::warmGains(1).b >= 252);
+
+  // Every colour at every strength is exactly round(v * m / 255) per channel (warmColor computes
+  // it with a multiply and a shift): green and blue scaled by the strength's multipliers, red kept.
+  for (int s = 1; s <= 100; s++) {
+    const ui::WarmGains gn = ui::warmGains((uint8_t)s);
     for (uint32_t c = 0; c <= 0xFFFF; c++) {
-      const uint32_t g = (((c >> 5) & 63) * gm + 127) / 255, b = ((c & 31) * bm + 127) / 255;
+      const uint32_t g = (((c >> 5) & 63) * gn.g + 127) / 255, b = ((c & 31) * gn.b + 127) / 255;
       const uint16_t want = (uint16_t)((c & 0xF800) | g << 5 | b);
-      if (ui::warmColor((uint16_t)c, level) != want) TEST_ASSERT_EQUAL_HEX16(want, ui::warmColor((uint16_t)c, level));
+      if (ui::warmColor((uint16_t)c, gn) != want) TEST_ASSERT_EQUAL_HEX16(want, ui::warmColor((uint16_t)c, gn));
     }
   }
 
   FakeCanvas fc({240, 240});
   ui::ShiftCanvas sc(fc);
-  sc.setWarmth(2);
-  TEST_ASSERT_EQUAL_UINT8(2, sc.warmth());
+  sc.setWarmth(63);
+  TEST_ASSERT_EQUAL_UINT8(63, sc.warmth());
   sc.fillRect(0, 0, 10, 10, 0xFFFF);
-  TEST_ASSERT_EQUAL_INT(ui::warmColor(0xFFFF, 2), fc.colorAt(5, 5));
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(0xFFFF, ui::warmGains(63)), fc.colorAt(5, 5));
   sc.fillRoundRect(20, 0, 10, 10, 2, ui::color::BLUE);
-  TEST_ASSERT_EQUAL_INT(ui::warmColor(ui::color::BLUE, 2), fc.colorAt(25, 5));
+  TEST_ASSERT_EQUAL_INT(ui::warmColor(ui::color::BLUE, ui::warmGains(63)), fc.colorAt(25, 5));
   sc.setWarmth(0);
   sc.fillRect(40, 0, 10, 10, 0xFFFF);
   TEST_ASSERT_EQUAL_INT(0xFFFF, fc.colorAt(45, 5));
@@ -1342,7 +1356,7 @@ struct ColorLog : ui::Canvas {
 };
 
 static void test_shift_canvas_warms_every_color() {
-  for (uint8_t level = 0; level <= 3; level++) {
+  for (uint8_t level : {0, 1, 31, 63, 100}) {
     ColorLog log;
     ui::ShiftCanvas sc(log);
     sc.setShift(2, -1);
@@ -1362,7 +1376,7 @@ static void test_shift_canvas_warms_every_color() {
     sc.clear(c++);
     TEST_ASSERT_EQUAL_INT(c - first, (int)log.colors.size());
     for (size_t i = 0; i < log.colors.size(); i++) {
-      TEST_ASSERT_EQUAL_HEX16(ui::warmColor((uint16_t)(first + i), level), log.colors[i]);
+      TEST_ASSERT_EQUAL_HEX16(ui::warmColor((uint16_t)(first + i), ui::warmGains(level)), log.colors[i]);
     }
   }
 }

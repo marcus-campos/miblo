@@ -12,7 +12,7 @@ void renderCues(miblo::Lang L) {
   { Shot s; screens::cue(CueKind::FocusEnd, peak / 2); save(s, "57-cue-focus-rising"); }
   { Shot s; screens::cue(CueKind::Reminder, peak); save(s, "57-cue-reminder-peak"); }
   // With the blue light filter at full strength (night): the pulse is warmed like everything else.
-  { Shot s(3); screens::cue(CueKind::FocusEnd, peak); save(s, "57-cue-focus-peak-warm"); }
+  { Shot s(100); screens::cue(CueKind::FocusEnd, peak); save(s, "57-cue-focus-peak-warm"); }
 
   // The status frame drawn over a screen: amber while a session waits, green after a finish.
   miblo::Pager pager(3, 5000);

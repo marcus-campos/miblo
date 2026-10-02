@@ -100,9 +100,16 @@ static bool intIn16(JsonVariantConst v, int lo, int hi, uint16_t& out) {
   return true;
 }
 
+uint8_t blueStrengthForLevel(uint8_t level) { return level <= 1 ? 31 : level == 2 ? 63 : 100; }
+
+uint8_t blueLevelForStrength(uint8_t strength) { return strength <= 47 ? 1 : strength <= 81 ? 2 : 3; }
+
 bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField) {
   Config next = cfg;
   const char* bad = nullptr;
+  // Legacy blueLevel (configs saved before the slider): its strength, unless the patch also has
+  // blueStrength, which wins whatever the order.
+  const bool hasStrength = !patch["blueStrength"].isNull();
   for (JsonPairConst kv : patch) {
     const char* k = kv.key().c_str();
     JsonVariantConst v = kv.value();
@@ -180,8 +187,12 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn(v, 1, 100, next.nightBrightness);
     } else if (strcmp(k, "blueFilter") == 0) {
       ok = intIn(v, 0, 2, next.blueFilter);
+    } else if (strcmp(k, "blueStrength") == 0) {
+      ok = intIn(v, 1, 100, next.blueStrength);
     } else if (strcmp(k, "blueLevel") == 0) {
-      ok = intIn(v, 1, 3, next.blueLevel);
+      uint8_t level;
+      ok = intIn(v, 1, 3, level);
+      if (ok && !hasStrength) next.blueStrength = blueStrengthForLevel(level);
     } else if (strcmp(k, "blueFrom") == 0) {
       ok = intIn16(v, 0, 1439, next.blueFrom);
     } else if (strcmp(k, "blueTo") == 0) {
@@ -270,7 +281,8 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["nightTo"] = cfg.nightTo;
   out["nightBrightness"] = cfg.nightBrightness;
   out["blueFilter"] = cfg.blueFilter;
-  out["blueLevel"] = cfg.blueLevel;
+  out["blueStrength"] = cfg.blueStrength;
+  out["blueLevel"] = blueLevelForStrength(cfg.blueStrength);  // legacy: older firmware reads it
   out["blueFrom"] = cfg.blueFrom;
   out["blueTo"] = cfg.blueTo;
   out["mascot"] = cfg.mascot;
@@ -348,8 +360,8 @@ uint8_t brightnessAt(const Config& cfg, int minuteOfDay) {
 }
 
 uint8_t warmthAt(const Config& cfg, int minuteOfDay) {
-  if (cfg.blueFilter == 1) return cfg.blueLevel;
-  if (cfg.blueFilter == 2 && inWindow(cfg.blueFrom, cfg.blueTo, minuteOfDay)) return cfg.blueLevel;
+  if (cfg.blueFilter == 1) return cfg.blueStrength;
+  if (cfg.blueFilter == 2 && inWindow(cfg.blueFrom, cfg.blueTo, minuteOfDay)) return cfg.blueStrength;
   return 0;
 }
 

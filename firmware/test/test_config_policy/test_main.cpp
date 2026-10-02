@@ -1,4 +1,5 @@
 #include <ArduinoJson.h>
+#include <stdio.h>
 #include <string.h>
 #include <unity.h>
 
@@ -835,35 +836,40 @@ static void test_flash_blinks() {
 }
 
 // Blue light filter (its own schedule, separate from night dimming): off by default; 1 always,
-// 2 between blueFrom and blueTo (overnight windows too); strength 1..3; survives a reboot.
+// 2 between blueFrom and blueTo (overnight windows too); strength 1..100 %; survives a reboot.
 static void test_blue_filter() {
   Config c;
   TEST_ASSERT_EQUAL_UINT8(0, c.blueFilter);
-  TEST_ASSERT_EQUAL_UINT8(2, c.blueLevel);
+  TEST_ASSERT_EQUAL_UINT8(blueStrengthForLevel(2), c.blueStrength);  // the old default, "medium"
   TEST_ASSERT_EQUAL_UINT16(21 * 60, c.blueFrom);
   TEST_ASSERT_EQUAL_UINT16(7 * 60, c.blueTo);
   TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 23 * 60));  // off
 
-  TEST_ASSERT_TRUE(patch(c, "{\"blueFilter\":1,\"blueLevel\":3}"));
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 12 * 60));
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, -1));  // always: even before the clock is set
+  TEST_ASSERT_TRUE(patch(c, "{\"blueFilter\":1,\"blueStrength\":80}"));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, 12 * 60));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, -1));  // always: even before the clock is set
 
   // Scheduled: its own hours, whatever night dimming says.
   TEST_ASSERT_TRUE(patch(c, "{\"blueFilter\":2,\"blueFrom\":1290,\"blueTo\":390,\"night\":true,"
                             "\"nightFrom\":600,\"nightTo\":660}"));
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 21 * 60 + 30));
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 0));
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 6 * 60 + 29));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, 21 * 60 + 30));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, 0));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, 6 * 60 + 29));
   TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 6 * 60 + 30));
   TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 10 * 60 + 30));  // night dimming's hours: not the filter's
   TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, -1));            // unknown time: not scheduled
   TEST_ASSERT_TRUE(patch(c, "{\"blueFrom\":480,\"blueTo\":1020}"));  // a daytime window
-  TEST_ASSERT_EQUAL_UINT8(3, warmthAt(c, 12 * 60));
+  TEST_ASSERT_EQUAL_UINT8(80, warmthAt(c, 12 * 60));
   TEST_ASSERT_EQUAL_UINT8(0, warmthAt(c, 17 * 60));
 
   const char* bad = nullptr;
   TEST_ASSERT_FALSE(patch(c, "{\"blueFilter\":3}", &bad));
   TEST_ASSERT_EQUAL_STRING("blueFilter", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueStrength\":0}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueStrength", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueStrength\":101}", &bad));
+  TEST_ASSERT_EQUAL_STRING("blueStrength", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"blueStrength\":\"50\"}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"blueLevel\":0}", &bad));
   TEST_ASSERT_EQUAL_STRING("blueLevel", bad);
   TEST_ASSERT_FALSE(patch(c, "{\"blueLevel\":4}", &bad));
@@ -871,17 +877,20 @@ static void test_blue_filter() {
   TEST_ASSERT_EQUAL_STRING("blueFrom", bad);
   TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":600,\"blueTo\":600}", &bad));  // an empty window
   TEST_ASSERT_EQUAL_UINT8(2, c.blueFilter);  // a rejected patch changes nothing
+  TEST_ASSERT_EQUAL_UINT8(80, c.blueStrength);
   TEST_ASSERT_FALSE(patch(c, "{\"blueFrom\":1020}", &bad));  // moved onto the end: that field is named
   TEST_ASSERT_EQUAL_STRING("blueFrom", bad);
   TEST_ASSERT_EQUAL_UINT16(480, c.blueFrom);
   TEST_ASSERT_FALSE(patch(c, "{\"blueTo\":480}", &bad));
   TEST_ASSERT_EQUAL_STRING("blueTo", bad);
 
-  // The page and the API read the four settings back.
+  // The page and the API read the settings back; blueLevel (legacy, for older firmware reading
+  // this config after a downgrade) is the nearest of the old three levels.
   StaticJsonDocument<1024> doc;
   configToJson(c, doc.to<JsonObject>());
   TEST_ASSERT_EQUAL(2, doc["blueFilter"].as<int>());
-  TEST_ASSERT_EQUAL(3, doc["blueLevel"].as<int>());
+  TEST_ASSERT_EQUAL(80, doc["blueStrength"].as<int>());
+  TEST_ASSERT_EQUAL(2, doc["blueLevel"].as<int>());
   TEST_ASSERT_EQUAL(480, doc["blueFrom"].as<int>());
   TEST_ASSERT_EQUAL(1020, doc["blueTo"].as<int>());
 
@@ -893,9 +902,46 @@ static void test_blue_filter() {
 
   const Config r = storedRoundTrip(c);
   TEST_ASSERT_EQUAL_UINT8(2, r.blueFilter);
-  TEST_ASSERT_EQUAL_UINT8(3, r.blueLevel);
+  TEST_ASSERT_EQUAL_UINT8(80, r.blueStrength);
   TEST_ASSERT_EQUAL_UINT16(480, r.blueFrom);
   TEST_ASSERT_EQUAL_UINT16(1020, r.blueTo);
+}
+
+// The old three strengths (blueLevel 1..3, a select) became a 1..100 % slider (blueStrength).
+// The levels map to the strengths whose colours are exactly the old ones (test_warm_color), a
+// config saved by older firmware (blueLevel only) loads at that strength, and blueStrength wins
+// over blueLevel whatever their order. Every strength is written with its nearest level.
+static void test_blue_strength_legacy_levels() {
+  TEST_ASSERT_EQUAL_UINT8(31, blueStrengthForLevel(1));
+  TEST_ASSERT_EQUAL_UINT8(63, blueStrengthForLevel(2));
+  TEST_ASSERT_EQUAL_UINT8(100, blueStrengthForLevel(3));
+  for (uint8_t level = 1; level <= 3; level++) {
+    TEST_ASSERT_EQUAL_UINT8(level, blueLevelForStrength(blueStrengthForLevel(level)));
+    Config old;
+    char json[64];
+    snprintf(json, sizeof(json), "{\"blueFilter\":1,\"blueLevel\":%u}", (unsigned)level);
+    TEST_ASSERT_TRUE(patch(old, json));
+    TEST_ASSERT_EQUAL_UINT8(blueStrengthForLevel(level), old.blueStrength);
+    TEST_ASSERT_EQUAL_UINT8(blueStrengthForLevel(level), warmthAt(old, 12 * 60));
+    const Config r = storedRoundTrip(old);
+    TEST_ASSERT_EQUAL_UINT8(blueStrengthForLevel(level), r.blueStrength);
+  }
+  TEST_ASSERT_EQUAL_UINT8(1, blueLevelForStrength(1));
+  TEST_ASSERT_EQUAL_UINT8(1, blueLevelForStrength(47));
+  TEST_ASSERT_EQUAL_UINT8(2, blueLevelForStrength(48));
+  TEST_ASSERT_EQUAL_UINT8(2, blueLevelForStrength(81));
+  TEST_ASSERT_EQUAL_UINT8(3, blueLevelForStrength(82));
+  TEST_ASSERT_EQUAL_UINT8(3, blueLevelForStrength(100));
+
+  Config c;
+  TEST_ASSERT_TRUE(patch(c, "{\"blueLevel\":3,\"blueStrength\":40}"));
+  TEST_ASSERT_EQUAL_UINT8(40, c.blueStrength);
+  TEST_ASSERT_TRUE(patch(c, "{\"blueStrength\":55,\"blueLevel\":1}"));
+  TEST_ASSERT_EQUAL_UINT8(55, c.blueStrength);
+  const char* bad = nullptr;
+  TEST_ASSERT_FALSE(patch(c, "{\"blueStrength\":55,\"blueLevel\":9}", &bad));  // still validated
+  TEST_ASSERT_EQUAL_STRING("blueLevel", bad);
+  TEST_ASSERT_EQUAL_UINT8(55, c.blueStrength);
 }
 
 // Daily-life settings: defaults (everything that nags is off), ranges, and the work hours rule.
@@ -1013,6 +1059,7 @@ int main() {
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
   RUN_TEST(test_blue_filter);
+  RUN_TEST(test_blue_strength_legacy_levels);
   RUN_TEST(test_daily_life_config_defaults_and_ranges);
   RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);

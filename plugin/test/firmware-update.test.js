@@ -302,3 +302,27 @@ test('open while another code is on the gadget screen says so (busy), not "wrong
     assert.doesNotMatch(o.out, /wrong codes/);
   } finally { await t.close(); }
 });
+
+test('a busy gadget (503) is reported busy by update and check, not unreachable', async () => {
+  const t = await setup({ device: { busy: Infinity } });
+  try {
+    const o = await run(['update', 'open', 'miblo-0000'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, sleep: async () => {} } });
+    assert.equal(o.code, 1);
+    assert.match(o.out, /Miblo-0000 is busy right now — try again in a moment\./);
+    const c = await run(['update', 'check'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, sleep: async () => {} } });
+    const row = JSON.parse(c.out).devices[0];
+    assert.equal(row.online, true);
+    assert.equal(row.busy, true);
+    assert.equal(row.needsUpdate, null);
+  } finally { await t.close(); }
+});
+
+test('update retries a gadget busy for a moment', async () => {
+  const t = await setup({ device: { busy: 2, busyPath: '/api/info' } });
+  try {
+    const delays = [];
+    const c = await run(['update', 'check'], { dataDir: t.dataDir, updater: { githubApi: t.gh.githubApi, rawBase: t.gh.rawBase, pluginVersion: '0.2.2', sleep: async (ms) => { delays.push(ms); } } });
+    assert.equal(JSON.parse(c.out).devices[0].fw, '0.2.1');
+    assert.deepEqual(delays, [400, 800]);
+  } finally { await t.close(); }
+});

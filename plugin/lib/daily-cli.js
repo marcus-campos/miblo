@@ -2,7 +2,7 @@
 // (they talk to every paired gadget, or only `--id <id>`) and today/limits (they read the bridge).
 // Every argument is validated here exactly as the firmware validates it, before any request.
 import { cleanId, cleanName } from './mdns.js';
-import { isReducedInfo } from './device-client.js';
+import { busyLine, isBusy, isReducedInfo } from './device-client.js';
 
 const ok = (out) => ({ code: 0, out: out + '\n' });
 const fail = (code, out) => ({ code, out: out + '\n' });
@@ -91,6 +91,7 @@ const FIELD_HINTS = {
 export function problemLine(label, e, what = {}) {
   if (e?.status === 404) return `${label} does not support this yet: update it with /miblo:update.`;
   if (e?.status === 401) return `${label} no longer knows this computer (run /miblo:pair again).`;
+  if (isBusy(e)) return busyLine(label);
   const field = String(e?.data?.field ?? '').replace(/[^A-Za-z]/g, '').slice(0, 20);
   if (e?.status === 409) {
     if (field === 'clock') return `${label} has not got the time yet (it needs Wi-Fi with internet or a running bridge); try again in a minute.`;

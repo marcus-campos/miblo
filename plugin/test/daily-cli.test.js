@@ -390,3 +390,20 @@ test('review fixes: HHMM-looking minutes, zero cost, NFC text, offline focus, le
     assert.equal(res.status, 404);
   } finally { await old.close(); }
 });
+
+test('a busy gadget (503) is called busy in the daily-life commands, not offline', async () => {
+  const a = await fake({ id: 'miblo-aaaa', name: 'Amon' });
+  const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
+  try {
+    pair(d, a);
+    a.state.busyLeft = Infinity;
+    for (const argv of [['focus'], ['focus', 'stop'], ['say', 'hello'], ['remind'], ['find'], ['countdown']]) {
+      const r = await run(argv, d);
+      assert.equal(r.code, 1, argv.join(' '));
+      assert.match(r.out, /Amon is busy right now — try again in a moment\./, argv.join(' '));
+      assert.doesNotMatch(r.out, /offline/, argv.join(' '));
+    }
+  } finally {
+    await a.close();
+  }
+});

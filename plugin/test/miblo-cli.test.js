@@ -768,3 +768,70 @@ test('status commands survive the reduced /api/info of a gadget that dropped thi
     await dev.close();
   }
 });
+
+// ---- a busy gadget (503, low on memory) is called busy, never offline or unreachable ----
+const BUSY = /Miblo-4F2A is busy right now — try again in a moment\./;
+
+test('every gadget command says "busy" for a 503, not offline', async () => {
+  const dev = await startFakeDevice();
+  const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
+  try {
+    await run(['pair', dev.addr, '4827'], d);
+    dev.state.busyLeft = Infinity;
+    const id = 'miblo-4f2a';
+    for (const argv of [['rotate', '--status'], ['night', '--status']]) {
+      const r = await run(argv, d);
+      assert.match(r.out, /Miblo-4F2A \(miblo-4f2a\): busy right now — try again in a moment/, argv.join(' '));
+      assert.doesNotMatch(r.out, /offline/);
+    }
+    for (const argv of [['rotate', 'on'], ['night', 'off'], ['rename', id, 'Desk'], ['owner', id, '--name', 'Ana'],
+      ['mode', 'limits'], ['reset', id]]) {
+      const r = await run(argv, d);
+      assert.match(r.out, BUSY, argv.join(' '));
+      assert.doesNotMatch(r.out, /offline|Could not reach/, argv.join(' '));
+    }
+    assert.equal(new DeviceStore(d.dataDir).list().length, 1);  // a busy reset keeps the pairing
+  } finally {
+    await dev.close();
+  }
+});
+
+test('demo says busy for a 503', async () => {
+  const a = await startFakeDevice();
+  const b = await startFakeDevice({ id: 'miblo-4f2b', name: 'Miblo-4F2B' });
+  const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
+  try {
+    await run(['pair', a.addr, '4827'], d);
+    await run(['pair', b.addr, '4827'], d);
+    a.state.busyLeft = Infinity;
+    const r = await run(['demo'], d);
+    assert.match(r.out, BUSY);
+    assert.match(r.out, /Demo on for 10 min on Miblo-4F2B\./);
+  } finally {
+    await a.close();
+    await b.close();
+  }
+});
+
+test('pair: a gadget busy for a moment still pairs; one that stays busy is called busy', async () => {
+  const dev = await startFakeDevice({ busy: 2 });
+  const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
+  try {
+    assert.equal((await run(['pair', dev.addr, '4827'], d)).code, 0);
+    dev.state.busyLeft = Infinity;
+    const r = await run(['pair', dev.addr, '4827'], d);
+    assert.equal(r.code, 1);
+    assert.match(r.out, new RegExp(`The Miblo gadget at ${dev.addr} is busy right now — try again in a moment\\.`));
+  } finally {
+    await dev.close();
+  }
+});
+
+test('pair with no answer to the pairing request itself says the code may be used up', async () => {
+  const d = deps({
+    client: { info: async () => ({ id: 'miblo-4f2a', paired: false }), pair: async () => { throw new TypeError('fetch failed'); } },
+  });
+  const r = await run(['pair', '10.0.0.7', '4827'], d);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /No answer from the Miblo gadget at 10\.0\.0\.7:80 while pairing/);
+});

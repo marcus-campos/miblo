@@ -19,6 +19,8 @@ export function startFakeDevice({
   otherCodeSec = 0,  // another purpose's code is on the screen for this long: /update/open is busy
   legacy = false,  // a firmware before the daily-life routes: they answer 404, /api/info lacks their fields
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
+  busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
+  busyPath = null,
 } = {}) {
   const state = {
     token: null, tokens: [...tokens], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
@@ -29,6 +31,7 @@ export function startFakeDevice({
     reminders: [],  // [{id, dueAt} one-off (ids 1..4) | {id, at, days} recurring (ids 5..8), with text]
     lastRemind: null, held: false,  // held: the cat holds a reminder now (POST {dismiss:true} clears it)
     clockKnown,
+    busyLeft: busy, busyPath, busyHits: 0,  // busyHits: requests refused with 503
   };
   const readRaw = (req) =>
     new Promise((resolve) => {
@@ -105,6 +108,12 @@ export function startFakeDevice({
     const raw = req.method === 'POST' ? await readRaw(req) : null;
     if (state.rebooting) return req.socket.destroy();
     const url = new URL(req.url, 'http://x');
+    // Low on memory: the firmware refuses before doing anything (src/api.cpp, src/web.cpp).
+    if (state.busyLeft > 0 && (!state.busyPath || url.pathname === state.busyPath)) {
+      state.busyLeft -= 1;
+      state.busyHits += 1;
+      return send(503, { error: 'busy' });
+    }
     if (req.method === 'POST' && url.pathname === '/update/open') return otaOpen(req, send);
     if (req.method === 'POST' && url.pathname === '/update') return otaUpload(req, res, url, raw, send);
     const body = raw ? asJson(raw) : null;

@@ -9,7 +9,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { cleanId, cleanName } from './mdns.js';
-import { isReducedInfo } from './device-client.js';
+import { BUSY_RETRY_MS, busyLine, isBusy, isReducedInfo } from './device-client.js';
 
 export const GITHUB_API = 'https://api.github.com';
 export const GITHUB_RAW = 'https://raw.githubusercontent.com';
@@ -120,8 +120,9 @@ export class FirmwareUpdater {
       let info;
       try {
         info = await this.#info(d.addr, d.token);
-      } catch {
-        results.push({ ...row, online: false, needsUpdate: null });
+      } catch (e) {
+        // busy: it answered (503, low on memory) but could not say its version just now
+        results.push({ ...row, online: isBusy(e), ...(isBusy(e) ? { busy: true } : {}), needsUpdate: null });
         continue;
       }
       const board = String(info?.board ?? '');
@@ -187,6 +188,7 @@ export class FirmwareUpdater {
     }
     const data = await res.json().catch(() => null);
     if (res.status === 429) fail(2, lockedMsg(data));
+    if (isBusy(res)) fail(1, busyLine(cleanName(d.name)));
     if (!res.ok || !data?.ok) fail(1, `${cleanName(d.name)} refused to start the update (HTTP ${res.status}).`);
     const codeRequired = data.codeRequired !== false;
     this.#writePending({ id: d.id, file: image.file, sha256: image.sha256, version: image.version, board, from: String(info.fw ?? ''), codeRequired });
@@ -227,6 +229,7 @@ export class FirmwareUpdater {
     try { data = JSON.parse(text); } catch { /* plain text */ }
     if (res.status === 403) fail(2, 'Wrong code.');
     if (res.status === 429) fail(2, lockedMsg(data));
+    if (isBusy(res)) fail(1, `${busyLine(cleanName(d.name))} Its previous firmware stays in place.`);
     if (!res.ok) fail(1, `Update failed: ${String(text).slice(0, 120) || `HTTP ${res.status}`}. The previous firmware stays in place.`);
 
     this.#clearPending();
@@ -261,15 +264,29 @@ export class FirmwareUpdater {
     return list[0];
   }
 
+  // GET /api/info; a busy gadget (503) is asked again after BUSY_RETRY_MS, as DeviceClient does.
   async #info(addr, token) {
     const headers = token ? { authorization: `Bearer ${token}` } : {};
-    const res = await this.fetch(`http://${addr}/api/info`, { headers, signal: AbortSignal.timeout(this.deviceTimeoutMs) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return res.json();
+    for (let i = 0; ; i++) {
+      const res = await this.fetch(`http://${addr}/api/info`, { headers, signal: AbortSignal.timeout(this.deviceTimeoutMs) });
+      if (res.ok) return res.json();
+      await res.body?.cancel();
+      if (!isBusy(res) || i >= BUSY_RETRY_MS.length) {
+        const err = new Error(`HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      await this.sleep(BUSY_RETRY_MS[i]);
+    }
   }
 
   async #infoOrOffline(d) {
-    try { return await this.#info(d.addr, d.token); } catch { return fail(1, `Could not reach ${cleanName(d.name)}. Is it on and on the same network?`); }
+    try {
+      return await this.#info(d.addr, d.token);
+    } catch (e) {
+      if (isBusy(e)) return fail(1, busyLine(cleanName(d.name)));
+      return fail(1, `Could not reach ${cleanName(d.name)}. Is it on and on the same network?`);
+    }
   }
 
   // ---- images ----

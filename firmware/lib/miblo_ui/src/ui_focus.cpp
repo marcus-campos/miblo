@@ -77,9 +77,10 @@ void ring(FocusPhase p, uint8_t round, uint32_t elapsedMs, uint32_t lenMs) {
 // Rounds as dots: done and current filled (the current one in the phase colour), the rest hollow.
 void dots(FocusPhase p, uint8_t round, uint8_t rounds, int y) {
   if (rounds == 0) return;
+  if (rounds > miblo::kRoundsMax) rounds = miblo::kRoundsMax;  // the most /api/focus accepts
   const int step = Sz(rounds > 8 ? 13 : 16), rad = Sz(4);
   int x = X(120) - (rounds - 1) * step / 2;
-  for (uint8_t i = 1; i <= rounds; i++, x += step) {
+  for (int i = 1; i <= rounds; i++, x += step) {
     if (i < round) C().fillCircle(x, y, rad, color::MUTED);
     else if (i == round) C().fillCircle(x, y, rad, ringColor(p));
     else C().arc(x, y, rad, rad - Sz(2) + 1, 0, 360, color::FAINT, color::BG);

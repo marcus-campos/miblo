@@ -132,6 +132,16 @@ static void test_focus_screen_stays_on_screen() {
   }
 }
 
+// Rounds past kRoundsMax never come from /api/focus, but the screen must not hang on them (a
+// uint8_t loop up to 255 never ended) nor draw dots off the panel.
+static void test_focus_screen_any_round_count() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  screens::focus(Lang::En, kClk, FocusPhase::Focus, 255, 255, 1000, 60000, 1790613120, 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
 static void drawOnce(FakeCanvas& fc, FocusPhase ph, uint32_t leftMs, uint32_t untilEpoch) {
   screens::bind(fc);
   screens::reset();
@@ -211,6 +221,7 @@ int main() {
   RUN_TEST(test_stop_and_restart);
   RUN_TEST(test_focus_request);
   RUN_TEST(test_focus_screen_stays_on_screen);
+  RUN_TEST(test_focus_screen_any_round_count);
   RUN_TEST(test_focus_screen_texts);
   RUN_TEST(test_focus_screen_ticks_in_place);
   RUN_TEST(test_focus_ring_repaints_on_phase_change);

@@ -135,6 +135,21 @@ static void test_token_store_up_to_four_replacing_oldest() {
 }
 
 // Host names are truncated and may collide: pairing the same host again never drops a token.
+// The pairing's host name: cut to 20 characters without splitting one; a name that is not
+// clean text (malformed UTF-8, controls) is stored as "computer", so its row can be renamed.
+static void test_token_store_add_cleans_the_host() {
+  TokenStore s;
+  s.add("t1", "abcdefghijklmnopqrstuvwxyz");
+  TEST_ASSERT_EQUAL_STRING("abcdefghijklmnopqrst", s.at(0).host);
+  s.add("t2", "bad\xffhost");
+  TEST_ASSERT_EQUAL_STRING("computer", s.at(1).host);
+  s.add("t3", "ctl\x01");
+  TEST_ASSERT_EQUAL_STRING("computer", s.at(2).host);
+  s.add("t4", "ééééééééééééééééééé");  // 19 two-byte characters: cut whole at 16 (32 bytes)
+  TEST_ASSERT_EQUAL_STRING("éééééééééééééééé", s.at(3).host);
+  TEST_ASSERT_TRUE(s.remove(3, "éééééééééééééééé"));
+}
+
 static void test_token_store_same_host_appends() {
   TokenStore s;
   s.add("a1", "mac");
@@ -197,6 +212,8 @@ static void test_token_store_rename() {
   TEST_ASSERT_TRUE(s.rename(1, nullptr, "x") == TokenStore::RenameResult::Changed);
   TEST_ASSERT_TRUE(s.rename(1, "pc", "123456789012345678901") == TokenStore::RenameResult::BadName);  // 21
   TEST_ASSERT_TRUE(s.rename(1, "pc", "tab\there") == TokenStore::RenameResult::BadName);
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "bad\xff") == TokenStore::RenameResult::BadName);
+  TEST_ASSERT_TRUE(s.rename(1, "pc", "sur\xed\xa0\x80") == TokenStore::RenameResult::BadName);
   TEST_ASSERT_TRUE(s.rename(1, "pc", nullptr) == TokenStore::RenameResult::BadName);
   TEST_ASSERT_EQUAL_STRING("pc", s.at(1).host);
   TEST_ASSERT_FALSE(s.at(1).custom);
@@ -231,6 +248,8 @@ static void test_token_store_auto_label() {
   TEST_ASSERT_FALSE(s.autoLabel(0, ""));          // none: kept
   TEST_ASSERT_FALSE(s.autoLabel(0, nullptr));
   TEST_ASSERT_FALSE(s.autoLabel(0, "bad\x01name"));
+  TEST_ASSERT_FALSE(s.autoLabel(0, "bad\xffname"));      // malformed UTF-8: kept as it was
+  TEST_ASSERT_FALSE(s.autoLabel(0, "over\xc0\xafname"));
   TEST_ASSERT_FALSE(s.autoLabel(9, "x"));
   TEST_ASSERT_FALSE(s.saveDue(0));
   TEST_ASSERT_TRUE(s.autoLabel(0, "new-name"));
@@ -289,7 +308,7 @@ static void test_tokens_json_round_trip() {
   TEST_ASSERT_FALSE(o.at(0).custom);
   TEST_ASSERT_FALSE(o.at(1).custom);
   TEST_ASSERT_EQUAL_UINT32(5, o.at(1).order);
-  TEST_ASSERT_EQUAL_STRING("a-very-long-host-name-from-somew", o.at(1).host);
+  TEST_ASSERT_EQUAL_STRING("a-very-long-host-nam", o.at(1).host);  // cut like a label
 }
 
 // GET /settings-system: what the System panel draws. Program = the firmware against the largest
@@ -734,6 +753,7 @@ int main() {
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);
   RUN_TEST(test_token_store_remove_and_seen);
+  RUN_TEST(test_token_store_add_cleans_the_host);
   RUN_TEST(test_token_store_rename);
   RUN_TEST(test_token_store_auto_label);
   RUN_TEST(test_tokens_json_round_trip);

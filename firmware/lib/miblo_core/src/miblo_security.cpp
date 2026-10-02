@@ -225,8 +225,10 @@ void TokenStore::add(const char* token, const char* host) {
   seenSet_ &= (uint8_t)~(1u << slot);  // a new pairing: not seen yet
   strncpy(e.token, token, sizeof(e.token) - 1);
   e.token[sizeof(e.token) - 1] = 0;
-  strncpy(e.host, host, sizeof(e.host) - 1);
-  e.host[sizeof(e.host) - 1] = 0;
+  // Cut like a label (20 characters, never inside one); not clean text: a plain "computer", so
+  // the row can still be renamed and removed by what the page shows.
+  utf8Copy(e.host, sizeof(e.host), host, 20);
+  if (!typedText(e.host, sizeof(e.host), 20)) strcpy(e.host, "computer");
   e.custom = false;
   e.order = order;
 }
@@ -390,7 +392,8 @@ void tokensFromJson(JsonObjectConst in, TokenStore& tokens) {
     if (strlen(token) != 32) continue;
     TokenEntry& t = entries[n];
     memcpy(t.token, token, 33);
-    utf8Copy(t.host, sizeof(t.host), e["host"] | "");
+    utf8Copy(t.host, sizeof(t.host), e["host"] | "", 20);
+    if (!typedText(t.host, sizeof(t.host), 20)) strcpy(t.host, "computer");  // never a label the page can't send back
     t.custom = e["c"] | false;
     t.order = e["order"] | 0;
     n++;

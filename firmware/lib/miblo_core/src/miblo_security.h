@@ -100,6 +100,7 @@ struct TokenEntry {
 class TokenStore {
  public:
   static constexpr uint8_t kMax = 4;
+  // `host` is cut to 20 characters; one that is not clean text (miblo::typedText) is "computer".
   void add(const char* token, const char* host);
   bool matches(const char* token) const { return find(token) >= 0; }
   int find(const char* token) const;  // its place in the list, -1 if none (constant time)

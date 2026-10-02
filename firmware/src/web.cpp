@@ -534,9 +534,10 @@ static const char kSysJs[] PROGMEM =
     "const esc=s=>String(s).replace(/[&<>\"]/g,c=>'&#'+c.charCodeAt(0)+';');"
     "const dur=s=>s<3600?Math.max(1,Math.round(s/60))+' min':s<86400?Math.round(s/3600)+' h':Math.round(s/86400)+' d';"
     "let PCE=false;"  // a label is being edited: the list is not redrawn under it
-    "async function pcs(){if(!$('pcs'))return;"
+    // Every redraw ends an edit, even when the read fails (the refresh and Rename keep working).
+    "async function pcs(){PCE=false;if(!$('pcs'))return;"
     "const r=await fetch('/settings-computers',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
-    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;PCE=false;"
+    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
     "$('pcs').innerHTML=s.list.map(c=>'<div class=\"pc\"><div><b>'+esc(c.host||'?')+'</b>'"
     "+(isMe(c)?' <span class=\"me\">('+esc(T.me)+')</span>':'')+'<br><span class=\"m\">'"
     "+esc(c.ago<0?T.nos:c.ago<60?T.now:fmt(T.ago,dur(c.ago)))+'</span></div>'"
@@ -549,14 +550,14 @@ static const char kSysJs[] PROGMEM =
     "const q=await areq('/settings-computer-remove',JSON.stringify({i:c.i,host:c.host}));"
     // The last one gone: the gadget is unpaired again and the page reloads open, as before pairing.
     "const j=q&&q.ok?await q.json().catch(()=>({})):{};if(j.left===0){location.reload();return;}pcs();};}}"
-    // Rename inline: the label becomes a field (a gadget name's rules: up to 20 characters, no
-    // control characters); Enter or Save stores it, Escape cancels, empty gives the label back to
+    // Rename inline: the label becomes a field (a gadget name's rules: up to 20 characters, counted
+    // as code points, not maxLength's UTF-16 units; no control characters); Enter or Save stores it, Escape cancels, empty gives the label back to
     // the computer (its host name, from its next update).
     "function ren(b,c){if(PCE)return;PCE=true;const x=document.createElement('input');"
-    "x.maxLength=20;x.autocomplete='off';x.value=c.host||'';x.placeholder=T.rnh;"
+    "x.autocomplete='off';x.value=c.host||'';x.placeholder=T.rnh;"
     "b.parentElement.querySelector('b').replaceWith(x);x.focus();b.textContent=T.save;"
     "const go=async()=>{const v=x.value.trim();x.classList.remove('bad');"
-    "if([...v].length>20||/[\\x00-\\x1f\\x7f]/.test(v)){x.classList.add('bad');return;}"
+    "if([...v].length>20||/[\\x00-\\x1f\\x7f-\\x9f]/.test(v)){x.classList.add('bad');return;}"
     "const q=await areq('/settings-computer-rename',JSON.stringify({i:c.i,host:c.host,name:v})).catch(()=>null);"
     "if(q&&q.status===400){x.classList.add('bad');return;}"
     "pcs();};"

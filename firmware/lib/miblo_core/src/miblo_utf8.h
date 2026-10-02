@@ -16,7 +16,8 @@ size_t utf8Length(const char* s);
 size_t utf8Copy(char* dst, size_t cap, const char* src, size_t maxChars = (size_t)-1);
 
 // Text typed by a person (a gadget name, a paired computer's label): fits `cap` bytes with its
-// NUL, at most `maxChars` code points, no control characters.
+// NUL, at most `maxChars` code points of well-formed UTF-8 (no overlong forms, surrogates, code
+// points past U+10FFFF or truncated sequences), no control characters (C0, DEL, C1).
 bool typedText(const char* s, size_t cap, size_t maxChars);
 
 }  // namespace miblo

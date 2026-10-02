@@ -64,11 +64,27 @@ size_t utf8Copy(char* dst, size_t cap, const char* src, size_t maxChars) {
 
 bool typedText(const char* s, size_t cap, size_t maxChars) {
   if (!s) return false;
-  size_t bytes = 0;
-  for (const char* p = s; *p; p++, bytes++) {
-    if ((uint8_t)*p < 0x20 || *p == 0x7F) return false;
+  const uint8_t* p = reinterpret_cast<const uint8_t*>(s);
+  size_t chars = 0;
+  while (*p) {
+    const uint8_t b = *p;
+    uint32_t cp, least;
+    int n;
+    if (b < 0x80) cp = b, n = 1, least = 0;
+    else if ((b & 0xE0) == 0xC0) cp = b & 0x1F, n = 2, least = 0x80;
+    else if ((b & 0xF0) == 0xE0) cp = b & 0x0F, n = 3, least = 0x800;
+    else if ((b & 0xF8) == 0xF0) cp = b & 0x07, n = 4, least = 0x10000;
+    else return false;  // a lone continuation byte or a 5/6-byte form
+    for (int i = 1; i < n; i++) {  // a NUL here (truncated) fails the test too
+      if ((p[i] & 0xC0) != 0x80) return false;
+      cp = (cp << 6) | (p[i] & 0x3F);
+    }
+    if (cp < least || cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return false;  // overlong, out of range
+    if (cp < 0x20 || (cp >= 0x7F && cp <= 0x9F)) return false;                       // C0, DEL, C1
+    p += n;
+    if (++chars > maxChars) return false;
   }
-  return bytes < cap && utf8Length(s) <= maxChars;
+  return (size_t)(p - reinterpret_cast<const uint8_t*>(s)) < cap;
 }
 
 }  // namespace miblo

@@ -193,6 +193,7 @@ static void handlePair() {
   miblo::makeToken(rnd, token);
   char host[33];
   miblo::utf8Copy(host, sizeof(host), doc["host"] | "computer", 20);
+  if (!miblo::typedText(host, sizeof(host), 20)) strcpy(host, "computer");  // as TokenStore::add
   ctx.tokens.add(token, host);
   storage::saveTokens(ctx.tokens);
   storage::markConfigured();  // first pairing: never codeless OTA again (survives factory reset)

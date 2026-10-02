@@ -129,6 +129,28 @@ static void test_format_min_sec() {
   TEST_ASSERT_EQUAL_STRING("1:05:09", b);
 }
 
+// Text a person typed (a gadget name, a computer's label): well-formed UTF-8 only, no controls.
+static void test_typed_text() {
+  TEST_ASSERT_TRUE(typedText("", 33, 20));
+  TEST_ASSERT_TRUE(typedText("Café 😀 项目", 33, 20));
+  TEST_ASSERT_TRUE(typedText("12345678901234567890", 33, 20));
+  TEST_ASSERT_FALSE(typedText("123456789012345678901", 33, 20));  // 21 characters
+  TEST_ASSERT_FALSE(typedText("ééééééééééééééééé", 33, 20));       // 34 bytes: no room
+  TEST_ASSERT_FALSE(typedText(nullptr, 33, 20));
+  TEST_ASSERT_FALSE(typedText("tab\there", 33, 20));               // C0
+  TEST_ASSERT_FALSE(typedText("del\x7f", 33, 20));                 // DEL
+  TEST_ASSERT_FALSE(typedText("c1\xc2\x85", 33, 20));              // C1 (U+0085)
+  TEST_ASSERT_FALSE(typedText("bad\xff", 33, 20));                 // never UTF-8
+  TEST_ASSERT_FALSE(typedText("lone\x80", 33, 20));                // continuation alone
+  TEST_ASSERT_FALSE(typedText("cut\xc3", 33, 20));                 // truncated
+  TEST_ASSERT_FALSE(typedText("cut\xe2\x82", 33, 20));
+  TEST_ASSERT_FALSE(typedText("over\xc0\xaf", 33, 20));            // overlong '/'
+  TEST_ASSERT_FALSE(typedText("over\xe0\x80\xaf", 33, 20));
+  TEST_ASSERT_FALSE(typedText("sur\xed\xa0\x80", 33, 20));         // U+D800 (surrogate)
+  TEST_ASSERT_FALSE(typedText("big\xf4\x90\x80\x80", 33, 20));     // past U+10FFFF
+  TEST_ASSERT_FALSE(typedText("\xf8\x88\x80\x80\x80", 33, 20));    // 5-byte form
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_utf8_next_decodes_all_widths);
@@ -142,5 +164,6 @@ int main() {
   RUN_TEST(test_format_tokens);
   RUN_TEST(test_format_clock_and_usd);
   RUN_TEST(test_format_min_sec);
+  RUN_TEST(test_typed_text);
   return UNITY_END();
 }

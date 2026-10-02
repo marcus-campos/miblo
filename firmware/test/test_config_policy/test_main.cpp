@@ -62,6 +62,14 @@ static void test_invalid_patch_changes_nothing() {
   TEST_ASSERT_FALSE(patch(c, "{\"lang\":\"ja\"}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"name\":\"123456789012345678901\"}", &bad));
   TEST_ASSERT_TRUE(patch(c, "{\"name\":\"项目项目项目项目项目项目项目项目项目项目\"}"));  // 20 characters
+  // Malformed UTF-8 never becomes a name, an owner or a second clock's label (sent raw in the JSON).
+  TEST_ASSERT_FALSE(patch(c, "{\"name\":\"bad\xff\"}", &bad));
+  TEST_ASSERT_EQUAL_STRING("name", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"name\":\"sur\xed\xa0\x80\"}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"owner\":\"over\xc0\xaf\"}", &bad));
+  TEST_ASSERT_EQUAL_STRING("owner", bad);
+  TEST_ASSERT_FALSE(patch(c, "{\"tz2Label\":\"cut\xe2\x82\"}", &bad));
+  TEST_ASSERT_EQUAL_STRING("tz2Label", bad);
 }
 
 static void test_config_json_roundtrip() {

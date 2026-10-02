@@ -72,14 +72,6 @@ bool parseDate(const char* s, uint16_t& year, uint8_t& month, uint8_t& day) {
   return true;
 }
 
-// No control characters (typed by a person).
-static bool printableUtf8(const char* s) {
-  for (const char* p = s; *p; p++) {
-    if ((uint8_t)*p < 0x20 || *p == 0x7F) return false;
-  }
-  return true;
-}
-
 // A name typed by a person: <= 20 characters, no control characters.
 static bool personName(const char* s, size_t cap) { return typedText(s, cap, 20); }
 
@@ -233,7 +225,7 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       if (ok) strcpy(next.tz2, s);
     } else if (strcmp(k, "tz2Label") == 0) {
       const char* s = v.as<const char*>();
-      ok = s && strlen(s) < sizeof(next.tz2Label) && utf8Length(s) <= 12 && printableUtf8(s);
+      ok = typedText(s, sizeof(next.tz2Label), 12);
       if (ok) strcpy(next.tz2Label, s);
     }
     if (!ok) {

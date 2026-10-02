@@ -164,6 +164,19 @@ notes.
 25. **Daily life (firmware 1.11):** each part below, on one gadget, with the plugin from the same branch.
 
 <!-- daily:focus -->
+    - **Focus:** run `/miblo:focus 5 1 2`. The mascot wears headphones and taps the table inside a
+      green ring that fills over the 5 minutes, with the time left big, "focus until HH:MM" (the
+      end of this round) and two dots, the first one green. When the round ends: three slow
+      full-screen pulses (not the fast alert flash), then "Break time" with a blue ring, the
+      mascot stretching for a few seconds and 1:00 counting down. When the break ends: a single
+      pulse, then "Back to focus?" with the seconds ticking for one minute, then round 2 starts
+      by itself. After round 2 comes "Long break" (3 min, three times the break), then three
+      pulses and the normal screens. During a focus round, trigger a permission request: the
+      flash and highlight appear, then the focus screen comes back. Let a session finish: no
+      blue alert until the break (with **During focus, only "needs you" alerts** on). The
+      screen never goes into pet mode or turns off meanwhile. `/miblo:focus stop` ends it at
+      once, and so does restarting the gadget. `GET /api/info` shows `focus` (phase, round,
+      rounds, left).
 
 <!-- daily:alerts -->
 

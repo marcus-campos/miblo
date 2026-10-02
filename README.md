@@ -91,6 +91,7 @@
 ### Daily life
 
 <!-- daily:focus -->
+- **Focus (Pomodoro):** `/miblo:focus` starts 25 minutes of focus and 5 of break, 4 rounds, with a 15-minute long break at the end (`/miblo:focus 50` for 50 and 10, `/miblo:focus 25 5 4` to choose all three, `/miblo:focus stop` to end it). The mascot puts on headphones and types inside a progress ring, with the time left in big numbers and "focus until 15:30" under it, readable from across the room, and the rounds as dots. Each focus round ends with three slow pulses and a stretch; each break ends with "Back to focus?" for a minute, then the next round starts by itself. Alerts that need you still come through; "finished" waits for the break (a setting, on by default). The gadget doesn't go into pet mode or turn the screen off during a focus. The timer runs on the gadget, so the computer can go away; restarting the gadget ends it.
 
 <!-- daily:alerts -->
 

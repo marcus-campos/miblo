@@ -1,6 +1,8 @@
 #include <unity.h>
 
+#include "../support/fake_canvas.h"
 #include "miblo_focus.h"
+#include "ui_screens.h"
 
 using namespace miblo;
 
@@ -88,6 +90,75 @@ static void test_focus_request() {
   TEST_ASSERT_EQUAL(FocusPhase::Off, t.phase());
 }
 
+// ---- the focus screen ----
+
+static const screens::Clock kClk{true, "14:32", 1790605920};
+
+static void test_focus_screen_stays_on_screen() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    for (int l = 0; l < (int)miblo::Lang::Count; l++)
+      for (int ph = 1; ph <= 4; ph++) {
+        screens::reset();
+        for (uint32_t ms = 0; ms < 8000; ms += 500)
+          screens::focus((miblo::Lang)l, kClk, (miblo::FocusPhase)ph, 3, 4, 120u * 60000 - ms, 120u * 60000,
+                         1790613120, ms);
+        // the most rounds, the last one
+        screens::focus((miblo::Lang)l, kClk, (miblo::FocusPhase)ph, kRoundsMax, kRoundsMax, 1000, 60000, 1790613120,
+                       9000);
+      }
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    TEST_ASSERT_TRUE(fc.texts.size() > 0 && fc.arcs.size() > 0);  // fails with the stub (reset() alone draws)
+  }
+}
+
+static void drawOnce(FakeCanvas& fc, FocusPhase ph, uint32_t leftMs, uint32_t untilEpoch) {
+  screens::bind(fc);
+  screens::reset();
+  fc.clearLog();
+  screens::focus(Lang::En, kClk, ph, 2, 4, leftMs, 25 * M, untilEpoch, 10000);
+}
+
+static void test_focus_screen_texts() {
+  FakeCanvas fc({240, 240});
+  drawOnce(fc, FocusPhase::Focus, (18 * 60 + 42) * 1000u, 1790607042);
+  TEST_ASSERT_TRUE(fc.drew("18:42"));
+  TEST_ASSERT_EQUAL(ui::Font::NumL, fc.fontOf("18:42"));
+  TEST_ASSERT_TRUE(fc.drew("focus until "));
+  TEST_ASSERT_TRUE(fc.arcs.size() >= 2);  // the ring: track and progress
+  drawOnce(fc, FocusPhase::Focus, 60000, 0);  // time unknown: no "until" line
+  TEST_ASSERT_FALSE(fc.drew("focus until"));
+  drawOnce(fc, FocusPhase::Break, 4 * M, 0);
+  TEST_ASSERT_TRUE(fc.drew("Break time"));
+  TEST_ASSERT_TRUE(fc.drew("4:00"));
+  drawOnce(fc, FocusPhase::LongBreak, 15 * M, 0);
+  TEST_ASSERT_TRUE(fc.drew("Long break"));
+  drawOnce(fc, FocusPhase::Back, 42000, 0);
+  TEST_ASSERT_TRUE(fc.drew("Back to focus?"));
+  TEST_ASSERT_EQUAL(ui::Font::Title, fc.fontOf("Back to focus?"));
+  TEST_ASSERT_TRUE(fc.drew("0:42"));
+  TEST_ASSERT_NOT_EQUAL(ui::Font::NumL, fc.fontOf("0:42"));  // small seconds, no big count
+}
+
+// Between ticks nothing is redrawn; a new second only rewrites the time in place (no clear).
+static void test_focus_screen_ticks_in_place() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  const uint32_t len = 25 * M, left = 18 * M;
+  screens::focus(Lang::En, kClk, FocusPhase::Focus, 2, 4, left, len, 1790607042, 1000);
+  fc.clearLog();
+  screens::focus(Lang::En, kClk, FocusPhase::Focus, 2, 4, left - 300, len, 1790607042, 1300);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+  screens::focus(Lang::En, kClk, FocusPhase::Focus, 2, 4, left - 1000, len, 1790607042, 2000);
+  TEST_ASSERT_EQUAL_INT(0, fc.panelFills);
+  TEST_ASSERT_EQUAL_INT(1, fc.boxTexts);
+  TEST_ASSERT_TRUE(fc.drew("17:59"));
+  TEST_ASSERT_EQUAL_INT(0, (int)fc.arcs.size());  // the ring moves only every 2 degrees
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_defaults_and_derived_breaks);
@@ -95,5 +166,8 @@ int main() {
   RUN_TEST(test_focus_survives_wrap_and_long_gap);
   RUN_TEST(test_stop_and_restart);
   RUN_TEST(test_focus_request);
+  RUN_TEST(test_focus_screen_stays_on_screen);
+  RUN_TEST(test_focus_screen_texts);
+  RUN_TEST(test_focus_screen_ticks_in_place);
   return UNITY_END();
 }

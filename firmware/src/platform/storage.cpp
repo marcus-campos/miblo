@@ -96,7 +96,7 @@ bool loadConfig(miblo::Config& cfg) {
     else return false;
     loaded = miblo::Config();
   }
-  miblo::restoreStoredLang(loaded, doc.as<JsonObjectConst>());
+  miblo::restoreStored(loaded, doc.as<JsonObjectConst>());
   cfg = loaded;
   return true;
 }

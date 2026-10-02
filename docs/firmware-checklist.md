@@ -219,13 +219,15 @@ notes.
 
     - **Break:** on the settings page set "Break after long work" to 60 min; keep a session running for an hour
       (pauses under 10 min are fine). The mascot stretches and "How about a 5 min break?" shows for
-      1 min, with no flash. With an alert pending, focus, meeting mode or a timer on, it never shows;
+      1 min, with no flash. Set it to 15 and "Break length" to 12: after 15 min it reads "How about a
+      12 min break?" (in pt-BR and ru too, on one or two lines, nothing cut). With an alert pending, focus, meeting mode or a timer on, it never shows;
       due while one of them is on, it shows once it ends (within 5 min) or is skipped.
-    - **Water:** set "Drink water reminder" to 60 min and "Work hours" to cover now: after an hour (no session
+    - **Water:** set "Drink water every" to 60 min and "Work hours" to cover now: after an hour (no session
       needed) the mascot sips from a glass and "Time to drink water" shows for 20 s. Outside the work
-      hours, or on a day not ticked, it never shows.
+      hours, or on a day not ticked, it never shows. Set 25 min: it comes every 25 min.
     - **Eye rest:** turn on "Eye rest (20-20-20)" and keep a session running: every 20 min the mascot looks into
-      the distance, "Look far away", for 20 s. Everything off (the default): none of the three ever shows.
+      the distance, "Look far away", for 20 s. Set "Eye rest every" to 10 min and "Look away for" to 40 s:
+      it comes every 10 min and stays 40 s. Everything off (the default): none of the three ever shows.
     - **End of the day:** turn on "End of day summary" with "Work hours" ending 2 minutes from now. At that minute
       the mascot yawns over today's summary with "Have a good rest, <name>!" (or "Have a good
       rest!" without a name) for 1 min. With a session running at that minute it waits until it
@@ -311,7 +313,8 @@ notes.
 
     - **Settings page:** open the unlocked page with the browser language set to en, pt-BR, ru and zh: every new label is translated and nothing overflows on a phone-width window.
       Under Alerts, turn alerts off: insistence and the fanfare hide, the status frame stays. Pick each fanfare choice (off, 3, 5, 10 min) and save; reloading the page and `/miblo:status` (or `GET /api/info`) show the new value.
-      In **Wellness**, change the break (off/60/90/120), water (off/60/90), eye rest, focus filter, end-of-day and weekly switches, save, and reload: each sticks.
+      In **Wellness**, change the break (0 = off, 15–240 min; the arrows step by 5) and its length (1–30 min, shown only while the break is on), water (0 = off, 15–240 min), eye rest and its interval (10–60 min) and length (10–60 s, both shown only while eye rest is on), focus filter, end-of-day and weekly switches, save, and reload: each sticks. Type 10 in the break or water field, 0 or 31 in the break length, 5 in either eye rest field: saving is refused and that field is outlined in red.
+      **Downgrade:** with break 45 min and water 25 min saved, install 1.11.0 (`/update`): every other setting is kept and the break and water come back as 60 min (the nearest choice 1.11 offers); back on this version they read 60 again unless 1.11 never saved (then 45 and 25). Break length and the eye rest timings fall back to 5 min / 20 min / 20 s on 1.11.
       The work hours block shows only while the water reminder or the end-of-day summary is on. Set 18:00 to 09:00: saving is refused and the start or end time is outlined in red. Untick every work day: the last one ticks itself again. Save Mon, Wed, Fri: `workDays` reads 42.
       Under This device, the second time zone starts at "Off" (the browser's zone is never preselected); pick a city: its time shows next to the label and the "Its name on screen" field appears (12 characters at most). Save, reload: the zone and its name are kept. Set it back to Off and save: `tz2` is empty. Turn the desk QR on and save: the Desk screen shows the QR.
 

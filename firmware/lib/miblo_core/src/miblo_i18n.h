@@ -266,9 +266,12 @@ enum class S : uint16_t {
   FindMe,               // /miblo:find
   HappyProgrammersDay,  // greeting on day 256
   WebSecWellness,       // settings: wellness section title
-  WebBreakAfter,        // settings: break after long work (select)
-  WebWater,             // settings: water reminder (select)
+  WebBreakAfter,        // settings: break after long work (minutes, 0 = off)
+  WebWater,             // settings: water reminder (minutes, 0 = off)
   WebEyes,              // settings: 20-20-20 toggle
+  WebBreakLen,          // settings: the break the nudge suggests (minutes)
+  WebEyesEvery,         // settings: eye rest interval (minutes)
+  WebEyesSec,           // settings: how long the eye rest lasts (seconds)
   WebWorkHours,         // settings: work hours
   WebWorkDays,          // settings: work days
   WebEndOfDay,          // settings: end of day summary toggle

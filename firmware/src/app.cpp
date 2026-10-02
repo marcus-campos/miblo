@@ -733,7 +733,7 @@ static void __attribute__((noinline)) frame(uint32_t now) {
       break;
     }
     case ScreenId::Nudge:
-      screens::nudge(lang, di.nudge, wellness.elapsed(now));
+      screens::nudge(lang, di.nudge, wellness.elapsed(now), ctx.cfg.breakLenMin);
       break;
     case ScreenId::DayEnd:
       screens::dayEnd(lang, ctx.snap, ctx.cfg.owner, dayEnd.elapsed(now));

@@ -98,7 +98,7 @@ static Config storedRoundTrip(const Config& a) {
   TEST_ASSERT_FALSE(deserializeJson(in, text));
   Config b;
   TEST_ASSERT_TRUE(applyConfigPatch(b, in.as<JsonObjectConst>(), nullptr));
-  restoreStoredLang(b, in.as<JsonObjectConst>());
+  restoreStored(b, in.as<JsonObjectConst>());
   return b;
 }
 
@@ -128,12 +128,12 @@ static void test_language_survives_reboot() {
   deserializeJson(in, "{\"lang\":\"de\",\"langAuto\":\"fr\"}");
   Config c;
   TEST_ASSERT_TRUE(applyConfigPatch(c, in.as<JsonObjectConst>(), nullptr));
-  restoreStoredLang(c, in.as<JsonObjectConst>());
+  restoreStored(c, in.as<JsonObjectConst>());
   TEST_ASSERT_EQUAL(Lang::De, c.lang);
   deserializeJson(in, "{\"lang\":\"\",\"langAuto\":\"xx\"}");
   Config d;
   TEST_ASSERT_TRUE(applyConfigPatch(d, in.as<JsonObjectConst>(), nullptr));
-  restoreStoredLang(d, in.as<JsonObjectConst>());
+  restoreStored(d, in.as<JsonObjectConst>());
   TEST_ASSERT_EQUAL(Lang::En, d.lang);
 }
 
@@ -952,6 +952,9 @@ static void test_daily_life_config_defaults_and_ranges() {
   TEST_ASSERT_EQUAL_UINT8(0, c.breakAfterMin);
   TEST_ASSERT_EQUAL_UINT8(0, c.waterMin);
   TEST_ASSERT_FALSE(c.eyes);
+  TEST_ASSERT_EQUAL_UINT8(5, c.breakLenMin);   // today's "5 min break"
+  TEST_ASSERT_EQUAL_UINT8(20, c.eyesEveryMin);  // 20-20-20
+  TEST_ASSERT_EQUAL_UINT8(20, c.eyesSec);
   TEST_ASSERT_FALSE(c.endOfDay);
   TEST_ASSERT_EQUAL_UINT16(9 * 60, c.workFrom);
   TEST_ASSERT_EQUAL_UINT16(18 * 60, c.workTo);
@@ -975,8 +978,16 @@ static void test_daily_life_config_defaults_and_ranges() {
 
   const char* bad = nullptr;
   const char* const rejected[][2] = {
-      {"{\"breakAfterMin\":45}", "breakAfterMin"},  // only 0, 60, 90, 120
-      {"{\"waterMin\":120}", "waterMin"},           // only 0, 60, 90
+      {"{\"breakAfterMin\":10}", "breakAfterMin"},  // 0 (off) or 15..240
+      {"{\"breakAfterMin\":241}", "breakAfterMin"},
+      {"{\"waterMin\":14}", "waterMin"},           // 0 (off) or 15..240
+      {"{\"waterMin\":250}", "waterMin"},
+      {"{\"breakLenMin\":0}", "breakLenMin"},      // 1..30
+      {"{\"breakLenMin\":31}", "breakLenMin"},
+      {"{\"eyesEveryMin\":9}", "eyesEveryMin"},    // 10..60
+      {"{\"eyesEveryMin\":61}", "eyesEveryMin"},
+      {"{\"eyesSec\":9}", "eyesSec"},              // 10..60
+      {"{\"eyesSec\":61}", "eyesSec"},
       {"{\"fanfareMin\":4}", "fanfareMin"},         // only 0, 3, 5, 10
       {"{\"workDays\":0}", "workDays"},             // at least one day
       {"{\"workDays\":128}", "workDays"},
@@ -992,6 +1003,97 @@ static void test_daily_life_config_defaults_and_ranges() {
     TEST_ASSERT_EQUAL_STRING(r[1], bad);
     TEST_ASSERT_EQUAL_MEMORY(&before, &c, sizeof(Config));
   }
+}
+
+// Wellness timings are free values now: any minute in range, the old choices included.
+static void test_wellness_timings_are_free_values() {
+  Config c;
+  TEST_ASSERT_TRUE(patch(c, "{\"breakAfterMin\":45,\"waterMin\":25,\"breakLenMin\":12,\"eyesEveryMin\":35,"
+                            "\"eyesSec\":40}"));
+  TEST_ASSERT_EQUAL_UINT8(45, c.breakAfterMin);
+  TEST_ASSERT_EQUAL_UINT8(25, c.waterMin);
+  TEST_ASSERT_EQUAL_UINT8(12, c.breakLenMin);
+  TEST_ASSERT_EQUAL_UINT8(35, c.eyesEveryMin);
+  TEST_ASSERT_EQUAL_UINT8(40, c.eyesSec);
+  const char* const accepted[] = {
+      "{\"breakAfterMin\":0,\"waterMin\":0}",     "{\"breakAfterMin\":15,\"waterMin\":15}",
+      "{\"breakAfterMin\":240,\"waterMin\":240}", "{\"breakAfterMin\":60,\"waterMin\":60}",
+      "{\"breakAfterMin\":90,\"waterMin\":90}",   "{\"breakAfterMin\":120,\"waterMin\":120}",
+      "{\"breakLenMin\":1,\"eyesEveryMin\":10,\"eyesSec\":10}",
+      "{\"breakLenMin\":30,\"eyesEveryMin\":60,\"eyesSec\":60}",
+  };
+  for (const char* a : accepted) TEST_ASSERT_TRUE_MESSAGE(patch(c, a), a);
+  // The API view carries every one of them.
+  StaticJsonDocument<4096> doc;
+  configToJson(c, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_INT(30, doc["breakLenMin"].as<int>());
+  TEST_ASSERT_EQUAL_INT(60, doc["eyesEveryMin"].as<int>());
+  TEST_ASSERT_EQUAL_INT(60, doc["eyesSec"].as<int>());
+}
+
+// Firmware up to 1.11 took breakAfterMin only as 0/60/90/120 and waterMin as 0/60/90, and a
+// rejected field fails the whole saved config (every setting back to the defaults). So flash
+// keeps the nearest old choice under the old name, which that firmware loads, and the exact
+// value under a new key it ignores; this firmware loads the exact value back.
+static bool oldFirmwareLoads(JsonObjectConst stored) {
+  const int b = stored["breakAfterMin"] | 0, w = stored["waterMin"] | 0;
+  return (b == 0 || b == 60 || b == 90 || b == 120) && (w == 0 || w == 60 || w == 90);
+}
+
+static void test_free_wellness_values_survive_a_downgrade() {
+  const int cases[][4] = {
+      // breakAfterMin, waterMin, the old choices flash keeps for them
+      {45, 25, 60, 60}, {74, 75, 60, 90}, {75, 240, 90, 90}, {104, 15, 90, 60}, {105, 89, 120, 90},
+      {240, 0, 120, 0}, {0, 100, 0, 90},
+  };
+  for (const auto& k : cases) {
+    Config a;
+    a.breakAfterMin = (uint8_t)k[0];
+    a.waterMin = (uint8_t)k[1];
+    StaticJsonDocument<4096> doc;
+    configToStored(a, doc.to<JsonObject>());
+    TEST_ASSERT_TRUE(oldFirmwareLoads(doc.as<JsonObjectConst>()));
+    TEST_ASSERT_EQUAL_INT(k[2], doc["breakAfterMin"].as<int>());
+    TEST_ASSERT_EQUAL_INT(k[3], doc["waterMin"].as<int>());
+    const Config b = storedRoundTrip(a);
+    TEST_ASSERT_EQUAL_UINT8(k[0], b.breakAfterMin);
+    TEST_ASSERT_EQUAL_UINT8(k[1], b.waterMin);
+  }
+  // An old choice is stored as it is, with nothing extra.
+  Config a;
+  a.breakAfterMin = 90;
+  a.waterMin = 60;
+  StaticJsonDocument<4096> doc;
+  configToStored(a, doc.to<JsonObject>());
+  TEST_ASSERT_TRUE(doc["breakAfterExact"].isNull());
+  TEST_ASSERT_TRUE(doc["waterExact"].isNull());
+  // The page and the API see the exact values, never the stored stand-ins.
+  a.breakAfterMin = 45;
+  doc.clear();
+  configToJson(a, doc.to<JsonObject>());
+  TEST_ASSERT_EQUAL_INT(45, doc["breakAfterMin"].as<int>());
+  TEST_ASSERT_TRUE(doc["breakAfterExact"].isNull());
+  // A stale exact value (the old choice changed meanwhile, e.g. by older firmware that kept the
+  // key) or an invalid one is ignored: the old choice wins.
+  const char* const stale[] = {
+      "{\"breakAfterMin\":120,\"breakAfterExact\":45,\"waterMin\":0,\"waterExact\":25}",
+      "{\"breakAfterMin\":60,\"breakAfterExact\":5,\"waterMin\":60,\"waterExact\":\"x\"}",
+  };
+  const int want[][2] = {{120, 0}, {60, 60}};
+  for (int i = 0; i < 2; i++) {
+    StaticJsonDocument<256> in;
+    deserializeJson(in, stale[i]);
+    Config c;
+    TEST_ASSERT_TRUE(applyConfigPatch(c, in.as<JsonObjectConst>(), nullptr));
+    restoreStored(c, in.as<JsonObjectConst>());
+    TEST_ASSERT_EQUAL_UINT8(want[i][0], c.breakAfterMin);
+    TEST_ASSERT_EQUAL_UINT8(want[i][1], c.waterMin);
+  }
+  // The exact keys are flash-only: a patch with them changes nothing.
+  Config d;
+  TEST_ASSERT_TRUE(patch(d, "{\"breakAfterExact\":45,\"waterExact\":25}"));
+  TEST_ASSERT_EQUAL_UINT8(0, d.breakAfterMin);
+  TEST_ASSERT_EQUAL_UINT8(0, d.waterMin);
 }
 
 // The saved config is read back into a kConfigJsonCapacity-byte JSON document (storage.cpp
@@ -1011,6 +1113,8 @@ static void test_stored_config_fits_on_the_gadget() {
   strcpy(c.born, "2026-10-01");
   c.mode = Mode::Overview;  // the longest mode code
   c.langSet = false;        // stored with "langAuto" too
+  c.breakAfterMin = 235;    // not an old choice: stored with "breakAfterExact" too
+  c.waterMin = 235;         // and "waterExact"
   StaticJsonDocument<4096> out;
   configToStored(c, out.to<JsonObject>());
   char text[2048];
@@ -1022,6 +1126,8 @@ static void test_stored_config_fits_on_the_gadget() {
   const size_t onGadget = in.memoryUsage() - JSON_OBJECT_SIZE(members) + 16 * members;
   TEST_ASSERT_TRUE_MESSAGE(onGadget * 3 <= kConfigJsonCapacity * 2,
                            "a worst-case stored config leaves less than a third of kConfigJsonCapacity free");
+  // Firmware 1.11 (kConfigJsonCapacity 2304) must still load it after a downgrade.
+  TEST_ASSERT_TRUE_MESSAGE(onGadget <= 2304, "a worst-case stored config no longer loads on firmware 1.11");
 }
 
 int main() {
@@ -1061,6 +1167,8 @@ int main() {
   RUN_TEST(test_blue_filter);
   RUN_TEST(test_blue_strength_legacy_levels);
   RUN_TEST(test_daily_life_config_defaults_and_ranges);
+  RUN_TEST(test_wellness_timings_are_free_values);
+  RUN_TEST(test_free_wellness_values_survive_a_downgrade);
   RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);
   RUN_TEST(test_demo_ends_on_new_activity);

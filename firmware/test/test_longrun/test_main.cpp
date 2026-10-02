@@ -834,7 +834,7 @@ class Sim {
       case ScreenId::Cue: return 3ull * kCuePulseMs;
       case ScreenId::Find: return kFindMs;
       // Different nudges may follow each other (a break, then water, then the eyes).
-      case ScreenId::Nudge: return kBreakNudgeMs + kWaterNudgeMs + kEyesNudgeMs;
+      case ScreenId::Nudge: return kBreakNudgeMs + kWaterNudgeMs + cfg_.eyesSec * 1000ull;
       case ScreenId::DayEnd: return EndOfDay::kShowMs;
       case ScreenId::WeekRecap: return WeeklyRecap::kShowMs;
       // A held text (5 min) after another, or the /miblo:say note (8 h).

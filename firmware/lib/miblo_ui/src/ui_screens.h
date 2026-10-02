@@ -242,7 +242,8 @@ void disconnected(Lang lang, const Clock& clk, const char* ip, const char* mdnsH
 void focus(Lang lang, const Clock& clk, miblo::FocusPhase phase, uint8_t round, uint8_t rounds, uint32_t leftMs,
            uint32_t lenMs, uint32_t untilEpoch, uint32_t ms);
 // Wellness nudges and the day/week summaries (ui_dayrhythm.cpp).
-void nudge(Lang lang, miblo::Nudge kind, uint32_t ms);
+// `breakMin`: the break the Break nudge suggests (Config::breakLenMin).
+void nudge(Lang lang, miblo::Nudge kind, uint32_t ms, uint8_t breakMin);
 void dayEnd(Lang lang, const miblo::Snapshot& s, const char* owner, uint32_t ms);
 void weekRecap(Lang lang, const miblo::Snapshot& s, uint32_t ms);
 // Alerts (ui_alerts.cpp; flash() and hero() are declared with the main screens above).

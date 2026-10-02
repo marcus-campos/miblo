@@ -2,14 +2,17 @@
 
 namespace miblo {
 
-static uint32_t nudgeMs(Nudge n) {
-  return n == Nudge::Break ? kBreakNudgeMs : n == Nudge::Water ? kWaterNudgeMs : n == Nudge::Eyes ? kEyesNudgeMs : 0;
+uint32_t WellnessClock::showMs() const {
+  return shown_ == Nudge::Break   ? kBreakNudgeMs
+         : shown_ == Nudge::Water ? kWaterNudgeMs
+         : shown_ == Nudge::Eyes  ? (uint32_t)eyesSec_ * 1000u
+                                  : 0;
 }
 
 // All times are `now - since` in uint32_t: safe across the millis() wrap. A long stall (OTA, a
 // big parse) only makes a nudge due once: showing or skipping it restarts its own cycle from now.
 void WellnessClock::update(uint32_t nowMs, const Config& cfg, bool working, bool workHours, bool allowed) {
-  if (shown_ != Nudge::None && nowMs - shownMs_ >= nudgeMs(shown_)) shown_ = Nudge::None;
+  if (shown_ != Nudge::None && nowMs - shownMs_ >= showMs()) shown_ = Nudge::None;
 
   // Continuous work: from the first frame with a session running, as long as no gap without one
   // is longer than kWorkGapMs (the gap counts). A longer gap starts everything over.
@@ -32,7 +35,7 @@ void WellnessClock::update(uint32_t nowMs, const Config& cfg, bool working, bool
   const bool breakDue =
       cfg.breakAfterMin > 0 && active && nowMs - workStartMs_ >= (uint32_t)cfg.breakAfterMin * 60000u;
   const bool waterDue = cfg.waterMin > 0 && inHours_ && nowMs - waterFromMs_ >= (uint32_t)cfg.waterMin * 60000u;
-  const bool eyesDue = cfg.eyes && active && nowMs - eyesFromMs_ >= kEyesEveryMs;
+  const bool eyesDue = cfg.eyes && active && nowMs - eyesFromMs_ >= (uint32_t)cfg.eyesEveryMin * 60000u;
   // By priority: Break > Water > Eyes (a lower one stays due for later).
   const Nudge due = breakDue ? Nudge::Break : waterDue ? Nudge::Water : eyesDue ? Nudge::Eyes : Nudge::None;
   // The wait for a gap starts when the first of them came due; a higher one coming due later
@@ -47,6 +50,7 @@ void WellnessClock::update(uint32_t nowMs, const Config& cfg, bool working, bool
     else eyesFromMs_ = nowMs;
     shown_ = due_;
     shownMs_ = nowMs;
+    eyesSec_ = cfg.eyesSec;
   } else if (nowMs - dueMs_ > kNudgeWaitMs) {
     // Blocked for too long: every nudge due now is skipped and starts over.
     if (breakDue) workStartMs_ = nowMs;
@@ -59,7 +63,7 @@ void WellnessClock::update(uint32_t nowMs, const Config& cfg, bool working, bool
 }
 
 Nudge WellnessClock::showing(uint32_t nowMs) const {
-  return shown_ != Nudge::None && nowMs - shownMs_ < nudgeMs(shown_) ? shown_ : Nudge::None;
+  return shown_ != Nudge::None && nowMs - shownMs_ < showMs() ? shown_ : Nudge::None;
 }
 
 void WellnessClock::reset() { *this = WellnessClock(); }

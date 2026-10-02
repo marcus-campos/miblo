@@ -138,13 +138,15 @@ static void catWithGlass(int cx, int cy, int half, const MascotLook& k, uint32_t
   C().releaseLayer();
 }
 
-void nudge(Lang lang, Nudge kind, uint32_t ms) {
+void nudge(Lang lang, Nudge kind, uint32_t ms, uint8_t breakMin) {
   if (kind == Nudge::Water) catWithGlass(X(120), Y(90), 52, nudgeLook(kind, ms), ms);
   else deskCat(R_BODY, X(120), Y(90), 52, nudgeLook(kind, ms));
   const S id = kind == Nudge::Break ? S::NudgeBreak : kind == Nudge::Water ? S::NudgeWater : S::NudgeEyes;
-  if (region(R_ROW0, hashInt(hashInt(kHashSeed + 211, (uint32_t)lang), (uint32_t)kind), 0, Y(152), X(240),
-             Y(74))) {
-    phrase(t(lang, id), Font::Title, Font::BodyBold, color::TEXT, Y(190), Y(180), Y(208), X(228));
+  const uint32_t h = hashInt(hashInt(hashInt(kHashSeed + 211, (uint32_t)lang), (uint32_t)kind), breakMin);
+  if (region(R_ROW0, h, 0, Y(152), X(240), Y(74))) {
+    char buf[96];  // "How about a %u min break?": the longest translation is well under this
+    snprintf(buf, sizeof(buf), t(lang, id), (unsigned)breakMin);
+    phrase(buf, Font::Title, Font::BodyBold, color::TEXT, Y(190), Y(180), Y(208), X(228));
   }
 }
 

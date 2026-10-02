@@ -73,30 +73,41 @@ static void test_success_resets_failure_count() {
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("1234", 0));
 }
 
-static void failPairing(PairingGuard& g, uint32_t nowMs) {
-  for (int i = 0; i < 5; i++) TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", nowMs));
+// Wrong codes until a lockout starts: 5 the first time, 3 for each further one. Returns how many.
+static int failPairing(PairingGuard& g, uint32_t nowMs) {
+  int n = 0;
+  while (g.lockRemainingMs(nowMs) == 0 && n < 10) {
+    TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, g.check("0000", nowMs));
+    n++;
+  }
+  return n;
 }
 
 static void test_pairing_lockout_escalates_and_success_clears() {
   PairingGuard g;
   g.setCode("4827");
-  failPairing(g, 0);  // 1st lockout: 60 s
+  TEST_ASSERT_EQUAL(5, failPairing(g, 0));  // 1st lockout: 60 s, after 5 wrong codes
   TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(0));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 59999));
-  failPairing(g, 60000);  // 2nd lockout: 120 s
+  TEST_ASSERT_EQUAL(3, failPairing(g, 60000));  // 2nd lockout: 120 s, after 3 more
   TEST_ASSERT_EQUAL_UINT32(120000, g.lockRemainingMs(60000));
   TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, g.check("4827", 179999));
-  failPairing(g, 180000);  // 3rd lockout: 240 s
+  TEST_ASSERT_EQUAL(3, failPairing(g, 180000));  // 3rd lockout: 240 s
   TEST_ASSERT_EQUAL_UINT32(240000, g.lockRemainingMs(180000));
-  // Keep failing: the lockout caps at 1 h.
+  // Keep failing: the lockout caps at 24 h, reached after 38 guesses over ~34 h.
   uint32_t t = 420000;
-  for (int i = 0; i < 6; i++) {
-    failPairing(g, t);
+  int guesses = 11;
+  while (g.lockRemainingMs(t) < EscalatingLockout::kMaxMs) {
     t += g.lockRemainingMs(t);
+    guesses += failPairing(g, t);
   }
-  failPairing(g, t);
-  TEST_ASSERT_EQUAL_UINT32(3600000, g.lockRemainingMs(t));
-  t += 3600000;
+  TEST_ASSERT_EQUAL(38, guesses);
+  TEST_ASSERT_EQUAL_UINT32(86400000, g.lockRemainingMs(t));
+  TEST_ASSERT_TRUE(t < 35u * 3600000u);
+  t += 86400000;
+  TEST_ASSERT_EQUAL(3, failPairing(g, t));  // from then on: 3 guesses a day
+  TEST_ASSERT_EQUAL_UINT32(86400000, g.lockRemainingMs(t));
+  t += 86400000;
   // A correct code clears the escalation: the next lockout is back to 60 s.
   TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, g.check("4827", t));
   failPairing(g, t);
@@ -735,13 +746,18 @@ static void test_presence_failures_survive_reopen() {
   PresenceGate g;
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "1111", 0));
   for (int i = 0; i < 4; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 10));
-  TEST_ASSERT_FALSE(g.locked(10));
-  g.close();  // (closed, e.g. by a success elsewhere): a new code, same failures
-  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "2222", 20));
-  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", 30));
-  TEST_ASSERT_TRUE(g.locked(30));
-  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(30));
-  TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "3333", 40));  // 429 path
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Reset, 10));
+  g.close();  // (closed, e.g. expired): a new code, same failures
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "2222", 20));
+  TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 30));
+  TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Reset, 30));
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(PresenceGate::Purpose::Reset, 30));
+  TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "3333", 40));  // 429 path
+  // L2: each purpose has its own lockout: the owner can still update, unlock settings, move Wi-Fi.
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, 40));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Settings, 40));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "4444", 40));
+  TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "4444", 50));
   // A correct code clears the accumulated failures.
   PresenceGate h;
   h.open(PresenceGate::Purpose::Update, "1234", 0);
@@ -749,7 +765,7 @@ static void test_presence_failures_survive_reopen() {
   TEST_ASSERT_TRUE(h.check(PresenceGate::Purpose::Update, "1234", 0));
   h.open(PresenceGate::Purpose::Update, "1234", 0);
   for (int i = 0; i < 4; i++) h.check(PresenceGate::Purpose::Update, "0000", 0);
-  TEST_ASSERT_FALSE(h.locked(0));
+  TEST_ASSERT_FALSE(h.locked(PresenceGate::Purpose::Update, 0));
 }
 
 // The lockout is honoured across a clock wrap, and an expired one never comes back ~49.7 days
@@ -759,13 +775,13 @@ static void test_presence_lockout_clock_wrap() {
   const uint32_t t0 = 0xFFFFF000u;  // 4096 ms before the wrap
   g.open(PresenceGate::Purpose::Update, "1234", t0);
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t0);
-  TEST_ASSERT_TRUE(g.locked(0x00000100u));  // wrapped, 4352 ms later: still locked
-  TEST_ASSERT_EQUAL_UINT32(60000 - 4352, g.lockRemainingMs(0x00000100u));
+  TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, 0x00000100u));  // wrapped, 4352 ms later: still locked
+  TEST_ASSERT_EQUAL_UINT32(60000 - 4352, g.lockRemainingMs(PresenceGate::Purpose::Update, 0x00000100u));
   const uint32_t expired = t0 + 60000;
   g.update(expired);  // the app calls this every frame
-  TEST_ASSERT_FALSE(g.locked(expired));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, expired));
   const uint32_t phantom = t0 + 10;  // same low bits one full wrap (2^32 ms) later
-  TEST_ASSERT_FALSE(g.locked(phantom));
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, phantom));
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", phantom));
 }
 
@@ -778,34 +794,70 @@ static void test_presence_lockout_escalates() {
     TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
     for (int i = 0; i < 5; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Update, "0000", t));
     TEST_ASSERT_FALSE(g.active(t));
-    TEST_ASSERT_TRUE(g.locked(t));
-    TEST_ASSERT_EQUAL_UINT32(lock, g.lockRemainingMs(t));
-    TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "5555", t + 1));  // re-open refused
+    TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, t));
+    TEST_ASSERT_EQUAL_UINT32(lock, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
+    TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "5555", t + 1));  // re-open refused
     TEST_ASSERT_FALSE(g.active(t + 1));
     t += lock - 1;
-    TEST_ASSERT_TRUE(g.locked(t));
+    TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Update, t));
     t += 1;
-    TEST_ASSERT_FALSE(g.locked(t));
+    TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, t));
   }
   // A correct code resets the escalation back to 60 s.
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   TEST_ASSERT_TRUE(g.check(PresenceGate::Purpose::Update, "1234", t));
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(t));
+  TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
 }
 
-static void test_presence_lockout_caps_at_one_hour() {
+static void test_presence_lockout_caps_at_one_day() {
   PresenceGate g;
   uint32_t t = 0;
-  for (int round = 0; round < 10; round++) {
+  for (int round = 0; round < 12; round++) {
     TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
     for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-    t += g.lockRemainingMs(t);
+    t += g.lockRemainingMs(PresenceGate::Purpose::Update, t);
   }
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", t));
   for (int i = 0; i < 5; i++) g.check(PresenceGate::Purpose::Update, "0000", t);
-  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kLockMaxMs, g.lockRemainingMs(t));
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kLockMaxMs, g.lockRemainingMs(PresenceGate::Purpose::Update, t));
+  TEST_ASSERT_EQUAL_UINT32(86400000, PresenceGate::kLockMaxMs);
+}
+
+// M2: the counters survive a restart (RTC memory): a reboot gives no fresh guesses.
+static void test_lockout_survives_restore() {
+  PairingGuard g;
+  g.setCode("4827");
+  failPairing(g, 0);
+  for (int i = 0; i < 2; i++) g.check("0000", 70000);  // 2 of the next 3
+  const LockoutState s = g.lockout().save(70000);
+  TEST_ASSERT_EQUAL_UINT32(60000, s.lockMs);
+  TEST_ASSERT_EQUAL(2, s.failures);
+  PairingGuard after;  // the new boot
+  after.setCode("4827");
+  after.lockout().restore(s, 5);
+  TEST_ASSERT_EQUAL(PairingGuard::Result::BadCode, after.check("0000", 10));  // the 3rd: locks
+  TEST_ASSERT_EQUAL_UINT32(120000, after.lockRemainingMs(10));
+  // A lockout in force restarts with its remaining time.
+  const LockoutState locked = after.lockout().save(20010);
+  TEST_ASSERT_EQUAL_UINT32(100000, locked.remainingMs);
+  PairingGuard again;
+  again.setCode("4827");
+  again.lockout().restore(locked, 1000);
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Locked, again.check("4827", 100999));
+  TEST_ASSERT_EQUAL(PairingGuard::Result::Ok, again.check("4827", 101000));
+  // Garbage (a cold boot's RTC memory) is ignored.
+  PairingGuard cold;
+  LockoutState junk{};
+  junk.lockMs = 0xFFFFFFFFu;
+  junk.remainingMs = 5;
+  cold.lockout().restore(junk, 0);
+  TEST_ASSERT_EQUAL_UINT32(0, cold.lockRemainingMs(1));
+  junk.lockMs = 60000;
+  junk.remainingMs = 70000;
+  cold.lockout().restore(junk, 0);
+  TEST_ASSERT_EQUAL_UINT32(0, cold.lockRemainingMs(1));
 }
 
 static void test_presence_gate() {
@@ -939,7 +991,7 @@ static void test_presence_code_never_replaced_while_active() {
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Update, "2222", 1000));  // busy
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Reset, "3333", 1000));
   TEST_ASSERT_FALSE(g.open(PresenceGate::Purpose::Wifi, "4444", 1000));
-  TEST_ASSERT_FALSE(g.locked(1000));  // busy is not a lockout
+  TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, 1000));  // busy is not a lockout
   TEST_ASSERT_TRUE(g.purpose() == PresenceGate::Purpose::Settings);
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Settings, "5555", 2000));  // same purpose: kept
   TEST_ASSERT_EQUAL_STRING("1111", g.code());
@@ -1012,7 +1064,8 @@ int main() {
   RUN_TEST(test_headers_bad_multipart);
   RUN_TEST(test_headers_garbage);
   RUN_TEST(test_presence_lockout_escalates);
-  RUN_TEST(test_presence_lockout_caps_at_one_hour);
+  RUN_TEST(test_presence_lockout_caps_at_one_day);
+  RUN_TEST(test_lockout_survives_restore);
   RUN_TEST(test_presence_failures_survive_reopen);
   RUN_TEST(test_presence_lockout_clock_wrap);
   RUN_TEST(test_ota_code_required);

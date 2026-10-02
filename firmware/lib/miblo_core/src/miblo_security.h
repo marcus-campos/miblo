@@ -78,15 +78,33 @@ bool hostAllowed(const char* host, const char* id);
 // another site.
 bool originAllowed(const char* origin, const char* id);
 
-// Escalating brute-force lockout shared by PairingGuard and PresenceGate: the 5th failure in a
-// row locks for 60 s, each further lockout doubles it (capped at 1 h). Only success() ends the
-// escalation. Call update() regularly (the app does, every frame) so a lockout from long ago can
-// never look active again when the 32-bit millisecond clock wraps (~49.7 days).
+// What an EscalatingLockout keeps across a restart (RTC memory on the device: it survives a reset
+// or a crash, not a power cut). Plain data; restore() checks every field.
+struct LockoutState {
+  uint32_t lockMs;       // the current/last lockout's length (escalation), 0 = none yet
+  uint32_t remainingMs;  // of the lockout in force, 0 = none
+  uint8_t failures;
+  uint8_t reserved[3];
+};
+
+// Escalating brute-force lockout behind PairingGuard and each PresenceGate purpose (M2). The 5th
+// failure in a row locks for 60 s; from then on every 3rd failure locks again, each lockout twice
+// as long as the last, up to 24 h. Only success() ends the escalation. Call update() regularly (the
+// app does, every frame) so a lockout from long ago can never look active again when the 32-bit
+// millisecond clock wraps (~49.7 days).
+//
+// Against a 4-digit code (10^4 values): reaching the 24 h cap takes 5 + 3 x 11 = 38 guesses over
+// ~34 h (60 s + 2 + 4 ... + 1024 min); from then on 3 guesses a day. A 50 % chance needs ~5000
+// guesses against a fixed code (the pairing code, which changes only when a pairing succeeds):
+// ~4.5 years; against a code drawn afresh each time (the presence codes) ~6900 guesses, ~6.3
+// years. (Before: 5 guesses an hour after a 1 h cap, 50 % in ~42 days.) The counters are kept
+// across a reset (RTC memory), so a crash or a reboot does not give fresh guesses either.
 class EscalatingLockout {
  public:
-  static constexpr uint8_t kMaxFailures = 5;
+  static constexpr uint8_t kMaxFailures = 5;   // before the first lockout
+  static constexpr uint8_t kNextFailures = 3;  // before each further one
   static constexpr uint32_t kBaseMs = 60000;
-  static constexpr uint32_t kMaxMs = 3600000;
+  static constexpr uint32_t kMaxMs = 86400000;  // 24 h
 
   bool locked(uint32_t nowMs) const { return remainingMs(nowMs) > 0; }
   uint32_t remainingMs(uint32_t nowMs) const;
@@ -96,16 +114,21 @@ class EscalatingLockout {
     failures_ = 0;
     lockMs_ = 0;
   }
+  LockoutState save(uint32_t nowMs) const;
+  // Takes a saved state back as of nowMs (a lockout in force runs its full remaining time again:
+  // the time the unit was off is unknown). A state out of range is ignored.
+  void restore(const LockoutState& s, uint32_t nowMs);
 
  private:
   uint8_t failures_ = 0;
   bool locked_ = false;  // a lockout is in force (cleared by update() once it expires)
   uint32_t lockMs_ = 0;  // duration of the current/last lockout, kept for escalation; 0 = none
   uint32_t lockedAtMs_ = 0;
+  uint32_t lockLenMs_ = 0;  // this lockout's length (lockMs_, or less after a restore)
 };
 
-// Pairing code: 5 wrong codes in a row lock pairing out (EscalatingLockout: 60 s doubling up to
-// 1 h, cleared by a correct code). The app rotates the code after each successful pairing.
+// Pairing code: wrong codes lock pairing out (EscalatingLockout: 60 s doubling up to 24 h,
+// cleared by a correct code). The app rotates the code after each successful pairing.
 class PairingGuard {
  public:
   enum class Result : uint8_t { Ok, BadCode, Locked };
@@ -117,6 +140,7 @@ class PairingGuard {
   Result check(const char* code, uint32_t nowMs);
   uint32_t lockRemainingMs(uint32_t nowMs) const { return lock_.remainingMs(nowMs); }
   void update(uint32_t nowMs) { lock_.update(nowMs); }
+  EscalatingLockout& lockout() { return lock_; }
 
  private:
   char code_[5] = "0000";
@@ -217,43 +241,49 @@ enum class ChallengeResult : uint8_t { Ok, BadRequest, UnknownTag };
 ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
                                 char macHex[65]);
 
-// Physical presence code: when opening the /update gate (POST /update/open) or requesting a
-// factory reset from the browser, the screen shows a 4-digit code, valid for 5 min; the POST
-// needs it. Brute-force lockout (EscalatingLockout, survives re-opens): failures accumulate across
-// re-opens (a new code does not grant fresh guesses); on the 5th the gate closes and refuses to
-// open again for 60 s, doubling on each further lockout (capped at 1 h). Only a correct code
-// resets the failures and the escalation.
+// Physical presence code: when opening the /update gate (POST /update/open), requesting a factory
+// reset, unlocking the settings page or joining a network from the portal, the screen shows a
+// 4-digit code, valid for 5 min; the POST needs it. Each purpose has its own brute-force lockout
+// (EscalatingLockout, L2): a stranger guessing the settings code cannot keep the owner from
+// updating, resetting or moving the unit's Wi-Fi. Failures accumulate across re-opens (a new code
+// does not grant fresh guesses); a lockout closes the gate and its purpose cannot open again until
+// it ends. Only a correct code for that purpose resets its failures and escalation.
 class PresenceGate {
  public:
   enum class Purpose : uint8_t { Update, Reset, Settings, Wifi };
+  static constexpr uint8_t kPurposes = 4;
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
   static constexpr uint32_t kLockMaxMs = EscalatingLockout::kMaxMs;
 
-  // false (and nothing changes) while locked out, or while a code for another purpose is still
-  // active (busyFor): nobody can replace a code the owner is reading off the screen. For the same
-  // purpose an active code is kept as it is (same code, same timer). The owner can always ask
-  // again once it expires (kTtlMs) or after it was used (close()).
+  // false (and nothing changes) while that purpose is locked out, or while a code for another
+  // purpose is still active (busyFor): nobody can replace a code the owner is reading off the
+  // screen. For the same purpose an active code is kept as it is (same code, same timer). The owner
+  // can always ask again once it expires (kTtlMs) or after it was used (close()).
   bool open(Purpose p, const char* code4, uint32_t nowMs);
   bool busyFor(Purpose p, uint32_t nowMs) const { return active(nowMs) && p != purpose_; }
-  bool locked(uint32_t nowMs) const { return lock_.locked(nowMs); }
-  uint32_t lockRemainingMs(uint32_t nowMs) const { return lock_.remainingMs(nowMs); }
-  // Clears an expired lockout (see EscalatingLockout::update).
-  void update(uint32_t nowMs) { lock_.update(nowMs); }
+  bool locked(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].locked(nowMs); }
+  uint32_t lockRemainingMs(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].remainingMs(nowMs); }
+  // Clears expired lockouts (see EscalatingLockout::update).
+  void update(uint32_t nowMs) {
+    for (auto& l : lock_) l.update(nowMs);
+  }
   bool active(uint32_t nowMs) const;
   Purpose purpose() const { return purpose_; }
   const char* code() const { return code_; }
   uint32_t remainingMs(uint32_t nowMs) const;
   bool check(Purpose p, const char* code, uint32_t nowMs);
   void close() { open_ = false; }
+  EscalatingLockout& lockout(Purpose p) { return lock_[idx(p)]; }
 
  private:
+  static uint8_t idx(Purpose p) { return (uint8_t)p < kPurposes ? (uint8_t)p : 0; }
   bool open_ = false;
   Purpose purpose_ = Purpose::Update;
   char code_[5] = "";
   uint32_t openedAtMs_ = 0;
-  EscalatingLockout lock_;
+  EscalatingLockout lock_[kPurposes];
 };
 
 // Does OTA (/update) need the on-screen presence code? It does NOT only for a unit that was NEVER

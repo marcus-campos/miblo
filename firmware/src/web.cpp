@@ -138,8 +138,8 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
   char code[5];
   miblo::formatCode(hwRandom(), code);
   if (ctx.presence.open(p, code, nowMs)) return true;
-  if (ctx.presence.locked(nowMs)) {
-    sendLocked(server, ctx.presence.lockRemainingMs(nowMs));
+  if (ctx.presence.locked(p, nowMs)) {
+    sendLocked(server, ctx.presence.lockRemainingMs(p, nowMs));
   } else {  // another purpose's code is on the screen: never replaced, retry once it is gone
     char out[48];
     snprintf_P(out, sizeof(out), PSTR("{\"error\":\"busy\",\"retryAfter\":%u}"),
@@ -477,9 +477,9 @@ static void handleWifi() {
     // A configured unit's open setup AP: only someone who can read its screen moves it.
     const Lang lang = pageLang(*srv);
     const uint32_t now = millis();
-    if (ctx.presence.locked(now)) {
+    if (ctx.presence.locked(miblo::PresenceGate::Purpose::Wifi, now)) {
       char b[16];
-      snprintf_P(b, sizeof(b), PSTR(" (%u s)"), (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      snprintf_P(b, sizeof(b), PSTR(" (%u s)"), (unsigned)((ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Wifi, now) + 999) / 1000));
       messagePage(lang, tr(lang, S::WebFailed) + b);
       return;
     }
@@ -1122,8 +1122,8 @@ static void handleSettingsCode() {
 static void handleSettingsUnlock() {
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
-  if (ctx.presence.locked(now)) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+  if (ctx.presence.locked(miblo::PresenceGate::Purpose::Settings, now)) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Settings, now));
     return;
   }
   // The page sends {"code":"1234"} as JSON (a ?code= argument also works).
@@ -1136,7 +1136,7 @@ static void handleSettingsUnlock() {
   }
   if (!code[0]) strlcpy(code, srv->arg(F("code")).c_str(), sizeof(code));
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, code, now)) {
-    if (ctx.presence.locked(now)) sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    if (ctx.presence.locked(miblo::PresenceGate::Purpose::Settings, now)) sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Settings, now));
     else sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
     return;
   }
@@ -1397,8 +1397,8 @@ static void handleResetCode() {
 
 static void handleFactoryReset() {
   if (!requireJson(*srv)) return;
-  if (ctx.presence.locked(millis())) {
-    sendLocked(*srv, ctx.presence.lockRemainingMs(millis()));
+  if (ctx.presence.locked(miblo::PresenceGate::Purpose::Reset, millis())) {
+    sendLocked(*srv, ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Reset, millis()));
     return;
   }
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Reset, srv->arg(F("code")).c_str(), millis())) {
@@ -1531,7 +1531,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
   const bool isUpload = method == F("POST") && url == F("/update");
   const bool armed = multipart && isUpload && ota::uploadArmed(*client);
   WebServerT::ClientFuture refused;
-  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(now))) {
+  switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(miblo::PresenceGate::Purpose::Update, now))) {
     case BodyAction::Continue:
       return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the firmware upload, streamed to flash
     case BodyAction::NotOpen:
@@ -1539,7 +1539,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
       break;
     case BodyAction::Locked:  // too many wrong codes: say so, as the upload itself would
       refused = refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
-                       (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+                       (unsigned)((ctx.presence.lockRemainingMs(miblo::PresenceGate::Purpose::Update, now) + 999) / 1000));
       break;
     case BodyAction::BadBoundary:
       refused = refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));

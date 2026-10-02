@@ -170,10 +170,10 @@ static void done() {
   const uint32_t now = millis();
   if (!uploadRan) {
     // No multipart file part in THIS request: the code was never checked, nothing was written.
-    if (ctx.presence.locked(now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    if (ctx.presence.locked(PresenceGate::Purpose::Update, now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(PresenceGate::Purpose::Update, now));
     else web::sendJson(*srv, 400, F("{\"error\":\"no firmware file\"}"));
   } else if (rejected) {
-    if (ctx.presence.locked(now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
+    if (ctx.presence.locked(PresenceGate::Purpose::Update, now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(PresenceGate::Purpose::Update, now));
     else web::sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
   } else if (!started || !endedOk || Update.hasError()) {
     ctx.updating = false;

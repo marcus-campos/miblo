@@ -286,7 +286,7 @@ void PairingGuard::setCode(const char* code4) {
 uint32_t EscalatingLockout::remainingMs(uint32_t nowMs) const {
   if (!locked_) return 0;
   const uint32_t elapsed = nowMs - lockedAtMs_;
-  return elapsed >= lockMs_ ? 0 : lockMs_ - elapsed;
+  return elapsed >= lockLenMs_ ? 0 : lockLenMs_ - elapsed;
 }
 
 void EscalatingLockout::update(uint32_t nowMs) {
@@ -294,12 +294,31 @@ void EscalatingLockout::update(uint32_t nowMs) {
 }
 
 bool EscalatingLockout::fail(uint32_t nowMs) {
-  if (++failures_ < kMaxFailures) return false;
+  if (++failures_ < (lockMs_ == 0 ? kMaxFailures : kNextFailures)) return false;
   failures_ = 0;
   lockMs_ = lockMs_ == 0 ? kBaseMs : (lockMs_ >= kMaxMs / 2 ? kMaxMs : lockMs_ * 2);
+  lockLenMs_ = lockMs_;
   lockedAtMs_ = nowMs;
   locked_ = true;
   return true;
+}
+
+LockoutState EscalatingLockout::save(uint32_t nowMs) const {
+  LockoutState s{};
+  s.lockMs = lockMs_;
+  s.remainingMs = remainingMs(nowMs);
+  s.failures = failures_;
+  return s;
+}
+
+void EscalatingLockout::restore(const LockoutState& s, uint32_t nowMs) {
+  if (s.lockMs > kMaxMs || s.remainingMs > s.lockMs || s.failures >= kMaxFailures) return;
+  if (s.lockMs && s.lockMs < kBaseMs) return;
+  lockMs_ = s.lockMs;
+  failures_ = s.failures;
+  locked_ = s.remainingMs > 0;
+  lockLenMs_ = s.remainingMs;
+  lockedAtMs_ = nowMs;
 }
 
 PairingGuard::Result PairingGuard::check(const char* code, uint32_t nowMs) {
@@ -478,8 +497,9 @@ ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, con
 }
 
 bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {
-  lock_.update(nowMs);
-  if (lock_.locked(nowMs)) return false;
+  EscalatingLockout& lock = lock_[idx(p)];
+  lock.update(nowMs);
+  if (lock.locked(nowMs)) return false;
   if (active(nowMs)) return p == purpose_;  // never replace a code that is on the screen
   open_ = true;
   purpose_ = p;
@@ -499,13 +519,14 @@ uint32_t PresenceGate::remainingMs(uint32_t nowMs) const {
 }
 
 bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
-  lock_.update(nowMs);
-  if (lock_.locked(nowMs) || !active(nowMs) || p != purpose_) return false;
+  EscalatingLockout& lock = lock_[idx(p)];
+  lock.update(nowMs);
+  if (lock.locked(nowMs) || !active(nowMs) || p != purpose_) return false;
   if (code && constantTimeEquals(code, code_)) {
-    lock_.success();  // a correct code ends the escalation
+    lock.success();  // a correct code ends the escalation
     return true;
   }
-  if (lock_.fail(nowMs)) open_ = false;
+  if (lock.fail(nowMs)) open_ = false;
   return false;
 }
 

@@ -17,6 +17,7 @@
 #include "miblo_wellness.h"
 #include "miblo_zone.h"
 #include "platform/friends_net.h"
+#include "platform/lockouts.h"
 #include "platform/mdns_service.h"
 #include "platform/net.h"
 #include "platform/ota.h"
@@ -333,6 +334,7 @@ void setup() {
   char code[5];
   miblo::formatCode(hwRandom(), code);
   ctx.pairing.setCode(code);
+  lockouts::restore(millis());  // a reset never hands out fresh code guesses (M2)
 
   bootMs = millis();
   net::begin(bootMs);
@@ -390,6 +392,7 @@ void loop() {
   if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) ESP.restart();
   ctx.presence.update(now);  // expire old brute-force lockouts before the clock can wrap
   ctx.pairing.update(now);
+  lockouts::persist(now);    // and keep them across a reset (RTC memory)
   if (ctx.showPairCode && now - ctx.pairCodeAtMs >= miblo::kPairCodeScreenMs) ctx.showPairCode = false;
 
   if (now - lastFrameMs < 100) {  // ~10 frames/s; in between, a pause (the Wi-Fi stack runs in it)

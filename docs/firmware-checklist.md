@@ -163,7 +163,6 @@ notes.
     the gadget unpaired (the page reloads open).
 25. **Daily life (firmware 1.11):** each part below, on one gadget, with the plugin from the same branch.
 
-<!-- daily:focus -->
     - **Focus:** run `/miblo:focus 5 1 2`. The mascot wears headphones and taps the table inside a
       green ring that fills over the 5 minutes, with the time left big, "focus until HH:MM" (the
       end of this round) and two dots, the first one green. When the round ends: three slow
@@ -180,7 +179,6 @@ notes.
 
 <!-- daily:alerts -->
 
-<!-- daily:rhythm -->
     - **Break:** on the settings page set "Break after long work" to 60 min; keep a session running for an hour
       (pauses under 10 min are fine). The mascot stretches and "How about a 5 min break?" shows for
       1 min, with no flash. With an alert pending, focus, meeting mode or a timer on, it never shows;
@@ -201,7 +199,6 @@ notes.
     - **Known limit:** "already shown today" lives only in RAM. A restart or an update the same
       evening (or Monday) shows the end-of-day summary (or the recap) once more.
 
-<!-- daily:notes -->
     - **Say:** `/miblo:say "back in 10 min"`: the cat holds it on a violet sign over Main, Desk,
       Summary and Disconnected, and the panel doesn't go dark while it is up; in pet mode it shows
       on the pet's card instead. It goes away after 30 min, or `/miblo:say off`. A 40-character
@@ -228,7 +225,6 @@ notes.
     - **Find:** `/miblo:find`: for 10 s the top and bottom bands pulse, the cat waves, and the QR
       code opens the settings page on a phone on the same Wi-Fi.
 
-<!-- daily:cues -->
     - **Status frame:** turn on the frame on the settings page. With a permission pending, a
       thin amber frame surrounds every screen (not over the alert flash); answer it and the
       frame goes away with no leftovers. When a session finishes, the frame is green for 1 min,
@@ -240,15 +236,21 @@ notes.
       not dazzle; with the blue light filter on, the pulse colour is warmed. A permission that
       arrives during the pulses takes the screen at once.
 
-<!-- daily:look -->
     - **Look:** the special days follow the gadget's own date (NTP), so check them in the screenshots (`make screenshots`): `58-look-bunny`, `58-look-glasses`, `58-look-hearts`, `58-look-tie`, `58-look-headphones`, `58-look-tired`, `58-black-cat` and `58-black-cat-look`, and the three `58-look-sheet-*` (every piece on all four mascot colours and with each hat; look at the `@4x` PNGs). Nothing is cut off, and only the glasses sit over the eyes. On the gadget: `/miblo:meeting 2` puts a tie on the desk mascot (and on the pet), and it comes off when the meeting ends; on a day with more than 8 h of Claude working, the mascot has faint bags under its eyes.
 
-<!-- daily:screens -->
     - **Forecast:** with the plugin from this branch, use the 5-hour limit fast: Limits shows
-      "at this pace, runs out at HH:MM" in amber; once that is under 30 min away the Overview's 5h
-      number turns amber and its reset line reads "runs out ~HH:MM".
+      "at this pace, runs out at HH:MM" in amber (in es, it and ru with a weekday, the shorter
+      "runs out ~Fri HH:MM": the time is never cut off), the Desk's 5h line reads "runs out in
+      1h20" in amber; once that is under 30 min away the Overview's 5h number turns amber and its
+      reset line reads "runs out ~HH:MM".
     - **Long command:** ask Claude to run `sleep 45` in Bash: after 30 s its Overview card reads
-      "sleep 45 · 0:31" with the time ticking each second (the card itself does not blink).
+      "sleep 45 · 0:31" with the time ticking each second (the card itself does not blink). Past
+      an hour (`sleep 3700`) it reads "1h00" and changes once a minute.
+    - **Meeting mode on the screens:** with sessions running and one waiting, run
+      `/miblo:meeting 2`: the Overview, Sessions mode and the pet's sign show no project name,
+      tool or command ("1 WAITING" with no name, "permission", "Working", "finished 2m ago"); the
+      long command's time still runs. When the meeting ends the names come back on every screen
+      at once, with no stale name left in a corner.
     - **Second clock:** set "Other time zone" on the settings page (e.g. Europe/Lisbon, "Lisboa"):
       the Desk shows "Lisboa" over its time in the top-right corner and the Overview (all done)
       shows "Lisboa HH:MM" under today's cost; it changes with the minute, and the gadget's own
@@ -257,15 +259,24 @@ notes.
       violet over the rings (the cat a size smaller) and the pet's sign shows it in place of the
       last task; with a date of today, confetti twinkles either side of the cat. Turn on the Desk
       QR on the settings page: the QR takes the top-right corner (in place of the second clock)
-      and a phone scanning it opens the settings page.
+      and a phone scanning it opens the settings page. On a screen too small for 2 px modules
+      (a 170x320 panel) the QR is left out and the second clock keeps the corner. During a visit,
+      the guest cats wear neither the meeting tie nor the tired eye bags.
     - **Mood:** on a day past 8 h of Claude working, the Desk's cat blinks slowly and yawns about
       every 45 s; on a light day (under 2 h, limits at or under 50%) pet mode plays every 20 s.
 
-<!-- daily:settings -->
     - **Settings page:** open the unlocked page with the browser language set to en, pt-BR, ru and zh: every new label is translated and nothing overflows on a phone-width window.
       Under Alerts, turn alerts off: insistence and the fanfare hide, the status frame stays. Pick each fanfare choice (off, 3, 5, 10 min) and save; reloading the page and `/miblo:status` (or `GET /api/info`) show the new value.
       In **Wellness**, change the break (off/60/90/120), water (off/60/90), eye rest, focus filter, end-of-day and weekly switches, save, and reload: each sticks.
       The work hours block shows only while the water reminder or the end-of-day summary is on. Set 18:00 to 09:00: saving is refused and the start or end time is outlined in red. Untick every work day: the last one ticks itself again. Save Mon, Wed, Fri: `workDays` reads 42.
       Under This device, the second time zone starts at "Off" (the browser's zone is never preselected); pick a city: its time shows next to the label and the "Its name on screen" field appears (12 characters at most). Save, reload: the zone and its name are kept. Set it back to Off and save: `tz2` is empty. Turn the desk QR on and save: the Desk screen shows the QR.
 
-<!-- daily:bridge -->
+    - **Bridge:** the forecast, the long command's time and the Monday recap above all come from
+      the bridge of the same release (`h5.eta`, a session's `ts`, `week` in the snapshot). With
+      this plugin and a gadget still on the previous firmware, sessions, alerts and limits keep
+      working as before.
+    - **Permission prompts:** each of these shows "needs you" (amber) once, and the session goes
+      back to running when answered: a subagent's Bash call in auto mode, an agent-team worker
+      asking for permission, an MCP server asking for input (elicitation). A call auto mode
+      denies goes back to running with no alert; a turn ended by an API error stops showing
+      running.

@@ -102,12 +102,20 @@ void activityText(Lang lang, const char* tool, const char* det, bool discreet, c
   else snprintf(out, cap, "%s", tool);
 }
 
-void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, size_t cap) {
+// True if activityText shows `tool`'s own name (not a verb, a background wait or compaction).
+static bool showsToolName(const char* tool, const char* det) {
+  S verb;
+  bool agents = true;
+  unsigned count = 0;
+  return tool[0] && strcmp(tool, kCompact) != 0 && !toolVerb(tool, verb) && !backgroundWait(tool, det, agents, count);
+}
+
+void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, size_t cap, bool anonymous) {
   switch (row.st) {
     case SessionState::Perm: {
       char label[48];
       tr(lang, S::StPerm, label, sizeof(label));
-      if (row.tool[0]) snprintf(out, cap, "%s \xC2\xB7 %s", label, row.tool);
+      if (row.tool[0] && !anonymous) snprintf(out, cap, "%s \xC2\xB7 %s", label, row.tool);
       else snprintf(out, cap, "%s", label);
       return;
     }
@@ -121,7 +129,8 @@ void sessionLine(Lang lang, const SessionRow& row, bool discreet, char* out, siz
       tr(lang, S::StIdle, out, cap);
       return;
     case SessionState::Running:
-      activityText(lang, row.tool, row.det, discreet, out, cap);
+      if (anonymous && showsToolName(row.tool, row.det)) tr(lang, S::VerbWorking, out, cap);
+      else activityText(lang, row.tool, row.det, discreet || anonymous, out, cap);
       return;
   }
 }

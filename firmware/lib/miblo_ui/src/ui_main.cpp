@@ -76,6 +76,25 @@ uint16_t stateColor(SessionState st) {
 
 static bool isPending(SessionState st) { return st == SessionState::Perm || st == SessionState::Question; }
 
+// A session's name as the screens show it: none in meeting mode (setAnonymous).
+static const char* shownName(const SessionRow& r) { return anonymous() ? "" : r.name; }
+
+// "api-server finished 12m ago", or "finished 12m ago" for an empty name (the phrase with the
+// name left out, in every language).
+static void finishedAgo(Lang lang, const char* name, const char* ago, char* out, size_t cap) {
+  snprintf(out, cap, t(lang, S::FinishedAgo), name, ago);
+  const char* p = out;
+  while (*p == ' ') p++;
+  if (p != out) memmove(out, p, strlen(p) + 1);
+}
+
+// A long command's running time: "1:42" under an hour, "1h02" after (it then changes once a
+// minute, like the other times in hours).
+static void commandTime(uint32_t sec, char* out, size_t cap) {
+  if (sec < 3600) miblo::formatMinSec(sec, out, cap);
+  else miblo::formatInState(sec, out, cap);
+}
+
 uint32_t sessionSince(const SessionRow& r, const Clock& clk) {
   return (clk.epoch && clk.epoch > r.since) ? clk.epoch - r.since : 0;
 }
@@ -278,12 +297,13 @@ static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock
   timeStr[0] = 0;
   cmdStr[0] = 0;
   if (r) {
-    miblo::sessionLine(lang, *r, discreet, line, sizeof(line));
+    miblo::sessionLine(lang, *r, discreet, line, sizeof(line), anonymous());
     miblo::formatInState(sessionSince(*r, clk), timeStr, sizeof(timeStr));
     const uint32_t cmdSec = miblo::longCommandSec(*r, clk.epoch);
     if (cmdSec) {
-      miblo::formatMinSec(cmdSec, cmdStr, sizeof(cmdStr));
-      if (!discreet && r->det[0]) snprintf(line, sizeof(line), "%s", r->det);  // the time stands for "Bash"
+      commandTime(cmdSec, cmdStr, sizeof(cmdStr));
+      // The time stands for "Bash" (not in meeting mode: no command there).
+      if (!discreet && !anonymous() && r->det[0]) snprintf(line, sizeof(line), "%s", r->det);
     }
   }
   const bool pending = r && isPending(r->st);
@@ -301,7 +321,7 @@ static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock
     cmdX = X(16) + (w < lineW ? w : lineW) + dotW;
   }
   uint32_t h = hashInt(hashInt(kHashSeed + 5, (uint32_t)g.top), (uint32_t)g.pitch);
-  if (r) h = hashInt(hashStr(hashStr(hashInt(h, (uint32_t)r->st), r->name), line), (uint32_t)cmdX);
+  if (r) h = hashInt(hashStr(hashStr(hashInt(h, (uint32_t)r->st), shownName(*r)), line), (uint32_t)cmdX);
   Compose row;
   if (row.begin(R_ROW0 + slot, h, 0, y0, X(240), g.pitch)) {
     (void)dirty(R_TIME0 + slot, hashStr(h, timeStr));  // the times are drawn with the card
@@ -312,7 +332,7 @@ static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock
       C().fillRect(X(8), y0 + Y(2), X(224), g.pitch - Y(4), cardBg);
       C().fillRect(X(8), y0 + Y(2), Sz(3), g.pitch - Y(4), sc);
       C().fillCircle(X(20), y0 + g.l1 - Y(5), Sz(4), sc);
-      C().text(X(30), y0 + g.l1, r->name, Font::BodyBold, pending ? color::AMBER : color::TEXT, Align::Left,
+      C().text(X(30), y0 + g.l1, shownName(*r), Font::BodyBold, pending ? color::AMBER : color::TEXT, Align::Left,
                X(130));
       const int w = C().text(X(16), y0 + g.l2, line, Font::Small, lineFg, Align::Left, lineW);
       if (cmdStr[0]) {
@@ -358,7 +378,7 @@ static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk, uint32_
   buf[0] = 0;
   if (last >= 0) {
     miblo::formatInState(sessionSince(s.sessions[last], clk), tmp, sizeof(tmp));
-    snprintf(buf, sizeof(buf), t(lang, S::FinishedAgo), s.sessions[last].name, tmp);
+    finishedAgo(lang, shownName(s.sessions[last]), tmp, buf, sizeof(buf));
   }
   field(R_ROW0, kHashSeed, X(12), Y(168), buf, Font::Small, color::MUTED, color::BG, Align::Left, X(216));
   buf[0] = 0;
@@ -397,14 +417,14 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   RowGeom g;
   if (kind == OverviewKind::Attention) {
     const int heroIdx = miblo::selectHero(s, false);
-    const char* heroName = heroIdx >= 0 ? s.sessions[heroIdx].name : "";
+    const char* heroName = heroIdx >= 0 ? shownName(s.sessions[heroIdx]) : "";
     const uint32_t h = hashStr(hashInt(hashInt(kHashSeed + 11, c.pending), (uint32_t)lang), heroName);
     Compose head;
     if (head.begin(R_HEADER, h, 0, 0, X(240), Y(24))) {
       // fixed amber band: "1 WAITING · api-server"
       C().fillRect(0, 0, X(240), Y(22), color::AMBER);
       snprintf(tmp, sizeof(tmp), t(lang, S::NWaiting), (unsigned)c.pending);
-      snprintf(buf, sizeof(buf), "%s%s%s", tmp, kDot, heroName);
+      snprintf(buf, sizeof(buf), "%s%s%s", tmp, heroName[0] ? kDot : "", heroName);
       C().text(X(10), Y(16), buf, Font::SmallBold, color::BLACK, Align::Left, X(170));
     }
     head.end();
@@ -498,14 +518,17 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk, uint32_t exhaustAt) 
     field(R_RESET5, h, cx, Y(152), buf, Font::Small, color::DIM, color::BG, Align::Center, Sz(84));
   }
   // At the current pace it runs out before it resets: "at this pace, runs out at 15:40", in amber,
-  // under the arc's ends (clear of them: the whole width).
+  // under the arc's ends (clear of them: the whole width). When that does not fit (a weekday in
+  // a long language), the short "runs out ~Fri 15:40": the time is never cut off.
   buf[0] = 0;
+  const int burnW = X(228);
   if (s.hasUsage && s.h5.present && exhaustAt > clk.epoch && clk.epoch) {
     char when[32];
     formatWhen(lang, exhaustAt, clk.epoch, when, sizeof(when));
     snprintf(buf, sizeof(buf), t(lang, S::RunsOutAt), when);
+    if (C().textWidth(buf, Font::Small) > burnW) snprintf(buf, sizeof(buf), t(lang, S::RunsOutShort), when);
   }
-  field(R_BURN, h, cx, Y(174), buf, Font::Small, color::AMBER, color::BG, Align::Center, X(228));
+  field(R_BURN, h, cx, Y(174), buf, Font::Small, color::AMBER, color::BG, Align::Center, burnW);
   h = hashInt(hashInt(kHashSeed, s.d7.present ? s.d7.pct : 255), (uint32_t)lang);
   const bool week = s.hasUsage && s.d7.present;
   Compose wk;
@@ -1665,12 +1688,9 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
   if (lf >= 0) {
     char ago[16];
     miblo::formatInState(sessionSince(s.sessions[lf], clk), ago, sizeof(ago));
-    snprintf(lastName, sizeof(lastName), "%s", s.sessions[lf].name);
-    // "finished 12m ago" without the name (it has its own line): the phrase with an empty name.
-    snprintf(lastWhen, sizeof(lastWhen), t(lang, S::FinishedAgo), "", ago);
-    char* w = lastWhen;
-    while (*w == ' ') w++;
-    memmove(lastWhen, w, strlen(w) + 1);
+    snprintf(lastName, sizeof(lastName), "%s", shownName(s.sessions[lf]));
+    // "finished 12m ago" without the name (it has its own line, empty in meeting mode).
+    finishedAgo(lang, "", ago, lastWhen, sizeof(lastWhen));
   }
   uint16_t nameFg = color::BLUE;
   if (note && note[0]) {  // a friend's "hi" or a nap together, in place of the last task
@@ -1992,12 +2012,15 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   if (dirty(R_BODY, h)) {
     const int top = vertical ? 0 : tall ? Y(30) : cy - half;
     const int bh = vertical ? Y(240) : tall ? cy + half - Y(30) : 2 * half;
-    const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory();
+    const uint8_t myStyle = mascotStyle(), myHat = mascotAccessory(), myMood = catMood();
+    const bool myTie = mascotTie();
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
       if (mine) deskMascot(myX, myY, me, catHalf, false);
-      if (guest) {  // in their own colours, no hat (the special day is ours)
+      if (guest) {  // in their own colours, no hat, tie or tired eyes (the day, the meeting are ours)
         setMascotAccessory(0);
+        setMascotTie(false);
+        setCatMood(0);
         setMascotStyle(v.mascot);
         deskMascot(guestX, guestY, them, catHalf, false);
         for (uint8_t e = 0; e < extras; e++) {
@@ -2006,6 +2029,8 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
         }
         setMascotStyle(myStyle);
         setMascotAccessory(myHat);
+        setMascotTie(myTie);
+        setCatMood(myMood);
       }
       for (uint8_t i = 0; i < frame.n; i++) drawVisitItem(frame.items[i]);
     };
@@ -2108,13 +2133,21 @@ static void deskZone(int left) {
 
 // The settings QR in the Desk's top-right corner (right of `left`, above `bottom`): as big as the
 // corner allows, at most 3 px a module, never redrawn unless the address changes. Its bottom.
-static int deskQr(const char* url, int left, int bottom) {
-  constexpr int kModules = 29 + 2 * 2;  // version 3 + the quiet zone (ui_base.cpp qr())
-  const int right = X(240) - 4, top = 4;
-  int scale = (right - left < bottom - top ? right - left : bottom - top) / kModules;
+// Under 2 px a module a phone can't read it: deskQrScale() is then 0 and the Desk leaves the
+// corner to the second clock.
+constexpr int kQrModules = 29 + 2 * 2;  // version 3 + the quiet zone (ui_base.cpp qr())
+constexpr int kQrTop = 4;
+static int deskQrScale(int left, int bottom) {
+  const int right = X(240) - 4;
+  int scale = (right - left < bottom - kQrTop ? right - left : bottom - kQrTop) / kQrModules;
   if (scale > 3) scale = 3;
-  if (scale < 1) return top;
-  const int size = kModules * scale;
+  return scale < 2 ? 0 : scale;
+}
+static int deskQr(const char* url, int left, int bottom) {
+  const int right = X(240) - 4, top = kQrTop;
+  const int scale = deskQrScale(left, bottom);
+  if (!scale) return top;
+  const int size = kQrModules * scale;
   if (dirty(R_QR, hashInt(hashStr(kHashSeed + 67, url), (uint32_t)size))) qr(url, right - size, top, scale);
   return top + size;
 }
@@ -2142,12 +2175,14 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32
   // and higher), the QR takes the top-right corner (the cat a little smaller), in place of the
   // second clock. Turning either on or off redraws the whole screen (app.cpp).
   const char* countdown = deskCountdown();
-  const char* qrUrl = deskQrUrl();
+  const int stripTop = Y(106);  // where the countdown line's strip begins
+  // The QR only when it can be scanned beside the (smaller) cat; else it is left out.
+  const int qrHalf = countdown[0] ? 40 : 44;
+  const char* qrUrl = deskQrUrl()[0] && deskQrScale(X(120) + Sz(qrHalf) + Sz(4), stripTop) ? deskQrUrl() : "";
   const int catHalf = countdown[0] ? 40 : qrUrl[0] ? 44 : 48;
   const int catY = countdown[0] ? Y(64) : Y(72);
   deskCat(R_BODY, X(120), catY, catHalf, deskLook(mood, focusLeft, nowMs));
   const int side = Sz(catHalf) + Sz(4);  // the cat's box, plus a gap, either side of the centre
-  const int stripTop = Y(106);            // where the countdown line's strip begins
   int cornerBottom = 0;
   if (qrUrl[0]) cornerBottom = deskQr(qrUrl, X(120) + side, stripTop);
   else if (secondClockLabel()[0] && secondClockTime()[0]) cornerBottom = Y(40);

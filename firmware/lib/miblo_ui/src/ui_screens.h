@@ -257,6 +257,10 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
 // State for every mascot drawn from now on (ui_daily_state.cpp), like setMascotAccessory().
 void setMascotTie(bool on);
 bool mascotTie();
+// Meeting mode: the main screens draw no session name, tool or command (the alerts take their
+// own `anonymous` argument). Changing it needs a full redraw (app.cpp sets firstFrame).
+void setAnonymous(bool on);
+bool anonymous();
 void setCatMood(uint8_t mood);  // miblo::CatMood
 uint8_t catMood();
 void setSecondClock(const char* label, const char* hhmm);  // "" = none

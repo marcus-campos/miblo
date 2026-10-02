@@ -114,6 +114,22 @@ static void test_overflow_fixture() {
   TEST_ASSERT_EQUAL_UINT16(4, snap.more);
 }
 
+// Mondays the bridge adds last week's totals (week) and the 5h forecast (h5.eta); the long
+// command's start (ts) rides on the session.
+static void test_monday_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("monday.json"), snap));
+  TEST_ASSERT_TRUE(snap.week.present);
+  TEST_ASSERT_EQUAL_UINT32(61200, snap.week.workSec);
+  TEST_ASSERT_EQUAL_UINT16(212, snap.week.turns);
+  TEST_ASSERT_FLOAT_WITHIN(0.001f, 31.5f, snap.week.usd);
+  TEST_ASSERT_EQUAL_UINT8(3, snap.week.busiest);
+  TEST_ASSERT_TRUE(snap.h5.etaSent);
+  TEST_ASSERT_EQUAL_UINT32(1790611200, snap.h5.eta);
+  TEST_ASSERT_EQUAL_UINT8(2, snap.count);
+  TEST_ASSERT_EQUAL_UINT32(1790605020, snap.sessions[0].ts);
+  TEST_ASSERT_EQUAL_UINT32(0, snap.sessions[1].ts);
+}
+
 static void test_unknown_fields_are_ignored_and_extra_sessions_go_to_more() {
   std::string json = "{\"v\":1,\"seq\":1,\"now\":100,\"future\":{\"x\":[1,2,3]},\"usage\":null,\"today\":{\"tok\":5,\"usd\":1.25},\"sessions\":[";
   for (int i = 0; i < kMaxSessions + 2; i++) {
@@ -254,6 +270,7 @@ int main() {
   RUN_TEST(test_working_fixture);
   RUN_TEST(test_idle_fixture);
   RUN_TEST(test_overflow_fixture);
+  RUN_TEST(test_monday_fixture);
   RUN_TEST(test_unknown_fields_are_ignored_and_extra_sessions_go_to_more);
   RUN_TEST(test_truncates_long_strings_by_characters);
   RUN_TEST(test_errors_leave_previous_snapshot_untouched);

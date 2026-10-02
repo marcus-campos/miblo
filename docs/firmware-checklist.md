@@ -174,6 +174,7 @@ notes.
 <!-- daily:cues -->
 
 <!-- daily:look -->
+    - **Look:** the special days follow the gadget's own date (NTP), so check them in the screenshots (`make screenshots`): `58-look-bunny`, `58-look-glasses`, `58-look-hearts`, `58-look-tie`, `58-look-headphones`, `58-look-tired`, `58-black-cat` and `58-black-cat-look`, and the three `58-look-sheet-*` (every piece on all four mascot colours and with each hat; look at the `@4x` PNGs). Nothing is cut off, and only the glasses sit over the eyes. On the gadget: `/miblo:meeting 2` puts a tie on the desk mascot (and on the pet), and it comes off when the meeting ends; on a day with more than 8 h of Claude working, the mascot has faint bags under its eyes.
 
 <!-- daily:screens -->
 

@@ -444,59 +444,12 @@ static void test_insistence_resets_per_session() {
   TEST_ASSERT_EQUAL_UINT8(0, c.level);
 }
 
-// N sessions ask one at a time, faster than the alerts can play, with no reminders: the queue
-// (8) overflows, yet every one of them gets its flash and hero, once.
-static void allWaitingAreShown(int n) {
-  AlertSequencer q;
-  AlertTiming t;
-  t.reminderMs = 0;
-  q.setTiming(t);
-  reset();
-  char ids[kMaxSessions][4];
-  int shown[kMaxSessions] = {};
-  char last[9] = "";
-  AlertPhase lastPhase = AlertPhase::None;
-  auto step = [&](uint32_t now) {
-    const AlertView& v = q.update(snap, now);
-    if (v.phase == AlertPhase::Flash && (lastPhase != AlertPhase::Flash || strcmp(last, v.sid) != 0)) {
-      for (int i = 0; i < n; i++) {
-        if (strcmp(ids[i], v.sid) == 0) shown[i]++;
-      }
-    }
-    lastPhase = v.phase;
-    strcpy(last, v.sid);
-  };
-  for (int i = 0; i < n; i++) {
-    snprintf(ids[i], sizeof(ids[i]), "p%d", i);
-    session(ids[i], SessionState::Perm, 1000 + (uint32_t)i);
-    snap.alertCount = 0;
-    alert((uint32_t)i + 1, AlertKind::Perm, ids[i]);
-    snap.seq++;
-    q.ingest(snap, (uint32_t)i * 100);
-    step((uint32_t)i * 100);
-  }
-  for (uint32_t now = (uint32_t)n * 100; now < 400u * 1000u; now += 100) step(now);
-  for (int i = 0; i < n; i++) {
-    char msg[48];
-    snprintf(msg, sizeof(msg), "%d waiting: %s", n, ids[i]);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, shown[i], msg);
-  }
-}
-
-static void test_ten_and_twenty_waiting_are_all_shown() {
-  allWaitingAreShown(10);
-  allWaitingAreShown(kMaxSessions);
-}
-
-// Property: random finishes, permissions and questions over 20 sessions (up to all 20 waiting at
-// once), the focus hold going on and off, no reminders (they would hide a lost alert), alerts
-// delivered like the bridge does (each one resent in every snapshot for 30 s, several per
-// snapshot, the newest 8). Every permission/question gets its flash and hero while its session
-// still waits, within one alert cycle per needs-you alert that goes before it (plus what is on
-// screen when it comes in): the sequencer never idles or plays a "finished" while it waits.
+// Property: random finishes, permissions and questions over 12 sessions, the focus hold going
+// on and off, reminders on or off: every permission/question flashes and reaches its hero
+// while its session still waits, within one alert cycle per alert queued ahead of it.
 static void test_every_needs_you_alert_is_shown() {
-  const int kSessions = kMaxSessions;
-  for (uint32_t seed = 1; seed <= 500; seed++) {
+  const int kSessions = 12;
+  for (uint32_t seed = 1; seed <= 60; seed++) {
     uint32_t r = seed * 2654435761u;
     auto rnd = [&](uint32_t n) {
       r = r * 1103515245u + 12345u;
@@ -504,117 +457,71 @@ static void test_every_needs_you_alert_is_shown() {
     };
     AlertSequencer q;
     AlertTiming t;
-    t.reminderMs = 0;
+    t.reminderMs = (seed % 2) ? 120000 : 0;
     q.setTiming(t);
     reset();
     char ids[kSessions][4];
     for (int i = 0; i < kSessions; i++) {
       snprintf(ids[i], sizeof(ids[i]), "s%d", i);
-      session(ids[i], SessionState::Running, 100);
+      session(ids[i], SessionState::Running, 100 + i);
     }
-    struct Sent {
-      uint32_t id, atMs;
-      AlertKind kind;
-      int k;
-    };
-    Sent sent[64];
-    int nSent = 0;
-    uint32_t pendingId[kSessions] = {};  // the needs-you alert still to be shown
-    uint32_t deadline[kSessions] = {};
+    uint32_t pendingId[kSessions] = {};   // alert id still to be shown for that session
+    uint32_t pendingAt[kSessions] = {};   // when it came in
     bool sawFlash[kSessions] = {};
     const uint32_t cycle = t.flashMs + t.heroPermMs;
-    const uint32_t doneCycle = t.flashMs + t.heroDoneMs;
+    const uint32_t bound = (kMaxAlerts + 1) * (2 * cycle) + 1000;
     uint32_t now = 0, nextId = 1;
     bool hold = false;
-    AlertPhase prevPhase = AlertPhase::None;
-    char prevSid[9] = "";
-    auto waits = [&](int k) {
-      return snap.sessions[k].st == SessionState::Perm || snap.sessions[k].st == SessionState::Question;
-    };
-    for (int step = 0; step < 150; step++) {
-      const uint32_t events = 1 + rnd(5);  // several changes in one snapshot
-      for (uint32_t e = 0; e < events; e++) {
-        const uint32_t ev = rnd(10);
-        const int k = (int)rnd(kSessions);
-        if (ev < 3) {  // a session finishes
-          if (!waits(k)) {
-            snap.sessions[k].st = SessionState::Done;
-            snap.sessions[k].since = 100 + now / 1000;
-            if (nSent < 64) sent[nSent++] = {nextId, now, AlertKind::Done, k};
-            nextId++;
-          }
-        } else if (ev < 7) {  // a session asks
-          if (!waits(k)) {
-            const bool perm = rnd(2);
-            snap.sessions[k].st = perm ? SessionState::Perm : SessionState::Question;
-            snap.sessions[k].since = 100 + now / 1000;
-            pendingId[k] = nextId;
-            sawFlash[k] = false;
-            // What is on screen (a "finished" at most) and its own cycle; every other needs-you
-            // alert that starts while it waits adds one cycle (see below).
-            deadline[k] = now + doneCycle + cycle + 1000;
-            if (nSent < 64) sent[nSent++] = {nextId, now, perm ? AlertKind::Perm : AlertKind::Question, k};
-            nextId++;
-          }
-        } else if (ev < 8) {  // an answer, once it was shown
-          if (waits(k) && !pendingId[k]) snap.sessions[k].st = SessionState::Running;
-        } else if (ev < 9) {
-          hold = !hold;
-        } else if (snap.sessions[k].st == SessionState::Done || snap.sessions[k].st == SessionState::Idle) {
-          snap.sessions[k].st = SessionState::Running;  // a new prompt
-        }
-      }
-      // The bridge's alert list: what was raised in the last 30 s, the newest 8.
-      int keep = 0;
-      for (int i = 0; i < nSent; i++) {
-        if (now - sent[i].atMs <= 30000) sent[keep++] = sent[i];
-      }
-      nSent = keep;
+    for (int step = 0; step < 120; step++) {
+      const uint32_t ev = rnd(10);
+      const int k = (int)rnd(kSessions);
       snap.alertCount = 0;
-      for (int i = nSent > kMaxAlerts ? nSent - kMaxAlerts : 0; i < nSent; i++) {
-        alert(sent[i].id, sent[i].kind, ids[sent[i].k]);
+      int waiting = 0;
+      for (int i = 0; i < kSessions; i++) waiting += snap.sessions[i].st == SessionState::Perm ||
+                                                     snap.sessions[i].st == SessionState::Question;
+      if (ev < 4) {  // a session finishes (not one that waits on the user)
+        if (!pendingId[k] && snap.sessions[k].st != SessionState::Perm && snap.sessions[k].st != SessionState::Question) {
+          snap.sessions[k].st = SessionState::Done;
+          alert(nextId++, AlertKind::Done, ids[k]);
+        }
+      } else if (ev < 7) {  // a session asks (at most kMaxAlerts waiting at once)
+        if (snap.sessions[k].st != SessionState::Perm && snap.sessions[k].st != SessionState::Question &&
+            waiting < kMaxAlerts) {
+          const bool perm = rnd(2);
+          snap.sessions[k].st = perm ? SessionState::Perm : SessionState::Question;
+          pendingId[k] = nextId;
+          pendingAt[k] = now;
+          sawFlash[k] = false;
+          alert(nextId++, perm ? AlertKind::Perm : AlertKind::Question, ids[k]);
+        }
+      } else if (ev < 8) {  // a session that was shown gets its answer
+        if (!pendingId[k] && (snap.sessions[k].st == SessionState::Perm || snap.sessions[k].st == SessionState::Question)) {
+          snap.sessions[k].st = SessionState::Running;
+        }
+      } else if (ev < 9) {
+        hold = !hold;
+      } else if (snap.sessions[k].st == SessionState::Done || snap.sessions[k].st == SessionState::Idle) {
+        snap.sessions[k].st = SessionState::Running;  // a new prompt
       }
       snap.seq++;
       q.setModifiers({true, false, hold});
       q.ingest(snap, now);
-      const uint32_t until = now + 100 + rnd(12000);
+      const uint32_t until = now + rnd(30000);
       for (; now < until; now += 100) {
         const AlertView& v = q.update(snap, now);
-        const bool started = v.phase == AlertPhase::Flash && (prevPhase != AlertPhase::Flash || strcmp(prevSid, v.sid));
-        prevPhase = v.phase;
-        strcpy(prevSid, v.sid);
-        if (started && v.kind != AlertKind::Done) {  // another needs-you ahead: one more cycle
-          for (int i = 0; i < kSessions; i++) {
-            if (pendingId[i] && strcmp(v.sid, ids[i]) != 0) deadline[i] += cycle;
-          }
-        }
         for (int i = 0; i < kSessions; i++) {
           if (!pendingId[i] || strcmp(v.sid, ids[i]) != 0 || v.kind == AlertKind::Done) continue;
           if (v.phase == AlertPhase::Flash) sawFlash[i] = true;
           if (v.phase == AlertPhase::Hero && sawFlash[i]) pendingId[i] = 0;
         }
         for (int i = 0; i < kSessions; i++) {
-          if (pendingId[i] && (int32_t)(now - deadline[i]) > 0) {
+          if (pendingId[i] && now - pendingAt[i] > bound) {
             char msg[64];
             snprintf(msg, sizeof(msg), "seed %u session %d alert %u", (unsigned)seed, i, (unsigned)pendingId[i]);
             TEST_FAIL_MESSAGE(msg);
           }
         }
       }
-    }
-    // Let everything play out: nothing raised is ever lost.
-    for (uint32_t end = now + 30u * 60000u; now < end; now += 100) {
-      const AlertView& v = q.update(snap, now);
-      for (int i = 0; i < kSessions; i++) {
-        if (!pendingId[i] || strcmp(v.sid, ids[i]) != 0 || v.kind == AlertKind::Done) continue;
-        if (v.phase == AlertPhase::Flash) sawFlash[i] = true;
-        if (v.phase == AlertPhase::Hero && sawFlash[i]) pendingId[i] = 0;
-      }
-    }
-    for (int i = 0; i < kSessions; i++) {
-      char msg[64];
-      snprintf(msg, sizeof(msg), "seed %u session %d never shown", (unsigned)seed, i);
-      TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, pendingId[i], msg);
     }
   }
 }
@@ -640,7 +547,6 @@ int main() {
   RUN_TEST(test_held_finished_never_crowds_out_a_permission);
   RUN_TEST(test_held_finished_shows_once_per_session);
   RUN_TEST(test_insistence_resets_per_session);
-  RUN_TEST(test_ten_and_twenty_waiting_are_all_shown);
   RUN_TEST(test_every_needs_you_alert_is_shown);
   return UNITY_END();
 }

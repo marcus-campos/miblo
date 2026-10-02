@@ -58,9 +58,14 @@ struct Config {
   // ---- Daily life (focus, wellness, end of day...): everything that nags is off by default ----
   bool focusQuiet = true;        // during focus only "needs you" alerts; "finished" waits for the break
   bool insist = true;            // a long wait makes the reminder stronger (miblo_alerts.h)
-  uint8_t breakAfterMin = 0;     // suggest a break after this much continuous work: 0, 60, 90, 120
-  uint8_t waterMin = 0;          // drink water every N minutes of the work hours: 0, 60, 90
+  // Wellness timings, free values (the page steps them by 5). Before 1.12 breakAfterMin was only
+  // 0/60/90/120 and waterMin 0/60/90: flash keeps those for older firmware (configToStored).
+  uint8_t breakAfterMin = 0;     // suggest a break after this much continuous work: 0 (off) or 15..240
+  uint8_t waterMin = 0;          // drink water every N minutes of the work hours: 0 (off) or 15..240
   bool eyes = false;             // 20-20-20 eye rest
+  uint8_t breakLenMin = 5;       // the break the nudge suggests ("How about a 5 min break?"), 1..30
+  uint8_t eyesEveryMin = 20;     // eye rest every N minutes of continuous work, 10..60
+  uint8_t eyesSec = 20;          // how long the eye rest nudge stays (looking far away), 10..60 s
   bool endOfDay = false;         // the day's summary at workTo on work days
   uint16_t workFrom = 9 * 60;    // work hours (local minute of the day), workFrom < workTo
   uint16_t workTo = 18 * 60;
@@ -79,7 +84,9 @@ constexpr uint8_t kMascotStyles = 4;
 // settings POST from the page or the plugin, and the page's copy. Too small and the saved config
 // fails to load, which resets every setting: the worst case (every string at its byte limit)
 // must stay within 2/3 of it (test_stored_config_fits_on_the_gadget). A transient allocation.
-constexpr size_t kConfigJsonCapacity = 2304;  // 1536 before the daily-life settings (worst case ~1.4 KB)
+// Older firmware reads this firmware's saved config into its own (2304 before 1.12): the worst
+// case (~1.6 KB) must stay under that too, or a downgrade would lose every setting.
+constexpr size_t kConfigJsonCapacity = 2560;  // 2304 before the wellness timings (1536 before daily life)
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.
@@ -90,9 +97,16 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
 void configToJson(const Config& cfg, JsonObject out, bool includePrivate = true);
 // What goes to flash: configToJson plus, in automatic language mode, the negotiated language
 // ("langAuto"), so the screen keeps speaking it after a reboot (configToJson's "lang" is "" then).
+// A break or water interval firmware before 1.12 rejects (anything but 0/60/90/120 and 0/60/90;
+// a rejected field there resets every setting) is stored as the nearest of those, and exactly
+// under "breakAfterExact" / "waterExact", which older firmware ignores.
 void configToStored(const Config& cfg, JsonObject out);
-// After applyConfigPatch on a stored config: restores the automatic-mode language from "langAuto".
-void restoreStoredLang(Config& cfg, JsonObjectConst stored);
+// After applyConfigPatch on a stored config: restores the automatic-mode language from
+// "langAuto" and the exact break and water intervals (when they still match the stored choice).
+void restoreStored(Config& cfg, JsonObjectConst stored);
+// The nearest interval firmware before 1.12 accepts (0 stays 0).
+uint8_t legacyBreakAfterMin(uint8_t minutes);
+uint8_t legacyWaterMin(uint8_t minutes);
 AlertTiming alertTiming(const Config& cfg);
 // "MM-DD" (a real day of the year, 02-29 included) -> month 1..12 and day 1..31.
 bool parseMonthDay(const char* s, uint8_t& month, uint8_t& day);

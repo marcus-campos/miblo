@@ -647,7 +647,8 @@ static const char kSetJs[] PROGMEM =
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
     "'nightBrightness','blueFilter','blueFrom','blueTo','blueStrength','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
-    "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','focusQuiet','endOfDay','weekly','workFrom','workTo',"
+    "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','breakLenMin','eyesEveryMin','eyesSec','focusQuiet',"
+    "'endOfDay','weekly','workFrom','workTo',"
     "'tz2','tz2Label','deskQr']){let v=val(k);if(k==='tz'&&!v||k==='tz2'&&!$('tz2').dataset.f)continue;"
     // A select whose values are numbers (mascot, delays, levels…) sends a number.
     "if($(k).tagName==='SELECT'&&/^\\d+$/.test(v))v=Number(v);b[k]=v;}"
@@ -706,7 +707,8 @@ static void toggle(String& out, Lang lang, S id, const __FlashStringHelper* key)
 }
 
 // A labelled number input (wrapped in a <div> so two of them sit side by side in a .g grid).
-static void number(String& out, Lang lang, S id, const __FlashStringHelper* key, int lo, int hi) {
+// `step` > 1: the arrows move by it (any value in range is still accepted by the gadget).
+static void number(String& out, Lang lang, S id, const __FlashStringHelper* key, int lo, int hi, int step = 1) {
   out += F("<div>");
   label(out, lang, id, key);
   out += F("<input type=\"number\" inputmode=\"numeric\" id=\"");
@@ -715,6 +717,10 @@ static void number(String& out, Lang lang, S id, const __FlashStringHelper* key,
   out += lo;
   out += F("\" max=\"");
   out += hi;
+  if (step > 1) {
+    out += F("\" step=\"");
+    out += step;
+  }
   out += F("\"></div>");
 }
 
@@ -849,16 +855,18 @@ static void settingsPage() {
   out += F("<div class=\"c\"><h2>");
   text(out, lang, S::WebSecWellness);
   out += F("</h2>");
-  label(out, lang, S::WebBreakAfter, F("breakAfterMin"));
-  out += F("<select id=\"breakAfterMin\">");
-  option(out, lang, F("0"), S::WebBlueOff);
-  out += F("<option value=\"60\">60 min</option><option value=\"90\">90 min</option>"
-           "<option value=\"120\">120 min</option></select>");
-  label(out, lang, S::WebWater, F("waterMin"));
-  out += F("<select id=\"waterMin\">");
-  option(out, lang, F("0"), S::WebBlueOff);
-  out += F("<option value=\"60\">60 min</option><option value=\"90\">90 min</option></select>");
+  // Free values in minutes (0 = off; the gadget takes 15..240, the arrows step by 5), each with
+  // its details only while it is on.
+  number(out, lang, S::WebBreakAfter, F("breakAfterMin"), 0, 240, 5);
+  out += F("<div data-if=\"breakAfterMin\">");
+  number(out, lang, S::WebBreakLen, F("breakLenMin"), 1, 30);
+  out += F("</div>");
+  number(out, lang, S::WebWater, F("waterMin"), 0, 240, 5);
   toggle(out, lang, S::WebEyes, F("eyes"));
+  out += F("<div class=\"g\" data-if=\"eyes\">");
+  number(out, lang, S::WebEyesEvery, F("eyesEveryMin"), 10, 60, 5);
+  number(out, lang, S::WebEyesSec, F("eyesSec"), 10, 60, 5);
+  out += F("</div>");
   toggle(out, lang, S::WebFocusQuiet, F("focusQuiet"));
   toggle(out, lang, S::WebEndOfDay, F("endOfDay"));
   toggle(out, lang, S::WebWeekly, F("weekly"));

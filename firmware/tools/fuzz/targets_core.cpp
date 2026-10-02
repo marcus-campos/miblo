@@ -135,7 +135,7 @@ const char* const kConfigSeeds[] = {
     R"({"name":"Desk","night":true,"nightFrom":1320,"nightTo":420,"nightBrightness":5,"blueFilter":true,"blueFrom":1200,"blueTo":360,"blueLevel":2,"blueStrength":40})",
     R"({"owner":"Marcus","birthday":"03-14","born":"2026-01-02","friends":false,"insist":false,"mascot":3,"sleepMin":0,"petMin":30})",
     R"({"rotate":true,"rotateEverySec":60,"rotateShowSec":10,"workFrom":540,"workTo":1080,"workDays":62,"fanfareMin":10})",
-    R"({"tz":"<-03>3","tz2":"Asia/Tokyo","tz2Label":"Tokyo 東京","deskQr":true,"waterMin":45,"breakAfterMin":50,"eyes":true,"endOfDay":true,"weekly":true,"focusQuiet":true,"frame":true,"friendsSide":1,"langAuto":true})",
+    R"({"tz":"<-03>3","tz2":"Asia/Tokyo","tz2Label":"Tokyo 東京","deskQr":true,"waterMin":45,"breakAfterMin":50,"breakLenMin":12,"eyesEveryMin":35,"eyesSec":40,"eyes":true,"endOfDay":true,"weekly":true,"focusQuiet":true,"frame":true,"friendsSide":1,"langAuto":true})",
     R"({"tz":"EST5EDT,M3.2.0,M11.1.0","reminderMin":0,"flashBlinks":5,"discreet":true,"heroDoneSec":2})",
     "{\"tz2\":\"Asia/Tokyo\",\"tz2Label\":\"Tokyo\"}\n{\"tz2\":\"\"}\n{\"tz\":\"Europe/Lisbon\",\"lang\":\"pt-PT\"}\n{\"owner\":\"Ana\",\"birthday\":\"02-29\"}",
     "{\"mode\":\"sessions\",\"brightness\":300}\n{\"insist\":false,\"workDays\":127}\n{\"tz\":\"Nowhere/City\"}",
@@ -147,7 +147,8 @@ const char* const kConfigDict[] = {
     "\"blueLevel\":", "\"blueStrength\":", "\"rotate\":", "\"rotateEverySec\":", "\"rotateShowSec\":", "\"mascot\":", "\"sleepMin\":",
     "\"petMin\":", "\"owner\":", "\"birthday\":", "\"born\":", "\"friends\":", "\"friendsSide\":", "\"insist\":",
     "\"workFrom\":", "\"workTo\":", "\"workDays\":", "\"fanfareMin\":", "\"tz2\":", "\"tz2Label\":", "\"deskQr\":",
-    "\"waterMin\":", "\"breakAfterMin\":", "\"eyes\":", "\"endOfDay\":", "\"weekly\":", "\"focusQuiet\":",
+    "\"waterMin\":", "\"breakAfterMin\":", "\"eyes\":", "\"breakLenMin\":", "\"eyesEveryMin\":", "\"eyesSec\":",
+    "\"breakAfterExact\":", "\"waterExact\":", "\"endOfDay\":", "\"weekly\":", "\"focusQuiet\":",
     "\"frame\":", "\"overview\"", "\"sessions\"", "\"limits\"", "\"UTC0\"", "\"Europe/Lisbon\"", "\"zh\"",
     "\"pt-PT\"", "\"02-29\"", "\"2024-02-29\"", "\"13-01\"", "}\n{", nullptr};
 
@@ -174,7 +175,7 @@ bool loadConfigLike(const char* bytes, size_t n, Config& cfg) {
     else return false;
     loaded = Config();
   }
-  restoreStoredLang(loaded, doc.as<JsonObjectConst>());
+  restoreStored(loaded, doc.as<JsonObjectConst>());
   cfg = loaded;
   return true;
 }

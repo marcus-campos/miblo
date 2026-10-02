@@ -247,7 +247,7 @@ static const char kEn[] MIBLO_ROM =
     "Break time\0"  // FocusBreak
     "Back to focus?\0"  // FocusBack
     "Long break\0"  // FocusLongBreak
-    "How about a 5 min break?\0"  // NudgeBreak
+    "How about a %u min break?\0"  // NudgeBreak
     "Time to drink water\0"  // NudgeWater
     "Look far away\0"  // NudgeEyes
     "Have a good rest!\0"  // RestWell
@@ -267,9 +267,12 @@ static const char kEn[] MIBLO_ROM =
     "Here I am!\0"  // FindMe
     "Happy Programmer's Day!\0"  // HappyProgrammersDay
     "Wellness\0"  // WebSecWellness
-    "Break after long work\0"  // WebBreakAfter
-    "Drink water reminder\0"  // WebWater
+    "Break after long work (min, 0 = off)\0"  // WebBreakAfter
+    "Drink water every (min, 0 = off)\0"  // WebWater
     "Eye rest (20-20-20)\0"  // WebEyes
+    "Break length (min)\0"  // WebBreakLen
+    "Eye rest every (min)\0"  // WebEyesEvery
+    "Look away for (s)\0"  // WebEyesSec
     "Work hours\0"  // WebWorkHours
     "Work days\0"  // WebWorkDays
     "End of day summary\0"  // WebEndOfDay
@@ -520,7 +523,7 @@ static const char kPtBR[] MIBLO_ROM =
     "Hora da pausa\0"  // FocusBreak
     "De volta ao foco?\0"  // FocusBack
     "Pausa longa\0"  // FocusLongBreak
-    "Que tal uma pausa de 5 min?\0"  // NudgeBreak
+    "Que tal uma pausa de %u min?\0"  // NudgeBreak
     "Hora de beber água\0"  // NudgeWater
     "Olhe para longe\0"  // NudgeEyes
     "Bom descanso!\0"  // RestWell
@@ -540,9 +543,12 @@ static const char kPtBR[] MIBLO_ROM =
     "Estou aqui!\0"  // FindMe
     "Feliz dia do programador!\0"  // HappyProgrammersDay
     "Bem-estar\0"  // WebSecWellness
-    "Pausa depois de muito trabalho\0"  // WebBreakAfter
-    "Lembrete de água\0"  // WebWater
+    "Pausa depois de muito trabalho (min, 0 = desligado)\0"  // WebBreakAfter
+    "Beber água a cada (min, 0 = desligado)\0"  // WebWater
     "Descanso dos olhos (20-20-20)\0"  // WebEyes
+    "Duração da pausa (min)\0"  // WebBreakLen
+    "Descanso dos olhos a cada (min)\0"  // WebEyesEvery
+    "Olhar para longe por (s)\0"  // WebEyesSec
     "Horário de trabalho\0"  // WebWorkHours
     "Dias de trabalho\0"  // WebWorkDays
     "Resumo no fim do expediente\0"  // WebEndOfDay
@@ -793,7 +799,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Hora da pausa\0"  // FocusBreak
     "De volta ao foco?\0"  // FocusBack
     "Pausa longa\0"  // FocusLongBreak
-    "Que tal uma pausa de 5 min?\0"  // NudgeBreak
+    "Que tal uma pausa de %u min?\0"  // NudgeBreak
     "Hora de beber água\0"  // NudgeWater
     "Olhe para longe\0"  // NudgeEyes
     "Bom descanso!\0"  // RestWell
@@ -813,9 +819,12 @@ static const char kPtPT[] MIBLO_ROM =
     "Estou aqui!\0"  // FindMe
     "Feliz Dia do Programador!\0"  // HappyProgrammersDay
     "Bem-estar\0"  // WebSecWellness
-    "Pausa depois de muito trabalho\0"  // WebBreakAfter
-    "Lembrete para beber água\0"  // WebWater
+    "Pausa depois de muito trabalho (min, 0 = desligado)\0"  // WebBreakAfter
+    "Beber água a cada (min, 0 = desligado)\0"  // WebWater
     "Descanso dos olhos (20-20-20)\0"  // WebEyes
+    "Duração da pausa (min)\0"  // WebBreakLen
+    "Descanso dos olhos a cada (min)\0"  // WebEyesEvery
+    "Olhar para longe durante (s)\0"  // WebEyesSec
     "Horário de trabalho\0"  // WebWorkHours
     "Dias de trabalho\0"  // WebWorkDays
     "Resumo no fim do dia de trabalho\0"  // WebEndOfDay
@@ -1066,7 +1075,7 @@ static const char kEs[] MIBLO_ROM =
     "Hora del descanso\0"  // FocusBreak
     "¿Volvemos al foco?\0"  // FocusBack
     "Descanso largo\0"  // FocusLongBreak
-    "¿Qué tal un descanso de 5 min?\0"  // NudgeBreak
+    "¿Qué tal un descanso de %u min?\0"  // NudgeBreak
     "Hora de beber agua\0"  // NudgeWater
     "Mira a lo lejos\0"  // NudgeEyes
     "¡Buen descanso!\0"  // RestWell
@@ -1086,9 +1095,12 @@ static const char kEs[] MIBLO_ROM =
     "¡Aquí estoy!\0"  // FindMe
     "¡Feliz Día del Programador!\0"  // HappyProgrammersDay
     "Bienestar\0"  // WebSecWellness
-    "Pausa tras mucho trabajo\0"  // WebBreakAfter
-    "Recordatorio de agua\0"  // WebWater
+    "Pausa tras mucho trabajo (min, 0 = desactivado)\0"  // WebBreakAfter
+    "Beber agua cada (min, 0 = desactivado)\0"  // WebWater
     "Descanso visual (20-20-20)\0"  // WebEyes
+    "Duración de la pausa (min)\0"  // WebBreakLen
+    "Descanso visual cada (min)\0"  // WebEyesEvery
+    "Mirar a lo lejos durante (s)\0"  // WebEyesSec
     "Horario laboral\0"  // WebWorkHours
     "Días laborables\0"  // WebWorkDays
     "Resumen al final de la jornada\0"  // WebEndOfDay
@@ -1339,7 +1351,7 @@ static const char kFr[] MIBLO_ROM =
     "C'est la pause\0"  // FocusBreak
     "On s'y remet ?\0"  // FocusBack
     "Longue pause\0"  // FocusLongBreak
-    "Une pause de 5 min ?\0"  // NudgeBreak
+    "Une pause de %u min ?\0"  // NudgeBreak
     "Buvez un verre d'eau\0"  // NudgeWater
     "Regardez au loin\0"  // NudgeEyes
     "Bon repos !\0"  // RestWell
@@ -1359,9 +1371,12 @@ static const char kFr[] MIBLO_ROM =
     "Je suis là !\0"  // FindMe
     "Bonne fête des programmeurs !\0"  // HappyProgrammersDay
     "Bien-être\0"  // WebSecWellness
-    "Pause après un long travail\0"  // WebBreakAfter
-    "Rappel pour boire de l'eau\0"  // WebWater
+    "Pause après un long travail (min, 0 = désactivé)\0"  // WebBreakAfter
+    "Boire de l'eau toutes les (min, 0 = désactivé)\0"  // WebWater
     "Repos des yeux (20-20-20)\0"  // WebEyes
+    "Durée de la pause (min)\0"  // WebBreakLen
+    "Repos des yeux toutes les (min)\0"  // WebEyesEvery
+    "Regarder au loin pendant (s)\0"  // WebEyesSec
     "Heures de travail\0"  // WebWorkHours
     "Jours de travail\0"  // WebWorkDays
     "Résumé en fin de journée\0"  // WebEndOfDay
@@ -1612,7 +1627,7 @@ static const char kIt[] MIBLO_ROM =
     "Pausa\0"  // FocusBreak
     "Si torna al lavoro?\0"  // FocusBack
     "Pausa lunga\0"  // FocusLongBreak
-    "Che ne dici di 5 min di pausa?\0"  // NudgeBreak
+    "Che ne dici di %u min di pausa?\0"  // NudgeBreak
     "È ora di bere acqua\0"  // NudgeWater
     "Guarda lontano\0"  // NudgeEyes
     "Buon riposo!\0"  // RestWell
@@ -1632,9 +1647,12 @@ static const char kIt[] MIBLO_ROM =
     "Sono qui!\0"  // FindMe
     "Buona festa dei programmatori!\0"  // HappyProgrammersDay
     "Benessere\0"  // WebSecWellness
-    "Pausa dopo tanto lavoro\0"  // WebBreakAfter
-    "Promemoria per bere\0"  // WebWater
+    "Pausa dopo tanto lavoro (min, 0 = spento)\0"  // WebBreakAfter
+    "Bere acqua ogni (min, 0 = spento)\0"  // WebWater
     "Riposo degli occhi (20-20-20)\0"  // WebEyes
+    "Durata della pausa (min)\0"  // WebBreakLen
+    "Riposo degli occhi ogni (min)\0"  // WebEyesEvery
+    "Guardare lontano per (s)\0"  // WebEyesSec
     "Orario di lavoro\0"  // WebWorkHours
     "Giorni lavorativi\0"  // WebWorkDays
     "Riepilogo a fine giornata\0"  // WebEndOfDay
@@ -1885,7 +1903,7 @@ static const char kDe[] MIBLO_ROM =
     "Pausenzeit\0"  // FocusBreak
     "Zurück zum Fokus?\0"  // FocusBack
     "Lange Pause\0"  // FocusLongBreak
-    "Wie wär's mit 5 Min. Pause?\0"  // NudgeBreak
+    "Wie wär's mit %u Min. Pause?\0"  // NudgeBreak
     "Zeit, Wasser zu trinken\0"  // NudgeWater
     "Schau in die Ferne\0"  // NudgeEyes
     "Erhol dich gut!\0"  // RestWell
@@ -1905,9 +1923,12 @@ static const char kDe[] MIBLO_ROM =
     "Hier bin ich!\0"  // FindMe
     "Frohen Programmierertag!\0"  // HappyProgrammersDay
     "Wohlbefinden\0"  // WebSecWellness
-    "Pause nach langer Arbeit\0"  // WebBreakAfter
-    "Trink-Erinnerung\0"  // WebWater
+    "Pause nach langer Arbeit (min, 0 = aus)\0"  // WebBreakAfter
+    "Wasser trinken alle (min, 0 = aus)\0"  // WebWater
     "Augenpause (20-20-20)\0"  // WebEyes
+    "Pausenlänge (min)\0"  // WebBreakLen
+    "Augenpause alle (min)\0"  // WebEyesEvery
+    "In die Ferne schauen für (s)\0"  // WebEyesSec
     "Arbeitszeit\0"  // WebWorkHours
     "Arbeitstage\0"  // WebWorkDays
     "Zusammenfassung zum Feierabend\0"  // WebEndOfDay
@@ -2158,7 +2179,7 @@ static const char kRu[] MIBLO_ROM =
     "Время перерыва\0"  // FocusBreak
     "Снова за работу?\0"  // FocusBack
     "Долгий перерыв\0"  // FocusLongBreak
-    "Может, перерыв на 5 минут?\0"  // NudgeBreak
+    "Может, перерыв на %u мин?\0"  // NudgeBreak
     "Пора выпить воды\0"  // NudgeWater
     "Посмотрите вдаль\0"  // NudgeEyes
     "Хорошего отдыха!\0"  // RestWell
@@ -2178,9 +2199,12 @@ static const char kRu[] MIBLO_ROM =
     "Я здесь!\0"  // FindMe
     "С Днём программиста!\0"  // HappyProgrammersDay
     "Самочувствие\0"  // WebSecWellness
-    "Перерыв после долгой работы\0"  // WebBreakAfter
-    "Напоминание о воде\0"  // WebWater
+    "Перерыв после долгой работы (мин, 0 = выкл.)\0"  // WebBreakAfter
+    "Пить воду каждые (мин, 0 = выкл.)\0"  // WebWater
     "Отдых для глаз (20-20-20)\0"  // WebEyes
+    "Длина перерыва (мин)\0"  // WebBreakLen
+    "Отдых для глаз каждые (мин)\0"  // WebEyesEvery
+    "Смотреть вдаль (с)\0"  // WebEyesSec
     "Рабочие часы\0"  // WebWorkHours
     "Рабочие дни\0"  // WebWorkDays
     "Итоги в конце рабочего дня\0"  // WebEndOfDay
@@ -2431,7 +2455,7 @@ static const char kZh[] MIBLO_ROM =
     "休息时间\0"  // FocusBreak
     "继续专注吗?\0"  // FocusBack
     "长休息\0"  // FocusLongBreak
-    "休息 5 分钟吧?\0"  // NudgeBreak
+    "休息 %u 分钟吧?\0"  // NudgeBreak
     "该喝水了\0"  // NudgeWater
     "看看远处\0"  // NudgeEyes
     "好好休息!\0"  // RestWell
@@ -2451,9 +2475,12 @@ static const char kZh[] MIBLO_ROM =
     "我在这里!\0"  // FindMe
     "程序员节快乐!\0"  // HappyProgrammersDay
     "健康\0"  // WebSecWellness
-    "长时间工作后休息\0"  // WebBreakAfter
-    "喝水提醒\0"  // WebWater
+    "长时间工作后休息（分钟，0 = 关闭）\0"  // WebBreakAfter
+    "喝水间隔（分钟，0 = 关闭）\0"  // WebWater
     "护眼休息 (20-20-20)\0"  // WebEyes
+    "休息时长（分钟）\0"  // WebBreakLen
+    "护眼间隔（分钟）\0"  // WebEyesEvery
+    "远眺时长（秒）\0"  // WebEyesSec
     "工作时间\0"  // WebWorkHours
     "工作日\0"  // WebWorkDays
     "下班时的总结\0"  // WebEndOfDay

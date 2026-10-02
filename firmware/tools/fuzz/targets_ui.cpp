@@ -164,7 +164,7 @@ void fuzzScreens(const uint8_t* d, size_t n) {
   screens::focus(lang, clk, (FocusPhase)(knobs % 5), (uint8_t)(s.more & 0xFF), (uint8_t)(s.more >> 8), s.todayWorkSec,
                  s.week.workSec, s.now, ms);
   screen();
-  screens::nudge(lang, (Nudge)(knobs % 4), ms);
+  screens::nudge(lang, (Nudge)(knobs % 4), ms, (uint8_t)(1 + knobs / 4 % 30));
   screen();
   screens::timer(lang, clk, s.todayWorkSec, s.week.workSec, ms);
   screen();

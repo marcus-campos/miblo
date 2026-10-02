@@ -6,9 +6,9 @@ namespace shots {
 
 void renderDayRhythm(miblo::Lang L) {
   using miblo::Nudge;
-  { Shot s; screens::nudge(L, Nudge::Break, 0); save(s, "54-nudge-break"); }
-  { Shot s; screens::nudge(L, Nudge::Water, 0); save(s, "54-nudge-water"); }
-  { Shot s; screens::nudge(L, Nudge::Eyes, 3000); save(s, "54-nudge-eyes"); }
+  { Shot s; screens::nudge(L, Nudge::Break, 0, 5); save(s, "54-nudge-break"); }
+  { Shot s; screens::nudge(L, Nudge::Water, 0, 5); save(s, "54-nudge-water"); }
+  { Shot s; screens::nudge(L, Nudge::Eyes, 3000, 5); save(s, "54-nudge-eyes"); }
   idle();
   snap.todayTurns = 47;
   snap.todayWorkSec = 3 * 3600 + 12 * 60;

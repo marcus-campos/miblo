@@ -120,6 +120,49 @@ static void test_long_stall_fires_once() {
   TEST_ASSERT_EQUAL(miblo::Nudge::None, w.showing(after));
 }
 
+// Free timings: a break after 45 min, water every 25 min, eye rest every 35 min shown for 40 s.
+static void test_custom_timings() {
+  miblo::WellnessClock w;
+  miblo::Config c = wellCfg(45, 0, false);
+  uint32_t t = 0;
+  for (int i = 0; i < 45; i++, t += M) {
+    w.update(t, c, true, false, true);
+    TEST_ASSERT_EQUAL(miblo::Nudge::None, w.showing(t));
+  }
+  w.update(t, c, true, false, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::Break, w.showing(t));
+
+  miblo::WellnessClock water;
+  c = wellCfg(0, 25, false);
+  t = 0;
+  for (int i = 0; i < 25; i++, t += M) {
+    water.update(t, c, false, true, true);
+    TEST_ASSERT_EQUAL(miblo::Nudge::None, water.showing(t));
+  }
+  water.update(t, c, false, true, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::Water, water.showing(t));
+
+  miblo::WellnessClock eyes;
+  c = wellCfg(0, 0, true);
+  c.eyesEveryMin = 35;
+  c.eyesSec = 40;
+  t = 0;
+  for (int i = 0; i < 35; i++, t += M) {
+    eyes.update(t, c, true, false, true);
+    TEST_ASSERT_EQUAL(miblo::Nudge::None, eyes.showing(t));
+  }
+  eyes.update(t, c, true, false, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::Eyes, eyes.showing(t));
+  eyes.update(t + 39999, c, true, false, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::Eyes, eyes.showing(t + 39999));
+  // Changing the duration while it shows keeps the one it started with.
+  c.eyesSec = 10;
+  eyes.update(t + 20000, c, true, false, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::Eyes, eyes.showing(t + 20000));
+  eyes.update(t + 40000, c, true, false, true);
+  TEST_ASSERT_EQUAL(miblo::Nudge::None, eyes.showing(t + 40000));
+}
+
 // ---- EndOfDay, work hours, WeeklyRecap ----
 
 static uint32_t key(uint16_t y, uint8_t m, uint8_t d) { return y * 400u + m * 32u + d; }
@@ -382,7 +425,7 @@ static void test_rhythm_screens_fit_everywhere() {
       const miblo::Nudge kinds[] = {miblo::Nudge::Break, miblo::Nudge::Water, miblo::Nudge::Eyes};
       for (miblo::Nudge k : kinds) {
         screens::reset();
-        for (uint32_t ms = 0; ms < 20000; ms += 700) screens::nudge(lang, k, ms);
+        for (uint32_t ms = 0; ms < 20000; ms += 700) screens::nudge(lang, k, ms, ms < 10000 ? 5 : 30);
       }
       screens::reset();
       for (uint32_t ms = 0; ms < 9000; ms += 700) screens::dayEnd(lang, s, kWideOwner, ms);
@@ -401,16 +444,20 @@ static void test_nudge_says_what_to_do() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
   screens::reset();
-  screens::nudge(miblo::Lang::En, miblo::Nudge::Water, 0);
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Water, 0, 5);
   TEST_ASSERT_TRUE(fc.drew("drink water"));
   screens::reset();
   fc.clearLog();
-  screens::nudge(miblo::Lang::En, miblo::Nudge::Eyes, 0);
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Eyes, 0, 5);
   TEST_ASSERT_TRUE(fc.drew("Look far away"));
   screens::reset();
   fc.clearLog();
-  screens::nudge(miblo::Lang::En, miblo::Nudge::Break, 0);
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Break, 0, 5);
   TEST_ASSERT_TRUE(fc.drew("5 min"));
+  // The break length the person chose, redrawn when it changes.
+  fc.clearLog();
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Break, 0, 15);
+  TEST_ASSERT_TRUE(fc.drew("15 min"));
 }
 
 static void test_day_end_content() {
@@ -461,6 +508,7 @@ int main(int, char**) {
   RUN_TEST(test_blocked_nudge_shows_when_allowed_once);
   RUN_TEST(test_priority_break_then_water_and_break_restarts_eyes);
   RUN_TEST(test_long_stall_fires_once);
+  RUN_TEST(test_custom_timings);
   RUN_TEST(test_end_of_day_once_after_running_session);
   RUN_TEST(test_end_of_day_rules);
   RUN_TEST(test_end_of_day_waits_for_allowed_and_wraps);

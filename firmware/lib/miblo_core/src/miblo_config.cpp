@@ -85,6 +85,15 @@ static bool oneOf(JsonVariantConst v, uint8_t& out, int a, int b, int c, int d =
   return true;
 }
 
+// 0 (off) or lo..hi.
+static bool offOrIn(JsonVariantConst v, int lo, int hi, uint8_t& out) {
+  if (v.is<int>() && v.as<int>() == 0) {
+    out = 0;
+    return true;
+  }
+  return intIn(v, lo, hi, out);
+}
+
 // A plain bool field.
 static bool boolField(JsonVariantConst v, bool& out) {
   if (!v.is<bool>()) return false;
@@ -218,9 +227,15 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
     } else if (strcmp(k, "weekly") == 0) {
       ok = boolField(v, next.weekly);
     } else if (strcmp(k, "breakAfterMin") == 0) {
-      ok = oneOf(v, next.breakAfterMin, 0, 60, 90, 120);
+      ok = offOrIn(v, 15, 240, next.breakAfterMin);
     } else if (strcmp(k, "waterMin") == 0) {
-      ok = oneOf(v, next.waterMin, 0, 60, 90);
+      ok = offOrIn(v, 15, 240, next.waterMin);
+    } else if (strcmp(k, "breakLenMin") == 0) {
+      ok = intIn(v, 1, 30, next.breakLenMin);
+    } else if (strcmp(k, "eyesEveryMin") == 0) {
+      ok = intIn(v, 10, 60, next.eyesEveryMin);
+    } else if (strcmp(k, "eyesSec") == 0) {
+      ok = intIn(v, 10, 60, next.eyesSec);
     } else if (strcmp(k, "fanfareMin") == 0) {
       ok = oneOf(v, next.fanfareMin, 0, 3, 5, 10);
     } else if (strcmp(k, "workFrom") == 0) {
@@ -300,6 +315,9 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["breakAfterMin"] = cfg.breakAfterMin;
   out["waterMin"] = cfg.waterMin;
   out["eyes"] = cfg.eyes;
+  out["breakLenMin"] = cfg.breakLenMin;
+  out["eyesEveryMin"] = cfg.eyesEveryMin;
+  out["eyesSec"] = cfg.eyesSec;
   out["endOfDay"] = cfg.endOfDay;
   out["workFrom"] = cfg.workFrom;
   out["workTo"] = cfg.workTo;
@@ -312,12 +330,34 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["weekly"] = cfg.weekly;
 }
 
+uint8_t legacyBreakAfterMin(uint8_t m) { return m == 0 ? 0 : m < 75 ? 60 : m < 105 ? 90 : 120; }
+
+uint8_t legacyWaterMin(uint8_t m) { return m == 0 ? 0 : m < 75 ? 60 : 90; }
+
 void configToStored(const Config& cfg, JsonObject out) {
   configToJson(cfg, out);
   if (!cfg.langSet) out["langAuto"] = langCode(cfg.lang);
+  const uint8_t breakOld = legacyBreakAfterMin(cfg.breakAfterMin), waterOld = legacyWaterMin(cfg.waterMin);
+  if (breakOld != cfg.breakAfterMin) {
+    out["breakAfterMin"] = breakOld;
+    out["breakAfterExact"] = cfg.breakAfterMin;
+  }
+  if (waterOld != cfg.waterMin) {
+    out["waterMin"] = waterOld;
+    out["waterExact"] = cfg.waterMin;
+  }
 }
 
-void restoreStoredLang(Config& cfg, JsonObjectConst stored) {
+// An exact interval counts only while the stored old choice is still its nearest one (older
+// firmware drops the key when it saves, but stays safe if one ever kept it).
+static void restoreExact(JsonVariantConst exact, uint8_t& field, uint8_t (*legacy)(uint8_t)) {
+  uint8_t m;
+  if (intIn(exact, 15, 240, m) && legacy(m) == field) field = m;
+}
+
+void restoreStored(Config& cfg, JsonObjectConst stored) {
+  restoreExact(stored["breakAfterExact"], cfg.breakAfterMin, legacyBreakAfterMin);
+  restoreExact(stored["waterExact"], cfg.waterMin, legacyWaterMin);
   if (cfg.langSet) return;
   Lang l;
   if (langFromCode(stored["langAuto"] | "", l)) cfg.lang = l;

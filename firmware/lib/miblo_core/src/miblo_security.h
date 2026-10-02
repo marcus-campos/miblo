@@ -17,9 +17,28 @@ bool bearerToken(const char* header, char* out, size_t cap);
 void tokenTag(const char* token, char out[9]);
 // Constant-time comparison (doesn't leak the length of the matching prefix).
 bool constantTimeEquals(const char* a, const char* b);
-// Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
-// first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
-bool findContentLength(const char* headers, size_t len, uint32_t& out);
+// A request's Content-Length, judged exactly as ESP8266WebServer will read it, or refused.
+//
+// The server takes the LAST Content-Length line, String::trim()s its value (isspace: also \v and
+// \f) and converts it with toInt() (atol) into a uint32_t: "-1" becomes 0xFFFFFFFF, "+60000"
+// 60000, "1e3" 1. Any scanner that reads the value differently lets a request past the body
+// guards (size, heap, the read-ahead's body wait) and into the server's blocking, unbounded body
+// read. So the only values accepted are the ones where every reading agrees:
+//   Ok    every Content-Length line holds, after the server's trim, 1..10 ASCII digits worth at
+//         most 2^31 - 1, and they all hold the same number (`out`).
+//   Bad   one of them does not (sign, inner blank, empty, hex, exponent, overflow, other bytes), or
+//         two disagree: the request must be refused (400) before the server reads it.
+//   None  no Content-Length line.
+// Lines are split at '\n', a value ends at its first '\r' (the server reads a line up to '\r',
+// then skips to '\n': each of its header lines starts where one of these does, and a value that
+// is plain digits here is the same number to atol there). Case-insensitive name, no blank before
+// the ':' (as the server's equalsIgnoreCase).
+enum class LengthVerdict : uint8_t { None, Ok, Bad };
+// Over the lines in p[0..end) (unterminated last line ignored).
+LengthVerdict scanContentLength(const char* p, size_t end, uint32_t& out);
+// Over raw header bytes starting at the first header line (not NUL-terminated), up to the blank
+// line that ends the block (or the last complete line in `len` when it has not all arrived).
+LengthVerdict readContentLength(const char* headers, size_t len, uint32_t& out);
 
 // What ESP8266WebServer will make of a request's header block, judged from raw header bytes (the
 // first TCP segment, or the block read ahead: miblo_headers.h). The scan follows the server's own reading

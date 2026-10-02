@@ -102,6 +102,7 @@ enum class RequestReadiness : uint8_t {
   BodyTimeout,  // a small body did not arrive within the wait: refuse (408)
   Closed,       // the peer closed before sending it all
   NoMemory,     // no heap for the buffer: refuse (503 busy, which the plugin retries)
+  BadLength,    // a Content-Length the server would read differently (miblo::readContentLength): 400
 };
 // A body larger than this is not held back: the TCP window (lwIP low memory: 4 x 536 B) cannot
 // hold more unread, so waiting for it could never end. The server reads it with its own 5 s wait
@@ -126,9 +127,11 @@ RequestReadiness pollRequest(HeaderBuffer& buf, ByteSource& src, uint32_t bodyWa
 // use pollRequest), else as pollRequest. The usual request never touches the heap.
 RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32_t bodyWaitMs);
 
-// The body length of a complete header block (the largest Content-Length), 0 when the block has
-// not all arrived or has none.
+// The body length of a complete header block (its Content-Length, see miblo::scanContentLength),
+// 0 when the block has not all arrived or has none, SIZE_MAX when it is Bad.
 size_t requestBodyLength(const char* p, size_t n);
+// The Content-Length verdict of a complete header block (None while it has not all arrived).
+LengthVerdict requestLengthVerdict(const char* p, size_t n);
 // The value of header `lowerName` (lowercase, without the colon) in a complete header block, the
 // last one if repeated (as the server reads it), trimmed, into `out`. False if absent, if the
 // block is incomplete, or if the value does not fit (never cut).

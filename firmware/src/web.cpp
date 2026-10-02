@@ -1499,6 +1499,12 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
     if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
     verdict = client->aheadVerdict();
   }
+  // H1: a Content-Length the server would read differently from what the guards below judge
+  // ("-1", "+60000", duplicates that disagree) is refused before the server reads anything. The
+  // read-ahead (lookahead_client.h) already refuses it; this is the same rule at the hook.
+  uint32_t len = 0;
+  const miblo::LengthVerdict lengthVerdict = miblo::readContentLength(client->peekBuffer(), client->peekAvailable(), len);
+  if (lengthVerdict == miblo::LengthVerdict::Bad) return refuse(client, kBad, PSTR("{\"error\":\"bad length\"}"));
   const uint32_t now = millis();
   const bool multipart =
       verdict == miblo::HeaderVerdict::Multipart || verdict == miblo::HeaderVerdict::BadMultipart;
@@ -1541,8 +1547,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
   }
   if (refused != WebServerT::CLIENT_REQUEST_CAN_CONTINUE) return refused;
   // The header block is now complete in peekBuffer() (in place, or the read-ahead bytes).
-  uint32_t len = 0;
-  const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);
+  const bool haveLen = lengthVerdict == miblo::LengthVerdict::Ok;
   if (haveLen && len > kMaxPostBody) {
     return refuse(client, PSTR("413 Payload Too Large"), PSTR("{\"error\":\"too large\"}"));
   }

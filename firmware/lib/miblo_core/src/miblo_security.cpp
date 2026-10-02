@@ -52,38 +52,57 @@ bool constantTimeEquals(const char* a, const char* b) {
 
 static char lower(char c) { return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c; }
 
-bool findContentLength(const char* headers, size_t len, uint32_t& out) {
-  static const char kName[] MIBLO_ROM = "content-length:";
-  const size_t nameLen = sizeof(kName) - 1;
-  bool found = false;
-  size_t i = 0;
-  while (i < len) {
-    if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
-    bool match = len - i > nameLen;
-    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == (char)mibloRomByte(kName + k);
-    if (match) {
-      size_t j = i + nameLen;
-      while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
-      uint64_t v = 0;
-      size_t digits = 0;
-      while (j < len && headers[j] >= '0' && headers[j] <= '9') {
-        v = v * 10 + (uint64_t)(headers[j] - '0');
-        if (v > 0xFFFFFFFFull) v = 0xFFFFFFFFull;  // saturate: "huge" is all callers need
-        j++;
-        digits++;
-      }
-      if (digits == 0) return false;  // malformed: let the server's own parser deal with it
-      if (!found || (uint32_t)v > out) out = (uint32_t)v;  // duplicates: keep the largest
-      found = true;
-    }
-    while (i < len && headers[i] != '\n') i++;  // next line
-    i++;
-  }
-  return found;
-}
-
 // The characters String::trim() removes (isspace in the C locale).
 static bool blank(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; }
+
+LengthVerdict scanContentLength(const char* p, size_t end, uint32_t& out) {
+  static const char kName[] MIBLO_ROM = "content-length:";
+  const size_t nameLen = sizeof(kName) - 1;
+  constexpr uint32_t kMaxLength = 0x7FFFFFFFu;  // atol's range on the device (32-bit long)
+  bool found = false;
+  out = 0;
+  if (!p) return LengthVerdict::None;
+  for (size_t line = 0; line < end;) {
+    size_t eol = line;
+    while (eol < end && p[eol] != '\n') eol++;
+    if (eol >= end) break;  // unterminated: not a line yet
+    bool match = eol - line >= nameLen;
+    for (size_t k = 0; match && k < nameLen; k++) match = lower(p[line + k]) == (char)mibloRomByte(kName + k);
+    if (match) {
+      size_t a = line + nameLen, b = a;
+      while (b < eol && p[b] != '\r') b++;  // the server's value ends at the first '\r'
+      while (a < b && blank(p[a])) a++;
+      while (b > a && blank(p[b - 1])) b--;
+      if (a == b || b - a > 10) return LengthVerdict::Bad;  // empty, or more digits than 2^31 - 1 has
+      uint64_t v = 0;
+      for (size_t i = a; i < b; i++) {
+        if (p[i] < '0' || p[i] > '9') return LengthVerdict::Bad;
+        v = v * 10 + (uint64_t)(p[i] - '0');
+      }
+      if (v > kMaxLength) return LengthVerdict::Bad;
+      if (found && (uint32_t)v != out) return LengthVerdict::Bad;  // duplicates must agree
+      out = (uint32_t)v;
+      found = true;
+    }
+    line = eol + 1;
+  }
+  return found ? LengthVerdict::Ok : LengthVerdict::None;
+}
+
+LengthVerdict readContentLength(const char* headers, size_t len, uint32_t& out) {
+  size_t end = len;
+  if (headers && len >= 2 && headers[0] == '\r' && headers[1] == '\n') {
+    end = 2;  // no header lines at all
+  } else if (headers) {
+    for (size_t i = 3; i < len; i++) {
+      if (headers[i] == '\n' && headers[i - 1] == '\r' && headers[i - 2] == '\n' && headers[i - 3] == '\r') {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+  return scanContentLength(headers, end, out);
+}
 
 // Case-insensitive compare of `n` bytes at `p` with a lowercase literal kept in flash.
 static bool matchesLower(const char* p, const char* romLower, size_t n) {

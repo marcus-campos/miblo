@@ -1,7 +1,10 @@
 // Fuzz targets over miblo_core: everything that parses bytes from the network or from flash.
 #include <ArduinoJson.h>
+#include <ctype.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <strings.h>
 
 #include <string>
 
@@ -803,6 +806,8 @@ const char* const kHttpSeeds[] = {
     "content-length:   12\r\ncontent-type: MULTIPART/form-data\r\n",
     "Content-Length: 99999999999999999999\r\n",
     "Content-Length: -1\r\nContent-Length: 5\r\n",
+    "Host: x\r\nContent-Length: +60000\r\n\r\n",
+    "Content-Length:\v60000 \r\nX: y\n\r\nContent-Length: 1\r\n\r\n",
     "1234",
     "Host: x\r\nContent-Type: multipart/form-data; boundary=\"----WebKitFormBoundary7MA4YWxkTrZu0gW\"\r\n\r\n",
     "Content-Type: multipart/form-data; charset=x; boundary=y\r\nContent-Type: text/plain\r\n\r\n",
@@ -815,7 +820,49 @@ const char* const kHttpDict[] = {"Content-Length:", "content-length: ", "Content
 void fuzzHttp(const uint8_t* d, size_t n) {
   ExactBuf hdr(d, n);  // the raw header buffer is not NUL-terminated
   uint32_t clen = 0;
-  if (findContentLength(hdr.p, hdr.n, clen)) fuzz::reached();
+  const LengthVerdict lv = readContentLength(hdr.p, hdr.n, clen);
+  if (lv == LengthVerdict::Ok) fuzz::reached();
+  // H1, differential: ESP8266WebServer's own reading (Parsing-impl.h: a line up to '\r', skip to
+  // '\n', stop at an empty line or one without ':', the LAST Content-Length, trim(), atol) must
+  // give the very length the scanner accepted, on a complete block; and a length the server reads
+  // is never one the scanner missed. (A line the scanner sees past the server's end is only
+  // stricter: the server then reads no body at all.)
+  {
+    bool complete = hdr.n >= 2 && hdr.p[0] == '\r' && hdr.p[1] == '\n';
+    for (size_t i = 3; i < hdr.n && !complete; i++)
+      complete = hdr.p[i] == '\n' && hdr.p[i - 1] == '\r' && hdr.p[i - 2] == '\n' && hdr.p[i - 3] == '\r';
+    if (complete) {
+      uint32_t server = 0;
+      bool serverSaw = false;
+      size_t i = 0;
+      for (;;) {
+        size_t e = i;
+        while (e < hdr.n && hdr.p[e] != '\r') e++;
+        if (e >= hdr.n || e == i) break;
+        const std::string line(hdr.p + i, e - i);
+        const size_t colon = line.find(':');
+        if (colon == std::string::npos) break;
+        if (strcasecmp(line.substr(0, colon).c_str(), "Content-Length") == 0 && line.find('\0') == std::string::npos) {
+          std::string v = line.substr(colon + 1);
+          size_t a = 0, b = v.size();
+          while (a < b && isspace((unsigned char)v[a])) a++;
+          while (b > a && isspace((unsigned char)v[b - 1])) b--;
+          server = (uint32_t)atol(v.substr(a, b - a).c_str());
+          serverSaw = true;
+        }
+        size_t nl = e + 1;
+        while (nl < hdr.n && hdr.p[nl] != '\n') nl++;
+        if (nl >= hdr.n) break;
+        i = nl + 1;
+      }
+      if (serverSaw) {
+        FUZZ_CHECK(lv != LengthVerdict::None, "server reads length %u, scanner saw none", (unsigned)server);
+        if (lv == LengthVerdict::Ok) {
+          FUZZ_CHECK(server == clen, "server reads length %u, scanner %u", (unsigned)server, (unsigned)clen);
+        }
+      }
+    }
+  }
   // The multipart guard: a Multipart verdict always carries a 1..70 character boundary, and a
   // smaller output buffer changes only the copy, never the verdict.
   char boundary[kMaxBoundary + 8];

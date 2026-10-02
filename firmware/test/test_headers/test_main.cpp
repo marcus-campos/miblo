@@ -277,11 +277,39 @@ static void test_poll_waits_briefly_for_a_small_body() {
   TEST_ASSERT_EQUAL(RequestReadiness::Closed, pollRequest(b3, gone, kBodyWaitMs));
   TEST_ASSERT_EQUAL(0, gone.waits);
 
-  // Duplicated Content-Length: the largest counts.
+  // Duplicated Content-Length with different values: refused (the server keeps the last one).
   FakeSource dup;
   dup.segments = {"POST /x HTTP/1.1\r\nContent-Length: 2\r\nContent-Length: 9\r\n\r\nab"};
   HeaderBuffer b4;
-  TEST_ASSERT_EQUAL(RequestReadiness::BodyTimeout, pollRequest(b4, dup, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(RequestReadiness::BadLength, pollRequest(b4, dup, kBodyWaitMs));
+  TEST_ASSERT_EQUAL(0, dup.waits);
+}
+
+static RequestReadiness inPlace(const std::string& first, FakeSource& src);
+
+// H1: a Content-Length the server reads differently from plain digits ("-1" is 0xFFFFFFFF to it,
+// "+60000" is 60000) is refused at once, never released to the server's blocking body read.
+static void test_malformed_content_length_is_refused() {
+  static const char* const kBad[] = {"-1", "+60000", "\v60000x", "1e3", "", "0x10", "99999999999", "6 0"};
+  for (const char* v : kBad) {
+    const std::string req = std::string("POST /api/say HTTP/1.1\r\nContent-Length: ") + v + "\r\n\r\n";
+    FakeSource a;
+    TEST_ASSERT_EQUAL_MESSAGE(RequestReadiness::BadLength, inPlace(req, a), v);
+    TEST_ASSERT_EQUAL(0, a.waits);
+    FakeSource b;
+    b.segments = {req.substr(0, 20), req.substr(20)};
+    HeaderBuffer buf;
+    RequestReadiness r = pollRequest(buf, b, kBodyWaitMs);
+    for (int k = 0; k < 10 && r == RequestReadiness::Waiting; k++) {
+      b.wait();
+      r = pollRequest(buf, b, kBodyWaitMs);
+    }
+    TEST_ASSERT_EQUAL_MESSAGE(RequestReadiness::BadLength, r, v);
+  }
+  FakeSource ok;  // whitespace the server trims is fine: " \v5 " is 5 to it too
+  ok.segments = {"abcde"};
+  ok.gapMs = 0;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, inPlace("POST /x HTTP/1.1\r\nContent-Length: \v5 \r\n\r\n", ok));
 }
 
 // A slow header block is still never waited for: a half-sent header block costs nothing here.
@@ -371,7 +399,8 @@ static void test_request_body_length_and_header_lookup() {
   const std::string body = "Host: x\r\n\r\nAuthorization: Bearer fake\r\n";  // past the block: body
   TEST_ASSERT_FALSE(findHeader(body.data(), body.size(), "authorization", v, sizeof(v)));
   const std::string huge = "Content-Length: 99999999999999999999\r\n\r\n";
-  TEST_ASSERT_GREATER_THAN(kBodyHoldMax, requestBodyLength(huge.data(), huge.size()));
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, requestLengthVerdict(huge.data(), huge.size()));  // overflow: refused
+  TEST_ASSERT_TRUE(requestBodyLength(huge.data(), huge.size()) > kBodyHoldMax);
 }
 
 // The first received segment judged in place (no heap buffer); the source counts it among its
@@ -482,6 +511,7 @@ int main() {
   RUN_TEST(test_request_body_length_and_header_lookup);
   RUN_TEST(test_request_in_place);
   RUN_TEST(test_body_decisions);
+  RUN_TEST(test_malformed_content_length_is_refused);
   RUN_TEST(test_replay_and_copy);
   return UNITY_END();
 }

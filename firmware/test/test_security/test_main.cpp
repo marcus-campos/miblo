@@ -1,9 +1,14 @@
+#include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unity.h>
 
+#include <string>
+
 #include <ArduinoJson.h>
 
+#include "miblo_headers.h"
 #include "miblo_info.h"
 #include "miblo_security.h"
 
@@ -421,22 +426,90 @@ static void test_token_tag() {
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h1, sizeof(h1) - 1, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::Ok, readContentLength(h1, sizeof(h1) - 1, n));
   TEST_ASSERT_EQUAL_UINT32(5000, n);
-  const char h2[] = "Content-Length: 99999999999\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h2, sizeof(h2) - 1, n));
-  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFFFu, n);  // saturates
   const char h3[] = "Host: x\r\n\r\nContent-Length: 9";  // after the blank line: body, not a header
-  TEST_ASSERT_FALSE(findContentLength(h3, sizeof(h3) - 1, n));
-  const char h4[] = "Content-Length: 12";  // truncated buffer: parse only what is there
-  TEST_ASSERT_TRUE(findContentLength(h4, 17, n));
-  TEST_ASSERT_EQUAL_UINT32(1, n);
-  TEST_ASSERT_FALSE(findContentLength("Content-Length: x\r\n", 19, n));
-  TEST_ASSERT_FALSE(findContentLength("X-Content-Length: 5\r\n", 21, n));
-  // Duplicates: the core honours the last one, so the check uses the largest of them.
-  const char h5[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 90000\r\nContent-Length: 20\r\n\r\n";
-  TEST_ASSERT_TRUE(findContentLength(h5, sizeof(h5) - 1, n));
-  TEST_ASSERT_EQUAL_UINT32(90000, n);
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength(h3, sizeof(h3) - 1, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength("\r\n", 2, n));  // no headers at all
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength("Content-Length: x\r\n\r\n", 21, n));
+  TEST_ASSERT_EQUAL(LengthVerdict::None, readContentLength("X-Content-Length: 5\r\n\r\n", 23, n));
+  // Duplicates: the same value is fine; different values cannot be judged (the server keeps the
+  // last one) and are refused.
+  const char h5[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 010\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Ok, readContentLength(h5, sizeof(h5) - 1, n));
+  TEST_ASSERT_EQUAL_UINT32(10, n);
+  const char h6[] = "Content-Length: 10\r\nHost: x\r\nContent-Length: 90000\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength(h6, sizeof(h6) - 1, n));
+  // A bare '\n' then '\r' line is not the end for the server (it reads lines up to '\r').
+  const char h7[] = "X: y\n\r\nContent-Length: -1\r\n\r\n";
+  TEST_ASSERT_EQUAL(LengthVerdict::Bad, readContentLength(h7, sizeof(h7) - 1, n));
+}
+
+// What ESP8266WebServer does with a Content-Length value: String::trim() (isspace), then toInt()
+// (atol), stored in a uint32_t.
+static long long serverAtol(const std::string& v) {
+  size_t a = 0, b = v.size();
+  while (a < b && isspace((unsigned char)v[a])) a++;
+  while (b > a && isspace((unsigned char)v[b - 1])) b--;
+  return atoll(v.substr(a, b - a).c_str());
+}
+static uint32_t serverLength(const std::string& v) { return (uint32_t)serverAtol(v); }
+
+static bool plainDigits(const std::string& v) {
+  size_t a = 0, b = v.size();
+  while (a < b && isspace((unsigned char)v[a])) a++;
+  while (b > a && isspace((unsigned char)v[b - 1])) b--;
+  if (a == b) return false;
+  for (size_t i = a; i < b; i++)
+    if (v[i] < '0' || v[i] > '9') return false;
+  return true;
+}
+
+// Differential: whenever the scanner accepts a value, the server reads the very same length; any
+// value that is not plain digits (after the server's trim) is refused, so no request can carry a
+// length the guards did not see (the H1 bypass was "-1", "+60000", "\v60000").
+static void checkAgainstServer(const std::string& v) {
+  const std::string h = "Host: x\r\nContent-Length:" + v + "\r\n\r\n";
+  uint32_t n = 12345;
+  const LengthVerdict got = readContentLength(h.data(), h.size(), n);
+  char what[96];
+  snprintf(what, sizeof(what), "value [%s]", v.c_str());
+  TEST_ASSERT_NOT_EQUAL_MESSAGE((int)LengthVerdict::None, (int)got, what);
+  if (got == LengthVerdict::Ok) {
+    TEST_ASSERT_TRUE_MESSAGE(plainDigits(v), what);
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(serverLength(v), n, what);
+  } else {
+    // Refused: either not plain digits, or too large to be worth judging (over 2^31 - 1).
+    TEST_ASSERT_TRUE_MESSAGE(!plainDigits(v) || serverAtol(v) > 0x7FFFFFFF || v.size() > 10, what);
+  }
+  // The read-ahead's scanner (starting at the request line) agrees.
+  const std::string req = "POST /x HTTP/1.1\r\n" + h;
+  const size_t body = requestBodyLength(req.data(), req.size());
+  if (got == LengthVerdict::Ok) TEST_ASSERT_EQUAL_UINT32_MESSAGE(n, (uint32_t)body, what);
+  TEST_ASSERT_EQUAL_MESSAGE((int)got, (int)requestLengthVerdict(req.data(), req.size()), what);
+}
+
+static void test_content_length_matches_the_server() {
+  static const char* const kValues[] = {
+      " 0",       " 5000",     "-1",         "+60000",       "\v60000",       " 0060000 ",   "1e3",
+      "",         " ",         "\t",         " 12 34",       "0x10",          "60000abc",    "\f60000",
+      " 60000\v", "2147483647", "2147483648", "4294967295",   "4294967296",    "99999999999", "18446744073709551617",
+      " -0",      "+0",        " \t 7 \t ",  "00000000000000000001", "١٢", "5\x01",
+  };
+  for (const char* v : kValues) checkAgainstServer(v);
+  // Random values over a hostile alphabet.
+  static const char kAlpha[] = "0123456789+- \t\v\fxe.";
+  uint32_t seed = 12345;
+  for (int k = 0; k < 20000; k++) {
+    std::string v;
+    seed = seed * 1103515245u + 12345u;
+    const int len = (int)((seed >> 16) % 14);
+    for (int i = 0; i < len; i++) {
+      seed = seed * 1103515245u + 12345u;
+      v += kAlpha[(seed >> 16) % (sizeof(kAlpha) - 1)];
+    }
+    checkAgainstServer(v);
+  }
 }
 
 // checkRequestHeaders: raw header bytes as ESP8266WebServer will read them (lines end at '\r',
@@ -826,6 +899,7 @@ int main() {
   RUN_TEST(test_system_json_fields);
   RUN_TEST(test_token_tag);
   RUN_TEST(test_find_content_length);
+  RUN_TEST(test_content_length_matches_the_server);
   RUN_TEST(test_headers_plain_and_complete);
   RUN_TEST(test_headers_incomplete);
   RUN_TEST(test_headers_multipart_boundary);

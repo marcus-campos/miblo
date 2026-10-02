@@ -160,6 +160,12 @@ class LookaheadClient : public WiFiClient {
         refuse(kReply, sizeof(kReply) - 1);
         return false;
       }
+      case miblo::RequestReadiness::BadLength: {  // H1: a length the server would read otherwise
+        static const char kReply[] PROGMEM =
+            "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
+        refuse(kReply, sizeof(kReply) - 1);
+        return false;
+      }
       case miblo::RequestReadiness::Closed:
         // Not stop(): its flush can wait up to 300 ms in the loop. Reporting no data is enough,
         // the server drops the connection itself.

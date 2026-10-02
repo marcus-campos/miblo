@@ -22,6 +22,7 @@ namespace api {
 static WebServerT* srv = nullptr;
 
 static void json(int code, const char* s) { web::sendJson(*srv, code, s); }
+static void json(int code, const __FlashStringHelper* s) { web::sendJson(*srv, code, s); }
 
 static bool authorized() {
   char token[40];
@@ -40,7 +41,7 @@ static void handleInfo() {
   // Flood guard for everything not authenticated with a valid token (an unpaired gadget answers
   // in full too): a paired computer's own reads neither consume nor wait on this bucket.
   if (!authorized() && !ctx.publicReqs.allow(millis())) {
-    json(429, "{\"error\":\"slow down\"}");
+    json(429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (miblo::infoView(ctx.tokens, auth.c_str()) == miblo::InfoView::Public) {
@@ -52,56 +53,57 @@ static void handleInfo() {
     return;
   }
   // 37 top-level members + screen{2} + caps + copied strings (flash, reset): ~660 B on the
-  // ESP8266; 1024 leaves room for future caps.
+  // ESP8266, plus ~350 B for the keys, which are copied in from flash (F()) so they never sit in
+  // RAM for good; 1536 still leaves room for "crash" and future caps.
   StaticJsonDocument<1536> doc;  // + "crash" (~300 B) after a crash
-  doc["id"] = ctx.ident.id;
-  doc["name"] = deviceName();
-  doc["fw"] = MIBLO_FW_VERSION;
-  doc["build"] = MIBLO_BUILD;
-  doc["proto"] = MIBLO_PROTO;
-  doc["paired"] = ctx.tokens.count() > 0;
-  doc["board"] = board::kName;
-  doc["lang"] = miblo::langCode(uiLang());  // the language the screen is drawn in
-  doc["langSet"] = ctx.cfg.langSet;          // false = automatic (follows the last browser)
-  JsonObject screen = doc.createNestedObject("screen");
-  screen["w"] = board::kScreen.w;
-  screen["h"] = board::kScreen.h;
-  JsonArray caps = doc.createNestedArray("caps");  // future: "buttons", "touch", "buzzer", "led"
+  doc[F("id")] = ctx.ident.id;
+  doc[F("name")] = deviceName();
+  doc[F("fw")] = MIBLO_FW_VERSION;
+  doc[F("build")] = MIBLO_BUILD;
+  doc[F("proto")] = MIBLO_PROTO;
+  doc[F("paired")] = ctx.tokens.count() > 0;
+  doc[F("board")] = board::kName;
+  doc[F("lang")] = miblo::langCode(uiLang());  // the language the screen is drawn in
+  doc[F("langSet")] = ctx.cfg.langSet;          // false = automatic (follows the last browser)
+  JsonObject screen = doc.createNestedObject(F("screen"));
+  screen[F("w")] = board::kScreen.w;
+  screen[F("h")] = board::kScreen.h;
+  JsonArray caps = doc.createNestedArray(F("caps"));  // future: "buttons", "touch", "buzzer", "led"
   for (uint8_t i = 0; i < board::kCapCount; i++) caps.add(board::cap(i));
   char flash[12];
   snprintf_P(flash, sizeof(flash), PSTR("%06x"), (unsigned)flashChipId());
-  doc["flash"] = flash;
+  doc[F("flash")] = flash;
   // Diagnostics (field reports): free heap, largest allocatable block, last reset, uptime (s).
-  doc["heap"] = freeHeap();
-  doc["maxBlock"] = maxFreeBlock();
-  doc["reset"] = resetReason();
-  doc["uptime"] = millis() / 1000;
-  doc["minHeapParse"] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
-  doc["maxSessions"] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
-  doc["maxBytes"] = miblo::kSnapshotMaxBytes;
+  doc[F("heap")] = freeHeap();
+  doc[F("maxBlock")] = maxFreeBlock();
+  doc[F("reset")] = resetReason();
+  doc[F("uptime")] = millis() / 1000;
+  doc[F("minHeapParse")] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
+  doc[F("maxSessions")] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
+  doc[F("maxBytes")] = miblo::kSnapshotMaxBytes;
   // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
   // and the current WiFi.status() (wl_status_t).
-  doc["wifiReason"] = net::lastDisconnectReason();
-  doc["wifiStatus"] = net::wifiStatus();
+  doc[F("wifiReason")] = net::lastDisconnectReason();
+  doc[F("wifiStatus")] = net::wifiStatus();
   // Overview/Limits rotation settings (read back by `/miblo:rotate`).
-  doc["rotate"] = ctx.cfg.rotate;
-  doc["rotateEverySec"] = ctx.cfg.rotateEverySec;
-  doc["rotateShowSec"] = ctx.cfg.rotateShowSec;
+  doc[F("rotate")] = ctx.cfg.rotate;
+  doc[F("rotateEverySec")] = ctx.cfg.rotateEverySec;
+  doc[F("rotateShowSec")] = ctx.cfg.rotateShowSec;
   // Night mode (read back by `/miblo:night`).
-  doc["night"] = ctx.cfg.night;
-  doc["nightFrom"] = ctx.cfg.nightFrom;
-  doc["nightTo"] = ctx.cfg.nightTo;
-  doc["nightBrightness"] = ctx.cfg.nightBrightness;
+  doc[F("night")] = ctx.cfg.night;
+  doc[F("nightFrom")] = ctx.cfg.nightFrom;
+  doc[F("nightTo")] = ctx.cfg.nightTo;
+  doc[F("nightBrightness")] = ctx.cfg.nightBrightness;
   // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..3; its own window).
-  doc["blueFilter"] = ctx.cfg.blueFilter;
-  doc["blueLevel"] = ctx.cfg.blueLevel;
-  doc["blueFrom"] = ctx.cfg.blueFrom;
-  doc["blueTo"] = ctx.cfg.blueTo;
-  doc["mascot"] = ctx.cfg.mascot;
-  doc["sleepMin"] = ctx.cfg.sleepMin;
-  doc["petMin"] = ctx.cfg.petMin;
-  doc["flashBlinks"] = ctx.cfg.flashBlinks;
-  doc["friends"] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
+  doc[F("blueFilter")] = ctx.cfg.blueFilter;
+  doc[F("blueLevel")] = ctx.cfg.blueLevel;
+  doc[F("blueFrom")] = ctx.cfg.blueFrom;
+  doc[F("blueTo")] = ctx.cfg.blueTo;
+  doc[F("mascot")] = ctx.cfg.mascot;
+  doc[F("sleepMin")] = ctx.cfg.sleepMin;
+  doc[F("petMin")] = ctx.cfg.petMin;
+  doc[F("flashBlinks")] = ctx.cfg.flashBlinks;
+  doc[F("friends")] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
   String out;
   serializeJson(doc, out);
@@ -111,7 +113,7 @@ static void handleInfo() {
 static void handlePair() {
   StaticJsonDocument<256> doc;
   if (deserializeJson(doc, srv->arg(F("plain")))) {
-    json(400, "{\"error\":\"bad json\"}");
+    json(400, F("{\"error\":\"bad json\"}"));
     return;
   }
   char code[8];
@@ -125,7 +127,7 @@ static void handlePair() {
       web::sendLocked(*srv, ctx.pairing.lockRemainingMs(now));  // 429 {retryAfter}
       return;
     case miblo::PairingGuard::Result::BadCode:
-      json(403, "{\"error\":\"bad code\"}");
+      json(403, F("{\"error\":\"bad code\"}"));
       return;
     case miblo::PairingGuard::Result::Ok:
       break;
@@ -155,16 +157,16 @@ static void handlePair() {
 
 static void handleState() {
   if (!authorized()) {
-    json(401, "{\"error\":\"unauthorized\"}");
+    json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   const String& plain = srv->arg(F("plain"));
   if (plain.length() > miblo::kSnapshotMaxBytes) {
-    json(400, "{\"error\":\"too large\"}");
+    json(400, F("{\"error\":\"too large\"}"));
     return;
   }
   if (heapLowForRequest(plain.length())) {  // low heap: refuse (the plugin resends an alerts-only snapshot)
-    json(503, "{\"error\":\"busy\"}");
+    json(503, F("{\"error\":\"busy\"}"));
     return;
   }
   // Parsed in place, in the server's own copy of the body (zero-copy JSON: it gets modified,
@@ -188,21 +190,21 @@ static void handleState() {
     timeval tv{(time_t)ctx.snap.now, 0};  // clock before NTP: use the computer's time
     settimeofday(&tv, nullptr);
   }
-  json(200, "{\"ok\":true}");
+  json(200, F("{\"ok\":true}"));
 }
 
 static void handleConfig() {
   if (!authorized()) {
-    json(401, "{\"error\":\"unauthorized\"}");
+    json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
-    json(503, "{\"error\":\"busy\"}");
+    json(503, F("{\"error\":\"busy\"}"));
     return;
   }
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
-    json(400, "{\"error\":\"bad json\"}");
+    json(400, F("{\"error\":\"bad json\"}"));
     return;
   }
   const char* bad = nullptr;
@@ -213,26 +215,26 @@ static void handleConfig() {
   }
   ctx.configChanged = true;
   ctx.lastInteractionMs = millis();  // someone is setting it up: wake the screen (a new name says hi)
-  json(200, "{\"ok\":true}");
+  json(200, F("{\"ok\":true}"));
 }
 
 // POST /api/demo {"minutes": 1..30} (default 10; 0 stops): pet mode right away, for showing it
 // off or testing visits between Miblos. Alerts still come first.
 static void handleDemo() {
   if (!authorized()) {
-    json(401, "{\"error\":\"unauthorized\"}");
+    json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   StaticJsonDocument<64> doc;
   const String& body = srv->arg(F("plain"));
   if (body.length() && (deserializeJson(doc, body) || !doc.is<JsonObject>())) {
-    json(400, "{\"error\":\"bad json\"}");
+    json(400, F("{\"error\":\"bad json\"}"));
     return;
   }
   JsonVariantConst m = doc["minutes"];
   const int minutes = m.isNull() ? 10 : m.is<int>() ? m.as<int>() : -1;
   if (minutes < 0 || minutes > 30) {
-    json(400, "{\"error\":\"invalid\",\"field\":\"minutes\"}");
+    json(400, F("{\"error\":\"invalid\",\"field\":\"minutes\"}"));
     return;
   }
   const uint32_t now = millis();
@@ -240,15 +242,15 @@ static void handleDemo() {
   ctx.demoKick = true;
   ctx.demoUntilMs = now + (uint32_t)minutes * 60000;
   ctx.lastInteractionMs = now;  // wake the screen
-  json(200, "{\"ok\":true}");
+  json(200, F("{\"ok\":true}"));
 }
 
 static void handleReset() {
   if (!authorized()) {
-    json(401, "{\"error\":\"unauthorized\"}");
+    json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
-  json(200, "{\"ok\":true}");
+  json(200, F("{\"ok\":true}"));
   ctx.factoryResetRequested = true;
 }
 

@@ -23,6 +23,8 @@ void pageEnd(String& out);
 void appendEscaped(String& out, const char* s);
 String tr(miblo::Lang lang, miblo::S id);
 void sendJson(WebServerT& server, int code, const char* json);
+// Same, for a fixed reply kept in flash: sendJson(server, 404, F("{\"error\":\"not found\"}")).
+void sendJson(WebServerT& server, int code, const __FlashStringHelper* json);
 // CSRF guard for the pages' state-changing POSTs: a cross-site <form> cannot send
 // application/json without a CORS preflight (which this server never answers). false → 415 sent.
 bool requireJson(WebServerT& server);

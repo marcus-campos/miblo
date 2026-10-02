@@ -113,6 +113,10 @@ void sendJson(WebServerT& server, int code, const char* json) {
   server.send(code, F("application/json"), json);
 }
 
+void sendJson(WebServerT& server, int code, const __FlashStringHelper* json) {
+  server.send_P(code, PSTR("application/json"), (PGM_P)json);
+}
+
 void sendLocked(WebServerT& server, uint32_t remainingMs) {
   char out[48];
   snprintf_P(out, sizeof(out), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
@@ -152,7 +156,7 @@ bool requireJson(WebServerT& server) {
       (ct.length() == 16 || ct[16] == ';' || ct[16] == ' ' || ct[16] == '\t')) {
     return true;
   }
-  sendJson(server, 415, "{\"error\":\"json required\"}");
+  sendJson(server, 415, F("{\"error\":\"json required\"}"));
   return false;
 }
 
@@ -281,7 +285,7 @@ static void joinStatusPage(Lang lang) {
 // disconnect reason and WiFi.status()) for field reports.
 static void handleWifiStatus() {
   if (!net::apActive()) {  // only the setup portal's join page needs it
-    sendJson(*srv, 404, "{\"error\":\"not found\"}");
+    sendJson(*srv, 404, F("{\"error\":\"not found\"}"));
     return;
   }
   StaticJsonDocument<256> doc;
@@ -404,22 +408,22 @@ static void messagePage(Lang lang, const String& msg) {
 // form needs; a fresh unit answers codeRequired:false.
 static void handleWifiCode() {
   if (!fromSetupNetwork()) {
-    sendJson(*srv, 403, "{\"error\":\"forbidden\"}");
+    sendJson(*srv, 403, F("{\"error\":\"forbidden\"}"));
     return;
   }
   if (!ctx.publicReqs.allow(millis())) {
-    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (!requireJson(*srv)) return;
   if (!wifiCodeNeeded()) {
-    sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
+    sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":false}"));
     return;
   }
   const uint32_t now = millis();
   if (!openPresence(*srv, miblo::PresenceGate::Purpose::Wifi, now)) return;
   ctx.lastInteractionMs = now;
-  sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":true}"));
 }
 
 static void handleWifi() {
@@ -954,14 +958,14 @@ static bool webAuthorized() {
 // but rate-limited and protected by the gate's escalating lockout on wrong codes.
 static void handleSettingsCode() {
   if (!ctx.publicReqs.allow(millis())) {
-    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
   if (!openPresence(*srv, miblo::PresenceGate::Purpose::Settings, now)) return;
   ctx.lastInteractionMs = now;  // keep the screen on so the code is readable
-  sendJson(*srv, 200, "{\"ok\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
 // POST /settings-unlock {code}: on the right code, issue a web session token the browser keeps.
@@ -983,7 +987,7 @@ static void handleSettingsUnlock() {
   if (!code[0]) strlcpy(code, srv->arg(F("code")).c_str(), sizeof(code));
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Settings, code, now)) {
     if (ctx.presence.locked(now)) sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    else sendJson(*srv, 403, "{\"error\":\"bad code\"}");
+    else sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
     return;
   }
   ctx.presence.close();  // unlocked: the code leaves the screen at once
@@ -1003,11 +1007,11 @@ static void handleSettingsUnlock() {
 // for a paired gadget's locked page, the settings, version, board and number of paired computers.
 static void handleSettingsSecret() {
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   if (heapLowForRequest(2048)) {
-    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);  // the config (page view) and a few fields
@@ -1027,7 +1031,7 @@ static void handleSettingsSecret() {
 // paired computer, or anyone before pairing, as the page itself).
 static void handleSettingsSystem() {
   if (ctx.tokens.count() > 0 && !webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   // The filesystem's usage walks its blocks: read it now and then, not on every poll.
@@ -1052,7 +1056,7 @@ static void handleSettingsSystem() {
 // one's host name and how long ago its token last came in (-1: not since the gadget started).
 static void handleSettingsComputers() {
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   StaticJsonDocument<512> doc;
@@ -1074,17 +1078,17 @@ static void handleSettingsComputers() {
 static void handleSettingsComputerRemove() {
   if (!requireJson(*srv)) return;
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   StaticJsonDocument<128> doc;
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc["i"].is<int>() || !doc["host"].is<const char*>()) {
-    sendJson(*srv, 400, "{\"error\":\"bad request\"}");
+    sendJson(*srv, 400, F("{\"error\":\"bad request\"}"));
     return;
   }
   const int i = doc["i"].as<int>();
   if (i < 0 || !ctx.tokens.remove((uint8_t)i, doc["host"].as<const char*>())) {
-    sendJson(*srv, 409, "{\"error\":\"changed\"}");  // the list changed: the page reloads it
+    sendJson(*srv, 409, F("{\"error\":\"changed\"}"));  // the list changed: the page reloads it
     return;
   }
   storage::saveTokens(ctx.tokens);
@@ -1095,22 +1099,22 @@ static void handleSettingsComputerRemove() {
 
 static void handleSettings() {
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   ctx.lastInteractionMs = millis();
   if (!requireJson(*srv)) return;
   if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
-    sendJson(*srv, 413, "{\"error\":\"too large\"}");
+    sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
     return;
   }
   if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
-    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }
   DynamicJsonDocument doc(miblo::kConfigJsonCapacity);
   if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
-    sendJson(*srv, 400, "{\"error\":\"bad json\"}");
+    sendJson(*srv, 400, F("{\"error\":\"bad json\"}"));
     return;
   }
   const char* bad = nullptr;
@@ -1120,7 +1124,7 @@ static void handleSettings() {
     return;
   }
   ctx.configChanged = true;
-  sendJson(*srv, 200, "{\"ok\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
 // The IANA zone names the device can resolve, one per line. Streamed straight from flash
@@ -1132,11 +1136,11 @@ static void handleZones() {
 
 static void handleRoot() {
   if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated page render)
-    sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (heapLowForRequest(9216)) {  // rendering the page needs several KB: never risk a crash
-    sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }
   ctx.lastInteractionMs = millis();  // someone is looking: wake the screen
@@ -1152,23 +1156,23 @@ static void handleRoot() {
 
 static void handlePairCode() {
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   if (!requireJson(*srv)) return;
   ctx.showPairCode = true;
   ctx.pairCodeAtMs = millis();
-  sendJson(*srv, 200, "{\"ok\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
 static void handleResetCode() {
   if (!webAuthorized()) {
-    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   if (!requireJson(*srv)) return;
   if (!openPresence(*srv, miblo::PresenceGate::Purpose::Reset, millis())) return;
-  sendJson(*srv, 200, "{\"ok\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
 static void handleFactoryReset() {
@@ -1178,10 +1182,10 @@ static void handleFactoryReset() {
     return;
   }
   if (!ctx.presence.check(miblo::PresenceGate::Purpose::Reset, srv->arg(F("code")).c_str(), millis())) {
-    sendJson(*srv, 403, "{\"error\":\"bad code\"}");
+    sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
     return;
   }
-  sendJson(*srv, 200, "{\"ok\":true}");
+  sendJson(*srv, 200, F("{\"ok\":true}"));
   ctx.factoryResetRequested = true;
 }
 
@@ -1272,7 +1276,7 @@ void begin(WebServerT& server) {
   routes::add(server, kRoutes);
   server.onNotFound([] {
     if (captiveRedirect()) return;
-    sendJson(*srv, 404, "{\"error\":\"not found\"}");
+    sendJson(*srv, 404, F("{\"error\":\"not found\"}"));
   });
 }
 

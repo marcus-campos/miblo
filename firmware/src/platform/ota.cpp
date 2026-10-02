@@ -54,28 +54,28 @@ static void resetState() {
 // A plain GET never changes state (a link or <img> from another site cannot light up the code).
 static void openGate() {
   if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated)
-    web::sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    web::sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (!web::requireJson(*srv)) return;  // 415: CSRF guard
   if (!codeRequired()) {
     // Never-configured unit on its own AP: no gate, no code on screen.
-    web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":false}");
+    web::sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":false}"));
     return;
   }
   // The screen now shows the code (an active update code is kept; another purpose's: busy).
   if (!web::openPresence(*srv, PresenceGate::Purpose::Update, millis())) return;
-  web::sendJson(*srv, 200, "{\"ok\":true,\"codeRequired\":true}");
+  web::sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":true}"));
 }
 
 // GET /update: only serves the page; its script opens the gate with POST /update/open.
 static void page() {
   if (!ctx.publicReqs.allow(millis())) {  // flood guard (unauthenticated page render), as GET /
-    web::sendJson(*srv, 429, "{\"error\":\"slow down\"}");
+    web::sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
     return;
   }
   if (heapLowForRequest(4096)) {
-    web::sendJson(*srv, 503, "{\"error\":\"busy\"}");
+    web::sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }
   ctx.lastInteractionMs = millis();  // wake the screen: the code will be shown on it
@@ -162,10 +162,10 @@ static void done() {
   if (!uploadRan) {
     // No multipart file part in THIS request: the code was never checked, nothing was written.
     if (ctx.presence.locked(now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    else web::sendJson(*srv, 400, "{\"error\":\"no firmware file\"}");
+    else web::sendJson(*srv, 400, F("{\"error\":\"no firmware file\"}"));
   } else if (rejected) {
     if (ctx.presence.locked(now)) web::sendLocked(*srv, ctx.presence.lockRemainingMs(now));
-    else web::sendJson(*srv, 403, "{\"error\":\"bad code\"}");
+    else web::sendJson(*srv, 403, F("{\"error\":\"bad code\"}"));
   } else if (!started || !endedOk || Update.hasError()) {
     ctx.updating = false;
     String err = Update.getErrorString();

@@ -2,6 +2,10 @@
 #include <unity.h>
 
 #include "../support/fake_canvas.h"
+#include <time.h>
+
+#include "miblo_mood.h"
+#include "miblo_zone.h"
 #include "ui_screens.h"
 #include "ui_visit_kit.h"
 
@@ -575,11 +579,12 @@ static void test_flash_text_on_phase_background() {
 // English words that must never reach a pt-BR screen (whole words, ASCII-case-insensitive).
 // Legit Latin text on the screens: tool names (Bash), file names, "Miblo", "Wi-Fi", "Opus",
 // "ctx"/"tok" (Claude Code jargon), the time units "m"/"h"/"d" and the URL.
+// ("no" is not in the list: it is Portuguese too, "no ritmo atual".)
 static const char* const kEnglishOnly[] = {
     "running", "sessions", "session", "waiting", "wait", "agent", "agents", "task", "tasks", "finished",
     "idle", "week", "limits", "limit", "today", "done", "needs", "you", "all", "asked", "permission",
     "question", "resets", "reset", "in", "editing", "reading", "searching", "fetching", "working",
-    "cost", "unavailable", "took", "ago", "no", "connecting", "connected", "disconnected", "updating",
+    "cost", "unavailable", "took", "ago", "connecting", "connected", "disconnected", "updating",
     "unplug", "pairing", "paired", "code", "expires", "scan", "phone", "join", "network", "wrong",
     "password", "for", "the", "computer", "overview", "left", "restarts", "leave", "cancel", "error",
     "could", "not", "found", "refused", "and", "on", "of", "to",
@@ -885,7 +890,7 @@ static void test_burn_rate_lines() {
   screens::reset();
   fc.clearLog();
   screens::limits(Lang::En, snap, testClock(), NOW + 80 * 60);
-  TEST_ASSERT_TRUE(fc.drew("runs out in 1h20"));
+  TEST_ASSERT_TRUE(fc.drew("at this pace, runs out at "));
   screens::reset();
   fc.clearLog();
   screens::limits(Lang::En, snap, testClock(), 0);
@@ -1338,8 +1343,373 @@ static void test_shift_canvas_warms_every_color() {
   }
 }
 
+// ---------------- daily life: forecast, long commands, second clock ----------------
+
+// A FakeCanvas that also keeps each text's colour.
+class ColorCanvas : public FakeCanvas {
+ public:
+  explicit ColorCanvas(ui::ScreenSpec s) : FakeCanvas(s) {}
+  int text(int x, int y, const char* s, ui::Font f, uint16_t fg, ui::Align a, int maxW) override {
+    fgs.push_back(fg);
+    return FakeCanvas::text(x, y, s, f, fg, a, maxW);
+  }
+  // Colour of the first drawn text containing `needle` (-1 if not drawn).
+  int fgOf(const std::string& needle) const {
+    for (size_t i = 0; i < texts.size(); i++) {
+      if (texts[i].find(needle) != std::string::npos) return fgs[i];
+    }
+    return -1;
+  }
+  void clearAll() {
+    clearLog();
+    fgs.clear();
+  }
+  std::vector<uint16_t> fgs;
+};
+
+static screens::Clock clockAt(uint32_t epoch) {
+  screens::Clock c = testClock();
+  c.epoch = epoch;
+  return c;
+}
+
+static void test_second_zone_clock_keeps_tz() {
+  setenv("TZ", "<-03>3", 1);
+  tzset();
+  char b[8];
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Europe/Lisbon", 1790605920, b, sizeof(b)));  // 2026-09-28 14:32 UTC
+  TEST_ASSERT_EQUAL_STRING("15:32", b);  // WEST, UTC+1
+  TEST_ASSERT_EQUAL_STRING("<-03>3", getenv("TZ"));
+  const time_t probe = 1790605920;
+  struct tm lt;
+  localtime_r(&probe, &lt);
+  TEST_ASSERT_EQUAL_INT(11, lt.tm_hour);  // the process zone still rules localtime
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Europe/Lisbon", 1768833120, b, sizeof(b)));  // 2026-01-19 14:32 UTC
+  TEST_ASSERT_EQUAL_STRING("14:32", b);                                       // WET, UTC+0
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Australia/Sydney", 1768833120, b, sizeof(b)));  // summer there: +11
+  TEST_ASSERT_EQUAL_STRING("01:32", b);
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Australia/Sydney", 1790605920, b, sizeof(b)));  // before its DST: +10
+  TEST_ASSERT_EQUAL_STRING("00:32", b);
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Asia/Kolkata", 1790605920, b, sizeof(b)));  // +05:30
+  TEST_ASSERT_EQUAL_STRING("20:02", b);
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("America/Sao_Paulo", 1790605920, b, sizeof(b)));
+  TEST_ASSERT_EQUAL_STRING("11:32", b);
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("America/New_York", 1790605920, b, sizeof(b)));  // EDT
+  TEST_ASSERT_EQUAL_STRING("10:32", b);
+  // The DST edge: Lisbon changes at 01:00 UTC on the last Sunday of March (2026-03-29).
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Europe/Lisbon", 1774745940, b, sizeof(b)));  // 00:59 UTC
+  TEST_ASSERT_EQUAL_STRING("00:59", b);
+  TEST_ASSERT_TRUE(miblo::zoneHHMM("Europe/Lisbon", 1774746000, b, sizeof(b)));  // 01:00 UTC
+  TEST_ASSERT_EQUAL_STRING("02:00", b);
+  TEST_ASSERT_FALSE(miblo::zoneHHMM("Mars/Base", 1790605920, b, sizeof(b)));
+  TEST_ASSERT_FALSE(miblo::zoneHHMM("Europe/Lisbon", 0, b, sizeof(b)));  // time unknown
+  miblo::Config c;
+  strcpy(c.tz2, "America/Sao_Paulo");
+  char big[40];
+  miblo::zoneLabel(c, big, sizeof(big));
+  TEST_ASSERT_EQUAL_STRING("Sao Paulo", big);
+  strcpy(c.tz2, "America/Argentina/Buenos_Aires");
+  miblo::zoneLabel(c, big, sizeof(big));
+  TEST_ASSERT_EQUAL_STRING("Buenos Aires", big);
+  strcpy(c.tz2Label, "Lisboa");
+  miblo::zoneLabel(c, big, sizeof(big));
+  TEST_ASSERT_EQUAL_STRING("Lisboa", big);
+}
+
+// A Bash command past 30 s shows "M:SS" on its card, next to the command; the card itself is not
+// redrawn every second.
+static void test_long_command_on_overview() {
+  ColorCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  working();  // worker: Bash "npm test"
+  snap.sessions[1].ts = NOW - 102;
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("1:42"));
+  TEST_ASSERT_EQUAL_INT(ui::color::GREEN, fc.fgOf("1:42"));
+  TEST_ASSERT_TRUE(fc.fontOf("1:42") == Font::SmallBold);
+  TEST_ASSERT_TRUE(fc.drew("npm test"));
+  TEST_ASSERT_FALSE(fc.drew("Bash"));  // the command alone, its time beside it
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW + 1), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("1:43"));
+  TEST_ASSERT_TRUE(fc.calls < 20);  // only the time field
+  TEST_ASSERT_FALSE(fc.drew("npm test"));
+  // Discreet: the time still shows, the command does not.
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), true, 0);
+  TEST_ASSERT_TRUE(fc.drew("1:42"));
+  TEST_ASSERT_FALSE(fc.drew("npm test"));
+  // Under 30 s, or a tool other than Bash: no time.
+  snap.sessions[1].ts = NOW - 29;
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_FALSE(fc.drew("0:29"));
+  TEST_ASSERT_TRUE(fc.drew("Bash"));
+  snap.sessions[0].ts = NOW - 300;  // Edit: never
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_FALSE(fc.drew("5:00"));
+}
+
+// Forecast under 30 min: the 5h number turns amber and "runs out ~HH:MM" replaces the reset time.
+static void test_overview_forecast_line() {
+  setenv("TZ", "<-03>3", 1);
+  tzset();
+  ColorCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  idle();  // 62%
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+  TEST_ASSERT_TRUE(fc.drew("runs out ~14:52"));
+  TEST_ASSERT_FALSE(fc.drew("resets 16:42"));
+  TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.fgOf("62%"));
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, NOW + 40 * 60);
+  TEST_ASSERT_FALSE(fc.drew("runs out ~"));
+  TEST_ASSERT_TRUE(fc.drew("resets 16:42"));
+  TEST_ASSERT_EQUAL_INT(ui::color::TEXT, fc.fgOf("62%"));
+  // The forecast coming closer redraws the number in amber (no stale colour).
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+  TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.fgOf("62%"));
+  TEST_ASSERT_TRUE(fc.drew("runs out ~14:52"));
+  // Compact strip (Working): the 5h number in amber.
+  working();  // 30%
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+  TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.fgOf("30%"));
+  screens::reset();
+  fc.clearAll();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_EQUAL_INT(ui::color::TEXT, fc.fgOf("30%"));
+}
+
+// Limits: "at this pace, runs out at HH:MM" in amber under the arc.
+static void test_limits_forecast_at() {
+  setenv("TZ", "<-03>3", 1);
+  tzset();
+  ColorCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::reset();
+  fc.clearAll();
+  screens::limits(Lang::En, snap, clockAt(NOW), NOW + 80 * 60);
+  TEST_ASSERT_TRUE(fc.drew("at this pace, runs out at 15:52"));
+  TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.fgOf("at this pace"));
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+}
+
+// Second clock: Overview Idle shows "<label> HH:MM" under its footer, as a field (a new minute
+// redraws only it); the Desk shows it in the top-right corner.
+static void test_second_clock_on_overview_and_desk() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  Pager pager(3, 5000);
+  idle();
+  screens::setSecondClock("Lisboa", "19:32");
+  screens::reset();
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("Lisboa 19:32"));
+  fc.clearLog();
+  screens::setSecondClock("Lisboa", "19:33");
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_TRUE(fc.drew("Lisboa 19:33"));
+  TEST_ASSERT_TRUE(fc.calls < 6);
+  screens::setSecondClock("", "");
+  screens::reset();
+  fc.clearLog();
+  screens::overview(Lang::En, snap, pager, 0, clockAt(NOW), false, 0);
+  TEST_ASSERT_FALSE(fc.drew("19:33"));
+  // Desk: label and time, the time a field of its own.
+  screens::setSecondClock("Lisboa", "19:32");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_TRUE(fc.drew("Lisboa"));
+  TEST_ASSERT_TRUE(fc.drew("19:32"));
+  fc.clearLog();
+  screens::setSecondClock("Lisboa", "19:33");
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_TRUE(fc.drew("19:33"));
+  TEST_ASSERT_FALSE(fc.drew("Lisboa"));
+  TEST_ASSERT_TRUE(fc.calls < 6);
+  screens::setSecondClock("", "");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_FALSE(fc.drew("Lisboa"));
+}
+
+// The new lines at their longest, in every language and resolution: second clock "WWWWWWWWWWWW
+// 23:59", a 9:59:59 command, the forecasts.
+static void test_daily_lines_fit_any_resolution() {
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  screens::setSecondClock("WWWWWWWWWWWW", "23:59");
+  for (const auto& sp : specs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      const Lang L = (Lang)l;
+      FakeCanvas fc(sp);
+      screens::bind(fc);
+      Pager pager(3, 5000);
+      idle();
+      screens::reset();
+      screens::overview(L, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+      screens::reset();
+      screens::limits(L, snap, clockAt(NOW), NOW + 26 * 3600);
+      screens::reset();
+      screens::desk(L, snap, clockAt(NOW), 0, NOW + 20 * 60);
+      working();
+      snap.sessions[1].ts = NOW - 35999;
+      strcpy(snap.sessions[1].det, "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+      screens::reset();
+      screens::overview(L, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+      TEST_ASSERT_TRUE(fc.drew("9:59:59"));
+      screens::reset();
+      screens::sessions(L, snap, pager, 0, clockAt(NOW), false);
+      attention();
+      screens::reset();
+      screens::overview(L, snap, pager, 0, clockAt(NOW), false, NOW + 20 * 60);
+      TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    }
+  }
+  screens::setSecondClock("", "");
+}
+
+// ---------------- daily life: the Desk's extras and the cat's mood ----------------
+
+// Playful (a light day): an antic every 20 s instead of 30, still the same antic for the same ms.
+static void test_playful_cat_plays_more_often() {
+  screens::setCatMood((uint8_t)miblo::CatMood::Playful);
+  uint32_t at = 1;
+  const screens::RoamAntic a = screens::roamAntic(20000, &at);
+  TEST_ASSERT_TRUE(a != screens::RoamAntic::None);
+  TEST_ASSERT_EQUAL_UINT32(0, at);
+  TEST_ASSERT_TRUE(screens::roamAntic(20000, nullptr) == a);
+  TEST_ASSERT_TRUE(screens::roamAntic(40000, nullptr) != screens::RoamAntic::None);
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
+  TEST_ASSERT_TRUE(screens::roamAntic(20000, nullptr) == screens::RoamAntic::None);
+  TEST_ASSERT_TRUE(screens::roamAntic(30000, nullptr) != screens::RoamAntic::None);
+}
+
+// Tired (8 h of work today): slow, sleepy blinks and a yawn now and then; never on a normal day.
+static void test_tired_cat_yawns() {
+  for (uint8_t mood : {(uint8_t)miblo::CatMood::Tired, (uint8_t)miblo::CatMood::Normal}) {
+    screens::setCatMood(mood);
+    bool yawn = false, sleepy = false;
+    for (uint32_t ms = 0; ms < 45000; ms += 50) {
+      const screens::MascotLook k = screens::deskLook(screens::DeskMood::Calm, true, ms);
+      yawn |= (k.extras & screens::kMouthWide) != 0;
+      sleepy |= k.eyes == screens::Eyes::Sleepy && ms < 11000;  // kCalm's own doze starts at 11.75 s
+    }
+    const bool tired = mood == (uint8_t)miblo::CatMood::Tired;
+    TEST_ASSERT_EQUAL(tired, yawn);
+    TEST_ASSERT_EQUAL(tired, sleepy);
+  }
+  screens::setCatMood((uint8_t)miblo::CatMood::Normal);
+}
+
+// Desk: the countdown line, the settings QR in the corner (in place of the second clock) and
+// confetti on the day itself; everything inside the screen at every size, in every language.
+static void test_desk_countdown_and_qr() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::setSecondClock("Lisboa", "19:32");
+  screens::setDeskExtras("release in 3 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_TRUE(fc.drew("release in 3 days"));
+  TEST_ASSERT_TRUE(fc.drew("Lisboa"));
+  screens::setDeskExtras("release in 3 days", "http://192.168.100.200/");
+  screens::reset();
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_FALSE(fc.drew("Lisboa"));  // the QR wins the corner
+  TEST_ASSERT_EQUAL_INT(ui::color::WHITE, fc.colorAt(232, 6));
+  // Same frame again: nothing redrawn (the QR is not repainted every frame).
+  fc.clearLog();
+  screens::desk(Lang::En, snap, clockAt(NOW), 0);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    for (uint8_t l = 0; l < (uint8_t)Lang::Count; l++) {
+      FakeCanvas f(sp);
+      screens::bind(f);
+      for (const char* qr : {"", "http://192.168.100.200/"}) {
+        screens::setSecondClock("WWWWWWWWWWWW", "23:59");
+        screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW in 999 days", qr);
+        screens::reset();
+        for (uint32_t ms = 0; ms < 60000; ms += 997) screens::desk((Lang)l, snap, clockAt(NOW), ms, NOW + 600);
+        screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW is today!", qr);
+        screens::reset();
+        for (uint32_t ms = 0; ms < 5000; ms += 97) screens::desk((Lang)l, snap, clockAt(NOW), ms);
+      }
+      TEST_ASSERT_EQUAL_INT(0, f.outOfBounds);
+    }
+  }
+  screens::setSecondClock("", "");
+  screens::setDeskExtras("", "");
+}
+
+// The pet's sign: the countdown takes the last task's place, unless a note (a friend, a say)
+// is up; long ones wrap onto the second line.
+static void test_pet_sign_countdown() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  idle();
+  screens::setDeskExtras("release in 3 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("release in 3 days"));
+  TEST_ASSERT_FALSE(fc.drew("infra"));
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm, "Hi, Nina!");
+  TEST_ASSERT_TRUE(fc.drew("Hi, Nina!"));
+  TEST_ASSERT_FALSE(fc.drew("release"));
+  screens::setDeskExtras("Trip to Lisbon with the team in 12 days", "");
+  screens::reset();
+  fc.clearLog();
+  screens::roam(Lang::En, snap, clockAt(NOW), 0, screens::DeskMood::Calm);
+  TEST_ASSERT_TRUE(fc.drew("in 12 days"));
+  const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+  for (const auto& sp : specs) {
+    FakeCanvas f(sp);
+    screens::bind(f);
+    screens::setDeskExtras("WWWWWWWWWWWWWWWWWWWW in 999 days", "");
+    screens::reset();
+    for (uint32_t ms = 0; ms < 400000; ms += 997) screens::roam(Lang::En, snap, clockAt(NOW), ms, screens::DeskMood::Calm);
+    TEST_ASSERT_EQUAL_INT(0, f.outOfBounds);
+  }
+  screens::setDeskExtras("", "");
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_playful_cat_plays_more_often);
+  RUN_TEST(test_tired_cat_yawns);
+  RUN_TEST(test_desk_countdown_and_qr);
+  RUN_TEST(test_pet_sign_countdown);
+  RUN_TEST(test_second_zone_clock_keeps_tz);
+  RUN_TEST(test_long_command_on_overview);
+  RUN_TEST(test_overview_forecast_line);
+  RUN_TEST(test_limits_forecast_at);
+  RUN_TEST(test_second_clock_on_overview_and_desk);
+  RUN_TEST(test_daily_lines_fit_any_resolution);
   RUN_TEST(test_warm_color);
   RUN_TEST(test_shift_canvas_warms_every_color);
   RUN_TEST(test_pet_antics_order);

@@ -244,6 +244,22 @@ notes.
     - **Look:** the special days follow the gadget's own date (NTP), so check them in the screenshots (`make screenshots`): `58-look-bunny`, `58-look-glasses`, `58-look-hearts`, `58-look-tie`, `58-look-headphones`, `58-look-tired`, `58-black-cat` and `58-black-cat-look`, and the three `58-look-sheet-*` (every piece on all four mascot colours and with each hat; look at the `@4x` PNGs). Nothing is cut off, and only the glasses sit over the eyes. On the gadget: `/miblo:meeting 2` puts a tie on the desk mascot (and on the pet), and it comes off when the meeting ends; on a day with more than 8 h of Claude working, the mascot has faint bags under its eyes.
 
 <!-- daily:screens -->
+    - **Forecast:** with the plugin from this branch, use the 5-hour limit fast: Limits shows
+      "at this pace, runs out at HH:MM" in amber; once that is under 30 min away the Overview's 5h
+      number turns amber and its reset line reads "runs out ~HH:MM".
+    - **Long command:** ask Claude to run `sleep 45` in Bash: after 30 s its Overview card reads
+      "sleep 45 · 0:31" with the time ticking each second (the card itself does not blink).
+    - **Second clock:** set "Other time zone" on the settings page (e.g. Europe/Lisbon, "Lisboa"):
+      the Desk shows "Lisboa" over its time in the top-right corner and the Overview (all done)
+      shows "Lisboa HH:MM" under today's cost; it changes with the minute, and the gadget's own
+      clock, night mode and resets stay in the gadget's zone.
+    - **Desk extras:** `/miblo:countdown` with a date 3 days ahead: the Desk shows the line in
+      violet over the rings (the cat a size smaller) and the pet's sign shows it in place of the
+      last task; with a date of today, confetti twinkles either side of the cat. Turn on the Desk
+      QR on the settings page: the QR takes the top-right corner (in place of the second clock)
+      and a phone scanning it opens the settings page.
+    - **Mood:** on a day past 8 h of Claude working, the Desk's cat blinks slowly and yawns about
+      every 45 s; on a light day (under 2 h, limits at or under 50%) pet mode plays every 20 s.
 
 <!-- daily:settings -->
     - **Settings page:** open the unlocked page with the browser language set to en, pt-BR, ru and zh: every new label is translated and nothing overflows on a phone-width window.

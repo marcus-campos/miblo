@@ -5,6 +5,7 @@
 
 #include "miblo_activity.h"
 #include "miblo_format.h"
+#include "miblo_mood.h"
 #include "miblo_policy.h"
 #include "miblo_rom.h"
 #include "ui_internal.h"
@@ -28,6 +29,19 @@ namespace color = ui::color;
 
 // Session cards per page, in the Overview (Working / Needs you) and in the Sessions mode.
 constexpr uint8_t kRows = 3;
+
+// Regions of this file's daily-life additions (past ui_internal.h's R_*; RegionCache holds 24).
+enum : uint8_t {
+  R_ZONE = 19,  // the second clock's time (Overview Idle header, Desk corner)
+  R_CMD0 = 20,  // a long Bash command's running time, one per card slot (20..22)
+  R_QR = 23,    // the Desk's settings QR
+};
+
+// The 5h forecast counts as close when the window runs out within this (Overview: amber).
+constexpr uint32_t kForecastSoonSec = 30 * 60;
+static bool forecastSoon(uint32_t exhaustAt, uint32_t now) {
+  return now && exhaustAt > now && exhaustAt - now < kForecastSoonSec;
+}
 
 // Shapes (ui_internal.h), out of line on purpose.
 __attribute__((noinline)) void szRect(int x, int y, int dx, int dy, int w, int h, uint16_t c) {
@@ -143,8 +157,11 @@ static void noLimits(Lang lang, const Snapshot& s, int cy) {
 // Big limits in the Overview: y 26..146 of the grid.
 // The reset lines ("resets 16:42 · in 2h10") are fields: the countdown ticks once a minute
 // without redrawing the numbers and bars.
-static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
-  uint32_t h = hashInt(hashInt(kHashSeed, (uint32_t)lang), s.hasUsage);
+// `soon`: the 5h window runs out within kForecastSoonSec at the current pace (exhaustAt): its
+// number turns amber and its reset line becomes "runs out ~15:40".
+static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk, uint32_t exhaustAt) {
+  const bool soon = s.hasUsage && s.h5.present && forecastSoon(exhaustAt, clk.epoch);
+  uint32_t h = hashInt(hashInt(hashInt(kHashSeed, (uint32_t)lang), s.hasUsage), soon);
   h = hashInt(hashInt(h, s.h5.present ? s.h5.pct : 255), s.h5.reset != 0);
   h = hashInt(hashInt(hashInt(h, s.d7.present ? s.d7.pct : 255), s.d7.reset != 0), (uint32_t)(s.todayUsd * 100));
   char buf[96];
@@ -156,7 +173,7 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
       C().text(X(12), Y(52), t(lang, S::Session5h), Font::Body, color::MUTED, Align::Left, X(140));
       if (s.h5.present) {
         snprintf(buf, sizeof(buf), "%u%%", s.h5.pct);
-        C().text(X(228), Y(58), buf, Font::NumL, color::TEXT, Align::Right, X(100));
+        C().text(X(228), Y(58), buf, Font::NumL, soon ? color::AMBER : color::TEXT, Align::Right, X(100));
         bar(X(12), Y(64), X(216), Y(10), s.h5.pct, levelColor(s.h5.pct, color::CORAL));
       } else {
         C().text(X(228), Y(58), "--", Font::NumM, color::DIM, Align::Right, X(100));
@@ -173,7 +190,12 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
   }
   block.end();
   if (!s.hasUsage) return;
-  if (s.h5.present && s.h5.reset) {  // 0 = unknown (the plugin sent reset:null): no line
+  if (soon) {
+    char when[32];
+    formatWhen(lang, exhaustAt, clk.epoch, when, sizeof(when));
+    snprintf(buf, sizeof(buf), t(lang, S::RunsOutShort), when);
+    field(R_RESET5, h, X(12), Y(90), buf, Font::Small, color::AMBER, color::BG, Align::Left, X(216));
+  } else if (s.h5.present && s.h5.reset) {  // 0 = unknown (the plugin sent reset:null): no line
     resetLine(lang, s.h5, clk, s.now, true, buf, sizeof(buf));
     field(R_RESET5, h, X(12), Y(90), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));
   }
@@ -185,8 +207,9 @@ static void limitsBlock(Lang lang, const Snapshot& s, const Clock& clk) {
 
 // Compact limits strip (one row, baseline y): "5h ▓▓░ 30%   7d ▓░ 13%". Without usage data
 // (account without a subscription) it shows today's cost instead. Drawn in region `id`.
-void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg) {
-  uint32_t hs = hashInt(hashInt(kHashSeed + 3, (uint32_t)lang), s.hasUsage);
+// `soon5h`: the 5h window runs out soon at the current pace: its number in amber.
+static void limitsStrip(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg, bool soon5h) {
+  uint32_t hs = hashInt(hashInt(hashInt(kHashSeed + 3, (uint32_t)lang), s.hasUsage), soon5h);
   hs = hashInt(hashInt(hs, s.h5.present ? s.h5.pct : 255), s.d7.present ? s.d7.pct : 255);
   hs = hashInt(hashInt(hs, (uint32_t)(s.todayUsd * 100)), (uint32_t)top);
   Compose strip;
@@ -208,9 +231,10 @@ void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int
     const miblo::UsageWindow* w;
     uint16_t base;
     int x;
+    bool soon;
   };
-  const Win wins[2] = {{t(lang, S::Short5h), &s.h5, color::CORAL, X(10)},
-                       {t(lang, S::Short7d), &s.d7, color::VIOLET, X(124)}};
+  const Win wins[2] = {{t(lang, S::Short5h), &s.h5, color::CORAL, X(10), soon5h},
+                       {t(lang, S::Short7d), &s.d7, color::VIOLET, X(124), false}};
   const int barH = Y(5) < 2 ? 2 : Y(5);
   for (const Win& win : wins) {
     C().text(win.x, y, win.label, Font::Small, color::MUTED, Align::Left, X(20));
@@ -219,9 +243,13 @@ void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int
     bar(win.x + X(20), y - Y(8), X(48), barH, pct, levelColor(pct, win.base));
     if (present) snprintf(buf, sizeof(buf), "%u%%", pct);
     else snprintf(buf, sizeof(buf), "--");
-    C().text(win.x + X(72), y, buf, Font::SmallBold, present ? levelColor(pct, color::TEXT) : color::DIM, Align::Left,
-             X(34));
+    const uint16_t fg = !present ? color::DIM : win.soon && pct < 95 ? color::AMBER : levelColor(pct, color::TEXT);
+    C().text(win.x + X(72), y, buf, Font::SmallBold, fg, Align::Left, X(34));
   }
+}
+
+void compactLimits(uint8_t id, Lang lang, const Snapshot& s, int top, int h, int y, uint16_t bg) {
+  limitsStrip(id, lang, s, top, h, y, bg, false);
 }
 
 // Geometry of the session rows (Overview Working / Needs you, Sessions mode), in pixels.
@@ -237,41 +265,66 @@ struct RowGeom {
 // Small, cut with "..." by the canvas. Pending cards are amber.
 // A changed card (paging, new state/activity) is composed off-screen and pushed in one go; the
 // time in state ("3m", "1h12") changes at most once a minute and is updated in place.
+// A Bash command running for over 30 s: line 2 is the command and its running time beside it,
+// big enough to read from afar ("npm test · 1:42", the time bold and green); the time is a field
+// of its own, so the card is not redrawn every second.
 static void sessionRow(uint8_t slot, Lang lang, const SessionRow* r, const Clock& clk, bool discreet,
                        const RowGeom& g) {
   const int y0 = g.top + slot * g.pitch;
   char line[160];
   char timeStr[16];
+  char cmdStr[16];
   line[0] = 0;
   timeStr[0] = 0;
+  cmdStr[0] = 0;
   if (r) {
     miblo::sessionLine(lang, *r, discreet, line, sizeof(line));
     miblo::formatInState(sessionSince(*r, clk), timeStr, sizeof(timeStr));
+    const uint32_t cmdSec = miblo::longCommandSec(*r, clk.epoch);
+    if (cmdSec) {
+      miblo::formatMinSec(cmdSec, cmdStr, sizeof(cmdStr));
+      if (!discreet && r->det[0]) snprintf(line, sizeof(line), "%s", r->det);  // the time stands for "Bash"
+    }
   }
   const bool pending = r && isPending(r->st);
   const uint16_t cardBg = r ? (pending ? color::CARD_AMBER : color::CARD) : color::BG;
   const uint16_t timeFg = pending ? color::AMBER : color::DIM;
   const int timeX = X(226);
   const int timeW = X(62);
+  // The command's time: right after the command (cut first so the time always fits) and a dot.
+  const int cmdW = X(48);
+  int lineW = X(208), cmdX = 0;
+  if (cmdStr[0]) {
+    const int dotW = C().textWidth(kDot, Font::Small);
+    lineW = X(208) - cmdW - dotW;
+    const int w = C().textWidth(line, Font::Small);
+    cmdX = X(16) + (w < lineW ? w : lineW) + dotW;
+  }
   uint32_t h = hashInt(hashInt(kHashSeed + 5, (uint32_t)g.top), (uint32_t)g.pitch);
-  if (r) h = hashStr(hashStr(hashInt(h, (uint32_t)r->st), r->name), line);
+  if (r) h = hashInt(hashStr(hashStr(hashInt(h, (uint32_t)r->st), r->name), line), (uint32_t)cmdX);
   Compose row;
   if (row.begin(R_ROW0 + slot, h, 0, y0, X(240), g.pitch)) {
-    (void)dirty(R_TIME0 + slot, hashStr(h, timeStr));  // the time is drawn with the card
+    (void)dirty(R_TIME0 + slot, hashStr(h, timeStr));  // the times are drawn with the card
+    (void)dirty(R_CMD0 + slot, hashStr(h, cmdStr));
     if (r) {
       const uint16_t sc = stateColor(r->st);
+      const uint16_t lineFg = r->st == SessionState::Running ? color::MUTED : sc;
       C().fillRect(X(8), y0 + Y(2), X(224), g.pitch - Y(4), cardBg);
       C().fillRect(X(8), y0 + Y(2), Sz(3), g.pitch - Y(4), sc);
       C().fillCircle(X(20), y0 + g.l1 - Y(5), Sz(4), sc);
       C().text(X(30), y0 + g.l1, r->name, Font::BodyBold, pending ? color::AMBER : color::TEXT, Align::Left,
                X(130));
-      C().text(X(16), y0 + g.l2, line, Font::Small, r->st == SessionState::Running ? color::MUTED : sc,
-               Align::Left, X(208));
+      const int w = C().text(X(16), y0 + g.l2, line, Font::Small, lineFg, Align::Left, lineW);
+      if (cmdStr[0]) {
+        C().text(X(16) + w, y0 + g.l2, kDot, Font::Small, lineFg, Align::Left, cmdX - X(16) - w);
+        C().textBox(cmdX, y0 + g.l2, cmdStr, Font::SmallBold, color::GREEN, cardBg, Align::Left, cmdW);
+      }
       C().textBox(timeX, y0 + g.l1, timeStr, Font::Small, timeFg, cardBg, Align::Right, timeW);
     }
     return;
   }
   if (r) field(R_TIME0 + slot, h, timeX, y0 + g.l1, timeStr, Font::Small, timeFg, cardBg, Align::Right, timeW);
+  if (cmdStr[0]) field(R_CMD0 + slot, h, cmdX, y0 + g.l2, cmdStr, Font::SmallBold, color::GREEN, cardBg, Align::Left, cmdW);
 }
 
 // Rows of one page: slot i shows session page * per + i (per <= kRows).
@@ -288,7 +341,7 @@ static void sessionRows(Lang lang, const Snapshot& s, uint8_t page, uint8_t per,
 //   Working:   compact limits strip + session cards + footer (N running, page, clock).
 //   Idle:      big 5h/week limits + last finished session + today's cost.
 
-static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
+static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk, uint32_t exhaustAt) {
   char buf[128];
   char tmp[48];
   const uint32_t hh = hashInt(kHashSeed + 7, (uint32_t)lang);
@@ -297,7 +350,7 @@ static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
     C().text(X(28), Y(18), t(lang, S::AllDone), Font::SmallBold, color::BLUE, Align::Left, X(150));
   }
   clockRight(hh, clk, Y(18), color::DIM, color::BG);
-  limitsBlock(lang, s, clk);
+  limitsBlock(lang, s, clk, exhaustAt);
   if (region(R_DIVIDER, 1, 0, Y(150), X(240), 2)) C().fillRect(X(12), Y(150), X(216), 1, color::DIVIDER);
 
   // footer: most recently finished session + today's cost (updated in place)
@@ -314,11 +367,17 @@ static void overviewIdle(Lang lang, const Snapshot& s, const Clock& clk) {
     snprintf(buf, sizeof(buf), t(lang, S::CostToday), tmp);
   }
   field(R_ROW0 + 1, kHashSeed, X(12), Y(186), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));
+  // The second clock ("Lisboa 19:32"), on a line of its own under the footer: the header has no
+  // room for it next to the title in most languages.
+  buf[0] = 0;
+  if (secondClockLabel()[0] && secondClockTime()[0]) {
+    snprintf(buf, sizeof(buf), "%s %s", secondClockLabel(), secondClockTime());
+  }
+  field(R_ZONE, kHashSeed, X(12), Y(204), buf, Font::Small, color::DIM, color::BG, Align::Left, X(216));
 }
 
 void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs, const Clock& clk, bool discreet,
               uint32_t exhaustAt) {
-  (void)exhaustAt;  // track U shows the forecast here
   const OverviewKind kind = miblo::classifyOverview(s);
   // The three layouts tile the screen differently: switching layout clears everything.
   static bool haveKind = false;
@@ -327,11 +386,12 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
   haveKind = true;
   lastKind = kind;
   if (kind == OverviewKind::Idle) {
-    overviewIdle(lang, s, clk);
+    overviewIdle(lang, s, clk, exhaustAt);
     return;
   }
 
   const miblo::StateCounts c = miblo::countStates(s);
+  const bool soon = s.hasUsage && s.h5.present && forecastSoon(exhaustAt, clk.epoch);
   char buf[128];
   char tmp[48];
   RowGeom g;
@@ -349,7 +409,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     }
     head.end();
     clockRight(h, clk, Y(16), color::BLACK, color::AMBER);
-    compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);
+    limitsStrip(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG, soon);
     g = {Y(46), Y(52), Y(20), Y(40)};
   } else {
     // Brand row (logo, "miblo", clock), then the limits strip, then the cards.
@@ -359,7 +419,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
       C().text(X(35), Y(21), "miblo", Font::Brand, color::TEXT, Align::Left, X(120));
     }
     clockRight(hb, clk, Y(18), color::DIM, color::BG);
-    compactLimits(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG);
+    limitsStrip(R_LIMITS, lang, s, Y(24), Y(22), Y(40), color::BG, soon);
     g = {Y(46), Y(52), Y(20), Y(40)};
   }
 
@@ -437,14 +497,15 @@ void limits(Lang lang, const Snapshot& s, const Clock& clk, uint32_t exhaustAt) 
     // Narrower than the ring: the box is painted and must stay clear of the arc's round ends.
     field(R_RESET5, h, cx, Y(152), buf, Font::Small, color::DIM, color::BG, Align::Center, Sz(84));
   }
-  // At the recent pace it runs out before it resets: "runs out in 1h20", in amber, in the arc's gap.
+  // At the current pace it runs out before it resets: "at this pace, runs out at 15:40", in amber,
+  // under the arc's ends (clear of them: the whole width).
   buf[0] = 0;
   if (s.hasUsage && s.h5.present && exhaustAt > clk.epoch && clk.epoch) {
-    char left[16];
-    miblo::formatCountdown(exhaustAt - clk.epoch, left, sizeof(left));
-    snprintf(buf, sizeof(buf), t(lang, S::RunsOutIn), left);
+    char when[32];
+    formatWhen(lang, exhaustAt, clk.epoch, when, sizeof(when));
+    snprintf(buf, sizeof(buf), t(lang, S::RunsOutAt), when);
   }
-  field(R_BURN, h, cx, Y(174), buf, Font::Small, color::AMBER, color::BG, Align::Center, Sz(110));
+  field(R_BURN, h, cx, Y(174), buf, Font::Small, color::AMBER, color::BG, Align::Center, X(228));
   h = hashInt(hashInt(kHashSeed, s.d7.present ? s.d7.pct : 255), (uint32_t)lang);
   const bool week = s.hasUsage && s.d7.present;
   Compose wk;
@@ -594,6 +655,10 @@ Step stepAt(const Step (&seq)[N], uint32_t ms) {
 }
 }  // namespace
 
+// A tired cat's rhythm (catMood Tired).
+constexpr uint32_t kTiredBlinkEveryMs = 6000, kTiredBlinkMs = 500;
+constexpr uint32_t kYawnEveryMs = 45000, kYawnMs = 1200;
+
 DeskMood deskMood(uint8_t pct) {
   if (pct >= 95) return DeskMood::Scared;
   if (pct >= 80) return DeskMood::Worried;
@@ -619,6 +684,16 @@ MascotLook deskLook(DeskMood mood, bool focusLeft, uint32_t ms) {
     case DeskMood::Asleep:
     default: step = stepAt(kAsleep, ms); break;
   }
+  // Tired (catMood, 8 h of work today) and at ease: the quick blinks give way to a slow, sleepy
+  // one every 6 s, and a yawn comes every 45 s. The urgent moods keep their own faces.
+  if (catMood() == (uint8_t)miblo::CatMood::Tired && (mood == DeskMood::Calm || mood == DeskMood::Watchful)) {
+    if (step.eyes == Eyes::Closed && step.ms <= 150) step.eyes = Eyes::Open;
+    if (ms % kTiredBlinkEveryMs >= kTiredBlinkEveryMs - kTiredBlinkMs) step.eyes = Eyes::Sleepy;
+    if (ms % kYawnEveryMs >= kYawnEveryMs - kYawnMs) {
+      step.eyes = Eyes::Closed;
+      step.extras = (uint16_t)(step.extras | kMouthWide);
+    }
+  }
   const Step* st = &step;
   MascotLook k{st->dx, st->dy, 0, 0, st->eyes, Paws::Down, st->extras};
   const int8_t side = focusLeft ? -3 : 3;  // the gauges sit below the cat: gaze down and sideways
@@ -637,7 +712,7 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
                                  (uint32_t)(uint8_t)k.gy << 24);
   h = hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
-  // A hat, colour, tie or mood change redraws.
+  // A hat, colour, tie or mood change redraws (the mood draws dark circles: ui_base.cpp).
   return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8 | (uint32_t)mascotTie() << 16 |
                         (uint32_t)catMood() << 24);
 }
@@ -986,8 +1061,14 @@ static RoamAntic anticOfCycle(uint32_t cycle) {  // cycle >= 1
   return (RoamAntic)order[pos];
 }
 
+// A playful cat (catMood Playful: a light day) plays every 20 s instead of every 30.
+constexpr uint32_t kPlayfulAnticEveryMs = 20000;
+static uint32_t anticEveryMs() {
+  return catMood() == (uint8_t)miblo::CatMood::Playful ? kPlayfulAnticEveryMs : kAnticEveryMs;
+}
+
 RoamAntic roamAntic(uint32_t ms, uint32_t* atMs) {
-  const uint32_t cycle = ms / kAnticEveryMs, at = ms % kAnticEveryMs;
+  const uint32_t every = anticEveryMs(), cycle = ms / every, at = ms % every;
   if (atMs) *atMs = at;
   if (cycle == 0) return RoamAntic::None;
   const RoamAntic a = anticOfCycle(cycle);
@@ -1081,7 +1162,7 @@ static RoamScene roamScene(uint32_t ms, const MascotLook& base, bool playful) {
   // Away from the sign: put it down on the floor, play above it, pick it up again (back where the
   // roaming has got to by then).
   const RoamScene held = sc;
-  floorLayout((int)((ms / kAnticEveryMs) % 3) - 1, sc);
+  floorLayout((int)((ms / anticEveryMs()) % 3) - 1, sc);
   sc.floor = true;
   if (at < kAnticPutMs || at >= kAnticPutMs + kAnticMs) {
     const uint32_t t = at < kAnticPutMs ? at : kAnticFloorMs - at;  // 0 = held .. kAnticPutMs = down
@@ -1531,6 +1612,22 @@ static void drawSign(const RoamScene& sc, const char* hhmm, const SignLimits& li
   }
 }
 
+// `text` on the sign's two task lines: whole on the first when it fits in `w`, else broken at the
+// last space that lets the first line fit (the rest on the second, cut there if need be).
+static void signWrap(const char* text, int w, char* l1, size_t c1, char* l2, size_t c2) {
+  snprintf(l1, c1, "%s", text);
+  l2[0] = 0;
+  if (C().textWidth(l1, Font::SmallBold) <= w) return;
+  for (char* sp = strrchr(l1, ' '); sp; sp = strrchr(l1, ' ')) {
+    *sp = 0;
+    if (C().textWidth(l1, Font::SmallBold) <= w) {
+      snprintf(l2, c2, "%s", text + (sp - l1) + 1);
+      return;
+    }
+  }
+  snprintf(l1, c1, "%s", text);  // no space to break at: one line, cut by the canvas
+}
+
 void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood mood, const char* note,
           uint32_t lookMs, bool computerAway) {
   // Antics while it is calm and nothing else is being said (a friend's hi, a nap together).
@@ -1540,7 +1637,7 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
 
   // The card's lines (empty when unknown).
   SignLimits lim{"--", "--", color::TEXT, color::TEXT, false};
-  char reset[48] = "", lastName[48] = "", lastWhen[64] = "";
+  char reset[48] = "", lastName[64] = "", lastWhen[64] = "";  // (64: a whole countdown line)
   uint16_t resetFg = color::MUTED;
   const bool usage = s.hasUsage && (s.h5.present || s.d7.present);
   if (usage) {
@@ -1580,6 +1677,9 @@ void roam(Lang lang, const Snapshot& s, const Clock& clk, uint32_t ms, DeskMood 
     snprintf(lastName, sizeof(lastName), "%s", note);
     lastWhen[0] = 0;
     nameFg = color::AMBER;
+  } else if (deskCountdown()[0]) {  // the countdown ("release in 3 days"), when nothing is said
+    signWrap(deskCountdown(), sc.sw - 2 * X(kRoamMargin), lastName, sizeof(lastName), lastWhen, sizeof(lastWhen));
+    nameFg = color::VIOLET;
   }
 
   uint32_t h = lookHash(hashInt(kHashSeed + 43, (uint32_t)(sc.catX * 1000 + sc.catY)), sc.k);
@@ -1957,23 +2057,27 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
 
 // ---- greetings ----
 
+// `n` bits of confetti in region `id` (x, y, w, h: pixels), reshuffled when `frame` changes.
+static void confettiIn(uint8_t id, uint32_t seed, uint32_t frame, int x0, int y0, int w, int h, int n) {
+  static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
+                                               color::CORAL, color::VIOLET, color::RED};
+  if (w <= Sz(6) || h <= Sz(6) || !region(id, hashInt(kHashSeed + 71 + seed, frame), x0, y0, w, h)) return;
+  uint32_t r = frame * 2654435761u + seed * 97u + 1;
+  for (int i = 0; i < n; i++) {
+    r = r * 1103515245u + 12345u;
+    const int x = x0 + (int)((r >> 8) % (uint32_t)(w - Sz(5)));
+    const int y = y0 + (int)((r >> 20) % (uint32_t)(h - Sz(5)));
+    uint16_t c;
+    mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
+    C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
+  }
+}
+
 // Confetti along the top and the bottom bands (R_HEADER, R_FOOT), reshuffled when `frame`
 // changes (hello() passes ms / 250: a few times a second).
 void confettiBands(uint32_t frame) {
-  static const uint16_t kColors[] MIBLO_ROM = {color::AMBER, color::GREEN,  color::BLUE,
-                                               color::CORAL, color::VIOLET, color::RED};
   for (uint8_t band = 0; band < 2; band++) {
-    const int y0 = band ? Y(216) : Y(4), bandH = Y(20);
-    if (!region(band ? R_FOOT : R_HEADER, hashInt(kHashSeed + 71 + band, frame), 0, y0, X(240), bandH)) continue;
-    uint32_t r = frame * 2654435761u + band * 97u + 1;
-    for (int i = 0; i < 14; i++) {
-      r = r * 1103515245u + 12345u;
-      const int x = X(6) + (int)((r >> 8) % (uint32_t)X(224));
-      const int y = y0 + (int)((r >> 20) % (uint32_t)(bandH - Sz(5)));
-      uint16_t c;
-      mibloRomCopy(&c, &kColors[(r >> 4) % 6], sizeof(c));
-      C().fillRect(x, y, Sz(5), Sz(3) + (int)(r % 3), c);
-    }
+    confettiIn(band ? R_FOOT : R_HEADER, band, frame, X(6), band ? Y(216) : Y(4), X(229), Y(20), 14);
   }
 }
 
@@ -1990,6 +2094,42 @@ void hello(const char* line1, const char* line2, bool party, uint32_t ms) {
   }
 }
 
+// The Desk's top-right corner, right of the cat's box (which starts at `left`): the second clock,
+// its name over its time. Both fields: a new minute redraws only the time. Nothing when it is off
+// (turning it on or off redraws the whole screen: app.cpp's updateDailyLook).
+static void deskZone(int left) {
+  const char* label = secondClockLabel();
+  const char* hhmm = secondClockTime();
+  if (!label[0] || !hhmm[0]) return;
+  const int w = X(228) - left;
+  field(R_ROW0, kHashSeed + 59, X(228), Y(18), label, Font::Small, color::DIM, color::BG, Align::Right, w);
+  field(R_ZONE, kHashSeed + 59, X(228), Y(36), hhmm, Font::SmallBold, color::DIM, color::BG, Align::Right, w);
+}
+
+// The settings QR in the Desk's top-right corner (right of `left`, above `bottom`): as big as the
+// corner allows, at most 3 px a module, never redrawn unless the address changes. Its bottom.
+static int deskQr(const char* url, int left, int bottom) {
+  constexpr int kModules = 29 + 2 * 2;  // version 3 + the quiet zone (ui_base.cpp qr())
+  const int right = X(240) - 4, top = 4;
+  int scale = (right - left < bottom - top ? right - left : bottom - top) / kModules;
+  if (scale > 3) scale = 3;
+  if (scale < 1) return top;
+  const int size = kModules * scale;
+  if (dirty(R_QR, hashInt(hashStr(kHashSeed + 67, url), (uint32_t)size))) qr(url, right - size, top, scale);
+  return top + size;
+}
+
+// "release is today!": the countdown line is CountdownToday's text ("%s is today!", the label
+// first in every language).
+static bool countdownIsToday(Lang lang, const char* line) {
+  const char* fmt = t(lang, S::CountdownToday);
+  const char* label = strstr(fmt, "%s");
+  if (!label) return false;
+  const char* suffix = label + 2;
+  const size_t n = strlen(line), m = strlen(suffix);
+  return m && n > m && strcmp(line + n - m, suffix) == 0;
+}
+
 void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32_t exhaustAt) {
   const uint32_t now = clk.epoch ? clk.epoch : s.now;
   const uint8_t p5 = deskPct(s.h5, now);
@@ -1998,7 +2138,31 @@ void desk(Lang lang, const Snapshot& s, const Clock& clk, uint32_t nowMs, uint32
   bool focusLeft;
   const DeskMood mood = deskMoodFor(s, now, &focusLeft);
   field(R_CLOCK, kHashSeed + 19, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
-  deskCat(R_BODY, X(120), Y(72), 48, deskLook(mood, focusLeft, nowMs));
+  // The extras make room: a countdown line takes the strip over the rings (the cat a size down
+  // and higher), the QR takes the top-right corner (the cat a little smaller), in place of the
+  // second clock. Turning either on or off redraws the whole screen (app.cpp).
+  const char* countdown = deskCountdown();
+  const char* qrUrl = deskQrUrl();
+  const int catHalf = countdown[0] ? 40 : qrUrl[0] ? 44 : 48;
+  const int catY = countdown[0] ? Y(64) : Y(72);
+  deskCat(R_BODY, X(120), catY, catHalf, deskLook(mood, focusLeft, nowMs));
+  const int side = Sz(catHalf) + Sz(4);  // the cat's box, plus a gap, either side of the centre
+  const int stripTop = Y(106);            // where the countdown line's strip begins
+  int cornerBottom = 0;
+  if (qrUrl[0]) cornerBottom = deskQr(qrUrl, X(120) + side, stripTop);
+  else if (secondClockLabel()[0] && secondClockTime()[0]) cornerBottom = Y(40);
+  if (!qrUrl[0]) deskZone(X(120) + side);
+  if (countdown[0]) {
+    field(R_FOOT, kHashSeed + 61, X(120), Y(118), countdown, Font::Small, color::VIOLET, color::BG, Align::Center,
+          X(228));
+    if (countdownIsToday(lang, countdown)) {  // the day itself: confetti either side of the cat
+      const uint32_t frame = nowMs / 400;
+      const int top = Y(26), w = X(120) - side - X(6);
+      confettiIn(R_TIME0, 2, frame, X(6), top, w, stripTop - top, 6);
+      const int rTop = cornerBottom ? cornerBottom + Sz(6) : top;
+      confettiIn(R_TIME0 + 1, 3, frame, X(120) + side, rTop, w, stripTop - rTop, 6);
+    }
+  }
   uint32_t h = hashInt(hashInt(kHashSeed + 23, (uint32_t)lang), usage);
   h = hashInt(hashInt(h, s.h5.present ? p5 : 255), s.d7.present ? p7 : 255);
   h = hashInt(h, (uint32_t)(s.todayUsd * 100));

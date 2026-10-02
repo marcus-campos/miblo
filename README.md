@@ -1,6 +1,6 @@
 # Miblo
 
-**A tiny desk display for Claude Code.** Miblo sits next to your keyboard and shows what your Claude Code sessions are doing, flashes when one of them needs you (a permission prompt or a question), tells you when a response is really finished, and keeps your 5-hour and weekly usage limits in sight. It is an open-source (MIT) Claude Code plugin plus ESP8266 firmware for an inexpensive off-the-shelf desk clock, so you can buy a ready-made Miblo or build your own in a few minutes.
+**A tiny desk display for Claude Code.** Miblo sits next to your keyboard and shows what your Claude Code sessions are doing, flashes when one of them needs you (a permission prompt or a question), tells you when a response is really finished, and keeps your 5-hour and weekly usage limits in sight. It also helps with the rest of the working day: a focus (Pomodoro) timer, meeting mode, notes, reminders and timers on the desk, and gentle wellness nudges you can turn on. It is an open-source (MIT) Claude Code plugin plus ESP8266 firmware for an inexpensive off-the-shelf desk clock, so you can buy a ready-made Miblo or build your own in a few minutes.
 
 <table>
   <tr>
@@ -21,9 +21,36 @@
   <tr>
     <td align="center"><img src="docs/media/pet-spill.gif" width="240" alt="Pet mode: the mascot spills its coffee on its sign"><br><sub>Pet mode: oops, the coffee</sub></td>
     <td align="center"><img src="docs/media/visit-deploy.gif" width="240" alt="Another Miblo visits for a Friday deploy"><br><sub>Two Miblos: a Friday deploy</sub></td>
-    <td></td>
+    <td align="center"><img src="docs/media/black-cat.gif" width="240" alt="A black cat crosses pet mode on Friday the 13th"><br><sub>Friday the 13th: a black cat passes by</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/focus.gif" width="240" alt="Focus: the mascot with headphones inside a progress ring"><br><sub>Focus (Pomodoro) with <code>/miblo:focus</code></sub></td>
+    <td align="center"><img src="docs/media/waiting-mark.gif" width="240" alt="An amber band over the focus screen: a session needs you"><br><sub>A session needs you, even during focus</sub></td>
+    <td align="center"><img src="docs/media/fanfare.gif" width="240" alt="Confetti: app-mobile finished after 23 minutes"><br><sub>A long task finished: the fanfare</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/meeting.gif" width="240" alt="Meeting mode: the mascot in a tie and an alert without names"><br><sub>Meeting mode: a tie, no names</sub></td>
+    <td align="center"><img src="docs/media/reminder.gif" width="240" alt="A reminder pulses the screen and the mascot holds it up"><br><sub>A reminder comes due</sub></td>
+    <td align="center"><img src="docs/media/say.gif" width="240" alt="The mascot holds a sign: back in 10 min"><br><sub>A note for passers-by (<code>/miblo:say</code>)</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/timer.gif" width="240" alt="A big countdown with an hourglass"><br><sub><code>/miblo:timer</code></sub></td>
+    <td align="center"><img src="docs/media/desk-countdown.gif" width="240" alt="The desk with a countdown and a second clock"><br><sub>A countdown and a second clock</sub></td>
+    <td align="center"><img src="docs/media/find.png" width="240" alt="The mascot waves next to the settings page QR code"><br><sub><code>/miblo:find</code>: wave and QR code</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/nudge-water.png" width="240" alt="The mascot sips water: time to drink water"><br><sub>Wellness nudges (off by default)</sub></td>
+    <td align="center"><img src="docs/media/day-end.png" width="240" alt="The end of the day: today's responses, hours and cost"><br><sub>The end of the work day</sub></td>
+    <td align="center"><img src="docs/media/week-recap.png" width="240" alt="Monday: last week's hours, responses, cost and busiest day"><br><sub>Monday: last week's recap</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/overview-long-command.png" width="240" alt="A long shell command with its running time"><br><sub>A long command, timed</sub></td>
+    <td align="center"><img src="docs/media/frame-amber.png" width="240" alt="An amber frame around the screen while a session waits"><br><sub>The status frame, seen from the corner of your eye</sub></td>
+    <td align="center"><img src="docs/media/look-valentine.png" width="240" alt="The mascot with floating hearts on Valentine's Day"><br><sub>Special days: Valentine's hearts</sub></td>
   </tr>
 </table>
+
+<p align="center"><b>30 antics</b> in pet mode and <b>37 scenes</b> when Miblos visit each other.</p>
 
 <p align="center">
   <img src="docs/media/mascot-sphynx.png" width="120" alt="Sphynx mascot">
@@ -96,6 +123,8 @@
 - **Insistence:** when the same wait goes on (the reminder every few minutes, set on the settings page), from the 3rd reminder the flash blinks twice as long and the alert stays twice as long, and from the 5th it blinks red. It starts over once nothing waits for you. On by default; turn it off on the settings page.
 - **Long task fanfare:** when a response that took a while finishes (5 min by default; 3, 5 or 10 min, or off, on the settings page), the "finished" alert becomes a party for 8 seconds, readable from across the room: confetti, the mascot hopping and "app-mobile finished after 23min". Short tasks keep the normal alert. In meeting mode it shows no name; during a focus round it waits for the break, like any "finished".
 
+- **A wait is never hidden:** while a focus, a timer, a note, a nudge or any other of these screens is up, a session that needs you shows as an amber band across the top with its name ("checkout", "+1" when more wait; "NEEDS YOU" in meeting mode) until you answer it.
+
 - **Healthy breaks (off by default):** three nudges you turn on in the settings page's Wellness section. **A break** after long continuous work (60, 90 or 120 min of Claude working; gaps of up to 10 minutes still count as continuous, a longer one starts over): the mascot stretches and suggests "How about a 5 min break?" for a minute. **Water** every 60 or 90 minutes inside your work hours: the mascot sips from a glass, "Time to drink water", for 20 s. **Eye rest (20-20-20)**: every 20 minutes of continuous work, the mascot gazes into the distance, "Look far away", for 20 s. No flash and no sound. They never show during an alert, focus, a meeting, a timer or a note, or in pet mode; one that comes due while something else is on waits up to 5 minutes for a gap, then is skipped.
 - **End of the day (off by default):** at the end of your work hours (18:00 on weekdays by default; the same hours the water nudge uses), the mascot yawns over today's summary for a minute: responses, time with Claude working and cost, and "Have a good rest, Marcus!" (with your name when it knows it). Once a day, within two hours of the end of the work hours; if a session is still running it waits for it to finish (up to an hour). Afterwards pet mode comes sooner (after 5 idle minutes) for the rest of the day.
 - **Monday recap:** on Monday mornings, at your first Claude Code activity from 05:00 (or at 09:00), the screen shows last week for a minute: hours with Claude working, responses, cost and the busiest day. It needs the plugin from the same release; turn it off on the settings page.
@@ -107,7 +136,7 @@
 - **Long commands in sight:** when Claude runs a shell command for more than 30 seconds, its card on the Overview shows the time running next to the command, in bold green ("npm test · 1:42"), so you can tell from across the room that it is still going; after an hour it reads "1h02". In discreet mode the time still shows, the command doesn't.
 - **Second clock:** pick another time zone on the settings page (with a nickname of up to 12 characters, for example "Lisboa") and its time shows small in the Desk's top corner and under the Overview's footer when everything is done ("Lisboa 19:32").
 - **Countdown and QR on the Desk:** `/miblo:countdown` puts a countdown (saved on the gadget) over the Desk's ring gauges ("release in 3 days"), with confetti on the day itself, and on the pet's sign in place of the last task (a note or a friend's hello still comes first). An optional QR code with the settings page's address can sit in the Desk's top corner (settings page; off by default), on screens big enough for a phone to read it.
-- **New settings on the settings page:** under Alerts, "insist more on long waits" (on by default), "celebrate long tasks" (off, 3, 5 or 10 min; 5 by default) and the status frame around the screen (off by default). A new **Wellness** card has the break after long work (off, 60, 90 or 120 min), the water reminder (off, 60 or 90 min), eye rest (20-20-20), "during focus, only 'needs you' alerts" (on by default), the end-of-day summary and Monday's summary of last week (on by default); the work hours and work days (09:00 to 18:00, Monday to Friday by default) show while the water reminder or the end-of-day summary is on. Under This device: a second time zone (off by default, from the same list as the main one) with the short name shown next to its time (up to 12 characters), and the settings QR code on the desk screen (off by default). Every wellness reminder is off until you turn it on.
+- **Where to set it all:** on the settings page, under Alerts, "insist more on long waits" (on by default), "celebrate long tasks" (off, 3, 5 or 10 min; 5 by default) and the status frame around the screen (off by default). A **Wellness** card has the break after long work (off, 60, 90 or 120 min), the water reminder (off, 60 or 90 min), eye rest (20-20-20), "during focus, only 'needs you' alerts" (on by default), the end-of-day summary and Monday's summary of last week (on by default); the work hours and work days (09:00 to 18:00, Monday to Friday by default) show while the water reminder or the end-of-day summary is on. Under This device: a second time zone (off by default, from the same list as the main one) with the short name shown next to its time (up to 12 characters), and the settings QR code on the desk screen (off by default). Every wellness reminder is off until you turn it on.
 - **From the plugin:** the bridge forecasts when the 5-hour limit runs out at the current pace, tells the gadget how long a shell command has been running, and on Mondays sends last week's totals (hours, responses, cost, busiest day).
 
 **Privacy**

@@ -21,6 +21,7 @@
 
 #include "TFT_eSPI.h"
 #include "fonts.h"
+#include "miblo_cues.h"
 #include "miblo_occasions.h"
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
@@ -640,7 +641,127 @@ void alertClip(Lang L, const char* name, AlertKind kind, const char* who, const 
   }
 }
 
+// Daily life (shots.h): a few seconds of each of the most visual new screens, for the README.
+void animateDaily(Lang L) {
+  const screens::Clock clk = clock();
+  const bool pt = L == Lang::PtBR || L == Lang::PtPT;
+  constexpr uint32_t kMin = 60000;
+  {
+    // Focus: the cat with headphones typing inside the ring, the time left ticking down.
+    Clip c("focus");
+    const uint32_t left = (18 * 60 + 42) * 1000u, len = 25 * kMin;
+    for (uint32_t ms = 0; ms < 6000; ms += kFrameMs) {
+      screens::focus(L, clk, miblo::FocusPhase::Focus, 2, 4, left - ms, len, gNow + left / 1000, 1000 + ms);
+      c.frame();
+    }
+  }
+  {
+    // A session needs you during a focus round: the amber mark over the focus screen.
+    attention();
+    Clip c("waiting-mark");
+    const uint32_t left = (12 * 60 + 5) * 1000u, len = 25 * kMin;
+    for (uint32_t ms = 0; ms < 5000; ms += kFrameMs) {
+      screens::focus(L, clk, miblo::FocusPhase::Focus, 3, 4, left - ms, len, gNow + left / 1000, 1000 + ms);
+      screens::waitingMark(L, "checkout", 1);
+      c.frame();
+    }
+  }
+  {
+    // A reminder comes due: three slow pulses, then the cat holds it up.
+    Clip c("reminder");
+    const uint32_t pulses = miblo::cuePulses(miblo::CueKind::Reminder) * miblo::kCuePulseMs;
+    for (uint32_t ms = 0; ms < pulses; ms += kFrameMs) {
+      screens::cue(miblo::CueKind::Reminder, ms);
+      c.frame();
+    }
+    screens::reset();
+    for (uint32_t ms = 0; ms < 4000; ms += kFrameMs) {
+      screens::note(L, miblo::NoteKind::Reminder, pt ? "ligar pro cliente" : "call the client", clk, 1000 + ms);
+      c.frame();
+    }
+  }
+  {
+    // A note for whoever walks by, held up by the cat.
+    Clip c("say");
+    for (uint32_t ms = 0; ms < 5000; ms += kFrameMs) {
+      screens::note(L, miblo::NoteKind::Say, pt ? "volto em 10 min" : "back in 10 min", clk, 1000 + ms);
+      c.frame();
+    }
+  }
+  {
+    // The timer: the big countdown with the hourglass.
+    Clip c("timer");
+    const uint32_t left = (6 * 60 + 42) * 1000u;
+    for (uint32_t ms = 0; ms < 5000; ms += kFrameMs) {
+      screens::timer(L, clk, left - ms, 10 * kMin, 1000 + ms);
+      c.frame();
+    }
+  }
+  {
+    // A long task finished: the fanfare (6 s of its 8).
+    Clip c("fanfare");
+    for (uint32_t ms = 0; ms < 6000; ms += kFrameMs) {
+      screens::fanfare(L, "app-mobile", 23 * 60 + 7, ms);
+      c.frame();
+    }
+  }
+  {
+    // Meeting mode: the desk with the tie and the badge, then an anonymous alert.
+    screens::setMascotTie(true);
+    idle();
+    usage(34, 21);
+    Clip c("meeting");
+    for (uint32_t ms = 0; ms < 3000; ms += kFrameMs) {
+      screens::desk(L, snap, clk, ms);
+      screens::meetingBadge(L);
+      c.frame();
+    }
+    attention();
+    screens::reset();
+    for (uint32_t ms = 0; ms < 2 * screens::kFlashPhaseMs; ms += kFrameMs) {
+      screens::flash(L, AlertKind::Perm, "checkout", ms, 0, true);
+      c.frame();
+    }
+    screens::reset();
+    miblo::RunTracker none;
+    for (uint32_t ms = 0; ms < 3000; ms += kFrameMs) {
+      screens::hero(L, snap, 0, AlertKind::Perm, true, clk, none, true);
+      screens::meetingBadge(L);
+      c.frame();
+    }
+    screens::setMascotTie(false);
+  }
+  {
+    // Friday the 13th: the black cat crossing pet mode.
+    miblo::Snapshot none{};
+    Clip c("black-cat");
+    for (uint32_t ms = 0; ms < miblo::kPasserbyMs; ms += kFrameMs) {
+      screens::passerby(L, none, clk, ms);
+      c.frame();
+    }
+  }
+  {
+    // The desk with a countdown over the gauges and a second clock in the corner.
+    idle();
+    usage(62, 38);
+    char fmt[48], line[64];
+    miblo::tr(L, S::CountdownDays, fmt, sizeof(fmt));
+    snprintf(line, sizeof(line), fmt, pt ? "lan\xC3\xA7""amento" : "release", 3u);
+    screens::setDeskExtras(line, "");
+    screens::setSecondClock("Lisboa", "18:32");
+    Clip c("desk-countdown");
+    const uint32_t loop = moodLoopMs(screens::DeskMood::Watchful);
+    for (uint32_t ms = 0; ms < loop; ms += kFrameMs) {
+      screens::desk(L, snap, clk, ms);
+      c.frame();
+    }
+    screens::setDeskExtras("", "");
+    screens::setSecondClock("", "");
+  }
+}
+
 void animateAll(Lang L) {
+  animateDaily(L);
   const screens::Clock clk = clock();
   for (const Mood& m : kMoods) {
     idle();

@@ -2,62 +2,47 @@
 
 namespace miblo {
 
-// Stub (daily-life foundation): track C implements it.
-bool workDay(const Config& cfg, uint8_t weekday) {
-  (void)cfg;
-  (void)weekday;
-  return false;
-}
+bool workDay(const Config& cfg, uint8_t weekday) { return weekday < 7 && (cfg.workDays >> weekday) & 1; }
 
-// Stub (daily-life foundation): track C implements it.
 bool inWorkHours(const Config& cfg, uint8_t weekday, int minute) {
-  (void)cfg;
-  (void)weekday;
-  (void)minute;
-  return false;
+  return minute >= 0 && workDay(cfg, weekday) && minute >= cfg.workFrom && minute < cfg.workTo;
 }
 
-// Stub (daily-life foundation): track C implements it.
+// Once a day, from the end of the work hours (time known, a work day). A session still running
+// holds it up to kMaxWaitMs, counted from the first frame it could have shown; then it shows
+// anyway. Something more important on screen (`allowed` false) holds it until a gap.
 void EndOfDay::update(uint32_t nowMs, const Config& cfg, uint32_t dayKey, uint8_t weekday, int minute, bool running,
                       bool allowed) {
-  (void)nowMs;
-  (void)cfg;
-  (void)dayKey;
-  (void)weekday;
-  (void)minute;
-  (void)running;
-  (void)allowed;
+  if (shown_ && (!cfg.endOfDay || nowMs - shownMs_ >= kShowMs)) shown_ = false;
+  if (!cfg.endOfDay || dayKey == 0 || doneDay_ == dayKey || !workDay(cfg, weekday) || minute < cfg.workTo) return;
+  if (waitDay_ != dayKey) {
+    waitDay_ = dayKey;
+    waitFromMs_ = nowMs;
+  }
+  if ((running && nowMs - waitFromMs_ < kMaxWaitMs) || !allowed) return;
+  doneDay_ = dayKey;
+  shown_ = true;
+  shownMs_ = nowMs;
 }
 
-// Stub (daily-life foundation): track C implements it.
-bool EndOfDay::showing(uint32_t nowMs) const {
-  (void)nowMs;
-  return false;
-}
+bool EndOfDay::showing(uint32_t nowMs) const { return shown_ && nowMs - shownMs_ < kShowMs; }
 
-// Stub (daily-life foundation): track C implements it.
 uint8_t EndOfDay::petMinutes(const Config& cfg, uint32_t dayKey) const {
-  (void)dayKey;
-  return cfg.petMin;
+  return dayKey != 0 && doneDay_ == dayKey && cfg.petMin > kEarlyPetMin ? kEarlyPetMin : cfg.petMin;
 }
 
-// Stub (daily-life foundation): track C implements it.
+// Mondays (the bridge sends `week` only then): at the first activity from 05:00, or at kAt,
+// whichever comes first; once per day.
 void WeeklyRecap::update(uint32_t nowMs, bool enabled, uint32_t dayKey, uint8_t weekday, int minute, bool active,
                          bool hasWeek, bool allowed) {
-  (void)nowMs;
-  (void)enabled;
-  (void)dayKey;
-  (void)weekday;
-  (void)minute;
-  (void)active;
-  (void)hasWeek;
-  (void)allowed;
+  if (shown_ && (!enabled || nowMs - shownMs_ >= kShowMs)) shown_ = false;
+  if (!enabled || dayKey == 0 || weekday != 1 || !hasWeek || doneDay_ == dayKey || !allowed) return;
+  if (!(minute >= kAt || (active && minute >= 5 * 60))) return;
+  doneDay_ = dayKey;
+  shown_ = true;
+  shownMs_ = nowMs;
 }
 
-// Stub (daily-life foundation): track C implements it.
-bool WeeklyRecap::showing(uint32_t nowMs) const {
-  (void)nowMs;
-  return false;
-}
+bool WeeklyRecap::showing(uint32_t nowMs) const { return shown_ && nowMs - shownMs_ < kShowMs; }
 
 }  // namespace miblo

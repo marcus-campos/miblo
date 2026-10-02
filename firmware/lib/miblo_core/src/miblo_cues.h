@@ -15,13 +15,15 @@ uint8_t cuePulses(CueKind k);           // BreakEnd 1, the others 3
 class StrongCue {
  public:
   void fire(CueKind k, uint32_t nowMs);
-  CueKind active(uint32_t nowMs) const;  // None once its pulses are over
+  // None once its pulses are over (and from then on: the cue is cleared, so millis() wrapping
+  // back near sinceMs_ ~49.7 days later never brings it back).
+  CueKind active(uint32_t nowMs) const;
   uint32_t elapsed(uint32_t nowMs) const { return nowMs - sinceMs_; }
   // 0..255 at `elapsedMs` into `pulses` pulses (smooth rise and fall, 0 between pulses).
   static uint8_t intensity(uint32_t elapsedMs, uint8_t pulses);
 
  private:
-  CueKind kind_ = CueKind::None;
+  mutable CueKind kind_ = CueKind::None;  // cleared by active() when the pulses end
   uint32_t sinceMs_ = 0;
 };
 

@@ -22,8 +22,11 @@ void StrongCue::fire(CueKind k, uint32_t nowMs) {
 
 CueKind StrongCue::active(uint32_t nowMs) const {
   if (kind_ == CueKind::None) return CueKind::None;
-  // Unsigned difference: safe across the millis() wrap; a long stall simply ends the cue.
-  return nowMs - sinceMs_ < (uint32_t)cuePulses(kind_) * kCuePulseMs ? kind_ : CueKind::None;
+  // Unsigned difference: safe across the millis() wrap; a long stall simply ends the cue. Once
+  // over it is cleared, so a later wrap of nowMs - sinceMs_ into the pulse window stays quiet.
+  if (nowMs - sinceMs_ < (uint32_t)cuePulses(kind_) * kCuePulseMs) return kind_;
+  kind_ = CueKind::None;
+  return CueKind::None;
 }
 
 // One pulse, (1 - cos(2 pi k / 16)) / 2 * 255 for k = 0..15: a smooth rise and fall, no floats.

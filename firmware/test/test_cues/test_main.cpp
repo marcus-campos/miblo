@@ -57,6 +57,10 @@ static void test_cue_kinds_and_refire() {
   // A loop that stalled for much longer than the cue does not bring it back.
   c.fire(miblo::CueKind::Timer, 0);
   TEST_ASSERT_EQUAL(miblo::CueKind::None, c.active(0x80000000u));
+  // Once over, it stays over: millis() wrapping back near the start (2^32 + 100) brings no ghost.
+  c.fire(miblo::CueKind::Timer, 0);
+  TEST_ASSERT_EQUAL(miblo::CueKind::None, c.active(3 * miblo::kCuePulseMs));
+  TEST_ASSERT_EQUAL(miblo::CueKind::None, c.active(100));
 }
 
 static void test_cue_brightness_respects_night_mode() {

@@ -863,6 +863,12 @@ void fuzzHttp(const uint8_t* d, size_t n) {
       }
     }
   }
+  // The Host / Origin policy (M1) on arbitrary text: no read past the string.
+  {
+    const std::string z(hdr.p, hdr.n);
+    if (hostAllowed(z.c_str(), "miblo-4f2a")) fuzz::reached();
+    if (originAllowed(z.c_str(), "miblo-4f2a")) fuzz::reached();
+  }
   // The multipart guard: a Multipart verdict always carries a 1..70 character boundary, and a
   // smaller output buffer changes only the copy, never the verdict.
   char boundary[kMaxBoundary + 8];

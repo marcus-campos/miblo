@@ -134,8 +134,9 @@ size_t requestBodyLength(const char* p, size_t n);
 LengthVerdict requestLengthVerdict(const char* p, size_t n);
 // The value of header `lowerName` (lowercase, without the colon) in a complete header block, the
 // last one if repeated (as the server reads it), trimmed, into `out`. False if absent, if the
-// block is incomplete, or if the value does not fit (never cut).
-bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap);
+// block is incomplete, or if the value does not fit (never cut). `present` (optional): whether the
+// header is there at all, even when its value does not fit.
+bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap, bool* present = nullptr);
 
 // What the request hook does with a body request (POST, PUT, PATCH, DELETE).
 enum class BodyAction : uint8_t {

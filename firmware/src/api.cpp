@@ -168,6 +168,9 @@ static void handleInfo() {
 }
 
 static void handlePair() {
+  // application/json only: a web page can only send it after a CORS preflight the gadget never
+  // approves, so no other site can spend the owner's pairing attempts (M1).
+  if (!web::requireJson(*srv)) return;
   StaticJsonDocument<256> doc;
   if (deserializeJson(doc, srv->arg(F("plain")))) {
     json(400, F("{\"error\":\"bad json\"}"));

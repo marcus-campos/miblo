@@ -423,6 +423,51 @@ static void test_token_tag() {
   TEST_ASSERT_EQUAL_STRING("cbf29ce4", tag);
 }
 
+// M1: DNS rebinding. A page on attacker.example that rebinds its name to the gadget's IP sends
+// "Host: attacker.example"; only the gadget's own names and IP literals are served.
+static void test_host_policy() {
+  const char* id = "miblo-4f2a";
+  TEST_ASSERT_TRUE(hostAllowed(nullptr, id));  // no Host (an HTTP/1.0 tool): no browser sends that
+  TEST_ASSERT_TRUE(hostAllowed("", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("10.0.0.7:8080", id));
+  TEST_ASSERT_TRUE(hostAllowed("[fe80::1]", id));
+  TEST_ASSERT_TRUE(hostAllowed("[fe80::1]:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local", id));
+  TEST_ASSERT_TRUE(hostAllowed("MIBLO-4F2A.LOCAL.", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local:80", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a", id));            // the router's DNS (DHCP host name)
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.fritz.box", id));  // ... with its domain
+  TEST_ASSERT_FALSE(hostAllowed("attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("attacker.example:80", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2b.local", id));     // another unit's name
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a0.local", id));
+  TEST_ASSERT_FALSE(hostAllowed("xmiblo-4f2a.local", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0.41.attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0", id));
+  TEST_ASSERT_FALSE(hostAllowed("192.168.0.256", id));
+  TEST_ASSERT_FALSE(hostAllowed("1.2.3.4:x", id));
+  TEST_ASSERT_FALSE(hostAllowed("[fe80::1", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.local:80:80", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a..local", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.local/x", id));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", ""));  // no id yet: IP literals are still fine
+  TEST_ASSERT_FALSE(hostAllowed(".local", ""));
+  TEST_ASSERT_TRUE(hostAllowed("192.168.0.41", nullptr));
+  // Origin: absent (same-origin GET, curl, the plugin) or http:// one of those hosts.
+  TEST_ASSERT_TRUE(originAllowed(nullptr, id));
+  TEST_ASSERT_TRUE(originAllowed("", id));
+  TEST_ASSERT_TRUE(originAllowed("http://192.168.0.41", id));
+  TEST_ASSERT_TRUE(originAllowed("http://miblo-4f2a.local", id));
+  TEST_ASSERT_TRUE(originAllowed("HTTP://miblo-4f2a.local:80", id));
+  TEST_ASSERT_FALSE(originAllowed("http://attacker.example", id));
+  TEST_ASSERT_FALSE(originAllowed("https://192.168.0.41", id));
+  TEST_ASSERT_FALSE(originAllowed("null", id));
+  TEST_ASSERT_FALSE(originAllowed("http://", id));
+  TEST_ASSERT_FALSE(originAllowed("http://192.168.0.41/x", id));
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
@@ -898,6 +943,7 @@ int main() {
   RUN_TEST(test_tokens_json_round_trip);
   RUN_TEST(test_system_json_fields);
   RUN_TEST(test_token_tag);
+  RUN_TEST(test_host_policy);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_content_length_matches_the_server);
   RUN_TEST(test_headers_plain_and_complete);

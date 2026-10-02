@@ -192,6 +192,91 @@ HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundar
   return v;
 }
 
+namespace {
+bool isDigit(char c) { return c >= '0' && c <= '9'; }
+bool isLabelChar(char c) { return isDigit(c) || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '-'; }
+
+// Dotted-quad IPv4 in p[0..n): four 0..255 parts of 1..3 digits.
+bool ipv4Literal(const char* p, size_t n) {
+  size_t i = 0;
+  for (int part = 0; part < 4; part++) {
+    if (part && (i >= n || p[i++] != '.')) return false;
+    unsigned v = 0;
+    size_t digits = 0;
+    while (i < n && isDigit(p[i]) && digits < 4) v = v * 10 + (unsigned)(p[i++] - '0'), digits++;
+    if (digits == 0 || digits > 3 || v > 255) return false;
+  }
+  return i == n;
+}
+
+// "[...]" with only hex digits, ':' and '.' inside.
+bool ipv6Literal(const char* p, size_t n) {
+  if (n < 3 || p[0] != '[' || p[n - 1] != ']') return false;
+  for (size_t i = 1; i + 1 < n; i++) {
+    const char c = lower(p[i]);
+    if (!(isDigit(c) || (c >= 'a' && c <= 'f') || c == ':' || c == '.')) return false;
+  }
+  return true;
+}
+
+// p[0..n) is `id`, alone or followed by "." and dot-separated non-empty labels.
+bool ownName(const char* p, size_t n, const char* id) {
+  const size_t idLen = id ? strlen(id) : 0;
+  if (!idLen || n < idLen) return false;
+  for (size_t k = 0; k < idLen; k++)
+    if (lower(p[k]) != lower(id[k])) return false;
+  if (n == idLen) return true;
+  if (p[idLen] != '.') return false;
+  size_t label = 0;
+  for (size_t i = idLen + 1; i < n; i++) {
+    if (p[i] == '.') {
+      if (!label) return false;
+      label = 0;
+    } else if (isLabelChar(p[i])) {
+      label++;
+    } else {
+      return false;
+    }
+  }
+  return label > 0;
+}
+
+bool hostSpan(const char* p, size_t n, const char* id) {
+  if (n == 0) return false;
+  // ":port" (1..5 digits), never inside a bracketed IPv6 literal.
+  size_t colon = n;
+  for (size_t i = n; i > 0; i--) {
+    if (p[i - 1] == ':' || p[i - 1] == ']') {
+      if (p[i - 1] == ':') colon = i - 1;
+      break;
+    }
+  }
+  if (colon < n) {
+    const size_t digits = n - colon - 1;
+    if (digits == 0 || digits > 5) return false;
+    for (size_t i = colon + 1; i < n; i++)
+      if (!isDigit(p[i])) return false;
+    n = colon;
+  }
+  if (n && p[n - 1] == '.') n--;  // a fully qualified name's trailing dot
+  return ipv4Literal(p, n) || ipv6Literal(p, n) || ownName(p, n, id);
+}
+}  // namespace
+
+bool hostAllowed(const char* host, const char* id) {
+  if (!host || !host[0]) return true;
+  return hostSpan(host, strlen(host), id);
+}
+
+bool originAllowed(const char* origin, const char* id) {
+  if (!origin || !origin[0]) return true;
+  static const char kScheme[] MIBLO_ROM = "http://";
+  const size_t schemeLen = sizeof(kScheme) - 1;
+  const size_t n = strlen(origin);
+  if (n <= schemeLen || !matchesLower(origin, kScheme, schemeLen)) return false;
+  return hostSpan(origin + schemeLen, n - schemeLen, id);
+}
+
 void PairingGuard::setCode(const char* code4) {
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;

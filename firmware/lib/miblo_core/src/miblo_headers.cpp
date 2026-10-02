@@ -132,14 +132,16 @@ LengthVerdict requestLengthVerdict(const char* p, size_t n) {
   return end ? scanContentLength(p, end, len) : LengthVerdict::None;
 }
 
-bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap) {
+bool findHeader(const char* p, size_t n, const char* lowerName, char* out, size_t cap, bool* present) {
   const size_t end = p ? headerBlockEnd(p, n) : 0;
   const size_t nameLen = strlen(lowerName);
   bool found = false;
+  if (present) *present = false;
   for (size_t line = 0; line < end;) {
     size_t eol = line;
     while (eol < end && p[eol] != '\n') eol++;
     if (eol - line > nameLen && p[line + nameLen] == ':' && lowerIs(p + line, lowerName, nameLen)) {
+      if (present) *present = true;
       size_t a = line + nameLen + 1, b = eol;
       while (a < b && (p[a] == ' ' || p[a] == '\t')) a++;
       while (b > a && (p[b - 1] == '\r' || p[b - 1] == ' ' || p[b - 1] == '\t')) b--;

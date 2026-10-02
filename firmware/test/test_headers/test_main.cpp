@@ -394,6 +394,11 @@ static void test_request_body_length_and_header_lookup() {
   TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "x-miblo-web", v, sizeof(v)));
   char tiny[4];
   TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "authorization", tiny, sizeof(tiny)));  // never cut
+  bool present = false;
+  TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "authorization", tiny, sizeof(tiny), &present));
+  TEST_ASSERT_TRUE(present);  // there, but too long: the Host check must not take it as absent
+  TEST_ASSERT_FALSE(findHeader(h.data(), h.size(), "origin", tiny, sizeof(tiny), &present));
+  TEST_ASSERT_FALSE(present);
   const std::string partial = "Host: x\r\nContent-Length: 9\r\n";  // no blank line yet
   TEST_ASSERT_EQUAL(0, requestBodyLength(partial.data(), partial.size()));
   const std::string body = "Host: x\r\n\r\nAuthorization: Bearer fake\r\n";  // past the block: body

@@ -1477,14 +1477,33 @@ static PGM_P largeBodyRefusal(LookaheadClient* client, const String& url) {
   return PSTR("401 Unauthorized");
 }
 
+// M1: a request for another name than the gadget's (DNS rebinding: a web page whose own name now
+// points at the gadget), or from another site's page (Origin), is refused before anything is read
+// or done: 421 / 403. The setup AP answers any Host (its captive portal redirects them). The header
+// block is complete here (the read-ahead holds a request until it is, lookahead_client.h).
+static PGM_P foreignRequest(LookaheadClient* client) {
+  if (net::apActive() && client->localIP() == WiFi.softAPIP()) return nullptr;
+  const char* p = client->peekBuffer();
+  const size_t n = client->peekAvailable();
+  char value[72];
+  bool present = false;
+  const bool found = miblo::findHeader(p, n, "host", value, sizeof(value), &present);
+  if (present && (!found || !miblo::hostAllowed(value, ctx.ident.id))) return PSTR("421 Misdirected Request");
+  const bool origin = miblo::findHeader(p, n, "origin", value, sizeof(value), &present);
+  if (present && (!origin || !miblo::originAllowed(value, ctx.ident.id))) return PSTR("403 Forbidden");
+  return nullptr;
+}
+
 static WebServerT::ClientFuture limitPostBody(const String& method, const String& url, WiFiClient* wifiClient,
                                               WebServerT::ContentTypeFunction) {
   using miblo::BodyAction;
-  if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
-    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the server parses no body for these
-  }
   // The server passes its own connection, whose type is WebServerT::ClientType.
   auto* client = static_cast<LookaheadClient*>(wifiClient);
+  if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
+    // The server parses no body for these.
+    if (PGM_P status = foreignRequest(client)) return refuse(client, status, PSTR("{\"error\":\"wrong host\"}"));
+    return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
+  }
   static const char kBad[] PROGMEM = "400 Bad Request";
   miblo::HeaderVerdict verdict = miblo::checkRequestHeaders(client->peekBuffer(), client->peekAvailable());
   if (verdict == miblo::HeaderVerdict::Incomplete) {
@@ -1499,6 +1518,7 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
     if (gathered == BodyAction::Busy) return refuse(client, PSTR("503 Service Unavailable"), PSTR("{\"error\":\"busy\"}"));
     verdict = client->aheadVerdict();
   }
+  if (PGM_P status = foreignRequest(client)) return refuse(client, status, PSTR("{\"error\":\"wrong host\"}"));
   // H1: a Content-Length the server would read differently from what the guards below judge
   // ("-1", "+60000", duplicates that disagree) is refused before the server reads anything. The
   // read-ahead (lookahead_client.h) already refuses it; this is the same rule at the hook.

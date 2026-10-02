@@ -62,6 +62,22 @@ enum class HeaderVerdict : uint8_t { Plain, Multipart, BadMultipart, Incomplete,
 constexpr size_t kMaxBoundary = 70;  // RFC 2046
 HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundary = nullptr, size_t cap = 0);
 
+// DNS rebinding and cross-site requests (M1). A web page cannot read the gadget's replies, but
+// one whose own name was rebound to the gadget's IP can: its requests then carry the attacker's
+// name in Host. So a request is served only when its Host is
+//   - absent or empty (a browser always sends one);
+//   - an IP literal: dotted-quad IPv4, or a bracketed IPv6;
+//   - the gadget's id (its mDNS name and DHCP host name, "miblo-4f2a"), alone ("miblo-4f2a", from
+//     a router's DNS) or followed by a domain ("miblo-4f2a.local", "miblo-4f2a.fritz.box"): an
+//     attacker would have to know the id, which only goes out on the LAN;
+// each with an optional ":port" and trailing dot, case-insensitive. The setup AP (captive portal)
+// is the caller's exception: there any Host is answered (and redirected).
+bool hostAllowed(const char* host, const char* id);
+// An Origin header (sent by browsers on cross-origin requests and on every POST): absent, or
+// "http://" + an allowed host (hostAllowed), nothing after it. "null", https and anything else are
+// another site.
+bool originAllowed(const char* origin, const char* id);
+
 // Escalating brute-force lockout shared by PairingGuard and PresenceGate: the 5th failure in a
 // row locks for 60 s, each further lockout doubles it (capped at 1 h). Only success() ends the
 // escalation. Call update() regularly (the app does, every frame) so a lockout from long ago can

@@ -66,7 +66,7 @@ static miblo::SaveRetry configSave;  // config.json
 // One save attempt's outcome on its schedule.
 static void saved(miblo::SaveRetry& r, bool ok, uint32_t now, const __FlashStringHelper* what) {
   if (ok) {
-    r.succeeded();
+    r.succeeded(now);  // the next write waits SaveRetry::kMinGapMs (flash wear)
     return;
   }
   Serial.print(what);
@@ -389,7 +389,12 @@ void loop() {
     delay(300);  // let the HTTP response go out
     storage::factoryReset();
   }
-  if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) ESP.restart();
+  if (ctx.rebootRequested && (int32_t)(now - ctx.rebootAtMs) >= 0) {
+    // A change still waiting for its spaced write (SaveRetry::kMinGapMs) is not lost.
+    if (configSave.pending()) storage::saveConfig(ctx.cfg);
+    if (notesSave.pending()) storage::saveNotes(ctx.notes);
+    ESP.restart();
+  }
   ctx.presence.update(now);  // expire old brute-force lockouts before the clock can wrap
   ctx.pairing.update(now);
   lockouts::persist(now);    // and keep them across a reset (RTC memory)

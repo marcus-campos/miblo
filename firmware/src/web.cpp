@@ -181,7 +181,15 @@ Lang pageLang(WebServerT& server) {
   const Lang browser = miblo::negotiateLang(requestHeader(server, F("Accept-Language")).c_str());
   bool store = false;
   const Lang l = miblo::pageLanguage(ctx.tokens.count() > 0, ctx.cfg.langSet, ctx.cfg.lang, browser, store);
-  if (store) {
+  // An anonymous page view stores the language at most once an hour (L1: anyone on the LAN could
+  // otherwise make the unit write its flash by alternating Accept-Language); in between the page
+  // is still drawn in the browser's language.
+  static bool storedOnce = false;
+  static uint32_t storedAtMs = 0;
+  const uint32_t now = millis();
+  if (store && (!storedOnce || now - storedAtMs >= 3600000u)) {
+    storedOnce = true;
+    storedAtMs = now;
     ctx.cfg.lang = l;
     ctx.configChanged = true;
   }

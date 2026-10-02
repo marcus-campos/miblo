@@ -2,71 +2,35 @@
 
 **A tiny desk display for Claude Code.** Miblo sits next to your keyboard and shows what your Claude Code sessions are doing, flashes when one of them needs you (a permission prompt or a question), tells you when a response is really finished, and keeps your 5-hour and weekly usage limits in sight. It also helps with the rest of the working day: a focus (Pomodoro) timer, meeting mode, notes, reminders and timers on the desk, and gentle wellness nudges you can turn on. It is an open-source (MIT) Claude Code plugin plus ESP8266 firmware for an inexpensive off-the-shelf desk clock, so you can buy a ready-made Miblo or build your own in a few minutes.
 
-<table>
+<p align="center">
+  <img src="docs/media/alert-permission.gif" width="300" alt="Amber alert: a session asked for permission">
+</p>
+
+<table align="center">
   <tr>
-    <td align="center"><img src="docs/media/overview-working.png" width="240" alt="Overview while sessions are running"><br><sub>Sessions at a glance</sub></td>
-    <td align="center"><img src="docs/media/alert-permission.gif" width="240" alt="Amber alert: a session asked for permission"><br><sub>A session needs you</sub></td>
-    <td align="center"><img src="docs/media/alert-done.gif" width="240" alt="Blue alert: a response finished"><br><sub>A response is really finished</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/desk-watchful.gif" width="240" alt="The desk mascot watching the limit rings"><br><sub>Idle: the mascot watches your limits</sub></td>
-    <td align="center"><img src="docs/media/desk-scared.gif" width="240" alt="The desk mascot panicking at 97%"><br><sub>...and panics near the limit</sub></td>
-    <td align="center"><img src="docs/media/limit-freed.gif" width="240" alt="Limit freed: the mascot celebrates"><br><sub>The 5-hour window reset</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/limits-runs-out.png" width="240" alt="Limits arc with the runs-out forecast"><br><sub>Limits and a runs-out forecast</sub></td>
-    <td align="center"><img src="docs/media/today-summary.png" width="240" alt="Today's summary"><br><sub>Today's summary</sub></td>
-    <td align="center"><img src="docs/media/disconnected.gif" width="240" alt="Disconnected: the mascot looks for the computer"><br><sub>Waiting for the computer</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/pet-spill.gif" width="240" alt="Pet mode: the mascot spills its coffee on its sign"><br><sub>Pet mode: oops, the coffee</sub></td>
-    <td align="center"><img src="docs/media/visit-deploy.gif" width="240" alt="Another Miblo visits for a Friday deploy"><br><sub>Two Miblos: a Friday deploy</sub></td>
-    <td align="center"><img src="docs/media/black-cat.gif" width="240" alt="A black cat crosses pet mode on Friday the 13th"><br><sub>Friday the 13th: a black cat passes by</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/focus.gif" width="240" alt="Focus: the mascot with headphones inside a progress ring"><br><sub>Focus (Pomodoro) with <code>/miblo:focus</code></sub></td>
-    <td align="center"><img src="docs/media/waiting-mark.gif" width="240" alt="An amber band over the focus screen: a session needs you"><br><sub>A session needs you, even during focus</sub></td>
-    <td align="center"><img src="docs/media/fanfare.gif" width="240" alt="Confetti: app-mobile finished after 23 minutes"><br><sub>A long task finished: the fanfare</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/meeting.gif" width="240" alt="Meeting mode: the mascot in a tie and an alert without names"><br><sub>Meeting mode: a tie, no names</sub></td>
-    <td align="center"><img src="docs/media/reminder.gif" width="240" alt="A reminder pulses the screen and the mascot holds it up"><br><sub>A reminder comes due</sub></td>
-    <td align="center"><img src="docs/media/say.gif" width="240" alt="The mascot holds a sign: back in 10 min"><br><sub>A note for passers-by (<code>/miblo:say</code>)</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/timer.gif" width="240" alt="A big countdown with an hourglass"><br><sub><code>/miblo:timer</code></sub></td>
-    <td align="center"><img src="docs/media/desk-countdown.gif" width="240" alt="The desk with a countdown and a second clock"><br><sub>A countdown and a second clock</sub></td>
-    <td align="center"><img src="docs/media/find.png" width="240" alt="The mascot waves next to the settings page QR code"><br><sub><code>/miblo:find</code>: wave and QR code</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/nudge-water.png" width="240" alt="The mascot sips water: time to drink water"><br><sub>Wellness nudges (off by default)</sub></td>
-    <td align="center"><img src="docs/media/day-end.png" width="240" alt="The end of the day: today's responses, hours and cost"><br><sub>The end of the work day</sub></td>
-    <td align="center"><img src="docs/media/week-recap.png" width="240" alt="Monday: last week's hours, responses, cost and busiest day"><br><sub>Monday: last week's recap</sub></td>
-  </tr>
-  <tr>
-    <td align="center"><img src="docs/media/overview-long-command.png" width="240" alt="A long shell command with its running time"><br><sub>A long command, timed</sub></td>
-    <td align="center"><img src="docs/media/frame-amber.png" width="240" alt="An amber frame around the screen while a session waits"><br><sub>The status frame, seen from the corner of your eye</sub></td>
-    <td align="center"><img src="docs/media/look-valentine.png" width="240" alt="The mascot with floating hearts on Valentine's Day"><br><sub>Special days: Valentine's hearts</sub></td>
+    <td align="center"><img src="docs/media/overview-working.png" width="220" alt="Overview while sessions are running"><br><sub>Your sessions at a glance</sub></td>
+    <td align="center"><img src="docs/media/desk-watchful.gif" width="220" alt="The desk mascot watching the limit rings"><br><sub>Idle: the mascot watches your limits</sub></td>
   </tr>
 </table>
 
-<p align="center"><b>30 antics</b> in pet mode and <b>37 scenes</b> when Miblos visit each other.</p>
-
-<p align="center">
-  <img src="docs/media/mascot-sphynx.png" width="120" alt="Sphynx mascot">
-  <img src="docs/media/mascot-orange.png" width="120" alt="Orange mascot">
-  <img src="docs/media/mascot-black.png" width="120" alt="Black mascot">
-  <img src="docs/media/mascot-grey.png" width="120" alt="Grey mascot">
-  <br><sub>Four mascot colours, set on the settings page</sub>
-</p>
-
-<sub>Rendered from the firmware's own drawing code and fonts (<code>make screenshots</code> / <code>make animations</code>), pixel for pixel what the 240&times;240 screen shows.</sub>
+<p align="center"><sub>Every image here is rendered from the firmware's own drawing code and fonts (<code>make screenshots</code> / <code>make animations</code>), pixel for pixel what the 240&times;240 screen shows. More screens sit next to each feature below.</sub></p>
 
 > **Disclaimer:** Miblo is an independent project. It is not affiliated with, sponsored by or endorsed by Anthropic. "Claude" and "Claude Code" are trademarks of Anthropic.
 
 ## Contents
 
 - [Features](#features)
+  - [Sessions and alerts](#sessions-and-alerts)
+  - [Usage limits](#usage-limits)
+  - [Focus and meeting mode](#focus-and-meeting-mode)
+  - [Notes, reminders and timers](#notes-reminders-and-timers)
+  - [Wellness and the work day](#wellness-and-the-work-day)
+  - [Pet mode and visits](#pet-mode-and-visits)
+  - [Pets](#pets)
+  - [Looks and special days](#looks-and-special-days)
+  - [Night mode, blue light filter and clocks](#night-mode-blue-light-filter-and-clocks)
+  - [Setup, settings page and security](#setup-settings-page-and-security)
+  - [Privacy](#privacy)
 - [How it works](#how-it-works)
 - [Quick start](#quick-start)
 - [Commands](#commands)
@@ -79,67 +43,190 @@
 
 ## Features
 
-**On the screen**
+### Sessions and alerts
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/alert-done.gif" width="200" alt="Blue alert: a response finished"><br><sub>A response is really finished</sub></td>
+    <td align="center"><img src="docs/media/sessions.png" width="200" alt="Sessions mode: big cards, the ones that need you first"><br><sub>Sessions mode</sub></td>
+    <td align="center"><img src="docs/media/waiting-mark.gif" width="200" alt="An amber band over the focus screen: a session needs you"><br><sub>A wait is never hidden</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/fanfare.gif" width="200" alt="Confetti: app-mobile finished after 23 minutes"><br><sub>A long task finished: the fanfare</sub></td>
+    <td align="center"><img src="docs/media/overview-long-command.png" width="200" alt="A long shell command with its running time"><br><sub>A long command, timed</sub></td>
+    <td align="center"><img src="docs/media/frame-amber.png" width="200" alt="An amber frame around the screen while a session waits"><br><sub>The status frame</sub></td>
+  </tr>
+</table>
 
 - **Overview** (the default mode) adapts to what you're doing:
   - **While something is running,** your sessions come first. You get up to 3 session cards per page, each with the name, how long it has been in that state and what it's doing now ("Editing Header.tsx", "Bash · npm test"). Above them is a compact `5h / 7d` limits strip. Cards are ordered by what needs you first, then what is still working, then what has finished.
-  - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s the desk mascot takes over (see below).
+  - **When nothing is running,** you first see "All done" with big 5-hour and weekly limits, the last session that finished and today's cost. After 20 s the desk mascot takes over (see [Usage limits](#usage-limits)).
 - **Alerts:**
   - **Amber** when a session needs you (a permission request or a question, including a prompt from a subagent or an agent-team worker, one that auto mode puts on screen, and an MCP server asking for input). You get a flash (2 blinks by default, 2 to 5 on the settings page), then a highlight with the tool and command, then a fixed amber band until you respond. The reminder repeats every ~2 minutes while it's still pending.
   - **Blue** when a response is truly finished. A session that is still waiting on subagents or background tasks stays "running" ("Waiting on 2 agents") and doesn't trigger the blue alert. A passive `monitor` background task (a watcher that stays alive for hours) doesn't count as work in flight.
+  - **Ready for new Claude Code versions:** a notification type the plugin doesn't know yet is read by its name. One about a permission raises the amber alert, one about input, a dialog, a question, an elicitation or an approval counts as a question, and one that says a prompt ended or needs no one (`permission_denied`, `dialog_closed`...) raises nothing. Anything else, and any unknown hook event, changes nothing and never creates a session.
+- **Sessions mode:** a detailed list of big cards that you can read at arm's length. It pages every 5 s when there are more than 3 sessions, in the same order as the Overview.
+- **A wait is never hidden:** while a focus, a timer, a note, a nudge or any other of these screens is up, a session that needs you shows as an amber band across the top with its name ("checkout", "+1" when more wait; "NEEDS YOU" in meeting mode) until you answer it.
+- **Insistence:** when the same wait goes on (the reminder every few minutes, set on the settings page), from the 3rd reminder the flash blinks twice as long and the alert stays twice as long, and from the 5th it blinks red. It starts over once nothing waits for you. On by default; turn it off on the settings page.
+- **Long task fanfare:** when a response that took a while finishes (5 min by default; 3, 5 or 10 min, or off, on the settings page), the "finished" alert becomes a party for 8 seconds, readable from across the room: confetti, the mascot hopping and "app-mobile finished after 23min". Short tasks keep the normal alert. In meeting mode it shows no name; during a focus round it waits for the break, like any "finished".
+- **Long commands in sight:** when Claude runs a shell command for more than 30 seconds, its card on the Overview shows the time running next to the command, in bold green ("npm test · 1:42"), so you can tell from across the room that it is still going; after an hour it reads "1h02". In discreet mode the time still shows, the command doesn't.
+- **Seen from the corner of your eye:** a status frame (off by default) and slow pulses with the brightness up for focus, timers and alarms (at night at most twice the night brightness). A thin frame around the screen is amber while a session waits for you and green for a minute after one finishes; the end of a focus round, a timer, an alarm or a reminder pulses the whole screen in its colour three times (one soft pulse when a break ends), never over a permission alert, and warmed by the blue light filter like everything else.
+- **Up to 20 active sessions at once**, the ones that need you first; the rest cycle through the pages, and an alert is always shown even when memory is tight.
+
+### Usage limits
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/limits-runs-out.png" width="200" alt="Limits arc with the runs-out forecast"><br><sub>Limits and a runs-out forecast</sub></td>
+    <td align="center"><img src="docs/media/desk-scared.gif" width="200" alt="The desk mascot panicking at 97%"><br><sub>The mascot panics near the limit</sub></td>
+    <td align="center"><img src="docs/media/limit-freed.gif" width="200" alt="Limit freed: the mascot celebrates"><br><sub>The 5-hour window reset</sub></td>
+    <td align="center"><img src="docs/media/today-summary.png" width="200" alt="Today's summary"><br><sub>Today's summary</sub></td>
+  </tr>
+</table>
+
 - **Limits mode:** a large arc for the 5-hour window, a bar for the week and the time until each resets.
 - **Limit forecast:** when your recent pace would use up the 5-hour window before it resets, the Limits screen says when, in amber ("at this pace, runs out at 15:40"), and the desk screen how long is left ("runs out in 1h20"). On the Overview, when that is less than 30 minutes away, the 5-hour number turns amber and "runs out ~15:40" takes the place of the reset time.
 - **"Limit freed":** when the 5-hour window resets after real use (50% or more), the screen turns green and the mascot celebrates, with the new usage and the next reset.
-- **Sessions mode:** a detailed list of big cards that you can read at arm's length. It pages every 5 s when there are more than 3 sessions, in the same order as the Overview.
 - **Desk mascot:** 20 s after everything finishes (in any mode), the mascot takes the screen next to two ring gauges with your 5-hour and weekly limits, their reset times and the clock. It glances at the gauges and reacts to them: it naps when there's plenty left, bats at the fuller gauge past 50%, sweats past 80% and panics at 95%. It takes turns with the Limits arc and today's summary: 1 minute of mascot, 15 seconds of arc, 1 minute of mascot, 15 seconds of summary. Any activity brings the normal screens back.
 - **Today's summary:** responses finished today, time with Claude working, today's cost and the limits. The count survives the bridge restarting and resets at midnight.
-- **Mascot colours:** sphynx (peach), orange, black or grey, chosen on the settings page.
-- **Pet mode and screen care:** after a few minutes with nobody using it (computer away, or nothing running; 15 min by default, 1 min to 1 h on the settings page), the mascot wanders slowly around the whole screen like a little desk pet, holding up a small sign: the clock, your 5-hour and weekly limits (a little clock for the session, a calendar for the week, each with its percentage), the next reset (or "limit freed"), and the last task that finished and how long ago. When the computer is away, a small crossed-out laptop sits in the sign's corner. Every 30 seconds it does something, never the same thing twice in a row: 30 antics in all. With the sign in its paws it bats at it, spills its coffee on it, chases the mouse cursor across it, naps on it, sneezes, plays peekaboo behind it, sends you a heart, puts on sunglasses or waves at you. Other times it sets the sign down at the bottom of the screen (everything on it stays readable) and plays: types on a laptop until a bug crawls out, chases its tail, stretches, licks a paw, hunts a fly, plays with a ball of yarn, pushes a mug off the edge, hides in a box, plays a little keyboard, chases a laser dot, pops soap bubbles, eats a fish snack, explains a bug to a rubber duck, sips a coffee, gets a butterfly on its nose, pops a balloon, swipes at a paper plane, dips a paw in a fish bowl, presses the deploy button, jumps at a cucumber or dozes off under a blanket. After a delay you choose on the settings page (15 min to 4 h, 1 h by default) the screen turns off; "never" keeps the pet wandering. Everything also shifts by a pixel or two every few minutes. LCDs can keep a faint ghost of an image left still for hours; none of this lets that happen. Any Claude Code activity, opening the settings page or `/miblo:pair` brings the normal screens back.
-- **Several Miblos on one network (an easter egg):** Miblos in pet mode notice each other. A mascot says "Hi, Nina!" when another one shows up, and every few minutes a visit happens: one of them asks the network who is free, a group of 2 to 4 forms (1:1 most often, sometimes 1:2 or 1:3), and the host is drawn at random among the group, so every Miblo gets visited and goes visiting alike. The guests walk off their screens and into the host's, in their own colours; on the settings page you tell each Miblo where the others stand (right, left, above or below), so a cat leaving one screen comes in on the next. If the host's human gets back to work, the guests walk home, sulking. Each visit is one of 37 little scenes, most of them about something programmers know: a rubber duck to debug with, pair programming on a tiny laptop, a code review that ends in "LGTM", hunting a bug, a Friday deploy (a rocket takes off), a coffee (more likely when the other one's limits are past 80%), and many more, from a tug of war over a merge conflict to a daily stand-up, ping-pong, a kernel panic, a picnic or a kite. With many Miblos, each one visits the others at random. At night, sleeping Miblos nap in step. Only the gadget's name, mascot colour and a few flags go on the network (in pet mode, napping, limits past 80%); nothing about your sessions, and the network only sees the id (`Miblo-XXXX`). It's on by default; turn it off on the settings page. To see it without waiting, run `/miblo:demo`.
-- **Greetings and special days:** the mascot says "Hi! I'm Tofu" when you name it. If it knows your first name, it says good morning (or good afternoon, or good evening) at your first Claude Code activity of the day. On your birthday it wishes you a happy birthday with a party hat and confetti. It also wears a Santa hat at Christmas, a witch hat at Halloween and a party hat at New Year, and celebrates its own birthday one year after its first day with you.
-- **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
-- **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
-- **Blue light filter:** warms every colour on the screen, always or between two times you choose (its own schedule, separate from night mode), at any strength from 1% (barely warmer) to 100% (white at 2700 K), set with a slider; the old low, medium and high are 31%, 63% and 100% (white at 4500 K, 3500 K and 2700 K). At the highest strengths the blue status colours look olive or greenish, as they do under any blue light filter. It is set from the settings page or `/miblo:blue`.
-- **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
-- **System panel:** under Advanced on the settings page, live graphs of the last minute of processing load and RAM in use (read once a second while it is open, kept only in the page), with how much is free, and storage as two bars: the program (the firmware against the largest one the gadget's flash layout takes) and the data (settings, pairings, notes), each with how much is in use and free.
-- **Paired computers:** a card of its own on the settings page lists the computers paired with the gadget (up to 4), each with when it was last seen, a Rename and a Remove button; `/miblo:settings` marks the computer that opened the page. Each one is named after its host name, and follows it if it changes; rename one (up to 20 characters) and that name stays until you clear it.
-- **9 languages** for the screen and the setup/settings pages: English, Português (BR), Português (PT), Español, Français, Italiano, Deutsch, Русский and 中文.
+- **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often (`/miblo:rotate`). Alerts always take priority.
 
-**Setup and maintenance**
+### Focus and meeting mode
 
-- **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone.
-- **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
-- **Settings page** in the browser (`http://miblo-xxxx.local`; a paired gadget first asks for the code shown on its screen) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, blue light filter, mascot colour, screen-off delay, time zone, language, device name, and your name and birthday. `/miblo:settings` opens it for you. Changing a setting requires the 4-digit code shown on the gadget's screen (proof you are the one in front of it); your name and birthday are never shown on the page until it is unlocked.
-- **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen, so no one on the network can reflash it without physical access.
-- **Nobody on the network can mess with it.** Every setting change, rename and firmware update needs either the paired plugin or the on-screen code; once a gadget is paired, other devices on the network only learn its id. A configured gadget that lost its Wi-Fi also asks for the on-screen code before its setup network lets anyone move it to another network. Requests are rate-limited and the gadget sheds load rather than ever freezing.
-- **Up to 20 active sessions at once**, the ones that need you first; the rest cycle through the pages, and an alert is always shown even when memory is tight.
-- **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
-
-### Daily life
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/focus.gif" width="200" alt="Focus: the mascot with headphones inside a progress ring"><br><sub>Focus (Pomodoro) with <code>/miblo:focus</code></sub></td>
+    <td align="center"><img src="docs/media/meeting.gif" width="200" alt="Meeting mode: the mascot in a tie and an alert without names"><br><sub>Meeting mode: a tie, no names</sub></td>
+  </tr>
+</table>
 
 - **Focus (Pomodoro):** `/miblo:focus` starts 25 minutes of focus and 5 of break, 4 rounds, with a 15-minute long break at the end (`/miblo:focus 50` for 50 and 10, `/miblo:focus 25 5 4` to choose all three, `/miblo:focus stop` to end it). The mascot puts on headphones and types inside a progress ring, with the time left in big numbers and "focus until 15:30" under it, readable from across the room, and the rounds as dots. Each focus round ends with three slow pulses and a stretch; each break ends with "Back to focus?" for a minute, then the next round starts by itself. Alerts that need you still come through; "finished" waits for the break (a setting, on by default). The gadget doesn't go into pet mode or turn the screen off during a focus. The timer runs on the gadget, so the computer can go away; restarting the gadget ends it.
-
 - **Meeting mode:** `/miblo:meeting` (60 min), `/miblo:meeting 30` (1 to 480 min) or `/miblo:meeting off`. While it lasts no screen shows project, tool or command names, alerts never show which session or command ("A session needs you", "Finished after 7:07"), the flash blinks once, the mascot wears a tie and a small tie badge sits in the bottom-right corner. An alert that needs you still takes the screen. It ends by itself; a restart ends it too.
-- **Insistence:** when the same wait goes on (the reminder every few minutes, set on the settings page), from the 3rd reminder the flash blinks twice as long and the alert stays twice as long, and from the 5th it blinks red. It starts over once nothing waits for you. On by default; turn it off on the settings page.
-- **Long task fanfare:** when a response that took a while finishes (5 min by default; 3, 5 or 10 min, or off, on the settings page), the "finished" alert becomes a party for 8 seconds, readable from across the room: confetti, the mascot hopping and "app-mobile finished after 23min". Short tasks keep the normal alert. In meeting mode it shows no name; during a focus round it waits for the break, like any "finished".
 
-- **A wait is never hidden:** while a focus, a timer, a note, a nudge or any other of these screens is up, a session that needs you shows as an amber band across the top with its name ("checkout", "+1" when more wait; "NEEDS YOU" in meeting mode) until you answer it.
+### Notes, reminders and timers
 
-- **Healthy breaks (off by default):** three nudges you turn on in the settings page's Wellness section. **A break** after long continuous work (any time from 15 to 240 min of Claude working; gaps of up to 10 minutes still count as continuous, a longer one starts over): the mascot stretches and suggests "How about a 5 min break?" for a minute (the break length is yours too, 1 to 30 min). **Water** every 15 to 240 minutes inside your work hours: the mascot sips from a glass, "Time to drink water", for 20 s. **Eye rest (20-20-20)**: every 20 minutes of continuous work (10 to 60), the mascot gazes into the distance, "Look far away", for 20 s (10 to 60). No flash and no sound. They never show during an alert, focus, a meeting, a timer or a note, or in pet mode; one that comes due while something else is on waits up to 5 minutes for a gap, then is skipped.
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/say.gif" width="200" alt="The mascot holds a sign: back in 10 min"><br><sub>A note for passers-by (<code>/miblo:say</code>)</sub></td>
+    <td align="center"><img src="docs/media/reminder.gif" width="200" alt="A reminder pulses the screen and the mascot holds it up"><br><sub>A reminder comes due</sub></td>
+    <td align="center"><img src="docs/media/timer.gif" width="200" alt="A big countdown with an hourglass"><br><sub><code>/miblo:timer</code></sub></td>
+    <td align="center"><img src="docs/media/desk-countdown.gif" width="200" alt="The desk with a countdown and a second clock"><br><sub>A countdown on the desk</sub></td>
+  </tr>
+</table>
+
+- **Notes on the desk:** `/miblo:say` puts a message on the screen for whoever walks by (the cat holds it on a sign; in pet mode it rides on the pet's card), for 30 minutes or as long as you choose. Messages take up to 40 characters.
+- **Reminders and alarms:** `/miblo:remind` sets a reminder in N minutes or at HH:MM, or a recurring alarm every day or on weekdays (up to 4 of each; recurring alarms are saved on the gadget and survive a restart). When one comes due the screen pulses and the cat holds it up for 5 minutes or until `/miblo:remind off`. Reminders take up to 40 characters.
+- **Timer:** `/miblo:timer` shows a big countdown with an hourglass; when it ends the screen pulses slowly and the cat holds "Time's up!".
+- **Find a Miblo:** `/miblo:find` makes the gadget wave for 10 seconds with a QR code for its settings page (see [Setup, settings page and security](#setup-settings-page-and-security)).
+- **Countdown and QR on the Desk:** `/miblo:countdown` puts a countdown (saved on the gadget) over the Desk's ring gauges ("release in 3 days"), with confetti on the day itself, and on the pet's sign in place of the last task (a note or a friend's hello still comes first). An optional QR code with the settings page's address can sit in the Desk's top corner (settings page; off by default), on screens big enough for a phone to read it.
+
+### Wellness and the work day
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/nudge-break.png" width="200" alt="The mascot stretches: how about a 5 min break?"><br><sub>A break after long work</sub></td>
+    <td align="center"><img src="docs/media/nudge-water.png" width="200" alt="The mascot sips water: time to drink water"><br><sub>Time to drink water</sub></td>
+    <td align="center"><img src="docs/media/nudge-eyes.png" width="200" alt="The mascot gazes into the distance: look far away"><br><sub>Eye rest (20-20-20)</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/media/day-end.png" width="200" alt="The end of the day: today's responses, hours and cost"><br><sub>The end of the work day</sub></td>
+    <td align="center"><img src="docs/media/week-recap.png" width="200" alt="Monday: last week's hours, responses, cost and busiest day"><br><sub>Monday: last week's recap</sub></td>
+    <td></td>
+  </tr>
+</table>
+
+- **Healthy breaks (off by default):** three nudges you turn on in the settings page's Wellness section, each with timings you type in (the arrows step by 5).
+  - **A break** after long continuous work: any time from 15 to 240 min of Claude working (gaps of up to 10 minutes still count as continuous, a longer one starts over). The mascot stretches and suggests "How about a 5 min break?" for a minute; the break length is yours too, 1 to 30 min.
+  - **Water** every 15 to 240 minutes inside your work hours: the mascot sips from a glass, "Time to drink water", for 20 s.
+  - **Eye rest (20-20-20):** every 20 minutes of continuous work (10 to 60 min), the mascot gazes into the distance, "Look far away", for 20 s (10 to 60 s).
+
+  No flash and no sound. They never show during an alert, focus, a meeting, a timer or a note, or in pet mode; one that comes due while something else is on waits up to 5 minutes for a gap, then is skipped.
 - **End of the day (off by default):** at the end of your work hours (18:00 on weekdays by default; the same hours the water nudge uses), the mascot yawns over today's summary for a minute: responses, time with Claude working and cost, and "Have a good rest, Marcus!" (with your name when it knows it). Once a day, within two hours of the end of the work hours; if a session is still running it waits for it to finish (up to an hour). Afterwards pet mode comes sooner (after 5 idle minutes) for the rest of the day.
 - **Monday recap:** on Monday mornings, at your first Claude Code activity from 05:00 (or at 09:00), the screen shows last week for a minute: hours with Claude working, responses, cost and the busiest day. It needs the plugin from the same release; turn it off on the settings page.
 - **The cat's mood:** after 8 hours of Claude working in a day the mascot looks tired (faint bags under its eyes, slow blinks and a yawn now and then); on a light day (under 2 hours, and no limit above 50%) it plays more often in pet mode. Only its expression and rhythm change, never a message.
 - Anything that depends on the time of day (water, the end of the day, the Monday recap) stays quiet until the gadget knows the local time.
-- **Notes on the desk:** `/miblo:say` puts a message on the screen for whoever walks by (the cat holds it on a sign; in pet mode it rides on the pet's card), for 30 minutes or as long as you choose. `/miblo:remind` sets a reminder in N minutes or at HH:MM, or a recurring alarm every day or on weekdays (up to 4 of each; recurring alarms are saved on the gadget and survive a restart). When one comes due the screen pulses and the cat holds it up for 5 minutes or until `/miblo:remind off`. `/miblo:timer` shows a big countdown with an hourglass, and `/miblo:find` makes the gadget wave for 10 seconds with a QR code for its settings page. Messages and reminders take up to 40 characters.
-- **Seen from the corner of your eye:** a status frame (off by default) and slow pulses with the brightness up for focus, timers and alarms (at night at most twice the night brightness). A thin frame around the screen is amber while a session waits for you and green for a minute after one finishes; the end of a focus round, a timer, an alarm or a reminder pulses the whole screen in its colour three times (one soft pulse when a break ends), never over a permission alert, and warmed by the blue light filter like everything else.
-- **More special days and looks:** on Valentine's Day (Feb 14) little hearts float around the mascot; on Easter Sunday (worked out on the gadget, every year) it wears bunny ears; on Programmer's Day (the 256th day of the year: Sep 13, or Sep 12 in a leap year) it wears glasses and greets you with "Happy Programmer's Day!". On a Friday the 13th, now and then a black cat walks across pet mode, stops to look at you and goes on its way. Only dates that are the same everywhere; your birthday and the gadget's always come first. Friends' cats visiting keep their own looks: no tie or tired eyes of ours.
-- **Long commands in sight:** when Claude runs a shell command for more than 30 seconds, its card on the Overview shows the time running next to the command, in bold green ("npm test · 1:42"), so you can tell from across the room that it is still going; after an hour it reads "1h02". In discreet mode the time still shows, the command doesn't.
-- **Second clock:** pick another time zone on the settings page (with a nickname of up to 12 characters, for example "Lisboa") and its time shows small in the Desk's top corner and under the Overview's footer when everything is done ("Lisboa 19:32").
-- **Countdown and QR on the Desk:** `/miblo:countdown` puts a countdown (saved on the gadget) over the Desk's ring gauges ("release in 3 days"), with confetti on the day itself, and on the pet's sign in place of the last task (a note or a friend's hello still comes first). An optional QR code with the settings page's address can sit in the Desk's top corner (settings page; off by default), on screens big enough for a phone to read it.
-- **Where to set it all:** on the settings page, under Alerts, "insist more on long waits" (on by default), "celebrate long tasks" (off, 3, 5 or 10 min; 5 by default) and the status frame around the screen (off by default). A **Wellness** card has the break after long work (minutes, 0 = off; 15 to 240, with its length, 5 min by default), the water reminder (minutes, 0 = off; 15 to 240), eye rest (20-20-20, with its interval and how long it lasts), "during focus, only 'needs you' alerts" (on by default), the end-of-day summary and Monday's summary of last week (on by default); the work hours and work days (09:00 to 18:00, Monday to Friday by default) show while the water reminder or the end-of-day summary is on. Under This device: a second time zone (off by default, from the same list as the main one) with the short name shown next to its time (up to 12 characters), and the settings QR code on the desk screen (off by default). Every wellness reminder is off until you turn it on. Going back to firmware 1.11 keeps every setting: a break or water time it does not offer becomes its nearest choice (60, 90 or 120 min), and the break length and eye rest timings go back to 5 min, 20 min and 20 s. Older firmware may reset every setting when the saved names are at their longest.
-- **From the plugin:** the bridge forecasts when the 5-hour limit runs out at the current pace, tells the gadget how long a shell command has been running, and on Mondays sends last week's totals (hours, responses, cost, busiest day).
 
-**Privacy**
+### Pet mode and visits
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/pet-sign.png" width="200" alt="Pet mode: the mascot holds a sign with the clock, limits and last task"><br><sub>Pet mode: the sign with the essentials</sub></td>
+    <td align="center"><img src="docs/media/pet-spill.gif" width="200" alt="Pet mode: the mascot spills its coffee on its sign"><br><sub>Oops, the coffee</sub></td>
+    <td align="center"><img src="docs/media/pet-friend-hi.png" width="200" alt="The mascot says hi to another Miblo on the network"><br><sub>"Hi, Nina!": another Miblo is near</sub></td>
+    <td align="center"><img src="docs/media/visit-deploy.gif" width="200" alt="Another Miblo visits for a Friday deploy"><br><sub>Two Miblos: a Friday deploy</sub></td>
+  </tr>
+</table>
+
+<p align="center"><b>30 antics</b> in pet mode and <b>37 scenes</b> when Miblos visit each other.</p>
+
+- **Pet mode and screen care:** after a few minutes with nobody using it (computer away, or nothing running; 15 min by default, 1 min to 1 h on the settings page), the mascot wanders slowly around the whole screen like a little desk pet, holding up a small sign: the clock, your 5-hour and weekly limits (a little clock for the session, a calendar for the week, each with its percentage), the next reset (or "limit freed"), and the last task that finished and how long ago. When the computer is away, a small crossed-out laptop sits in the sign's corner. Every 30 seconds it does something, never the same thing twice in a row: 30 antics in all. With the sign in its paws it bats at it, spills its coffee on it, chases the mouse cursor across it, naps on it, sneezes, plays peekaboo behind it, sends you a heart, puts on sunglasses or waves at you. Other times it sets the sign down at the bottom of the screen (everything on it stays readable) and plays: types on a laptop until a bug crawls out, chases its tail, stretches, licks a paw, hunts a fly, plays with a ball of yarn, pushes a mug off the edge, hides in a box, plays a little keyboard, chases a laser dot, pops soap bubbles, eats a fish snack, explains a bug to a rubber duck, sips a coffee, gets a butterfly on its nose, pops a balloon, swipes at a paper plane, dips a paw in a fish bowl, presses the deploy button, jumps at a cucumber or dozes off under a blanket. After a delay you choose on the settings page (15 min to 4 h, 1 h by default) the screen turns off; "never" keeps the pet wandering. Everything also shifts by a pixel or two every few minutes. LCDs can keep a faint ghost of an image left still for hours; none of this lets that happen. Any Claude Code activity, opening the settings page or `/miblo:pair` brings the normal screens back.
+- **Several Miblos on one network (an easter egg):** Miblos in pet mode notice each other. A mascot says "Hi, Nina!" when another one shows up, and every few minutes a visit happens: one of them asks the network who is free, a group of 2 to 4 forms (1:1 most often, sometimes 1:2 or 1:3), and the host is drawn at random among the group, so every Miblo gets visited and goes visiting alike. The guests walk off their screens and into the host's, in their own colours; on the settings page you tell each Miblo where the others stand (right, left, above or below), so a cat leaving one screen comes in on the next. If the host's human gets back to work, the guests walk home, sulking. Each visit is one of 37 little scenes, most of them about something programmers know: a rubber duck to debug with, pair programming on a tiny laptop, a code review that ends in "LGTM", hunting a bug, a Friday deploy (a rocket takes off), a coffee (more likely when the other one's limits are past 80%), and many more, from a tug of war over a merge conflict to a daily stand-up, ping-pong, a kernel panic, a picnic or a kite. With many Miblos, each one visits the others at random. At night, sleeping Miblos nap in step. Only the gadget's name, mascot colour and a few flags go on the network (in pet mode, napping, limits past 80%); nothing about your sessions, and the network only sees the id (`Miblo-XXXX`). It's on by default; turn it off on the settings page. To see it without waiting, run `/miblo:demo`.
+
+### Pets
+
+*Coming in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **11 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog or the Miblo alien. Its colour is yours to choose too; by default it wears the Miblo colour.
+
+<!-- PETS-SHOTS -->
+
+### Looks and special days
+
+<p align="center">
+  <img src="docs/media/mascot-sphynx.png" width="120" alt="Sphynx mascot">
+  <img src="docs/media/mascot-orange.png" width="120" alt="Orange mascot">
+  <img src="docs/media/mascot-black.png" width="120" alt="Black mascot">
+  <img src="docs/media/mascot-grey.png" width="120" alt="Grey mascot">
+  <br><sub>Four mascot colours, set on the settings page</sub>
+</p>
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/look-valentine.png" width="200" alt="The mascot with floating hearts on Valentine's Day"><br><sub>Special days: Valentine's hearts</sub></td>
+    <td align="center"><img src="docs/media/black-cat.gif" width="200" alt="A black cat crosses pet mode on Friday the 13th"><br><sub>Friday the 13th: a black cat passes by</sub></td>
+  </tr>
+</table>
+
+- **Mascot colours:** sphynx (peach), orange, black or grey, chosen on the settings page.
+- **Greetings and special days:** the mascot says "Hi! I'm Tofu" when you name it. If it knows your first name, it says good morning (or good afternoon, or good evening) at your first Claude Code activity of the day. On your birthday it wishes you a happy birthday with a party hat and confetti. It also wears a Santa hat at Christmas, a witch hat at Halloween and a party hat at New Year, and celebrates its own birthday one year after its first day with you.
+- **More special days and looks:** on Valentine's Day (Feb 14) little hearts float around the mascot; on Easter Sunday (worked out on the gadget, every year) it wears bunny ears; on Programmer's Day (the 256th day of the year: Sep 13, or Sep 12 in a leap year) it wears glasses and greets you with "Happy Programmer's Day!". On a Friday the 13th, now and then a black cat walks across pet mode, stops to look at you and goes on its way. Only dates that are the same everywhere; your birthday and the gadget's always come first. Friends' cats visiting keep their own looks: no tie or tired eyes of ours.
+
+### Night mode, blue light filter and clocks
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/blue-filter-off.png" width="200" alt="The Overview with the blue light filter off"><br><sub>Blue light filter off...</sub></td>
+    <td align="center"><img src="docs/media/blue-filter-on.png" width="200" alt="The same Overview with the blue light filter at full strength"><br><sub>...and at 100% (<code>/miblo:blue</code>)</sub></td>
+    <td align="center"><img src="docs/media/desk-second-zone.png" width="200" alt="The desk with a second clock for Lisboa in the corner"><br><sub>A second clock: "Lisboa 18:32"</sub></td>
+  </tr>
+</table>
+
+- **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
+- **Blue light filter:** warms every colour on the screen, always or between two times you choose (its own schedule, separate from night mode), at any strength from 1% (barely warmer) to 100% (white at 2700 K), set with a slider on the settings page or with `/miblo:blue` (`/miblo:blue 40%`, `/miblo:blue 21:00 07:00`); the old low, medium and high are 31%, 63% and 100% (white at 4500 K, 3500 K and 2700 K). At the highest strengths the blue status colours look olive or greenish, as they do under any blue light filter.
+- **Second clock:** pick another time zone on the settings page (with a nickname of up to 12 characters, for example "Lisboa") and its time shows small in the Desk's top corner and under the Overview's footer when everything is done ("Lisboa 19:32").
+- **Time zones kept current by your computer:** countries change their daylight saving rules every year. The plugin sends the gadget the current offset and the next change for its time zone and second clock, taken from your computer's own time zone database (which its system updates keep current), so both clocks stay right without a firmware update. With no computer around for two weeks, the gadget falls back to the table built into its firmware (see [Time zones](#time-zones)).
+
+### Setup, settings page and security
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/media/find.png" width="200" alt="The mascot waves next to the settings page QR code"><br><sub><code>/miblo:find</code>: wave and the settings page's QR code</sub></td>
+    <td align="center"><img src="docs/media/disconnected.gif" width="200" alt="Disconnected: the mascot looks for the computer"><br><sub>Waiting for the computer</sub></td>
+  </tr>
+</table>
+
+- **Phone setup through a captive portal:** scan the QR code on the screen, join `Miblo-Setup-XXXX`, then pick your Wi-Fi. It must be the **same network as your computer**, otherwise the plugin can't find the gadget. The time zone and language come from your phone. See [Quick start](#quick-start).
+- **Automatic discovery** over mDNS (`miblo-xxxx.local`, `_miblo._tcp`) and pairing with a 4-digit code.
+- **Settings page** in the browser (`http://miblo-xxxx.local`; a paired gadget first asks for the code shown on its screen) for mode, brightness, alerts (blinks and durations), discreet mode (hides commands and file paths), rotation, night mode, blue light filter, wellness, mascot colour, screen-off delay, time zone and second clock, language, device name, and your name and birthday. `/miblo:settings` opens it for you. Changing a setting requires the 4-digit code shown on the gadget's screen (proof you are the one in front of it); your name and birthday are never shown on the page until it is unlocked.
+- **Where to set it all:** on the settings page, under Alerts, "insist more on long waits" (on by default), "celebrate long tasks" (off, 3, 5 or 10 min; 5 by default) and the status frame around the screen (off by default). A **Wellness** card has the break after long work (minutes, 0 = off; 15 to 240, with its length, 1 to 30 min, 5 by default), the water reminder (minutes, 0 = off; 15 to 240), eye rest (20-20-20, with its interval, 10 to 60 min, and how long it lasts, 10 to 60 s), "during focus, only 'needs you' alerts" (on by default), the end-of-day summary and Monday's summary of last week (on by default); the work hours and work days (09:00 to 18:00, Monday to Friday by default) show while the water reminder or the end-of-day summary is on. Under This device: a second time zone (off by default, from the same list as the main one) with the short name shown next to its time (up to 12 characters), and the settings QR code on the desk screen (off by default). Every wellness reminder is off until you turn it on. Going back to firmware 1.11 keeps every setting: a break or water time it does not offer becomes its nearest choice (60, 90 or 120 min), and the break length and eye rest timings go back to 5 min, 20 min and 20 s. Older firmware may reset every setting when the saved names are at their longest.
+- **System panel:** under Advanced on the settings page, live graphs of the last minute of processing load and RAM in use (read once a second while it is open, kept only in the page), with how much is free, and storage as two bars: the program (the firmware against the largest one the gadget's flash layout takes) and the data (settings, pairings, notes), each with how much is in use and free.
+- **Paired computers:** a card of its own on the settings page lists the computers paired with the gadget (up to 4), each with when it was last seen, a Rename and a Remove button; `/miblo:settings` marks the computer that opened the page. Each one is named after its host name, and follows it if it changes; rename one (up to 20 characters) and that name stays until you clear it.
+- **9 languages** for the screen and the setup/settings pages: English, Português (BR), Português (PT), Español, Français, Italiano, Deutsch, Русский and 中文.
+- **Disconnected screen:** when the computer stops sending updates, the mascot looks around for it (and falls asleep after 10 minutes). The screen still shows "Disconnected", the clock, the gadget's address and its pairing code.
+- **Firmware updates over Wi-Fi.** On a configured unit, every update needs a 4-digit code shown on the gadget's screen, so no one on the network can reflash it without physical access.
+- **Nobody on the network can mess with it.** Every setting change, rename and firmware update needs either the paired plugin or the on-screen code; once a gadget is paired, other devices on the network only learn its id. A configured gadget that lost its Wi-Fi also asks for the on-screen code before its setup network lets anyone move it to another network. Requests are rate-limited and the gadget sheds load rather than ever freezing.
+- **A stalled request can't freeze it.** The gadget only starts on a request once its headers have fully arrived, waits briefly for a small body (and answers 408 if it never comes), and refuses a large body unless it is a paired computer's snapshot. Dozens of half-sent or silent connections from anywhere on the network leave the screen, the alerts and every other client running normally.
+- **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
+
+### Privacy
 
 - Everything stays on your local network. The plugin's bridge listens only on `127.0.0.1` and talks to the gadget over your LAN. There's no cloud and no account.
 - Usage limits, context and cost come only from Claude Code's **official status-line data**, never from undocumented endpoints. The status line is linked only with your consent, and your existing status line keeps working exactly as before.
@@ -156,6 +243,7 @@
 
 - **Plugin** (`plugin/`) is a Claude Code plugin in Node.js with no dependencies. Async hooks track every session's state and never slow Claude Code down. The status-line tap forwards a copy of the official status-line JSON and then runs your original status line command unchanged. A local bridge (started on demand, it exits after 30 minutes without sessions and hands over to a newer plugin at its first hook event) builds a small snapshot and pushes it to every paired gadget.
 - **Firmware** (`firmware/`) is ESP8266 firmware for the GeekMagic "Ultra" desk clock (240×240 IPS). It joins your Wi-Fi, announces itself over mDNS, pairs with a 4-digit code (which issues a random 128-bit token; 5 wrong codes in a row lock pairing for 60 s, doubling up to 1 h) and draws the screens.
+- **What the bridge works out for the gadget:** when the 5-hour limit runs out at the current pace, how long a shell command has been running, the live offsets of the gadget's time zones and, on Mondays, last week's totals (hours, responses, cost, busiest day).
 
 ## Quick start
 
@@ -176,6 +264,14 @@ For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#
    - Your router needs **WPA2**. WPA3-only routers aren't supported. If a "WPA2/WPA3" mixed-mode router refuses the connection, switch it to WPA2.
 
    Once it connects, the screen shows "Wi-Fi connected", a 4-digit pairing code and the gadget's IP.
+
+   <table>
+     <tr>
+       <td align="center"><img src="docs/media/setup-qr.png" width="200" alt="The setup screen: a QR code and the Miblo-Setup network name"><br><sub>Scan to set up the Wi-Fi</sub></td>
+       <td align="center"><img src="docs/media/paired.png" width="200" alt="Paired with MacBook-Pro"><br><sub>Paired after <code>/miblo:pair</code></sub></td>
+     </tr>
+   </table>
+
 3. **Pair.** In Claude Code, run `/miblo:pair` and type the 4-digit code from the screen. It then asks what to call the gadget (up to 20 characters). A name helps when you have several Miblos. Reply `keep` to leave it as `Miblo-XXXX`. It also offers to tell the gadget your first name and birthday, so it can greet you. Reply `skip` if you'd rather not.
 4. **Allow the status line link.** `/miblo:pair` asks before linking your status line. This link is what the limits, context and cost need. Your current status line keeps working exactly the same. If you say no, you still get session states and alerts, but no limits. You can undo it any time with `/miblo:unlink-statusline`.
 

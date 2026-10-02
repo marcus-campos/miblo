@@ -197,6 +197,16 @@ notes.
       code opens the settings page on a phone on the same Wi-Fi.
 
 <!-- daily:cues -->
+    - **Status frame:** turn on the frame on the settings page. With a permission pending, a
+      thin amber frame surrounds every screen (not over the alert flash); answer it and the
+      frame goes away with no leftovers. When a session finishes, the frame is green for 1 min,
+      then disappears. With the frame off, nothing is drawn.
+    - **Strong cue:** start a 1 min timer (`/miblo:timer 1`): when it ends, the whole screen
+      pulses amber 3 times, slowly and without visible tearing or a blinking icon, and the
+      backlight goes to full; then the held text follows and the brightness comes back. With
+      night mode on (inside its window), the pulses are at most twice the night brightness and do
+      not dazzle; with the blue light filter on, the pulse colour is warmed. A permission that
+      arrives during the pulses takes the screen at once.
 
 <!-- daily:look -->
 

@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "miblo_rom.h"
+#include "miblo_sha256.h"
 #include "miblo_utf8.h"
 
 namespace miblo {
@@ -435,6 +436,45 @@ void TokenStore::restore(const TokenEntry* entries, uint8_t n) {
   seenSet_ = 0;
   n_ = n > kMax ? kMax : n;
   for (uint8_t i = 0; i < n_; i++) e_[i] = entries[i];
+}
+
+namespace {
+bool lowerHex(const char* s, size_t n) {
+  if (!s || strlen(s) != n) return false;
+  for (size_t i = 0; i < n; i++) {
+    if (!((s[i] >= '0' && s[i] <= '9') || (s[i] >= 'a' && s[i] <= 'f'))) return false;
+  }
+  return true;
+}
+}  // namespace
+
+ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
+                                char macHex[65]) {
+  macHex[0] = 0;
+  if (!lowerHex(nonce, 32) || !lowerHex(tag, 8) || !id) return ChallengeResult::BadRequest;
+  char dummy[33];  // on the stack: a const table would sit in RAM for good
+  memset(dummy, '0', 32);
+  dummy[32] = 0;
+  const char* key = dummy;
+  bool known = false;
+  for (uint8_t i = 0; i < tokens.count(); i++) {  // every entry: the time never tells which matched
+    char t[9];
+    tokenTag(tokens.at(i).token, t);
+    if (constantTimeEquals(t, tag) && !known) {
+      key = tokens.at(i).token;
+      known = true;
+    }
+  }
+  uint8_t mac[32];
+  hmacSha256(reinterpret_cast<const uint8_t*>(key), strlen(key), nonce, 32, id, strlen(id), mac);
+  if (!known) return ChallengeResult::UnknownTag;
+  auto hex = [](int v) { return (char)(v < 10 ? '0' + v : 'a' + v - 10); };
+  for (int i = 0; i < 32; i++) {
+    macHex[i * 2] = hex(mac[i] >> 4);
+    macHex[i * 2 + 1] = hex(mac[i] & 15);
+  }
+  macHex[64] = 0;
+  return ChallengeResult::Ok;
 }
 
 bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {

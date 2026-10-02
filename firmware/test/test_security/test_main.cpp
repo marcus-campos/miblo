@@ -11,6 +11,7 @@
 #include "miblo_headers.h"
 #include "miblo_info.h"
 #include "miblo_security.h"
+#include "miblo_sha256.h"
 
 using namespace miblo;
 
@@ -466,6 +467,61 @@ static void test_host_policy() {
   TEST_ASSERT_FALSE(originAllowed("null", id));
   TEST_ASSERT_FALSE(originAllowed("http://", id));
   TEST_ASSERT_FALSE(originAllowed("http://192.168.0.41/x", id));
+}
+
+static void hex(const uint8_t* b, size_t n, char* out) {
+  for (size_t i = 0; i < n; i++) sprintf(out + i * 2, "%02x", b[i]);
+}
+
+static void test_sha256_and_hmac() {
+  uint8_t d[32];
+  char h[65];
+  Sha256 s;
+  s.update("abc", 3);
+  s.finish(d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", h);
+  s.reset();
+  const char* two = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";  // 2 blocks
+  s.update(two, strlen(two));
+  s.finish(d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", h);
+  // RFC 4231 test case 2, and case 6 (a key longer than a block).
+  hmacSha256((const uint8_t*)"Jefe", 4, "what do ya want ", 16, "for nothing?", 12, d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", h);
+  uint8_t key[131];
+  memset(key, 0xaa, sizeof(key));
+  const char* msg = "Test Using Larger Than Block-Size Key - Hash Key First";
+  hmacSha256(key, sizeof(key), msg, strlen(msg), "", 0, d);
+  hex(d, 32, h);
+  TEST_ASSERT_EQUAL_STRING("60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54", h);
+}
+
+// M3: the plugin's mirror (plugin/lib/relocation.js tokenTag + challengeMac) gives these same
+// values: the contract is pinned on both sides.
+static void test_address_challenge() {
+  TokenStore ts;
+  ts.add("ffeeddccbbaa99887766554433221100", "other");
+  ts.add("00112233445566778899aabbccddeeff", "mac");
+  char tag[9];
+  tokenTag("00112233445566778899aabbccddeeff", tag);
+  TEST_ASSERT_EQUAL_STRING("de18ad43", tag);
+  char mac[65];
+  const char* nonce = "0123456789abcdef0123456789abcdef";
+  TEST_ASSERT_EQUAL(ChallengeResult::Ok, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL_STRING("719d917eb19b57d6af19069d9887a9708f2f767439c8e952881c7f954c96fe85", mac);
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(ts, nonce, "00000000", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL_STRING("", mac);  // nothing computed with the dummy key ever leaves
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, "0123", "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest,
+                    answerChallenge(ts, "0123456789ABCDEF0123456789abcdef", "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad4", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad43x", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nullptr, "de18ad43", "miblo-4f2a", mac));
+  TokenStore none;
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(none, nonce, "de18ad43", "miblo-4f2a", mac));
 }
 
 static void test_find_content_length() {
@@ -944,6 +1000,8 @@ int main() {
   RUN_TEST(test_system_json_fields);
   RUN_TEST(test_token_tag);
   RUN_TEST(test_host_policy);
+  RUN_TEST(test_sha256_and_hmac);
+  RUN_TEST(test_address_challenge);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_content_length_matches_the_server);
   RUN_TEST(test_headers_plain_and_complete);

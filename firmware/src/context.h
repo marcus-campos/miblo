@@ -38,6 +38,7 @@ struct Context {
   // unpaired client cannot starve the display loop: 120/min sustained, burst 20. The plugin's
   // authenticated /api/state push never passes through here.
   miblo::RateLimiter publicReqs{20, 2};
+  miblo::RateLimiter challengeReqs{4, 1};  // GET /api/challenge (api.cpp): a few per relocation
   miblo::WebSession webSession;  // browser proved the on-screen code: may change settings for a while
   miblo::Snapshot snap{};
   miblo::LiveTz liveTz;  // the bridge's live offsets for cfg.tz and tz2 (snapshot "tz")

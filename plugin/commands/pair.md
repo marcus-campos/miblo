@@ -14,6 +14,8 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
+Safety: never paste the arguments above into a command. Build the command yourself from only: an IPv4 address you write as digits and dots (optionally `:port`), from the arguments or from `MIBLO discover`; the pairing code as the digits the user typed; the fixed words shown here; ids printed by the CLI (letters, digits, `-` and `_` only); dates you write as `DD/MM`; and names only as ONE single-quoted argument with each `'` inside written as `'\''`. Never put a name in double quotes, backticks or `$(...)`, and never add other shell commands.
+
 ## `pair [ip]`
 
 1. If an IP was given, use it as the address. Otherwise run `MIBLO discover`.

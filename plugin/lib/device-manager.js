@@ -1,17 +1,20 @@
 import { trimSnapshot, alertOnlySnapshot } from './snapshot-builder.js';
 import { LEGACY_MAX_SESSIONS, LEGACY_SNAPSHOT_MAX_BYTES } from './constants.js';
 import { ZoneOffsets } from './tz-offsets.js';
+import { verifyNewAddr, isLanAddr } from './relocation.js';
 
 export class DeviceManager {
   #health = new Map();
 
   // `zones` (tz-offsets.js ZoneOffsets): the live offsets of each gadget's time zones.
-  constructor({ client, store, discover = null, now = () => Date.now(), zones = new ZoneOffsets() }) {
+  // `addrOk`: which addresses a gadget may move to (relocation.js isLanAddr; tests relax it).
+  constructor({ client, store, discover = null, now = () => Date.now(), zones = new ZoneOffsets(), addrOk = isLanAddr }) {
     this.client = client;
     this.store = store;
     this.discover = discover;
     this.now = now;
     this.zones = zones;
+    this.addrOk = addrOk;
   }
 
   async pushAll(snapshot) {
@@ -21,12 +24,14 @@ export class DeviceManager {
   status() {
     return this.store.list().map((d) => {
       const h = this.#health.get(d.id) ?? {};
-      return { id: d.id, name: d.name, addr: d.addr, online: !!h.online, unauthorized: !!h.unauthorized, lastOk: h.lastOk ?? null };
+      // needsPair: it answered at a new address that could not prove it is this gadget: the user
+      // must run /miblo:pair again (nothing was sent there).
+      return { id: d.id, name: d.name, addr: d.addr, online: !!h.online, unauthorized: !!h.unauthorized, needsPair: !!h.needsPair, lastOk: h.lastOk ?? null };
     });
   }
 
   #h(id) {
-    if (!this.#health.has(id)) this.#health.set(id, { fails: 0, nextTry: 0, online: false, unauthorized: false, lastOk: null, caps: null, capsAt: 0 });
+    if (!this.#health.has(id)) this.#health.set(id, { fails: 0, nextTry: 0, online: false, unauthorized: false, needsPair: false, lastOk: null, caps: null, capsAt: 0 });
     return this.#health.get(id);
   }
 
@@ -70,7 +75,7 @@ export class DeviceManager {
         if (!alertOnly) throw e;
         await this.client.pushState(dev.addr, dev.token, alertOnly);
       }
-      Object.assign(h, { fails: 0, nextTry: 0, online: true, unauthorized: false, lastOk: this.now() });
+      Object.assign(h, { fails: 0, nextTry: 0, online: true, unauthorized: false, needsPair: false, lastOk: this.now() });
     } catch (e) {
       h.fails += 1;
       h.online = false;
@@ -80,12 +85,19 @@ export class DeviceManager {
     }
   }
 
+  // The token goes to a new address only once that address proved it holds it (relocation.js).
   async #relocate(dev, h) {
     try {
       const hit = (await this.discover()).find((f) => f.id === dev.id);
-      if (hit && hit.addr !== dev.addr) {
+      if (!hit || hit.addr === dev.addr) return;
+      const verdict = await verifyNewAddr({ client: this.client, dev, addr: hit.addr, addrOk: this.addrOk });
+      if (verdict === 'ok') {
         this.store.update(dev.id, { addr: hit.addr });
+        h.caps = null;  // another address may be another firmware
+        h.needsPair = false;
         h.nextTry = 0;
+      } else if (verdict === 'refused') {
+        h.needsPair = true;
       }
     } catch {
       // discovery failed: keep the backoff

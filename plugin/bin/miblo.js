@@ -10,6 +10,7 @@ import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
 import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
+import { tokenTag } from '../lib/relocation.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -74,14 +75,8 @@ export function openInBrowser(url, platform = process.platform) {
 // The stored addr is "ip:port"; the default HTTP port is dropped for a clean URL.
 export const settingsUrl = (addr) => `http://${cleanAddr(addr).replace(/^(\[[^\]]*\]|[^:]*):80$/, '$1')}/`;
 
-// The tag the settings page marks "(this computer)" by: the first 8 hex of FNV-1a-64 over the
-// pairing token, as the gadget computes it (miblo::tokenTag). Only 32 bits of a 128-bit random
-// token: it says which row is ours and cannot give the token back (2^96 tokens share each tag).
-export function tokenTag(token) {
-  let h = 0xcbf29ce484222325n;
-  for (const b of Buffer.from(String(token ?? ''), 'utf8')) h = ((h ^ BigInt(b)) * 0x100000001b3n) & 0xffffffffffffffffn;
-  return h.toString(16).padStart(16, '0').slice(0, 8);
-}
+// The settings page marks this computer "(this computer)" by its token's tag (relocation.js).
+export { tokenTag };
 
 async function settings(args, store, openUrl) {
   const ok = (out) => ({ code: 0, out: out + '\n' });

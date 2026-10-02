@@ -27,11 +27,17 @@ const isWhole = (s) => /^\d{1,6}$/.test(String(s));
 const inRange = (v, r) => Number.isInteger(v) && v >= r.min && v <= r.max;
 const quoteArg = (a) => String(a).replace(/[\p{Cc}]/gu, '').slice(0, 40);
 
-// Strings that came from the gadget or the bridge, printed to the terminal: no control or bidi
-// characters, bounded length.
+// Strings that came from the gadget or the bridge, printed to the terminal: no ANSI escape
+// sequences, control, bidi or zero-width characters, bounded length.
+const ANSI = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u009b[0-?]*[ -/]*[@-~]/g;
 export const printable = (s, max = 48) =>
-  [...String(s ?? '').replace(/[\p{Cc}‎‏‪-‮⁦-⁩]/gu, ' ').replace(/\s+/g, ' ').trim()]
+  [...String(s ?? '').replace(ANSI, '').replace(/[\p{Cc}\u061c\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/gu, ' ').replace(/\s+/g, ' ').trim()]
     .slice(0, max).join('');
+
+// Free text a gadget sent back (reminder texts, countdown labels), as Claude reads it: cleaned,
+// capped and always one quoted string (inner quotes escaped), so it reads as data, never as
+// instructions. The commands' .md say so.
+export const quotedText = (s, max) => JSON.stringify(printable(s, max));
 
 // Words typed by the user -> one text for the gadget, or { error }. Whitespace (spaces, tabs,
 // line breaks) collapses to one space; any other control character is refused, as the gadget
@@ -407,7 +413,7 @@ export function durationText(sec) {
 // One item of GET /api/remind -> "1  in 14 min  ligar pro cliente" / "5  weekdays 09:45  daily".
 function reminderLine(it) {
   const id = Number.isInteger(it?.id) ? it.id : '?';
-  const text = printable(it?.text, NOTE.chars);
+  const text = quotedText(it?.text, NOTE.chars);
   if (typeof it?.at === 'string') return `${id}  ${daysText(Number(it.days) || 0)} ${printable(it.at, 5)}  ${text}`;
   return `${id}  in ${durationText(Math.ceil(Number(it?.in ?? 0) / 60) * 60)}  ${text}`;
 }
@@ -524,7 +530,7 @@ async function countdown(args, { store, client, now }) {
       if (!label || !dm) { lines.push(`${r.label}: no countdown.`); continue; }
       const left = daysBetween(localYMD(now()), [Number(dm[1]), Number(dm[2]), Number(dm[3])]);
       const when = left > 1 ? `in ${left} days` : left === 1 ? 'tomorrow' : left === 0 ? 'today' : 'passed';
-      lines.push(`${r.label}: "${label}" on ${dm[3]}/${dm[2]}/${dm[1]} (${when}).`);
+      lines.push(`${r.label}: ${JSON.stringify(label)} on ${dm[3]}/${dm[2]}/${dm[1]} (${when}).`);
     }
     return any ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
   }

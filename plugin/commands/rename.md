@@ -14,9 +14,11 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
+Safety: never paste the arguments above into a command. Build the command yourself from only: an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`), the word `--default`, and the new name only as ONE single-quoted argument, as below.
+
 What it does: the name shows on the gadget screen (it greets with "Hi! I'm <name>"), in the /miblo commands and, with visits on, to the other Miblos it visits (the network itself only ever sees the id-based Miblo-XXXX). At most 20 characters. Handy with several Miblos (at the office, or one per computer).
 
-Always pass the name as ONE single-quoted argument (e.g. `MIBLO rename miblo-4f2a 'Office desk'`).
+Pass the name as ONE single-quoted argument and write each `'` inside it as `'\''` (e.g. `MIBLO rename miblo-4f2a 'Office desk'`, `MIBLO rename miblo-4f2a 'Ana'\''s desk'`). Never put it in double quotes, backticks or `$(...)`, and never add other shell commands.
 
 ## With arguments: `<id> <name>`
 

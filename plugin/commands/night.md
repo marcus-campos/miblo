@@ -14,6 +14,8 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
+Safety: never paste the arguments above into a command. Build the command yourself from only: the fixed words shown here, whole numbers you write, times you write as `HH:MM`, and an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
+
 What it does: between the start and end times (the gadget's local time zone; the window may cross midnight, e.g. 22:00 to 07:00) the screen uses the night brightness (1–100%, never brighter than the normal brightness). Outside the window the normal brightness comes back.
 
 ## With arguments: `<on|off> [HH:MM HH:MM] [brightness%] [id]`

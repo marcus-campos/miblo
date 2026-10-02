@@ -187,18 +187,30 @@ export function nextChange(zone, nowMs, offsetAt) {
   return { z: zone, off, next: 0, noff: off };
 }
 
-// Remembers each zone's answer for an hour, or until its change comes (whichever is first).
+// At most this many zones are remembered (the gadgets' tz and tz2: a handful in practice). The
+// names come from the gadgets, so a misbehaving one cannot grow the bridge's memory.
+export const ZONE_CACHE_MAX = 16;
+
+// Remembers each zone's answer for an hour, or until its change comes (whichever is first), for
+// the ZONE_CACHE_MAX most recently used zones.
 export class ZoneOffsets {
-  #cache = new Map();
+  #cache = new Map();  // in least to most recently used order
 
   constructor({ source = zoneSource } = {}) {
     this.source = source;
   }
 
-  // The entry for `zone` at `nowMs`, or null for a name no source knows.
+  get size() { return this.#cache.size; }
+
+  // The entry for `zone` at `nowMs`, or null for a name no source knows (or not a zone name).
   get(zone, nowMs) {
+    if (!isZoneName(zone)) return null;
     const hit = this.#cache.get(zone);
-    if (hit && nowMs >= hit.from && nowMs < hit.until) return hit.entry;
+    this.#cache.delete(zone);
+    if (hit && nowMs >= hit.from && nowMs < hit.until) {
+      this.#cache.set(zone, hit);
+      return hit.entry;
+    }
     let entry = null;
     try {
       const fn = this.source(zone);
@@ -207,6 +219,8 @@ export class ZoneOffsets {
       entry = null;  // unreadable data (a corrupt zone file, an Intl answer not understood): none
     }
     const until = Math.min(nowMs + CACHE_MS, entry?.next ? entry.next * 1000 : Infinity);
+    for (const [z, e] of this.#cache) if (nowMs < e.from || nowMs >= e.until) this.#cache.delete(z);
+    while (this.#cache.size >= ZONE_CACHE_MAX) this.#cache.delete(this.#cache.keys().next().value);
     this.#cache.set(zone, { entry, from: nowMs, until });
     return entry;
   }

@@ -168,6 +168,23 @@ notes.
 <!-- daily:alerts -->
 
 <!-- daily:rhythm -->
+    - **Break:** on the settings page set "Break after long work" to 60 min; keep a session running for an hour
+      (pauses under 10 min are fine). The mascot stretches and "How about a 5 min break?" shows for
+      1 min, with no flash. With an alert pending, focus, meeting mode or a timer on, it never shows;
+      due while one of them is on, it shows once it ends (within 5 min) or is skipped.
+    - **Water:** set "Drink water reminder" to 60 min and "Work hours" to cover now: after an hour (no session
+      needed) the mascot sips from a glass and "Time to drink water" shows for 20 s. Outside the work
+      hours, or on a day not ticked, it never shows.
+    - **Eye rest:** turn on "Eye rest (20-20-20)" and keep a session running: every 20 min the mascot looks into
+      the distance, "Look far away", for 20 s. Everything off (the default): none of the three ever shows.
+    - **End of the day:** turn on "End of day summary" with "Work hours" ending 2 minutes from now. At that minute
+      the mascot yawns over today's summary with "Have a good rest, <name>!" (or "Have a good
+      rest!" without a name) for 1 min. With a session running at that minute it waits until it
+      finishes (at most 1 h). It shows once that day; pet mode then starts after 5 idle minutes. On a
+      day not ticked, or before the clock is set (no Wi-Fi time and no snapshot yet), it never shows.
+    - **Monday recap:** on a Monday (or with the Mac's clock set to a Monday, bridge restarted), the
+      first activity from 05:00, or 09:00, shows last week for 1 min: hours, responses, cost and
+      the busiest day. Not on other days, not with "Monday: last week's summary" off, not with an older plugin.
 
 <!-- daily:notes -->
 

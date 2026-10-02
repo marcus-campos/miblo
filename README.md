@@ -95,6 +95,11 @@
 <!-- daily:alerts -->
 
 <!-- daily:rhythm -->
+- **Healthy breaks (off by default):** three nudges you turn on in the settings page's Wellness section. **A break** after long continuous work (60, 90 or 120 min of Claude working; gaps of up to 10 minutes still count as continuous, a longer one starts over): the mascot stretches and suggests "How about a 5 min break?" for a minute. **Water** every 60 or 90 minutes inside your work hours: the mascot sips from a glass, "Time to drink water", for 20 s. **Eye rest (20-20-20)**: every 20 minutes of continuous work, the mascot gazes into the distance, "Look far away", for 20 s. No flash and no sound. They never show during an alert, focus, a meeting, a timer or a note, or in pet mode; one that comes due while something else is on waits up to 5 minutes for a gap, then is skipped.
+- **End of the day (off by default):** at the end of your work hours (18:00 on weekdays by default; the same hours the water nudge uses), the mascot yawns over today's summary for a minute: responses, time with Claude working and cost, and "Have a good rest, Marcus!" (with your name when it knows it). Once a day; if a session is still running it waits for it to finish (up to an hour). Afterwards pet mode comes sooner (after 5 idle minutes) for the rest of the day.
+- **Monday recap:** on Mondays, at your first Claude Code activity from 05:00 (or at 09:00), the screen shows last week for a minute: hours with Claude working, responses, cost and the busiest day. It needs the plugin from the same release; turn it off on the settings page.
+- **The cat's mood:** after 8 hours of Claude working in a day the mascot looks tired; on a light day (under 2 hours, and no limit above 50%) it plays more often in pet mode. Only its expression and rhythm change, never a message.
+- Anything that depends on the time of day (water, the end of the day, the Monday recap) stays quiet until the gadget knows the local time.
 
 <!-- daily:notes -->
 

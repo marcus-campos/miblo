@@ -1,10 +1,13 @@
 // Track C: the day's rhythm — wellness nudges, the end of the work day, Monday's recap, the cat's mood.
+#include <string.h>
 #include <unity.h>
 
+#include "../support/fake_canvas.h"
 #include "miblo_config.h"
 #include "miblo_dayend.h"
 #include "miblo_mood.h"
 #include "miblo_wellness.h"
+#include "ui_screens.h"
 
 void setUp() {}
 void tearDown() {}
@@ -242,6 +245,103 @@ static void test_cat_mood() {
   TEST_ASSERT_EQUAL(miblo::CatMood::Normal, miblo::catMoodFor(s, 1000));
 }
 
+// ---- Screens ----
+
+static const ui::ScreenSpec kSpecs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+static const char kWideOwner[] = "WWWWWWWWWWWWWWWWWWWW";  // 20 wide characters
+
+static miblo::Snapshot busySnap() {
+  miblo::Snapshot s{};
+  s.now = 1790616720;
+  s.hasUsage = true;
+  s.todayTurns = 999;
+  s.todayWorkSec = 23 * 3600 + 59 * 60;
+  s.todayUsd = 9999.99f;
+  s.week = {true, 99 * 3600 + 59 * 60, 999, 9999.99f, 3};
+  return s;
+}
+
+// Every frame of the nudges, the day end and the week recap fits, in every language and size.
+static void test_rhythm_screens_fit_everywhere() {
+  const miblo::Snapshot s = busySnap();
+  for (const auto& sp : kSpecs) {
+    for (int l = 0; l < (int)miblo::Lang::Count; l++) {
+      const miblo::Lang lang = (miblo::Lang)l;
+      FakeCanvas fc(sp);
+      screens::bind(fc);
+      const miblo::Nudge kinds[] = {miblo::Nudge::Break, miblo::Nudge::Water, miblo::Nudge::Eyes};
+      for (miblo::Nudge k : kinds) {
+        screens::reset();
+        for (uint32_t ms = 0; ms < 20000; ms += 700) screens::nudge(lang, k, ms);
+      }
+      screens::reset();
+      for (uint32_t ms = 0; ms < 9000; ms += 700) screens::dayEnd(lang, s, kWideOwner, ms);
+      screens::reset();
+      screens::dayEnd(lang, s, "", 0);
+      screens::reset();
+      for (uint32_t ms = 0; ms < 9000; ms += 700) screens::weekRecap(lang, s, ms);
+      TEST_ASSERT_TRUE(fc.calls > 0);
+      TEST_ASSERT_TRUE(fc.texts.size() >= 3);
+      TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    }
+  }
+}
+
+static void test_nudge_says_what_to_do() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::reset();
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Water, 0);
+  TEST_ASSERT_TRUE(fc.drew("drink water"));
+  screens::reset();
+  fc.clearLog();
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Eyes, 0);
+  TEST_ASSERT_TRUE(fc.drew("Look far away"));
+  screens::reset();
+  fc.clearLog();
+  screens::nudge(miblo::Lang::En, miblo::Nudge::Break, 0);
+  TEST_ASSERT_TRUE(fc.drew("5 min"));
+}
+
+static void test_day_end_content() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  miblo::Snapshot s{};
+  s.todayTurns = 47;
+  s.todayWorkSec = 3 * 3600 + 12 * 60;
+  s.todayUsd = 4.2f;
+  screens::reset();
+  screens::dayEnd(miblo::Lang::En, s, "Marcus", 0);
+  TEST_ASSERT_TRUE(fc.drew("TODAY"));
+  TEST_ASSERT_TRUE(fc.drew("47"));
+  TEST_ASSERT_TRUE(fc.drew("3h12"));
+  TEST_ASSERT_TRUE(fc.drew("$4.20"));
+  TEST_ASSERT_TRUE(fc.drew("Have a good rest, Marcus!"));
+  screens::reset();
+  fc.clearLog();
+  screens::dayEnd(miblo::Lang::En, s, "", 0);
+  TEST_ASSERT_TRUE(fc.drew("Have a good rest!"));
+}
+
+static void test_week_recap_content() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  miblo::Snapshot s{};
+  s.week = {true, 31 * 3600 + 20 * 60, 212, 38.5f, 3};
+  screens::reset();
+  screens::weekRecap(miblo::Lang::En, s, 0);
+  TEST_ASSERT_TRUE(fc.drew("LAST WEEK"));
+  TEST_ASSERT_TRUE(fc.drew("212"));
+  TEST_ASSERT_TRUE(fc.drew("31h20"));  // hours, never "1d7h"
+  TEST_ASSERT_TRUE(fc.drew("$38.50"));
+  TEST_ASSERT_TRUE(fc.drew("busiest day: Wed"));
+  s.week.busiest = 255;
+  screens::reset();
+  fc.clearLog();
+  screens::weekRecap(miblo::Lang::En, s, 0);
+  TEST_ASSERT_FALSE(fc.drew("busiest"));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_break_after_continuous_work_with_short_gaps);
@@ -258,5 +358,9 @@ int main(int, char**) {
   RUN_TEST(test_weekly_recap_on_monday);
   RUN_TEST(test_weekly_recap_rules);
   RUN_TEST(test_cat_mood);
+  RUN_TEST(test_rhythm_screens_fit_everywhere);
+  RUN_TEST(test_nudge_says_what_to_do);
+  RUN_TEST(test_day_end_content);
+  RUN_TEST(test_week_recap_content);
   return UNITY_END();
 }

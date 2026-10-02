@@ -70,8 +70,18 @@ static void handleInfo() {
   // 42 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
   // phase, the countdown date): ~830 B on the ESP8266, plus ~440 B for the keys, which are copied
   // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
-  // ~1.57 KB at worst.
-  StaticJsonDocument<1792> doc;
+  // ~1.57 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
+  // the whole of the 4 KB loop() stack. The reply (~1.2 KB) is built on the heap after it.
+  constexpr size_t kInfoDoc = 1792;
+  if (heapLowForRequest(kInfoDoc + 1280)) {
+    json(503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  DynamicJsonDocument doc(kInfoDoc);
+  if (!doc.capacity()) {  // the allocation failed anyway
+    json(503, F("{\"error\":\"busy\"}"));
+    return;
+  }
   doc[F("id")] = ctx.ident.id;
   doc[F("name")] = deviceName();
   doc[F("fw")] = MIBLO_FW_VERSION;
@@ -333,7 +343,19 @@ static void dailyRoute(DailyHandler handle) {
     json(401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
-  StaticJsonDocument<384> doc;  // texts are <= 47 bytes: a body over 300 bytes is not ours
+  // Both documents on the heap (~1.2 KB on the stack took this path past 3 KB of the 4 KB
+  // loop() stack), with the same headroom check as the other handlers that allocate.
+  constexpr size_t kBodyDoc = 384, kReplyDoc = 768;
+  if (heapLowForRequest(kBodyDoc + kReplyDoc + 768)) {
+    json(503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  DynamicJsonDocument doc(kBodyDoc);  // texts are <= 47 bytes: a body over 300 bytes is not ours
+  DynamicJsonDocument reply(kReplyDoc);
+  if (!doc.capacity() || !reply.capacity()) {  // an allocation failed anyway
+    json(503, F("{\"error\":\"busy\"}"));
+    return;
+  }
   const String& body = srv->arg(F("plain"));
   if (body.length() > 300 || (body.length() && (deserializeJson(doc, body) || !doc.is<JsonObject>()))) {
     json(400, F("{\"error\":\"bad json\"}"));
@@ -341,8 +363,7 @@ static void dailyRoute(DailyHandler handle) {
   }
   if (!body.length()) doc.to<JsonObject>();
   // The biggest reply is GET /api/remind: 8 items of 4 members (~690 B on the ESP8266; texts are
-  // not copied). Transient, on the stack like /api/info's document.
-  StaticJsonDocument<768> reply;
+  // not copied).
   JsonObject out = reply.to<JsonObject>();
   const char* bad = nullptr;
   const int code = handle(doc.as<JsonObjectConst>(), out, &bad);

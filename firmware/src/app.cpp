@@ -325,6 +325,8 @@ void setup() {
   server.begin();
 }
 
+static void frame(uint32_t now);
+
 void loop() {
   const uint32_t now = millis();
   cpuMeter.update(micros());
@@ -373,7 +375,13 @@ void loop() {
     return;
   }
   lastFrameMs = now;
+  frame(now);
+}
 
+// One frame: the screen's state machine and its drawing. Out of loop() and never inlined, so
+// the frame's own buffers and the renderers' stack are not under the HTTP handlers (which run
+// from server.handleClient() above, on the same 4 KB loop() stack).
+static void __attribute__((noinline)) frame(uint32_t now) {
   if (!bootAnimDone && now - bootMs >= 2400) bootAnimDone = true;
   // The local date and time, read once per frame (night dimming, the filter, greetings).
   miblo::Date day{};

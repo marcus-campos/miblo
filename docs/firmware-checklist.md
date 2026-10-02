@@ -361,3 +361,12 @@ notes.
     itself (LittleFS) is not in the native tests: this check covers it. Pairing and removing a
     computer are saved before the reply: when that save fails the gadget answers `503 busy` and
     nothing changes (the pairing code stays valid; `/miblo:pair` resends it).
+28. **Stalled requests (security):** from a computer on the same network, open 60 connections
+    that send half a request line or half a header block and stop, 60 that send nothing, and 20
+    each that send full headers and then stall on a small (`Content-Length: 500`) or a large
+    (`Content-Length: 20000`) body. Meanwhile keep a session running and reload the settings page:
+    the screen, the alerts, the bridge's snapshots and the page keep answering (well under a
+    second), and the gadget never restarts. A stalled small body is answered `408`; a large body
+    to anything but `/api/state` gets `413`, and to `/api/state` without a valid token `401`,
+    before the body is read. With the settings page loading while the bridge sends snapshots,
+    `/miblo:status` shows no send errors.

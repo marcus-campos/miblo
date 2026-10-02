@@ -333,7 +333,7 @@ test('unknown subcommand prints usage with code 2', async () => {
 
 test('the usage lists the daily-life commands; an inherited object key is not a command', async () => {
   const r = await run(['wat'], deps());
-  for (const cmd of ['focus', 'meeting', 'find', 'timer', 'say']) assert.match(r.out, new RegExp(`^  ${cmd}\\b`, 'm'), cmd);
+  for (const cmd of ['focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown']) assert.match(r.out, new RegExp(`^  ${cmd}\\b`, 'm'), cmd);
   assert.equal((await run(['toString'], deps())).code, 2);
   assert.equal((await run(['constructor'], deps())).code, 2);
 });

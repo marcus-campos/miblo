@@ -132,7 +132,7 @@ The gadget updates on your next Claude Code activity.
 
 ## Commands
 
-The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you can leave it out wherever it's optional. The daily-life commands (focus, meeting, find, timer, say) go to every paired gadget; add `--id <id>` to send one to a single gadget.
+The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you can leave it out wherever it's optional. The daily-life commands (focus, meeting, find, timer, say, remind, countdown) go to every paired gadget; add `--id <id>` to send one to a single gadget.
 
 | Command | Arguments | What it does |
 |---|---|---|
@@ -149,6 +149,8 @@ The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you
 | `/miblo:find` | `[--id <id>]` | The gadget blinks, the cat waves and the settings page's QR code shows for 10 s, to spot one Miblo among several. |
 | `/miblo:timer` | `<minutes> \| stop` | A big visible countdown on the screen (1–180 min). When it ends, the screen pulses slowly and the cat holds "Time's up!". `stop` cancels it. |
 | `/miblo:say` | `<text> [--min N] \| off` | A message for people passing by your desk ("back in 10 min"), held up by the cat for 30 min by default (1–480) or until `off`. Up to 40 characters (47 bytes, so fewer with emoji or CJK). |
+| `/miblo:remind` | `<minutes\|HH:MM> <text>`, `every day\|weekdays <HH:MM> <text>`, `off [N]` | A reminder in N minutes (1–1440) or at a time (today, or tomorrow if it has passed), up to 4 per gadget, plus up to 4 recurring ones (every day or weekdays, also `todo dia` / `dias úteis`) saved on the gadget. At the time, the screen pulses slowly and the cat holds the text (up to 40 characters) for 5 minutes. With no arguments it lists them with their numbers; `off` dismisses the one on screen, `off N` deletes reminder N. |
+| `/miblo:countdown` | `<label> <DD/MM[/YYYY]> \| off` | A countdown on the desk screen and the pet mode sign ("release in 3 days"), saved on the gadget. Day first; without a year it's the next such date. Label up to 20 characters. With no arguments it shows the current one. |
 | `/miblo:settings` | `[id]` | Opens the gadget's web settings page in your browser and prints its URL (also reachable at `http://<id>.local`). A paired gadget's page asks for the code shown on its screen first. |
 | `/miblo:update` | `[id] [--file path]` | Updates the plugin and then the gadget firmware from the latest GitHub release. You confirm each step and type the on-screen code. `--file` sends a local `miblo-<board>-<version>.bin` instead. |
 | `/miblo:link-statusline` | | Links Claude Code's status line to Miblo. Your original status line keeps its exact output. |

@@ -33,7 +33,7 @@ test('every tracked event runs hook.js asynchronously', () => {
 
 const COMMANDS = ['pair', 'status', 'mode', 'rotate', 'night', 'settings', 'rename', 'owner', 'demo', 'link-statusline', 'unlink-statusline', 'reset',
   // daily life
-  'focus', 'meeting', 'find', 'timer', 'say'];
+  'focus', 'meeting', 'find', 'timer', 'say', 'remind', 'countdown'];
 
 test('miblo.md was split into one command per action (plugins namespace commands as /miblo:<file>)', () => {
   assert.ok(!fs.existsSync(path.join(root, 'commands/miblo.md')));

@@ -296,7 +296,217 @@ async function say(args, { store, client }) {
     : `Message on ${n} for ${body.min ?? SAY_MIN.default} min: "${body.text}".`));
 }
 
-export const DAILY_COMMANDS = { focus, meeting, find, timer, say };
+// ---- remind ----
+const REMIND_USAGE = [
+  'Usage: remind <minutes> <text...>          (in N minutes, 1-1440)',
+  '       remind <HH:MM> <text...>            (today, or tomorrow if past)',
+  '       remind every day|daily|todo dia <HH:MM> <text...>',
+  '       remind weekdays|dias úteis <HH:MM> <text...>',
+  '       remind                              (list)',
+  '       remind off [N]                      (dismiss the one on screen, or delete reminder N)',
+  '       [--id <id>] on any of them',
+].join('\n');
+export const REMIND_IN = { min: 1, max: 1440 };
+export const DAYS = { everyDay: 127, weekdays: 62 };  // bit 0 = Sunday
+// Recurring prefixes, lower case, accents as typed or not.
+const RECURRING = [
+  ['every day', DAYS.everyDay], ['everyday', DAYS.everyDay], ['daily', DAYS.everyDay],
+  ['todo dia', DAYS.everyDay], ['todos os dias', DAYS.everyDay],
+  ['weekdays', DAYS.weekdays], ['every weekday', DAYS.weekdays], ['dias úteis', DAYS.weekdays], ['dias uteis', DAYS.weekdays],
+];
+const WEEKDAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// "9:45", "09:45", "9h45" -> "09:45"; null when not a time; { error } when out of range.
+export function parseHHMM(s) {
+  const m = /^(\d{1,2})[:h](\d{2})$/i.exec(String(s));
+  if (!m) return null;
+  const [h, mi] = [Number(m[1]), Number(m[2])];
+  if (h > 23 || mi > 59) return { error: `Invalid time "${quoteArg(s)}": use HH:MM from 00:00 to 23:59.` };
+  return `${String(h).padStart(2, '0')}:${m[2]}`;
+}
+
+// -> { list: true } | { body, kind: 'in'|'at'|'every', n? } | { error }.
+export function parseRemindArgs(args) {
+  // Every word on its own (a quoted "dias úteis" is two words); the text is joined back with spaces.
+  const w = args.flatMap((a) => String(a).split(/\s+/)).filter(Boolean);
+  if (!w.length) return { list: true };
+  if (w[0].toLowerCase() === 'off' && w.length <= 2) {
+    if (w.length === 1) return { body: { dismiss: true }, kind: 'dismiss' };
+    const n = isWhole(w[1]) ? Number(w[1]) : NaN;
+    if (!(n >= 1 && n <= 8)) return { error: `Give the number of the reminder to delete (1 to 8, as listed by /miblo:remind).` };
+    return { body: { delete: n }, kind: 'delete', n };
+  }
+  const withText = (body, kind, rest) => {
+    if (!rest.length) return { error: `What should the reminder say?\n${REMIND_USAGE}` };
+    const t = typedText(rest, NOTE, 'reminder text');
+    return t.error ? { error: t.error } : { body: { ...body, text: t.text }, kind };
+  };
+  if (isWhole(w[0])) {
+    const min = Number(w[0]);
+    if (!inRange(min, REMIND_IN)) return { error: `Minutes must be a whole number from ${REMIND_IN.min} to ${REMIND_IN.max} (got ${min}).` };
+    return withText({ in: min }, 'in', w.slice(1));
+  }
+  const at = parseHHMM(w[0]);
+  if (at?.error) return { error: at.error };
+  if (at) return withText({ at }, 'at', w.slice(1));
+  const lower = w.map((x) => x.toLowerCase().normalize('NFC'));
+  for (const [phrase, days] of RECURRING) {
+    const k = phrase.split(' ').length;
+    if (lower.slice(0, k).join(' ') !== phrase) continue;
+    const time = parseHHMM(w[k] ?? '');
+    if (time?.error) return { error: time.error };
+    if (!time) return { error: `Give the time after "${phrase}", e.g. remind ${phrase} 09:45 stand-up.` };
+    return withText({ at: time, days }, 'every', w.slice(k + 1));
+  }
+  return { error: REMIND_USAGE };
+}
+
+const daysText = (days) => {
+  if (days === DAYS.everyDay) return 'every day';
+  if (days === DAYS.weekdays) return 'weekdays';
+  const names = WEEKDAY.filter((_, i) => days & (1 << i));
+  return names.length ? names.join(' ') : 'never';
+};
+
+// Seconds -> "14 min" / "1h05".
+export function durationText(sec) {
+  const min = Math.max(0, Math.round(Number(sec) / 60));
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}`;
+}
+
+// One item of GET /api/remind -> "1  in 14 min  ligar pro cliente" / "5  weekdays 09:45  daily".
+function reminderLine(it) {
+  const id = Number.isInteger(it?.id) ? it.id : '?';
+  const text = printable(it?.text, NOTE.chars);
+  if (typeof it?.at === 'string') return `${id}  ${daysText(Number(it.days) || 0)} ${printable(it.at, 5)}  ${text}`;
+  return `${id}  in ${durationText(Math.ceil(Number(it?.in ?? 0) / 60) * 60)}  ${text}`;
+}
+
+// Groups the gadgets that took a request by `key(reply)` -> one line per group.
+function summarizeBy(results, key, line, ctx) {
+  const groups = new Map();
+  for (const r of results) {
+    if (r.err) continue;
+    const k = key(r.reply);
+    groups.set(k, [...(groups.get(k) ?? []), r.label]);
+  }
+  const lines = [...groups].map(([k, names]) => line(joinNames(names), k));
+  for (const r of results) if (r.err) lines.push(problemLine(r.label, r.err, ctx));
+  return groups.size ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
+}
+
+async function remind(args, { store, client }) {
+  const { id, rest, error } = takeId(args);
+  if (error) return fail(2, error);
+  const parsed = parseRemindArgs(rest);
+  if (parsed.error) return fail(2, parsed.error);
+  const t = targetsFor(store, id);
+  if (t.error) return t.error;
+  const { targets } = t;
+
+  if (parsed.list) {
+    const results = await each(targets, (d) => client.reminders(d.addr, d.token));
+    const several = targets.length > 1;
+    const lines = [];
+    for (const r of results) {
+      if (r.err) { lines.push(problemLine(r.label, r.err)); continue; }
+      const items = Array.isArray(r.reply.items) ? r.reply.items.slice(0, 8) : [];
+      if (!items.length) { lines.push(several ? `${r.label}: no reminders.` : 'No reminders.'); continue; }
+      if (several) lines.push(`${r.label}:`);
+      for (const it of items) lines.push(`${several ? '  ' : ''}${reminderLine(it)}`);
+    }
+    return results.some((r) => !r.err) ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
+  }
+
+  const { body, kind } = parsed;
+  const results = await each(targets, (d) => client.remind(d.addr, d.token, body));
+  if (kind === 'dismiss') {
+    // Nothing on a screen is not a failure: say so for that gadget.
+    for (const r of results) if (r.err?.status === 409 && r.err.data?.field === 'none') { r.reply = { none: true }; delete r.err; }
+    return summarizeBy(results, (rep) => (rep.none ? 'none' : 'done'),
+      (n, k) => (k === 'none' ? `Nothing to dismiss on ${n}.` : `Reminder dismissed on ${n}.`));
+  }
+  if (kind === 'delete') return summarize(results, (n) => `Deleted reminder ${parsed.n} on ${n}.`, { n: parsed.n });
+  const when = kind === 'in' ? `in ${body.in} min`
+    : kind === 'at' ? `at ${body.at}`
+    : `${body.days === DAYS.weekdays ? 'on weekdays' : 'every day'} at ${body.at}`;
+  // The text was typed by the user and already checked for control characters.
+  return summarizeBy(results, (rep) => (Number.isInteger(rep.id) ? rep.id : '?'),
+    (n, rid) => `Reminder ${rid} on ${n} ${when}: "${body.text}".`, { recurring: kind === 'every' });
+}
+
+// ---- countdown ----
+const COUNTDOWN_USAGE = 'Usage: countdown <label...> <DD/MM[/YYYY]> | countdown off | countdown  [--id <id>]';
+export const COUNTDOWN_MAX_DAYS = 999;  // the gadget's "label in N days" goes up to 999
+const pad2 = (n) => String(n).padStart(2, '0');
+const realDay = (y, m, d) => m >= 1 && m <= 12 && d >= 1 && d <= new Date(y, m, 0).getDate();
+const localYMD = (t) => { const d = new Date(t); return [d.getFullYear(), d.getMonth() + 1, d.getDate()]; };
+// Whole calendar days from a to b (local dates as [y, m, d]).
+const daysBetween = (a, b) => Math.round((Date.UTC(b[0], b[1] - 1, b[2]) - Date.UTC(a[0], a[1] - 1, a[2])) / 86_400_000);
+
+// -> { body } (body.md or body.date) | { off: true } | { show: true } | { error }.
+export function parseCountdownArgs(args, nowMs = Date.now()) {
+  if (!args.length) return { show: true };
+  if (args.length === 1 && args[0] === 'off') return { body: { off: true } };
+  const m = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{4}))?$/.exec(args[args.length - 1]);
+  if (!m) return { error: `End with the date, day first: DD/MM or DD/MM/YYYY.\n${COUNTDOWN_USAGE}` };
+  const [day, month] = [Number(m[1]), Number(m[2])];
+  const year = m[3] === undefined ? null : Number(m[3]);
+  const today = localYMD(nowMs);
+  if (!realDay(year ?? 2000, month, day)) return { error: `Invalid date "${quoteArg(m[0])}": use a real calendar day, day first (DD/MM).` };
+  // A 29/02 without a year has no clear next occurrence: ask for the year.
+  if (year === null && month === 2 && day === 29) return { error: 'For 29/02 give the year too (DD/MM/YYYY).' };
+  if (year !== null) {
+    const ahead = daysBetween(today, [year, month, day]);
+    if (ahead < 0) return { error: `${quoteArg(m[0])} is in the past.` };
+    if (ahead > COUNTDOWN_MAX_DAYS) return { error: `${quoteArg(m[0])} is too far away (${COUNTDOWN_MAX_DAYS} days at most).` };
+  }
+  const words = args.slice(0, -1);
+  if (!words.length) return { error: `Give a label before the date, e.g. countdown release 15/10.\n${COUNTDOWN_USAGE}` };
+  const t = typedText(words, LABEL, 'label');
+  if (t.error) return { error: t.error };
+  const body = year === null
+    ? { label: t.text, md: `${pad2(month)}-${pad2(day)}` }
+    : { label: t.text, date: `${year}-${pad2(month)}-${pad2(day)}` };
+  return { body, shown: `${pad2(day)}/${pad2(month)}${year === null ? '' : `/${year}`}` };
+}
+
+async function countdown(args, { store, client, now }) {
+  const { id, rest, error } = takeId(args);
+  if (error) return fail(2, error);
+  const parsed = parseCountdownArgs(rest, now());
+  if (parsed.error) return fail(2, parsed.error);
+  const t = targetsFor(store, id);
+  if (t.error) return t.error;
+
+  if (parsed.show) {
+    const results = await each(t.targets, (d) => client.info(d.addr, d.token));
+    const lines = [];
+    let any = false;
+    for (const r of results) {
+      const info = r.reply;
+      if (r.err) { lines.push(problemLine(r.label, r.err)); continue; }
+      if (info.paired === true && info.fw === undefined && info.name === undefined) { lines.push(problemLine(r.label, { status: 401 })); continue; }
+      if (typeof info.countdown !== 'string') { lines.push(problemLine(r.label, { status: 404 })); continue; }
+      any = true;
+      const label = printable(info.countdown, LABEL.chars);
+      const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(info.countdownDate ?? ''));
+      if (!label || !dm) { lines.push(`${r.label}: no countdown.`); continue; }
+      const left = daysBetween(localYMD(now()), [Number(dm[1]), Number(dm[2]), Number(dm[3])]);
+      const when = left > 1 ? `in ${left} days` : left === 1 ? 'tomorrow' : left === 0 ? 'today' : 'passed';
+      lines.push(`${r.label}: "${label}" on ${dm[3]}/${dm[2]}/${dm[1]} (${when}).`);
+    }
+    return any ? ok(lines.join('\n')) : fail(1, lines.join('\n'));
+  }
+
+  const { body } = parsed;
+  const results = await each(t.targets, (d) => client.countdown(d.addr, d.token, body));
+  // The label was typed by the user and already checked for control characters.
+  return summarize(results, (n) => (body.off ? `Countdown off on ${n}.` : `Countdown on ${n}: "${body.label}" on ${parsed.shown}.`));
+}
+
+export const DAILY_COMMANDS = { focus, meeting, find, timer, say, remind, countdown };
 
 // The daily-life lines of miblo.js USAGE.
 export const DAILY_USAGE = [
@@ -305,4 +515,6 @@ export const DAILY_USAGE = [
   '  find  [--id <id>]',
   '  timer <minutes> | timer stop  [--id <id>]',
   '  say <text...> [--min N] | say off  [--id <id>]',
+  '  remind [<minutes>|<HH:MM>|every day <HH:MM>|weekdays <HH:MM> <text...>] | remind off [N]  [--id <id>]',
+  '  countdown <label...> <DD/MM[/YYYY]> | countdown off | countdown  [--id <id>]',
 ];

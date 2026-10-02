@@ -728,6 +728,18 @@ test('a permission_prompt arriving just after its prompt was answered does not r
   assert.equal(tracker.alerts().length, 1);
 });
 
+test('a permission_prompt just after an answered one raises perm unless it names the same tool', () => {
+  for (const extra of [{}, { tool_name: 'WebFetch' }]) {
+    const { tracker, clock, ev } = setup();
+    ev('s1', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'make' } });
+    ev('s1', 'PostToolUse', { tool_name: 'Bash', tool_input: {} });
+    clock.advance(500);
+    ev('s1', 'Notification', permNote(extra));
+    assert.equal(tracker.sessions()[0].st, 'perm', JSON.stringify(extra));
+    assert.deepEqual(tracker.alerts().map((a) => a.kind), ['perm'], JSON.stringify(extra));
+  }
+});
+
 test('an ownerless permission_prompt naming a tool is cleared only when that tool ends', () => {
   const { tracker, ev } = setup();
   ev('s1', 'SubagentStart', agent('a1'));

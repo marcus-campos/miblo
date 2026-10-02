@@ -42,7 +42,9 @@ const PERM_NOTES = new Set(['permission_prompt', 'worker_permission_prompt']);
 const QUESTION_NOTES = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
 const ASKING = new Set(['perm', 'question']);
 // A prompt notification can reach the bridge after the prompt was answered (hooks run async):
-// one of the same kind this soon after the session left that state is that prompt, not a new one.
+// one of the same kind naming the same tool this soon after the session left that state is that
+// prompt, not a new one. One naming no tool or another tool always raises: a rare duplicate alert
+// beats a missed prompt.
 const LATE_PROMPT_MS = 2000;
 // Subagent events that end a tool call: they answer an ownerless prompt that named that tool.
 const TOOL_ENDS = new Set(['PostToolUse', 'PostToolUseFailure', 'PermissionDenied']);
@@ -71,7 +73,8 @@ export class SessionTracker {
   #waitDet = new Map();
   // session id -> compaction trigger ('manual' | 'auto') while one is in progress.
   #compacting = new Map();
-  // session id -> { kind, at }: the prompt state ('perm' | 'question') it last left, and when.
+  // session id -> { kind, tool, at }: the prompt state ('perm' | 'question') it last left, the tool
+  // shown then, and when.
   #leftAsk = new Map();
   // session id -> the tool an ownerless (ANY_AGENT) prompt named, if any.
   #askTool = new Map();
@@ -308,9 +311,9 @@ export class SessionTracker {
       if (agentId && s.askBy === ANY_AGENT) this.#setAskBy(s, agentId);
       return;
     }
-    const left = this.#leftAsk.get(s.id);
-    if (left && left.kind === kind && this.now() - left.at < LATE_PROMPT_MS) return;
     const named = typeof tool === 'string' && tool ? tool : '';
+    const left = this.#leftAsk.get(s.id);
+    if (named && left && left.kind === kind && left.tool === named && this.now() - left.at < LATE_PROMPT_MS) return;
     if (named && named !== s.tool) {
       s.tool = named;
       s.det = '';
@@ -363,7 +366,7 @@ export class SessionTracker {
 
   #enter(s, st, { alert = true } = {}) {
     if (s.st === st) return;
-    if (ASKING.has(s.st) && !ASKING.has(st)) this.#leftAsk.set(s.id, { kind: s.st, at: this.now() });
+    if (ASKING.has(s.st) && !ASKING.has(st)) this.#leftAsk.set(s.id, { kind: s.st, tool: s.tool, at: this.now() });
     s.st = st;
     s.since = this.now();
     this.#alerts = this.#alerts.filter((a) => a.sid !== s.id);

@@ -2,6 +2,8 @@
 #include <string.h>
 #include <unity.h>
 
+#include <string>
+
 #include "miblo_config.h"
 #include "miblo_tz.h"
 #include "miblo_tz_table.h"
@@ -17,6 +19,14 @@ static bool patch(Config& cfg, const char* json, const char** bad = nullptr) {
   return applyConfigPatch(cfg, doc.as<JsonObjectConst>(), bad);
 }
 
+// The plain list GET /api/zones serves: every name of the table followed by '\n'.
+static std::string plainNames() {
+  std::string out;
+  TzNames n;
+  while (n.next()) out += std::string(n.name) + "\n";
+  return out;
+}
+
 static void test_lookup_known_zones() {
   char out[48];
   TEST_ASSERT_TRUE(tzLookup("America/Sao_Paulo", out, sizeof(out)));
@@ -28,13 +38,23 @@ static void test_lookup_known_zones() {
   // First and last entries of the table (boundaries of the scan).
   TEST_ASSERT_TRUE(tzLookup("Africa/Abidjan", out, sizeof(out)));
   TEST_ASSERT_EQUAL_STRING("GMT0", out);
-  const char* last = kTzNames + kTzNamesLen - 2;
-  while (last > kTzNames && last[-1] != '\n') last--;
-  char name[48];
-  size_t n = (size_t)(kTzNames + kTzNamesLen - 1 - last);
-  memcpy(name, last, n);
-  name[n] = 0;
-  TEST_ASSERT_TRUE(tzLookup(name, out, sizeof(out)));
+  const std::string all = plainNames();
+  const size_t start = all.rfind('\n', all.size() - 2) + 1;
+  TEST_ASSERT_TRUE(tzLookup(all.substr(start, all.size() - 1 - start).c_str(), out, sizeof(out)));
+}
+
+// Every name resolves to its own rule (kTzRule indexes kTzRules).
+static void test_every_name_resolves() {
+  TzNames n;
+  while (n.next()) {
+    const char* r = kTzRules;
+    for (unsigned k = 0; k < kTzRule[n.index]; k++) r = strchr(r, '\n') + 1;
+    char out[48];
+    TEST_ASSERT_TRUE_MESSAGE(tzLookup(n.name, out, sizeof(out)), n.name);
+    TEST_ASSERT_EQUAL_size_t(strchr(r, '\n') - r, strlen(out));
+    TEST_ASSERT_EQUAL_MEMORY(r, out, strlen(out));
+  }
+  TEST_ASSERT_EQUAL_size_t(kTzCount - 1, n.index);
 }
 
 static void test_lookup_unknown_or_malformed() {
@@ -51,14 +71,25 @@ static void test_lookup_unknown_or_malformed() {
 
 static void test_table_shape() {
   TEST_ASSERT_TRUE(kTzCount > 400);
-  TEST_ASSERT_EQUAL_size_t(kTzNamesLen, strlen(kTzNames));
-  TEST_ASSERT_EQUAL_CHAR('\n', kTzNames[kTzNamesLen - 1]);
+  TEST_ASSERT_EQUAL_size_t(kTzNamesPackedLen, strlen(kTzNames));
+  const std::string all = plainNames();
+  TEST_ASSERT_EQUAL_size_t(kTzNamesLen, all.size());
+  TEST_ASSERT_EQUAL_CHAR('\n', all.back());
   size_t lines = 0;
-  for (size_t i = 0; i < kTzNamesLen; i++) lines += kTzNames[i] == '\n';
+  for (char c : all) lines += c == '\n';
   TEST_ASSERT_EQUAL_size_t(kTzCount, lines);
+  // Sorted, distinct, printable ASCII.
+  TzNames n;
+  std::string prev;
+  while (n.next()) {
+    TEST_ASSERT_TRUE_MESSAGE(prev < n.name, n.name);
+    for (const char* c = n.name; *c; c++) TEST_ASSERT_TRUE(*c >= 0x21 && *c <= 0x7E);
+    prev = n.name;
+  }
   lines = 0;
-  for (const char* p = kTzPosix; *p; p++) lines += *p == '\n';
-  TEST_ASSERT_EQUAL_size_t(kTzCount, lines);
+  for (const char* p = kTzRules; *p; p++) lines += *p == '\n';
+  TEST_ASSERT_EQUAL_size_t(kTzRuleCount, lines);
+  for (size_t i = 0; i < kTzCount; i++) TEST_ASSERT_TRUE(kTzRule[i] < kTzRuleCount);
 }
 
 static void test_looks_posix() {
@@ -104,16 +135,18 @@ static void test_config_patch_tz() {
 }
 
 // kTzNameMax (generated) is the longest name in the table: Config::tz2 is sized from it.
+// GET /api/zones serves exactly the list it served before the names were front-coded (same
+// bytes for the same tz database: FNV-1a of the 7390-byte list of posix_tz_db@93447c0ddac3).
+static void test_served_list_unchanged() {
+  uint32_t h = 0x811c9dc5;
+  for (char c : plainNames()) h = (h ^ (uint8_t)c) * 0x01000193;
+  TEST_ASSERT_EQUAL_HEX32(0x7fffdac5, h);
+}
+
 static void test_longest_name_constant() {
-  size_t longest = 0, cur = 0;
-  for (size_t i = 0; i < kTzNamesLen; i++) {
-    if (kTzNames[i] == '\n') {
-      if (cur > longest) longest = cur;
-      cur = 0;
-    } else {
-      cur++;
-    }
-  }
+  size_t longest = 0;
+  TzNames n;
+  while (n.next()) longest = strlen(n.name) > longest ? strlen(n.name) : longest;
   TEST_ASSERT_EQUAL_UINT(longest, kTzNameMax);
   Config c;
   TEST_ASSERT_TRUE(sizeof(c.tz2) > kTzNameMax);
@@ -127,6 +160,8 @@ static void test_longest_name_constant() {
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_lookup_known_zones);
+  RUN_TEST(test_every_name_resolves);
+  RUN_TEST(test_served_list_unchanged);
   RUN_TEST(test_lookup_unknown_or_malformed);
   RUN_TEST(test_table_shape);
   RUN_TEST(test_looks_posix);

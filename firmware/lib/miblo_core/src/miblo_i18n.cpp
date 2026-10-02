@@ -108,6 +108,10 @@ Lang negotiateLang(const char* header) {
   return best;
 }
 
+// The token bitmap is read as 32-bit words: bit b of the bitmap (byte b / 8, bit b % 8) is bit
+// b % 32 of word b / 32 on a little-endian CPU (the ESP8266, the ESP32 and the computers).
+static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "tr() reads the token bitmap as little-endian words");
+
 void tr(Lang lang, S id, char* out, size_t cap) {
   if (cap == 0) return;
   if (lang >= Lang::Count) lang = Lang::En;
@@ -115,20 +119,46 @@ void tr(Lang lang, S id, char* out, size_t cap) {
     out[0] = 0;
     return;
   }
-  const char* p;
-  mibloRomCopy(&p, &kLangTables[(int)lang], sizeof(p));  // the table itself is in flash too
+  // The packed table (scripts/pack_strings.py): [token count][token bitmap][pairs][entries].
+  const char* blob;
+  mibloRomCopy(&blob, &kLangTables[(int)lang], sizeof(blob));  // the table itself is in flash too
+  uint32_t isToken[8];
+  mibloRomCopy(isToken, blob + 1, sizeof(isToken));
+  const char* pairs = blob + 1 + sizeof(isToken);
+  const char* p = pairs + 2 * mibloRomByte(blob);
   for (int i = 0; i < (int)id; i++) {
     while (mibloRomByte(p)) p++;
     p++;
   }
+  // Expands the entry: a token stands for a pair of bytes (each a plain byte or another token,
+  // at most 14 deep). Up to cap - 1 bytes are kept; `next` is the first byte that did not fit.
   size_t len = 0;
-  while (mibloRomByte(p + len)) len++;
-  if (len >= cap) {
-    len = cap - 1;
-    // don't cut in the middle of a UTF-8 sequence
-    while (len > 0 && (mibloRomByte(p + len) & 0xC0) == 0x80) len--;
+  int next = -1;
+  uint8_t stack[16];
+  for (uint8_t c; next < 0 && (c = mibloRomByte(p)) != 0; p++) {
+    uint8_t n = 0;
+    stack[n++] = c;
+    while (n > 0) {
+      const uint8_t b = stack[--n];
+      const uint32_t word = isToken[b >> 5], bit = 1u << (b & 31);
+      if (word & bit) {
+        // the pair's index: the tokens below b
+        uint16_t k = (uint16_t)__builtin_popcount(word & (bit - 1));
+        for (uint8_t w = 0; w < (b >> 5); w++) k += (uint16_t)__builtin_popcount(isToken[w]);
+        stack[n++] = mibloRomByte(pairs + 2 * k + 1);
+        stack[n++] = mibloRomByte(pairs + 2 * k);
+      } else if (len < cap - 1) {
+        out[len++] = (char)b;
+      } else {
+        next = b;
+        break;
+      }
+    }
   }
-  for (size_t i = 0; i < len; i++) out[i] = (char)mibloRomByte(p + i);
+  if (next >= 0) {
+    // cut: don't stop in the middle of a UTF-8 sequence
+    while (len > 0 && ((len == cap - 1 ? (uint8_t)next : (uint8_t)out[len]) & 0xC0) == 0x80) len--;
+  }
   out[len] = 0;
 }
 

@@ -1,6 +1,9 @@
 // String tables (UTF-8) — one packed string per language, entries separated by \0.
 // The entry order exactly follows the miblo::S enum (miblo_i18n.h).
 // test_i18n checks the count and the %s/%u placeholders for each language.
+// The firmware carries a packed copy (miblo_strings_packed.cpp): after any change here, run
+//   python3 firmware/scripts/pack_strings.py
+// (test_i18n compares every packed string with this file and fails until then).
 #include "miblo_i18n.h"
 #include "miblo_rom.h"
 
@@ -2472,6 +2475,6 @@ static const char kZh[] MIBLO_ROM =
     "桌面屏幕显示设置二维码\0"  // WebDeskQr
     "周一: 上周总结\0";  // WebWeekly
 
-const char* const kLangTables[] MIBLO_ROM = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
+const char* const kLangSource[] MIBLO_ROM = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 
 }  // namespace miblo

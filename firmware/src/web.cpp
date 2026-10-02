@@ -7,7 +7,7 @@
 #include "context.h"
 #include "miblo_snapshot.h"
 #include "platform/platform.h"
-#include "miblo_tz_table.h"
+#include "miblo_tz.h"
 #include "miblo_version.h"
 #include "platform/net.h"
 #include "platform/ota.h"
@@ -1209,11 +1209,26 @@ static void handleSettings() {
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
-// The IANA zone names the device can resolve, one per line. Streamed straight from flash
-// (send_P writes the PROGMEM blob in small chunks): no ~7 KB String on a ~30 KB heap.
+// The IANA zone names the device can resolve, one per line. Decoded from flash (the table is
+// front-coded) and sent in small pieces after the headers: no ~7 KB String on a ~30 KB heap.
 static void handleZones() {
   srv->sendHeader(F("Cache-Control"), F("max-age=86400"));
-  srv->send_P(200, PSTR("text/plain; charset=utf-8"), miblo::kTzNames, miblo::kTzNamesLen);
+  srv->setContentLength(miblo::kTzNamesLen);
+  srv->send(200, F("text/plain; charset=utf-8"), "");
+  char buf[256];
+  size_t n = 0;
+  miblo::TzNames names;
+  while (names.next()) {
+    const size_t len = strlen(names.name);
+    if (n + len + 1 > sizeof(buf)) {
+      srv->sendContent(buf, n);
+      n = 0;
+    }
+    memcpy(buf + n, names.name, len);
+    n += len;
+    buf[n++] = '\n';
+  }
+  if (n) srv->sendContent(buf, n);
 }
 
 static void handleRoot() {

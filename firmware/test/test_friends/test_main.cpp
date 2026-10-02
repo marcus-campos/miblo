@@ -933,6 +933,38 @@ static void test_blank_looking_names_fall_back_to_the_default() {
   TEST_ASSERT_EQUAL_STRING("Miblo-4F2A", q.name);
 }
 
+// Our own name goes out only if the other Miblos accept it: a name the settings allow but
+// decodeFriendPacket refuses (a C1 control, U+FFFD, invalid UTF-8) would make every beacon of ours
+// dropped, so it is sent as the default name instead. Found by the fuzz harness (friends_play).
+static void test_own_name_others_would_refuse_goes_out_as_the_default() {
+  const char* names[] = {"Ti\xC2\x85na", "\xEF\xBF\xBDTofu", "To\xFF" "fu", "\xC3"};
+  for (const char* n : names) {
+    FriendPlay f;
+    f.setSelf("miblo-aaaa", n, 0);
+    FriendPacket p;
+    f.update(0, true, 0, 1);
+    TEST_ASSERT_TRUE(f.nextPacket(p));
+    uint8_t buf[kFriendPacketMax];
+    FriendPacket q;
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, encodeFriendPacket(p, buf, sizeof(buf)), q));
+    TEST_ASSERT_EQUAL_STRING("Miblo-AAAA", q.name);
+    // Called every frame with the same name: no new announcement each time.
+    f.setSelf("miblo-aaaa", n, 0);
+    f.update(1000, true, 0, 1);
+    TEST_ASSERT_FALSE(f.nextPacket(p));
+  }
+  // A name with only invisible fillers around it is trimmed like the receivers do.
+  FriendPlay f;
+  f.setSelf("miblo-aaaa", " Tofu\xE2\x80\x8B", 0);
+  FriendPacket p;
+  f.update(0, true, 0, 1);
+  TEST_ASSERT_TRUE(f.nextPacket(p));
+  TEST_ASSERT_EQUAL_STRING("Tofu", p.name);
+  f.setSelf("miblo-aaaa", " Tofu\xE2\x80\x8B", 0);
+  f.update(1000, true, 0, 1);
+  TEST_ASSERT_FALSE(f.nextPacket(p));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_packet_round_trip);
@@ -967,5 +999,6 @@ int main(int, char**) {
   RUN_TEST(test_full_group_sends_every_invite);
   RUN_TEST(test_home_replies_do_not_crowd_the_queue);
   RUN_TEST(test_blank_looking_names_fall_back_to_the_default);
+  RUN_TEST(test_own_name_others_would_refuse_goes_out_as_the_default);
   return UNITY_END();
 }

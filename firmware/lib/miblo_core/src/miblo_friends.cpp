@@ -148,9 +148,16 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
 // ---- FriendPlay ----
 
 void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot) {
-  if (strcmp(id, id_) != 0 || strcmp(name, name_) != 0 || mascot != mascot_) {
+  // The name as the other Miblos will read it: one they would refuse (the settings accept any
+  // printable bytes; decodeFriendPacket wants valid UTF-8 without C1 controls) goes out as the
+  // default name, or every packet of ours would be dropped.
+  char clean[sizeof(name_)];
+  utf8Copy(clean, sizeof(clean), name, 20);
+  if (!validName(clean)) clean[0] = 0;
+  cleanName(clean, sizeof(clean), id);
+  if (strcmp(id, id_) != 0 || strcmp(clean, name_) != 0 || mascot != mascot_) {
     strncpy(id_, id, sizeof(id_) - 1);
-    utf8Copy(name_, sizeof(name_), name, 20);
+    strcpy(name_, clean);
     mascot_ = mascot;
     announce_ = true;
   }

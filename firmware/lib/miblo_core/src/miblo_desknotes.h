@@ -69,7 +69,36 @@ class DeskNotes {
   void listJson(JsonArray out, uint32_t nowMs, uint32_t nowEpoch) const;  // GET /api/remind
 
  private:
-  // Track D adds the state here.
+  // Kept small (RAM, ESP8266): every text lives once, in its slot. A one-off reminder keeps its
+  // slot while the cat holds it (heldId_); an alarm's text stays in the alarm. On the ESP8266
+  // sizeof(DeskNotes) is 552 B (test_notes checks it on the host).
+  struct Reminder {
+    uint32_t dueMs;
+    char text[kNoteBytes];  // "" = free slot
+  };
+  struct Alarm {
+    uint16_t minute;   // local minute of the day, 0..1439
+    uint16_t lastDay;  // low 16 bits of the dayKey it last fired on (not saved)
+    uint8_t days;      // bit 0 = Sunday; 0 = free slot
+    char text[kNoteBytes];
+  };
+  enum : uint8_t { kDueTimer = 0x10 };  // due_: bits 0..3 = alarms waiting to be shown, 4 = timer
+
+  void hold(NoteKind kind, uint8_t id, uint32_t nowMs);
+  void release();  // drops what the cat holds (frees a one-off reminder's slot)
+  uint8_t addReminder(uint32_t dueMs, const char* text);
+
+  Reminder rem_[kMaxReminders] = {};
+  Alarm alarms_[kMaxAlarms] = {};
+  Countdown countdown_ = {};
+  char say_[kNoteBytes] = "";
+  uint32_t sayStartMs_ = 0, sayLenMs_ = 0;
+  uint32_t timerStartMs_ = 0, timerLenMs_ = 0;  // length 0 = no timer running
+  uint32_t heldStartMs_ = 0, findStartMs_ = 0;
+  NoteKind heldKind_ = NoteKind::None;
+  uint8_t heldId_ = 0;  // the reminder (1..4) or alarm (5..8) held; 0 for the timer
+  uint8_t due_ = 0;
+  bool finding_ = false, dirty_ = false;
 };
 
 // "release in 3 days" / "release tomorrow" / "release is today!" ("" when none or past).

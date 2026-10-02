@@ -5,7 +5,10 @@
 #include "TFT_eSPI.h"
 #include "fonts.h"
 #include "fuzz.h"
+#include "miblo_cues.h"
 #include "miblo_desknotes.h"
+#include "miblo_focus.h"
+#include "miblo_wellness.h"
 #include "miblo_overview.h"
 #include "miblo_snapshot.h"
 #include "platform/tft_canvas.h"
@@ -139,6 +142,48 @@ void fuzzScreens(const uint8_t* d, size_t n) {
   screens::dayEnd(lang, s, s.host, ms);
   screen();
   screens::weekRecap(lang, s, ms);
+
+  // Daily life: the state every screen reads (meeting mode, the second clock, the desk's
+  // countdown and QR, the cat's mood and tie) set from the snapshot's text, then the main screens
+  // again and the daily screens and overlays.
+  const char* name = s.count ? s.sessions[0].name : s.host;
+  screens::setAnonymous((knobs & 16) != 0);
+  screens::setSecondClock(s.host, s.latest);
+  screens::setDeskExtras(name, s.count > 1 ? s.sessions[1].det : s.latest);
+  screens::setCatMood((knobs >> 5) % 3);
+  screens::setMascotTie((knobs & 32) != 0);
+  screen();
+  screens::desk(lang, s, clk, ms, s.h5.eta);
+  screen();
+  screens::overview(lang, s, pager, ms, clk, discreet, s.h5.eta);
+  if (s.count) {
+    screen();
+    screens::hero(lang, s, 0, AlertKind::Perm, discreet, clk, runs, true);
+  }
+  screen();
+  screens::focus(lang, clk, (FocusPhase)(knobs % 5), (uint8_t)(s.more & 0xFF), (uint8_t)(s.more >> 8), s.todayWorkSec,
+                 s.week.workSec, s.now, ms);
+  screen();
+  screens::nudge(lang, (Nudge)(knobs % 4), ms);
+  screen();
+  screens::timer(lang, clk, s.todayWorkSec, s.week.workSec, ms);
+  screen();
+  screens::findMe(lang, name, ms);
+  screen();
+  screens::cue((CueKind)(knobs % 6), ms);
+  screens::stateFrame((FrameColor)(knobs % 3));
+  screen();
+  screens::fanfare(lang, name, s.todayWorkSec, ms);
+  screens::waitingMark(lang, name, (uint8_t)s.more);
+  screens::meetingBadge(lang);
+  screens::waitingOverlaysDrawn();
+  screen();
+  screens::passerby(lang, s, clk, ms);
+  screens::setAnonymous(false);
+  screens::setSecondClock("", "");
+  screens::setDeskExtras("", "");
+  screens::setCatMood(0);
+  screens::setMascotTie(false);
 }
 FUZZ_REGISTER(screens, fuzzScreens, kSnapSeeds, nullptr, 7000);
 

@@ -189,6 +189,10 @@ notes.
       stop` cancels it; an alert during the timer shows and the timer comes back after it.
     - **Countdown:** `/miblo:countdown "release" 15/10`: the Desk shows "release in N days"
       ("tomorrow", "is today!"); it survives a power cycle and `/miblo:countdown off` removes it.
+    - **Daylight saving (expected, not a bug):** a recurring alarm at a time the clock skips
+      when it springs forward (e.g. 02:30) does not fire that day; one at a time that repeats
+      when the clock falls back fires once. A one-off `remind HH:MM` is counted in minutes from
+      when it was set, so it fires 1 h early or late if the clock changes before it is due.
     - **Find:** `/miblo:find`: for 10 s the top and bottom bands pulse, the cat waves, and the QR
       code opens the settings page on a phone on the same Wi-Fi.
 

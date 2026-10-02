@@ -70,6 +70,14 @@ static bool intField(JsonObjectConst body, const char* key, long lo, long hi, lo
   return out >= lo && out <= hi;
 }
 
+// A JSON string as text, or null when it is not a string or hides a NUL ("a\u0000b" would
+// otherwise pass as "a").
+static const char* textOf(JsonVariantConst v) {
+  const JsonString js = v.as<JsonString>();
+  if (js.isNull() || js.size() != strlen(js.c_str())) return nullptr;
+  return js.c_str();
+}
+
 // Days since 1970-01-01 (proleptic Gregorian), for whole-day differences.
 static int32_t dayNumber(const Date& d) {
   const int y = d.year - (d.month <= 2);
@@ -258,7 +266,9 @@ uint32_t DeskNotes::findElapsed(uint32_t nowMs) const { return nowMs - findStart
 // ---- every frame ----
 
 NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int minute) {
-  if (finding_ && nowMs - findStartMs_ >= kFindMs) finding_ = false;  // never "finding" again after a wrap
+  // Whatever ran out is forgotten, so it never comes back when millis() comes round again.
+  if (finding_ && nowMs - findStartMs_ >= kFindMs) finding_ = false;
+  if (say_[0] && nowMs - sayStartMs_ >= sayLenMs_) say_[0] = 0;
   if (heldKind_ != NoteKind::None && nowMs - heldStartMs_ >= kHeldMs) release();
   if (timerLenMs_ && nowMs - timerStartMs_ >= timerLenMs_) {
     timerLenMs_ = 0;
@@ -273,6 +283,7 @@ NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int
       if (!(a.days >> weekday & 1) || late < 0 || late > 1 || a.lastDay == (uint16_t)dayKey) continue;
       a.lastDay = (uint16_t)dayKey;
       due_ |= 1u << i;
+      dirty_ = true;  // saved, so a reboot in the next minute does not fire it again
     }
   }
   // One thing at a time: what came due while the cat held something waits for it to go.
@@ -332,6 +343,7 @@ void DeskNotes::toJson(JsonObject out) const {
     o["m"] = a.minute;
     o["d"] = a.days;
     o["t"] = (const char*)a.text;
+    if (a.lastDay) o["ld"] = a.lastDay;
   }
   if (countdown_.label[0]) {
     JsonObject cd = out.createNestedObject("cd");
@@ -354,14 +366,16 @@ bool DeskNotes::fromJson(JsonObjectConst in) {
   for (JsonObjectConst a : in["alarms"].as<JsonArrayConst>()) {
     long m, d;
     if (!intField(a, "m", 0, 1439, m) || !intField(a, "d", 1, 0x7F, d)) continue;
-    if (!addAlarm((uint16_t)m, (uint8_t)d, a["t"].as<const char*>())) continue;
+    const uint8_t id = addAlarm((uint16_t)m, (uint8_t)d, textOf(a["t"]));
+    long ld;
+    if (id && intField(a, "ld", 1, 0xFFFF, ld)) alarms_[id - kMaxReminders - 1].lastDay = (uint16_t)ld;
   }
   countdown_ = Countdown{};
   JsonObjectConst cd = in["cd"];
   long y, mo, d;
   if (intField(cd, "y", 2020, 2199, y) && intField(cd, "mo", 1, 12, mo) && intField(cd, "d", 1, 31, d) &&
       realDay(y, mo, d)) {
-    setCountdown(cd["l"].as<const char*>(), Date{(uint16_t)y, (uint8_t)mo, (uint8_t)d});
+    setCountdown(textOf(cd["l"]), Date{(uint16_t)y, (uint8_t)mo, (uint8_t)d});
   }
   dirty_ = false;
   return true;
@@ -384,10 +398,11 @@ void DeskNotes::listJson(JsonArray out, uint32_t nowMs, uint32_t nowEpoch) const
     const Alarm& a = alarms_[i];
     if (!a.days) continue;
     const unsigned h = a.minute / 60, m = a.minute % 60;
-    const char at[6] = {(char)('0' + h / 10), (char)('0' + h % 10), ':', (char)('0' + m / 10), (char)('0' + m % 10), 0};
+    // Not const: ArduinoJson copies a char* but keeps only the pointer of a const char array.
+    char at[6] = {(char)('0' + h / 10), (char)('0' + h % 10), ':', (char)('0' + m / 10), (char)('0' + m % 10), 0};
     JsonObject o = out.createNestedObject();
     o["id"] = kMaxReminders + 1 + i;
-    o["at"] = at;  // char[]: copied
+    o["at"] = at;  // char[]: copied (the array dies with this loop)
     o["days"] = a.days;
     o["text"] = (const char*)a.text;
   }
@@ -407,7 +422,7 @@ int sayRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, const char** 
     return 200;
   }
   char text[kNoteBytes];
-  if (!cleanText(body["text"].as<const char*>(), text, sizeof(text), kNoteChars)) {
+  if (!cleanText(textOf(body["text"]), text, sizeof(text), kNoteChars)) {
     *bad = "text";
     return 400;
   }
@@ -455,7 +470,7 @@ int remindRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, int nowMin
     return 200;
   }
   char text[kNoteBytes];
-  const bool textOk = cleanText(body["text"].as<const char*>(), text, sizeof(text), kNoteChars);
+  const bool textOk = cleanText(textOf(body["text"]), text, sizeof(text), kNoteChars);
   uint8_t id;
   if (body.containsKey("in")) {
     long min;
@@ -471,7 +486,7 @@ int remindRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, int nowMin
   } else if (body.containsKey("at")) {
     uint16_t minute;
     long days = 0;
-    if (!parseHHMM(body["at"].as<const char*>(), minute)) {
+    if (!parseHHMM(textOf(body["at"]), minute)) {
       *bad = "at";
       return 400;
     }
@@ -532,18 +547,18 @@ int countdownRequest(DeskNotes& n, JsonObjectConst body, const Date* today, cons
     return 200;
   }
   char label[kLabelBytes];
-  if (!cleanText(body["label"].as<const char*>(), label, sizeof(label), kLabelChars)) {
+  if (!cleanText(textOf(body["label"]), label, sizeof(label), kLabelChars)) {
     *bad = "label";
     return 400;
   }
   Date d{0, 0, 0};
   if (body.containsKey("date")) {
-    if (!parseDate(body["date"].as<const char*>(), d.year, d.month, d.day)) {
+    if (!parseDate(textOf(body["date"]), d.year, d.month, d.day)) {
       *bad = "date";
       return 400;
     }
   } else if (body.containsKey("md")) {
-    if (!parseMonthDay(body["md"].as<const char*>(), d.month, d.day)) {
+    if (!parseMonthDay(textOf(body["md"]), d.month, d.day)) {
       *bad = "md";
       return 400;
     }

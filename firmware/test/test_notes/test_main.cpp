@@ -694,6 +694,92 @@ static void test_note_screens_redraw_only_what_changes() {
   TEST_ASSERT_EQUAL_INT(0, fc.calls);
 }
 
+// ---- Fix round 1 ----
+
+// Nothing timed comes back as a ghost when millis() comes round again (~49.7 days later).
+static void test_no_ghosts_after_a_wrap() {
+  miblo::DeskNotes n;
+  const uint32_t t0 = 1000;
+  n.say("brb", 480, t0);
+  n.find(t0);
+  n.timerStart(1, t0);
+  n.update(t0 + 480 * M, 0, 0, -1);  // say over, the timer fired and is held
+  n.update(t0 + 480 * M + miblo::kHeldMs, 0, 0, -1);
+  for (uint32_t later : {0xFFFFFFFFu, 0u, 100u}) {
+    const uint32_t at = t0 + later;
+    TEST_ASSERT_NULL(n.saying(at));
+    TEST_ASSERT_FALSE(n.finding(at));
+    TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.held(at));
+    TEST_ASSERT_FALSE(n.timerRunning());
+    TEST_ASSERT_EQUAL(miblo::NoteKind::None, n.update(at, 0, 0, -1));
+  }
+}
+
+// An alarm that fired, then a reboot in the same (or the next) minute: it does not fire again.
+static void test_alarm_fired_survives_a_reboot() {
+  miblo::DeskNotes n;
+  const uint32_t mon = 2026 * 400 + 10 * 32 + 5;
+  n.addAlarm(600, 0x7F, "standup");
+  n.takeDirty();
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, n.update(1000, mon, 1, 600));
+  TEST_ASSERT_TRUE(n.takeDirty());  // its day is saved
+  StaticJsonDocument<768> doc;
+  n.toJson(doc.to<JsonObject>());
+  std::string json;
+  serializeJson(doc, json);
+  StaticJsonDocument<768> in;
+  deserializeJson(in, json);
+  miblo::DeskNotes back;
+  TEST_ASSERT_TRUE(back.fromJson(in.as<JsonObjectConst>()));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::None, back.update(5, mon, 1, 601));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, back.update(6, mon + 1, 2, 600));  // tomorrow it does
+  // A file from before "ld" still loads (and the alarm may fire).
+  deserializeJson(in, "{\"v\":1,\"alarms\":[{\"m\":600,\"d\":127,\"t\":\"old\"}]}");
+  miblo::DeskNotes old;
+  TEST_ASSERT_TRUE(old.fromJson(in.as<JsonObjectConst>()));
+  TEST_ASSERT_EQUAL(miblo::NoteKind::Alarm, old.update(5, mon, 1, 600));
+}
+
+// A NUL inside a JSON string ("a\u0000b") is refused, not cut to "a".
+static void test_embedded_nul_is_refused() {
+  miblo::DeskNotes n;
+  const char* bad = nullptr;
+  StaticJsonDocument<256> d;
+  deserializeJson(d, "{\"text\":\"a\\u0000b\"}");
+  TEST_ASSERT_EQUAL_INT(400, miblo::sayRequest(n, d.as<JsonObjectConst>(), 0, &bad));
+  TEST_ASSERT_EQUAL_STRING("text", bad);
+  TEST_ASSERT_EQUAL_INT(400, remind(n, "{\"in\":5,\"text\":\"a\\u0000b\"}", 0, 600, &bad));
+  TEST_ASSERT_EQUAL_STRING("text", bad);
+  deserializeJson(d, "{\"label\":\"a\\u0000b\",\"date\":\"2027-01-01\"}");
+  TEST_ASSERT_EQUAL_INT(400, miblo::countdownRequest(n, d.as<JsonObjectConst>(), nullptr, &bad));
+  TEST_ASSERT_EQUAL_STRING("label", bad);
+  deserializeJson(d, "{\"v\":1,\"alarms\":[{\"m\":1,\"d\":1,\"t\":\"a\\u0000b\"}]}");
+  TEST_ASSERT_TRUE(n.fromJson(d.as<JsonObjectConst>()));
+  StaticJsonDocument<256> list;
+  n.listJson(list.to<JsonArray>(), 0, 0);
+  TEST_ASSERT_EQUAL_INT(0, list.size());
+}
+
+// GET /api/remind at its biggest fits api.cpp's 768 B reply document on the ESP8266: the host's
+// usage is recounted with the device's 16-byte slots (texts are not copied; "at" is, 6 B each).
+static void test_list_fits_the_device_reply() {
+  miblo::DeskNotes full;
+  const char* w40 = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW";
+  for (int i = 0; i < 4; i++) {
+    full.remindIn(60, w40, 0);
+    full.addAlarm(600 + i, 0x7F, w40);
+  }
+  DynamicJsonDocument host(4096);
+  JsonObject out = host.to<JsonObject>();
+  full.listJson(out.createNestedArray("items"), 0, 0);
+  out["ok"] = true;  // api.cpp adds it
+  // items + ok, 8 elements, 4 x {id,in,text} + 4 x {id,at,days,text}; the 4 "at" are copied.
+  const size_t slots = 2 + 8 + 4 * 3 + 4 * 4, strings = 4 * 6;
+  TEST_ASSERT_EQUAL_size_t(slots * JSON_OBJECT_SIZE(1) + strings, host.memoryUsage());  // the model holds
+  const size_t kDeviceSlot = 16;  // sizeof(VariantSlot) with 32-bit pointers
+  TEST_ASSERT_LESS_OR_EQUAL_size_t(768, slots * kDeviceSlot + strings);
+}
+
 // RAM is tight on the ESP8266 (the notes live in the global context): every text once, nothing more.
 static void test_the_state_stays_small() { TEST_ASSERT_LESS_OR_EQUAL_size_t(552, sizeof(miblo::DeskNotes)); }
 
@@ -722,6 +808,10 @@ int main() {
   RUN_TEST(test_note_screens_fit_any_resolution);
   RUN_TEST(test_long_texts_wrap_whole);
   RUN_TEST(test_note_screens_redraw_only_what_changes);
+  RUN_TEST(test_no_ghosts_after_a_wrap);
+  RUN_TEST(test_alarm_fired_survives_a_reboot);
+  RUN_TEST(test_embedded_nul_is_refused);
+  RUN_TEST(test_list_fits_the_device_reply);
   RUN_TEST(test_the_state_stays_small);
   return UNITY_END();
 }

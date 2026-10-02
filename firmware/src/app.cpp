@@ -385,7 +385,7 @@ void loop() {
   if (fired == miblo::NoteKind::Timer) cue.fire(miblo::CueKind::Timer, now);
   else if (fired == miblo::NoteKind::Alarm) cue.fire(miblo::CueKind::Alarm, now);
   else if (fired == miblo::NoteKind::Reminder) cue.fire(miblo::CueKind::Reminder, now);
-  if (ctx.notes.takeDirty()) storage::saveNotes(ctx.notes);
+  if (ctx.notes.takeDirty() && !storage::saveNotes(ctx.notes)) Serial.println(F("notes: save failed"));
   // Alerts: insistence, a single blink in meetings, "finished" waits out a focus round.
   ctx.alerts.setModifiers({ctx.cfg.insist, ctx.meeting.on(),
                            ctx.focus.phase() == miblo::FocusPhase::Focus && ctx.cfg.focusQuiet});

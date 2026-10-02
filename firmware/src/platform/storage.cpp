@@ -112,7 +112,8 @@ bool saveNotes(const miblo::DeskNotes& n) {
   if (doc.overflowed()) return false;
   File f = LittleFS.open(kNotesTmp, "w");
   if (!f) return false;
-  const bool ok = serializeJson(doc, f) > 0;
+  const size_t want = measureJson(doc);
+  const bool ok = want > 0 && serializeJson(doc, f) == want;  // a short write (full flash) never replaces a good file
   f.close();
   if (!ok) {
     LittleFS.remove(kNotesTmp);

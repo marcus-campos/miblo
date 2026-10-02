@@ -1,0 +1,124 @@
+{
+  "v": 1,
+  "seq": 12,
+  "now": 1792498826,
+  "host": "MacBook-Marcus",
+  "usage": null,
+  "today": {
+    "usd": 0,
+    "turns": 0,
+    "work": 12
+  },
+  "sessions": [
+    {
+      "id": "aaaaaaaa",
+      "name": "api-server",
+      "st": "perm",
+      "tool": "Bash",
+      "det": "git push origin main",
+      "since": 1792498806,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "bbbbbbbb",
+      "name": "infra",
+      "st": "perm",
+      "tool": "WebFetch",
+      "det": "",
+      "since": 1792498814,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "cccccccc",
+      "name": "front-app",
+      "st": "question",
+      "tool": "",
+      "det": "",
+      "since": 1792498818,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "dddddddd",
+      "name": "docs",
+      "st": "question",
+      "tool": "",
+      "det": "",
+      "since": 1792498822,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "eeeeeeee",
+      "name": "mobile",
+      "st": "question",
+      "tool": "",
+      "det": "",
+      "since": 1792498824,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    },
+    {
+      "id": "ffffffff",
+      "name": "worker",
+      "st": "running",
+      "tool": "Bash",
+      "det": "npm run e2e",
+      "since": 1792498826,
+      "model": "",
+      "ctx": null,
+      "tok": null,
+      "ts": 1792498826
+    }
+  ],
+  "more": 0,
+  "alerts": [
+    {
+      "id": 1,
+      "kind": "perm",
+      "sid": "aaaaaaaa"
+    },
+    {
+      "id": 2,
+      "kind": "perm",
+      "sid": "bbbbbbbb"
+    },
+    {
+      "id": 3,
+      "kind": "question",
+      "sid": "cccccccc"
+    },
+    {
+      "id": 4,
+      "kind": "question",
+      "sid": "dddddddd"
+    },
+    {
+      "id": 5,
+      "kind": "question",
+      "sid": "eeeeeeee"
+    }
+  ],
+  "latest": "1.12.0",
+  "tz": [
+    {
+      "z": "Europe/Berlin",
+      "off": 120,
+      "next": 1792890000,
+      "noff": 60
+    },
+    {
+      "z": "America/New_York",
+      "off": -240,
+      "next": 1793512800,
+      "noff": -300
+    }
+  ]
+}

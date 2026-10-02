@@ -17,13 +17,15 @@ import { createReleaseCache } from '../lib/update-notice.js';
 import { isLinked, installTap } from '../lib/statusline-link.js';
 import { createLogger, errText } from '../lib/logger.js';
 
+// `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
+// DeviceManager's default when omitted.
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {},
-  release = createReleaseCache({ dataDir, now }) }) {
+  release = createReleaseCache({ dataDir, now }), zones }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
   const forecast = new LimitForecast({ now });
-  const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now });
+  const devices = new DeviceManager({ client, store: new DeviceStore(dataDir), discover: discoverFn, now, zones });
   let seq = 0;
   let timer = null;
   let lastActive = now();

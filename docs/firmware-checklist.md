@@ -214,8 +214,12 @@ notes.
     - **Monday recap:** on a Monday (or with the Mac's clock set to a Monday, bridge restarted), the
       first activity from 05:00, or 09:00, shows last week for 1 min: hours, responses, cost and
       the busiest day. Not on other days, not with "Monday: last week's summary" off, not with an older plugin.
-    - **Known limit:** "already shown today" lives only in RAM. A restart or an update the same
-      evening (or Monday) shows the end-of-day summary (or the recap) once more.
+    - **Only shortly after:** the end-of-day summary only shows in the 2 h after the end of the work
+      hours and once a snapshot arrived (never zeros); plugged in at 23:00, it never shows. The recap
+      only shows on Monday before 12:00. A session waiting for you keeps the Overview: neither
+      (nor a wellness nudge) replaces it.
+    - **Known limit:** "already shown today" lives only in RAM. A restart or an update within that
+      window shows the end-of-day summary (or the recap) once more.
 
     - **Say:** `/miblo:say "back in 10 min"`: the cat holds it on a violet sign over Main, Desk,
       Summary and Disconnected, and the panel doesn't go dark while it is up; in pet mode it shows

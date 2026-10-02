@@ -205,6 +205,8 @@ class Sim {
   uint64_t pendingSinceSim_ = 0, lastShownSim_ = 0;
   bool pendingFresh_ = false;
   bool wasPet_ = false, wasAsleep_ = false;
+  bool wasDayEnd_ = false, wasRecap_ = false;
+  Nudge wasNudge_ = Nudge::None;
   uint32_t textN_ = 0;
   std::string idText_[kMaxReminders + kMaxAlarms + 1];  // what each note id holds now
   struct Due {
@@ -640,16 +642,25 @@ class Sim {
 
     const bool plainScreen = screen == ScreenId::Main || screen == ScreenId::Desk || screen == ScreenId::Summary ||
                              screen == ScreenId::Disconnected;
-    const bool quietDesk = plainScreen && alert.phase == AlertPhase::None && di.focus == FocusPhase::Off &&
-                           !meeting_.on() && !di.timer && di.held == NoteKind::None && !di.say &&
-                           di.cue == CueKind::None && !di.find;
-    dayEnd_.update(ms_, cfg_, dayKey, weekday, minuteNow, counts.running > 0, quietDesk);
+    const bool quietDesk = plainScreen && (away || counts.pending == 0) && alert.phase == AlertPhase::None &&
+                           di.focus == FocusPhase::Off && !meeting_.on() && !di.timer && di.held == NoteKind::None &&
+                           !di.say && di.cue == CueKind::None && !di.find;
+    dayEnd_.update(ms_, cfg_, dayKey, weekday, minuteNow, counts.running > 0, hasSnapshot_, quietDesk);
     weekly_.update(ms_, cfg_.weekly, dayKey, weekday, minuteNow, counts.running > 0, snap_.week.present, quietDesk);
     di.dayEnd = dayEnd_.showing(ms_);
     di.weekRecap = weekly_.showing(ms_);
     wellness_.update(ms_, cfg_, counts.running > 0, inWorkHours(cfg_, weekday, minuteNow),
                      quietDesk && !di.dayEnd && !di.weekRecap);
     di.nudge = wellness_.showing(ms_);
+    // A daily screen that starts never hides a session waiting (with the computer there), and the
+    // day's summary never starts without the day's stats.
+    const bool started = (di.dayEnd && !wasDayEnd_) || (di.weekRecap && !wasRecap_) ||
+                         (di.nudge != Nudge::None && wasNudge_ == Nudge::None);
+    if (started && !away && counts.pending > 0) v.add("a daily screen started over a waiting session", simMs_);
+    if (di.dayEnd && !wasDayEnd_ && !hasSnapshot_) v.add("the day's summary started without a snapshot", simMs_);
+    wasDayEnd_ = di.dayEnd;
+    wasRecap_ = di.weekRecap;
+    wasNudge_ = di.nudge;
     di.screen = screen;
     screen = dailyScreen(di);
     const bool asleep = petLatch_.asleep(cfg_.sleepMin, petMin, ms_) && !di.say;

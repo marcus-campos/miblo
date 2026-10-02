@@ -15,10 +15,12 @@ class EndOfDay {
   static constexpr uint32_t kShowMs = 60000;
   static constexpr uint32_t kMaxWaitMs = 3600000;  // a session still running: wait up to 1 h
   static constexpr uint8_t kEarlyPetMin = 5;       // after it: pet mode after 5 idle minutes
+  static constexpr int kWindowMin = 2 * 60;        // only in the 2 h after workTo (until midnight)
   // Every frame. `dayKey`: year * 400 + month * 32 + day (0 = time unknown: never shows).
-  // `running`: a session is running. `allowed`: it may take the screen now.
+  // `running`: a session is running. `known`: the day's stats are known (a snapshot arrived).
+  // `allowed`: it may take the screen now.
   void update(uint32_t nowMs, const Config& cfg, uint32_t dayKey, uint8_t weekday, int minute, bool running,
-              bool allowed);
+              bool known, bool allowed);
   bool showing(uint32_t nowMs) const;
   uint32_t elapsed(uint32_t nowMs) const { return nowMs - shownMs_; }
   // Pet mode delay to use today: kEarlyPetMin once today's summary showed (until the next day),
@@ -34,6 +36,7 @@ class WeeklyRecap {
  public:
   static constexpr uint32_t kShowMs = 60000;
   static constexpr int kAt = 9 * 60;  // or the first activity of Monday from 05:00, whichever first
+  static constexpr int kUntil = 12 * 60;  // Monday morning only: never from noon on
   // Every frame. `hasWeek`: the snapshot carries `week`. `active`: a session is running.
   void update(uint32_t nowMs, bool enabled, uint32_t dayKey, uint8_t weekday, int minute, bool active, bool hasWeek,
               bool allowed);

@@ -313,7 +313,7 @@ static miblo::Snapshot busySnap() {
   s.todayTurns = 999;
   s.todayWorkSec = 23 * 3600 + 59 * 60;
   s.todayUsd = 9999.99f;
-  s.week = {true, 99 * 3600 + 59 * 60, 999, 9999.99f, 3};
+  s.week = {true, 3, 999, 99 * 3600 + 59 * 60, 9999.99f};  // present, busiest, turns, workSec, usd
   return s;
 }
 
@@ -383,7 +383,7 @@ static void test_week_recap_content() {
   FakeCanvas fc({240, 240});
   screens::bind(fc);
   miblo::Snapshot s{};
-  s.week = {true, 31 * 3600 + 20 * 60, 212, 38.5f, 3};
+  s.week = {true, 3, 212, 31 * 3600 + 20 * 60, 38.5f};  // present, busiest, turns, workSec, usd
   screens::reset();
   screens::weekRecap(miblo::Lang::En, s, 0);
   TEST_ASSERT_TRUE(fc.drew("LAST WEEK"));

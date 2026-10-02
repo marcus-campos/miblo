@@ -25,13 +25,14 @@ class WellnessClock {
   void reset();
 
  private:
+  // The 1-byte members first: no padding between them (28 B instead of 40 on the ESP8266).
   Nudge shown_ = Nudge::None;
-  uint32_t shownMs_ = 0;
-  bool working_ = false;
-  uint32_t workStartMs_ = 0, lastWorkMs_ = 0, eyesFromMs_ = 0;
-  bool inHours_ = false;
-  uint32_t waterFromMs_ = 0;
   Nudge due_ = Nudge::None;
+  bool working_ = false;
+  bool inHours_ = false;
+  uint32_t shownMs_ = 0;
+  uint32_t workStartMs_ = 0, lastWorkMs_ = 0, eyesFromMs_ = 0;
+  uint32_t waterFromMs_ = 0;
   uint32_t dueMs_ = 0;
 };
 

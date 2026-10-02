@@ -14,7 +14,7 @@ void renderDayRhythm(miblo::Lang L) {
   snap.todayWorkSec = 3 * 3600 + 12 * 60;
   snap.todayUsd = 4.2f;
   { Shot s; screens::dayEnd(L, snap, "Marcus", 0); save(s, "55-day-end"); }
-  snap.week = {true, 31 * 3600 + 20 * 60, 212, 38.5f, 3};
+  snap.week = {true, 3, 212, 31 * 3600 + 20 * 60, 38.5f};  // present, busiest, turns, workSec, usd
   { Shot s; screens::weekRecap(L, snap, 0); save(s, "55-week-recap"); }
 }
 

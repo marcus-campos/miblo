@@ -41,10 +41,10 @@ struct UsageWindow {
 // Last week's totals, sent by the bridge on Mondays only (miblo_dayend.h WeeklyRecap).
 struct WeekStats {
   bool present;
-  uint32_t workSec;
-  uint16_t turns;
-  float usd;
   uint8_t busiest;  // weekday with the most work, 0 = Sunday .. 6; 255 = unknown
+  uint16_t turns;
+  uint32_t workSec;
+  float usd;
 };
 
 struct AlertItem {

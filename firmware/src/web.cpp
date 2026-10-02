@@ -40,7 +40,10 @@ static const char kCss[] PROGMEM =
     ".g{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:end}"
     ".t{display:flex;align-items:center;justify-content:space-between;gap:12px;color:#eee;font-size:16px;"
     "margin:14px 0 2px;cursor:pointer}.c>.t:first-child{margin-top:0;font-weight:600}"
-    ".v{float:right;color:#eee}.bad{outline:2px solid #ef4444}#tzr{flex:0 0 40%}"
+    ".v{float:right;color:#eee}.bad{outline:2px solid #ef4444}#tzr,#tz2r{flex:0 0 40%}"
+    // Work days: seven small day columns, a checkbox under each name.
+    ".wd{display:flex;gap:4px}.wd label{flex:1;margin:6px 0 0;text-align:center;font-size:13px}"
+    ".wd input{display:block;margin:6px auto 0}"
     "summary{cursor:pointer;font-weight:600;color:#aaa}details[open] summary{margin-bottom:12px}"
     "details h2{margin-top:16px}.bar{position:fixed;left:0;right:0;bottom:0;background:#0b0b0df0;"
     "border-top:1px solid #26262c;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}"
@@ -66,28 +69,33 @@ static const char kCss[] PROGMEM =
 // report a few legacy aliases; A maps them to the names in the table. The list is fetched
 // twice at most: the single-client web server may still be busy with the page. #tzn (if
 // present) shows the time in the selected zone, so a wrong pick is obvious.
+// With `off` (the second time zone), the region select's first option (value "", rendered by the
+// page) stays at the top and means "none": an empty or unknown `cur` selects it and the browser's
+// zone is never preselected. #<sel id>n shows the time, and sel.dataset.f is set once filled.
+// The zone list is fetched once per page (ZL) and shared by every picker.
 static const char kTzJs[] PROGMEM =
-    "function tzFill(reg,sel,cur,done){"
+    "let ZL=null;function tzFill(reg,sel,cur,done,off){const O=off&&reg.options[0];"
     "const A={'UTC':'Etc/UTC','Etc/Universal':'Etc/UTC','Asia/Calcutta':'Asia/Kolkata',"
     "'Europe/Kyiv':'Europe/Kiev','Asia/Saigon':'Asia/Ho_Chi_Minh','Asia/Katmandu':'Asia/Kathmandu',"
     "'Asia/Rangoon':'Asia/Yangon','America/Buenos_Aires':'America/Argentina/Buenos_Aires'};"
     "let b='',Z=[];try{b=Intl.DateTimeFormat().resolvedOptions().timeZone||'';}catch(e){}"
     "const rg=z=>/^[A-Za-z]+\\//.test(z)?z.split('/')[0]:z;"
-    "const now=()=>{const n=document.getElementById('tzn');if(!n)return;try{n.textContent=sel.value?"
+    "const now=()=>{const n=document.getElementById(sel.id+'n');if(!n)return;try{n.textContent=sel.value?"
     "new Date().toLocaleTimeString(document.documentElement.lang||[],{timeZone:sel.value,hour:'2-digit',minute:'2-digit'}):'';}"
     "catch(e){n.textContent='';}};"
     "const city=r=>{sel.textContent='';for(const z of Z)if(rg(z)===r)"
-    "sel.add(new Option(z===r?z:z.slice(r.length+1).replace(/_/g,' ').replace(/\\//g,' / '),z));};"
+    "sel.add(new Option(z===r?z:z.slice(r.length+1).replace(/_/g,' ').replace(/\\//g,' / '),z));"
+    "sel.disabled=!sel.options.length;};"
     "reg.onchange=()=>{city(reg.value);now();};sel.addEventListener('change',now);"
     "const fill=(L,ok)=>{const S=new Set(L),bz=S.has(b)?b:(S.has(A[b])?A[b]:''),"
-    "set=S.has(cur),unset=!cur||cur==='UTC0',v=set?cur:(bz||(unset?'Etc/UTC':cur));"
-    "Z=S.has(v)?L:[v].concat(L);reg.textContent='';"
+    "set=S.has(cur),unset=!cur||cur==='UTC0',v=O?(set?cur:''):set?cur:(bz||(unset?'Etc/UTC':cur));"
+    "Z=!v||S.has(v)?L:[v].concat(L);reg.textContent='';if(O)reg.add(O);"
     "for(const r of new Set(Z.map(rg)))reg.add(new Option(r.replace(/_/g,' '),r));"
-    "reg.value=rg(v);city(reg.value);sel.value=v;now();"
+    "reg.value=v?rg(v):'';city(reg.value);sel.value=v;sel.dataset.f=1;now();"
     "if(done)done(ok&&!set&&unset&&!!bz);};"
     "const get=n=>fetch('/api/zones').then(r=>r.ok?r.text():Promise.reject())"
     ".catch(e=>n?new Promise(w=>setTimeout(w,1500)).then(()=>get(n-1)):Promise.reject(e));"
-    "get(1).then(t=>[t.split('\\n').filter(Boolean),1],"
+    "(ZL=ZL||get(1)).then(t=>[t.split('\\n').filter(Boolean),1],"
     "()=>[[...new Set([cur,A[b]||b].filter(z=>z&&z!=='UTC0'))],0]).then(([L,ok])=>fill(L,ok));}";
 
 String tr(Lang lang, S id) {
@@ -142,10 +150,13 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
 // Second layer for the human pages. The server hook installed in begin() refuses most POST
 // bodies over kMaxPostBody before ESP8266WebServer buffers them, but only when Content-Length
 // arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
-// this check enforces the pages' tighter 1 KiB limit and covers what the hook could not see.
+// this check enforces the pages' tighter limit and covers what the hook could not see. The
+// settings page's worst-case save is ~910 B (every field at its longest, CJK names): 1.5 KiB
+// leaves room for the next fields without a large transient copy.
+static constexpr uint32_t kPageBodyMax = 1536;
 static bool bodyTooLarge() {
   String cl = requestHeader(*srv, F("Content-Length"));
-  return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
+  return cl.length() > 0 && (uint32_t)cl.toInt() > kPageBodyMax;
 }
 
 bool requireJson(WebServerT& server) {
@@ -556,7 +567,9 @@ static const char kSetJs[] PROGMEM =
     "else if(e.type==='time')e.value=p2(Math.floor(C[k]/60))+':'+p2(C[k]%60);else e.value=C[k];}"
     "for(const k of['petMin','sleepMin']){if(!(k in C))continue;const e=$(k),v=Number(C[k]);let b=null;"
     "for(const o of e.options){const n=Number(o.value);if((n===0)!==(v===0))continue;"
-    "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}}fill();"
+    "if(!b||Math.abs(n-v)<=Math.abs(Number(b.value)-v))b=o;}if(b)e.value=b.value;}"
+    // Work days: bit 0 = Sunday … bit 6 = Saturday, one checkbox each (#wd0..#wd6).
+    "if('workDays'in C)for(let i=0;i<7;i++)$('wd'+i).checked=!!(C.workDays>>i&1);}fill();"
     // Birthday: "MM-DD" in the config, a day and a month select on the page ("--" = not set).
     "for(const[id,n]of[['bd',31],['bm',12]]){const e=$(id);e.add(new Option('--',''));"
     "for(let i=1;i<=n;i++)e.add(new Option(String(i),p2(i)));}"
@@ -575,10 +588,11 @@ static const char kSetJs[] PROGMEM =
     "$('owner').value=s.owner||'';"
     "if(s.birthday){$('bm').value=s.birthday.slice(0,2);$('bd').value=s.birthday.slice(3);}SEC=true;}"
     "const lk=()=>{if(!V&&!SEC)$('ub').hidden=false;};if(TOK)loadSecret().then(lk);else lk();"
-    // data-if="id": shown while that checkbox is on; data-if="id:value": while that select has it
-    // (or one of "a|b").
-    "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':'),"
-    "x=$(k);e.hidden=v?!v.split('|').includes(x.value):!x.checked;}}"
+    // data-if="id": shown while that checkbox is on (a select: while it is not "0" or empty);
+    // "a|b": while any of them is; data-if="id:value": while that select has it (or one of "a|b").
+    "function dep(){for(const e of document.querySelectorAll('[data-if]')){const[k,v]=e.dataset.if.split(':');"
+    "e.hidden=v?!v.split('|').includes($(k).value):!k.split('|').some(n=>{const x=$(n);"
+    "return x.type==='checkbox'?x.checked:!!x.value&&x.value!=='0';});}}"
     // Sliders show their value (#<id>V).
     "function rv(){for(const e of document.querySelectorAll('input[type=range]'))$(e.id+'V').textContent=e.value+'%';}"
     "function st(t,c){const e=$('st');e.textContent=t;e.className=c||'';}"
@@ -591,14 +605,21 @@ static const char kSetJs[] PROGMEM =
     "const c=s.selectedOptions[0];"
     "if(!c||c.disabled)s.value=[...s.options].find(o=>!o.disabled&&o.value!=='0')?.value||'0';}"
     "$('petMin').addEventListener('change',pd);"
+    // At least one work day: unticking the last one ticks it again.
+    "{const W=[...document.querySelectorAll('.wd input')];for(const x of W)"
+    "x.addEventListener('change',()=>{if(!W.some(y=>y.checked))x.checked=true;});}"
     "dep();rv();pd();"
     "function val(k){const e=$(k);if(e.type==='time'){const t=e.value.split(':');return t.length<2?C[k]:Number(t[0])*60+Number(t[1]);}"
     "return e.type==='checkbox'?e.checked:(e.type==='number'||e.type==='range')?Number(e.value):e.value;}"
     "function save(){if(!V&&!SEC)return;for(const e of document.querySelectorAll('.bad'))e.classList.remove('bad');"
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
-    "'nightBrightness','blueFilter','blueFrom','blueTo','blueLevel','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang']){let v=val(k);if(k==='tz'&&!v)continue;"
-    "if(k==='mascot'||k==='blueFilter'||k==='blueLevel'||k==='petMin'||k==='sleepMin'||k==='flashBlinks'||k==='friendsSide')v=Number(v);b[k]=v;}"
+    "'nightBrightness','blueFilter','blueFrom','blueTo','blueLevel','mascot','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
+    "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','focusQuiet','endOfDay','weekly','workFrom','workTo',"
+    "'tz2','tz2Label','deskQr']){let v=val(k);if(k==='tz'&&!v||k==='tz2'&&!$('tz2').dataset.f)continue;"
+    // A select whose values are numbers (mascot, delays, levels…) sends a number.
+    "if($(k).tagName==='SELECT'&&/^\\d+$/.test(v))v=Number(v);b[k]=v;}"
+    "{let m=0;for(let i=0;i<7;i++)if($('wd'+i).checked)m|=1<<i;if(m)b.workDays=m;}"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -629,7 +650,7 @@ static const char kSetJs[] PROGMEM =
     "if(a){const l=document.createElement('a');l.href=a.browser_download_url;l.textContent=T.dl;"
     "st.append(document.createElement('br'),l);}"
     "}).catch(()=>{st.textContent=T.chkfail;});}"
-    "function tz(){tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});}if(V)tz();";
+    "function tz(){tzFill($('tzr'),$('tz'),C.tz,ch=>{if(ch)save();});tzFill($('tz2r'),$('tz2'),C.tz2||'',dep,1);}if(V)tz();";
 
 // Settings page builders; every text is escaped.
 static void text(String& out, Lang lang, S id) { appendEscaped(out, tr(lang, id).c_str()); }
@@ -779,7 +800,56 @@ static void settingsPage() {
   number(out, lang, S::WebHeroDone, F("heroDoneSec"), 2, 60);
   out += F("</div>");
   number(out, lang, S::WebReminder, F("reminderMin"), 0, 30);
-  out += F("</div></div>");
+  // Insistence and the long-task fanfare are part of the alert sequence (off with alerts).
+  toggle(out, lang, S::WebInsist, F("insist"));
+  label(out, lang, S::WebFanfare, F("fanfareMin"));
+  out += F("<select id=\"fanfareMin\">");
+  option(out, lang, F("0"), S::WebBlueOff);
+  out += F("<option value=\"3\">3 min</option><option value=\"5\">5 min</option>"
+           "<option value=\"10\">10 min</option></select></div>");
+  // The state frame is not an alert: it shows with alerts off too.
+  toggle(out, lang, S::WebFrame, F("frame"));
+  out += F("</div>");
+  pageFlush(out);
+
+  // Wellness: breaks, water, eyes, the focus filter, the end-of-day and weekly summaries, and the
+  // work hours the water reminder and the end of day share (shown only while one of them is on).
+  out += F("<div class=\"c\"><h2>");
+  text(out, lang, S::WebSecWellness);
+  out += F("</h2>");
+  label(out, lang, S::WebBreakAfter, F("breakAfterMin"));
+  out += F("<select id=\"breakAfterMin\">");
+  option(out, lang, F("0"), S::WebBlueOff);
+  out += F("<option value=\"60\">60 min</option><option value=\"90\">90 min</option>"
+           "<option value=\"120\">120 min</option></select>");
+  label(out, lang, S::WebWater, F("waterMin"));
+  out += F("<select id=\"waterMin\">");
+  option(out, lang, F("0"), S::WebBlueOff);
+  out += F("<option value=\"60\">60 min</option><option value=\"90\">90 min</option></select>");
+  toggle(out, lang, S::WebEyes, F("eyes"));
+  toggle(out, lang, S::WebFocusQuiet, F("focusQuiet"));
+  toggle(out, lang, S::WebEndOfDay, F("endOfDay"));
+  toggle(out, lang, S::WebWeekly, F("weekly"));
+  pageFlush(out);
+  out += F("<div data-if=\"endOfDay|waterMin\"><h2 style=\"margin-top:16px\">");
+  text(out, lang, S::WebWorkHours);
+  out += F("</h2><div class=\"g\"><div>");
+  label(out, lang, S::WebBlueFrom, F("workFrom"));
+  out += F("<input id=\"workFrom\" type=\"time\" required></div><div>");
+  label(out, lang, S::WebBlueTo, F("workTo"));
+  out += F("<input id=\"workTo\" type=\"time\" required></div></div><label>");
+  text(out, lang, S::WebWorkDays);
+  out += F("</label><div class=\"wd\">");
+  // Monday first; each checkbox's id is its bit in workDays (0 = Sunday).
+  for (uint8_t i = 1; i <= 7; i++) {
+    const uint8_t d = i % 7;
+    out += F("<label>");
+    text(out, lang, (S)((uint16_t)S::WdSun + d));
+    out += F("<input type=\"checkbox\" id=\"wd");
+    out += d;
+    out += F("\"></label>");
+  }
+  out += F("</div></div></div>");
   pageFlush(out);
 
   // Night mode, same pattern.
@@ -837,6 +907,15 @@ static void settingsPage() {
   text(out, lang, S::WebTimezone);
   out += F("<span class=\"v\" id=\"tzn\"></span></label><div class=\"r\"><select id=\"tzr\"></select>"
            "<select id=\"tz\"></select></div>");
+  // Second time zone: the same picker, with "Off" (value "") at the top of the regions.
+  out += F("<label for=\"tz2\">");
+  text(out, lang, S::WebTz2);
+  out += F("<span class=\"v\" id=\"tz2n\"></span></label><div class=\"r\"><select id=\"tz2r\">");
+  option(out, lang, F(""), S::WebBlueOff);
+  out += F("</select><select id=\"tz2\"></select></div><div data-if=\"tz2\">");
+  label(out, lang, S::WebTz2Label, F("tz2Label"));
+  out += F("<input id=\"tz2Label\" maxlength=\"12\" autocomplete=\"off\"></div>");
+  pageFlush(out);
   label(out, lang, S::WebLanguage, F("lang"));
   out += F("<select id=\"lang\">");
   langOptions(out, lang, true);
@@ -854,7 +933,9 @@ static void settingsPage() {
     text(out, lang, kSides[i]);
     out += F("</option>");
   }
-  out += F("</select></div></div>");
+  out += F("</select></div>");
+  toggle(out, lang, S::WebDeskQr, F("deskQr"));
+  out += F("</div>");
   pageFlush(out);
 
   // Advanced (collapsed): the live System panel, firmware, pairing code, factory reset.
@@ -1104,7 +1185,7 @@ static void handleSettings() {
   }
   ctx.lastInteractionMs = millis();
   if (!requireJson(*srv)) return;
-  if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
+  if (bodyTooLarge() || srv->arg(F("plain")).length() > kPageBodyMax) {
     sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
     return;
   }

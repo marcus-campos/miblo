@@ -105,6 +105,7 @@
 <!-- daily:screens -->
 
 <!-- daily:settings -->
+- **New settings on the settings page:** under Alerts, "insist more on long waits" (on by default), "celebrate long tasks" (off, 3, 5 or 10 min; 5 by default) and the status frame around the screen (off by default). A new **Wellness** card has the break after long work (off, 60, 90 or 120 min), the water reminder (off, 60 or 90 min), eye rest (20-20-20), "during focus, only 'needs you' alerts" (on by default), the end-of-day summary and Monday's summary of last week (on by default); the work hours and work days (09:00 to 18:00, Monday to Friday by default) show while the water reminder or the end-of-day summary is on. Under This device: a second time zone (off by default, from the same list as the main one) with the short name shown next to its time (up to 12 characters), and the settings QR code on the desk screen (off by default). Every wellness reminder is off until you turn it on.
 
 <!-- daily:bridge -->
 

@@ -14,7 +14,7 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
-Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status`.
+Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
 
 What it does: for 60 minutes by default (1–480), the gadget hides project names, commands and tool names (also in alerts: "A session needs you"), blinks once instead of flashing, puts a tie on the cat and shows an "In a meeting" badge. It never hides that a session needs you. It ends by itself, with `off`, or when the gadget restarts.
 

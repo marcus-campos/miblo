@@ -14,7 +14,7 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
-Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status`.
+Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
 
 What it does: for 10 seconds the gadget blinks, the cat waves and a QR code with the gadget's settings page shows (scan it with a phone on the same network). Handy with several Miblos in the same room.
 

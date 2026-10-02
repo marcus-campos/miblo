@@ -14,7 +14,7 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
-Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status`.
+Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
 
 What it does: a big countdown on the gadget screen (the cat with an hourglass), 1–180 minutes. When it ends, the whole screen pulses slowly and the cat holds "Time's up!" for 5 minutes. Claude's alerts still show on top and the timer comes back after them.
 

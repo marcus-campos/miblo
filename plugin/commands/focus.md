@@ -14,7 +14,7 @@ Arguments: `$ARGUMENTS`
 
 Rules: reply in the user's language; keep replies short; never show pairing tokens; run only the commands below.
 
-Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status`.
+Safety: never paste the arguments above, or any other text the user typed, into a command. Build the command yourself from only: whole numbers you write (like `50`), the fixed words shown here, and `--id <id>` with an id copied exactly from `devices` in the output of `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`).
 
 What it does: the gadget times rounds of focus and breaks on its own (it keeps going if the computer sleeps; restarting the gadget ends it). During focus the cat wears headphones and the screen shows the time left and "focus until 15:30", so people around know; Claude's alerts still show. After each break comes 1 minute of "Back to focus?", then the next round starts by itself; after the last round there is a long break (3 times the break, at most 30 min), then focus ends. Defaults: 25 min of focus, 5 min breaks, 4 rounds. Limits: focus 5–120 min, break 1–60 min, rounds 1–12. With only the focus length, the gadget picks the break (a fifth of it: 50 → 10).
 

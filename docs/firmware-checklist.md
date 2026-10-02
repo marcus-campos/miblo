@@ -166,6 +166,18 @@ notes.
 <!-- daily:focus -->
 
 <!-- daily:alerts -->
+    - **Meeting mode:** with a session waiting for permission, run `/miblo:meeting 2`. The
+      screens turn discreet, a tie badge sits in the bottom-right corner (never over a number or
+      the clock: check Overview, Limits, Sessions, Desk and pet mode), and the mascot wears a tie.
+      A new permission flashes once (a single blink) with "A session needs you" and no session
+      name, tool or command on the flash or the alert that follows; a finished response says
+      "Finished after ..." with no name. After 2 minutes everything is back on its own (names,
+      badge and tie gone). `/miblo:meeting off` ends it early; a restart ends it too.
+    - **Insistence:** set the reminder to 1 min on the settings page and leave a permission
+      unanswered: the 1st and 2nd reminders look as usual, the 3rd and 4th blink and stay twice
+      as long, the 5th blinks red (white text). Answer it, then let a new wait start: its
+      reminders are back to normal. With "Insist more on long waits" off, every reminder looks
+      the same.
 
 <!-- daily:rhythm -->
 

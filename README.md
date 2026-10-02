@@ -93,6 +93,8 @@
 <!-- daily:focus -->
 
 <!-- daily:alerts -->
+- **Meeting mode:** `/miblo:meeting` (60 min), `/miblo:meeting 30` (1 to 480 min) or `/miblo:meeting off`. While it lasts the screens are discreet, alerts never show which session or command ("A session needs you", "Finished after 7:07"), the flash blinks once, the mascot wears a tie and a small tie badge sits in the bottom-right corner. An alert that needs you still takes the screen. It ends by itself; a restart ends it too.
+- **Insistence:** when the same wait goes on (the reminder every few minutes, set on the settings page), from the 3rd reminder the flash blinks twice as long and the alert stays twice as long, and from the 5th it blinks red. It starts over once nothing waits for you. On by default; turn it off on the settings page.
 
 <!-- daily:rhythm -->
 

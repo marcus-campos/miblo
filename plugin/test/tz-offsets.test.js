@@ -142,3 +142,42 @@ test('withZones: the gadget\'s zones, at most two, unknown ones left out', () =>
   assert.equal(z.withZones(snap, ['<-03>3', ''], OCT2), snap);
   assert.deepEqual(snap, { v: 1, seq: 1 });  // never modified
 });
+
+// A TZif v2 file with one transition (at 0) to type `index`, among `typecnt` types.
+function tzifWithIndex(index, typecnt = 1) {
+  const header = () => {
+    const h = Buffer.alloc(44);
+    h.write('TZif2', 0, 'latin1');
+    h.writeUInt32BE(1, 32);  // timecnt
+    h.writeUInt32BE(typecnt, 36);
+    h.writeUInt32BE(4, 40);  // charcnt
+    return h;
+  };
+  const types = Buffer.alloc(6 * typecnt);
+  const v1 = Buffer.concat([Buffer.alloc(4), Buffer.from([index]), types, Buffer.from('LMT\0', 'latin1')]);
+  const v2 = Buffer.concat([Buffer.alloc(8), Buffer.from([index]), types, Buffer.from('LMT\0', 'latin1')]);
+  return Buffer.concat([header(), v1, header(), v2, Buffer.from('\n\n', 'latin1')]);
+}
+
+test('tzif: a transition naming a type the file lacks is refused', () => {
+  assert.ok(tzifOffset(tzifWithIndex(0)));
+  assert.equal(tzifOffset(tzifWithIndex(1)), null);
+  assert.equal(tzifOffset(tzifWithIndex(255, 2)), null);
+});
+
+test('cache: a zone whose offsets cannot be worked out gives no entry, never an exception', () => {
+  let calls = 0;
+  const z = new ZoneOffsets({ source: () => () => { calls++; throw new RangeError('unexpected offset "GMT+xx"'); } });
+  assert.equal(z.get('A/B', OCT2), null);
+  assert.equal(z.get('A/B', OCT2 + 1000), null);  // cached: not retried at once
+  assert.equal(calls, 1);
+  const snap = { v: 1 };
+  assert.equal(z.withZones(snap, ['A/B'], OCT2), snap);
+});
+
+test('intl: an offset string it does not understand throws (caught by ZoneOffsets)', (t) => {
+  t.mock.method(Intl.DateTimeFormat.prototype, 'formatToParts', () => [{ type: 'timeZoneName', value: 'GMT+xx' }]);
+  assert.throws(() => intlOffset('Europe/Paris', OCT2), RangeError);
+  const z = new ZoneOffsets({ source: (zone) => (utc) => intlOffset(zone, utc * 1000) });
+  assert.equal(z.get('Europe/Paris', OCT2), null);
+});

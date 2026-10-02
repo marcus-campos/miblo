@@ -145,7 +145,7 @@ release:
 	if git rev-parse -q --verify "refs/tags/$$tag" >/dev/null; then echo "Tag $$tag already exists." >&2; exit 1; fi; \
 	echo "== Release $$tag =="; \
 	(cd plugin && npm test >/dev/null) && echo "plugin tests: ok"; \
-	$(MAKE) -s -C firmware tz-table || echo "warning: time zone table not refreshed (offline?)" >&2; \
+	make -s -C firmware tz-table || echo "warning: time zone table not refreshed (offline?)" >&2; \
 	$(PYTHON) -m unittest -q firmware/scripts/test_flash_fleet.py 2>/dev/null && echo "script tests: ok"; \
 	(cd firmware && ./scripts/build.sh $(BOARD)); \
 	tzt="firmware/lib/miblo_core/src/miblo_tz_table.h firmware/lib/miblo_core/src/miblo_tz_table.cpp"; \

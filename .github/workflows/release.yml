@@ -45,7 +45,12 @@ jobs:
           if pip install --upgrade tzdata && python scripts/gen_tz_table.py > "$RUNNER_TEMP/tz.log"; then
             cat "$RUNNER_TEMP/tz.log"
             git diff --stat -- $table
-            { echo "### Time zones"; echo; head -1 "$RUNNER_TEMP/tz.log"; } >> "$GITHUB_STEP_SUMMARY"
+            # A table that differs from the tag's is what ships: say so where the release is read.
+            {
+              echo "### Time zones"; echo; head -1 "$RUNNER_TEMP/tz.log"; echo
+              if git diff --quiet -- $table; then echo "The committed table was already current."
+              else echo "Shipped table differs from the tag's:"; echo '```'; git diff --stat -- $table; echo '```'; fi
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             git checkout -- $table
             echo "::warning::Time zone table not refreshed: building with the committed one"

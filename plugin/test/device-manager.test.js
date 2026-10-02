@@ -127,3 +127,18 @@ test('the live offsets count toward the gadget\'s byte cap', async () => {
   assert.ok(pushes[0].tz);
   assert.ok(pushes[0].sessions.length < 3);
 });
+
+test('a zone that fails to work out never fails the push', async () => {
+  const pushes = [];
+  const client = {
+    async info() { return { id: 'g1', fw: '1.11.0', tz: 'Europe/Lisbon' }; },
+    async pushState(addr, token, snap) { pushes.push(snap); },
+  };
+  const store = memStore([{ id: 'g1', name: 'G1', addr: 'a:80', token: 't' }]);
+  const zones = { withZones: () => { throw new Error('corrupt zone file'); } };
+  const mgr = new DeviceManager({ client, store, zones, now: () => 0 });
+  await mgr.pushAll({ v: 1, sessions: [] });
+  assert.equal(pushes.length, 1);
+  assert.equal(pushes[0].tz, undefined);
+  assert.equal(mgr.status()[0].online, true);
+});

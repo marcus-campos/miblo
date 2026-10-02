@@ -101,10 +101,11 @@ export function tzifOffset(buf) {
   [isut, isstd, leap, timecnt, typecnt, charcnt] = counts(p);
   p += 44;
   const end = p + timecnt * 9 + typecnt * 6 + charcnt + leap * 12 + isstd + isut;
-  if (!typecnt || buf.length < end) return null;
+  if (!typecnt || typecnt > 256 || buf.length < end) return null;
   const times = [];
   for (let i = 0; i < timecnt; i++) times.push(Number(buf.readBigInt64BE(p + 8 * i)));
   const idx = buf.subarray(p + 8 * timecnt, p + 9 * timecnt);
+  if (idx.some((k) => k >= typecnt)) return null;  // a transition to a type the file lacks
   const typeAt = p + 9 * timecnt;
   const utoff = (k) => buf.readInt32BE(typeAt + 6 * k) / 60;
   const tail = buf.toString('latin1', end).split('\n')[1] ?? '';
@@ -198,8 +199,13 @@ export class ZoneOffsets {
   get(zone, nowMs) {
     const hit = this.#cache.get(zone);
     if (hit && nowMs >= hit.from && nowMs < hit.until) return hit.entry;
-    const fn = this.source(zone);
-    const entry = fn ? nextChange(zone, nowMs, fn) : null;
+    let entry = null;
+    try {
+      const fn = this.source(zone);
+      entry = fn ? nextChange(zone, nowMs, fn) : null;
+    } catch {
+      entry = null;  // unreadable data (a corrupt zone file, an Intl answer not understood): none
+    }
     const until = Math.min(nowMs + CACHE_MS, entry?.next ? entry.next * 1000 : Infinity);
     this.#cache.set(zone, { entry, from: nowMs, until });
     return entry;

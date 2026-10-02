@@ -56,7 +56,12 @@ export class DeviceManager {
       const caps = await this.#caps(dev, h);
       try {
         // The live offsets go in before trimming: they count toward the gadget's byte cap.
-        const own = this.zones.withZones(snapshot, caps.zones, this.now());
+        let own = snapshot;
+        try {
+          own = this.zones.withZones(snapshot, caps.zones, this.now());
+        } catch {
+          // never let the time zones cost the push: the gadget falls back to its own table
+        }
         await this.client.pushState(dev.addr, dev.token, trimSnapshot(own, caps.maxSessions, caps.maxBytes));
       } catch (e) {
         // Low on memory (503): the full snapshot was refused. Resend just the alerts, which is

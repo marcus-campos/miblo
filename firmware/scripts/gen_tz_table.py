@@ -2,8 +2,11 @@
 """Generates the IANA -> POSIX time zone table embedded in the firmware (flash, MIBLO_ROM).
 
 Source: nayarsystems/posix_tz_db (MIT), `zones.csv` at a pinned commit. Each row is
-"<IANA name>","<POSIX TZ rule>". The output is two blobs in the same (sorted) order:
-  kTzNames: "Africa/Abidjan\\nAfrica/Accra\\n..."  (served as-is by GET /api/zones)
+"<IANA name>","<POSIX TZ rule>". The output is, in the same (sorted) order:
+  kTzNames: the names front-coded (~3.5 KB less flash than plain): per name, one byte 0x80 + the
+            length of the prefix it shares with the previous name, then the rest of it
+            ("\\x80Africa/Abidjan\\x87Accra..."). TzNames (miblo_tz.h) reads them back; GET
+            /api/zones serves the plain list, "Africa/Abidjan\\nAfrica/Accra\\n..." (kTzNamesLen).
   kTzRules: "<+0330>-3:30\\nAEST-10\\n..."  (each distinct POSIX rule once, sorted)
   kTzRule:  {41, 41, ...}  (per name, the index of its rule in kTzRules)
 Many zones share a rule (all of "GMT0", "CET-1CEST,M3.5.0,M10.5.0/3", ...): ~93 distinct rules
@@ -65,6 +68,13 @@ def main(argv):
         rows.append((name, rule))
     rows.sort()
     names = "".join(n + "\n" for n, _ in rows)
+    packed, prev = [], ""
+    for n, _ in rows:
+        k = 0
+        while k < min(len(n), len(prev)) and n[k] == prev[k]:
+            k += 1
+        packed.append(f"\\{0x80 + k:03o}" + n[k:])  # an octal escape: 3 digits, never longer
+        prev = n
     distinct = sorted({r for _, r in rows})
     if len(distinct) > 256:
         sys.exit("more than 256 distinct rules: kTzRule needs wider entries")
@@ -80,9 +90,10 @@ def main(argv):
 namespace miblo {{
 
 constexpr size_t kTzCount = {len(rows)};
-constexpr size_t kTzNamesLen = {len(names)};  // bytes, without the terminating NUL
+constexpr size_t kTzNamesLen = {len(names)};  // the plain list ("name\\n" per zone, GET /api/zones), bytes
 constexpr size_t kTzNameMax = {max(len(n) for n, _ in rows)};  // the longest name, bytes
-// Sorted IANA names, each followed by '\\n' (MIBLO_ROM: read with mibloRomByte).
+constexpr size_t kTzNamesPackedLen = {sum(1 + len(p) - 4 for p in packed)};  // bytes, without the NUL
+// The sorted IANA names, front-coded (MIBLO_ROM): read them with TzNames (miblo_tz.h).
 extern const char kTzNames[];
 constexpr size_t kTzRuleCount = {len(distinct)};
 // The distinct POSIX TZ rules, each followed by '\\n' (MIBLO_ROM).
@@ -100,9 +111,9 @@ extern const unsigned char kTzRule[];
 
 namespace miblo {{
 
-// {len(names)} bytes
+// {sum(1 + len(p) - 4 for p in packed)} bytes ({len(names)} plain)
 const char kTzNames[] MIBLO_ROM =
-{c_string(names)};
+{chr(10).join(f'    "{p}"' for p in packed)};
 
 // {len(rules)} bytes
 const char kTzRules[] MIBLO_ROM =

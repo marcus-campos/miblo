@@ -8,7 +8,8 @@ namespace miblo {
 constexpr size_t kTzCount = 461;
 constexpr size_t kTzNamesLen = 7390;  // bytes, without the terminating NUL
 constexpr size_t kTzNameMax = 30;  // the longest name, bytes
-// Sorted IANA names, each followed by '\n' (MIBLO_ROM: read with mibloRomByte).
+constexpr size_t kTzNamesPackedLen = 3432;  // bytes, without the NUL
+// The sorted IANA names, front-coded (MIBLO_ROM): read them with TzNames (miblo_tz.h).
 extern const char kTzNames[];
 constexpr size_t kTzRuleCount = 93;
 // The distinct POSIX TZ rules, each followed by '\n' (MIBLO_ROM).

@@ -8,28 +8,28 @@
 
 namespace miblo {
 
+bool TzNames::next() {
+  const uint8_t head = mibloRomByte(p_);
+  if (!head) return false;
+  size_t len = head & 0x7F;  // the bytes shared with the previous name, then the rest
+  for (p_++; mibloRomByte(p_) >= 0x21 && mibloRomByte(p_) <= 0x7E && len < kTzNameMax; p_++) {
+    name[len++] = (char)mibloRomByte(p_);
+  }
+  name[len] = 0;
+  index++;
+  return true;
+}
+
 bool tzLookup(const char* iana, char* out, size_t cap) {
   if (!iana || !iana[0] || !out || cap == 0) return false;
   for (const char* q = iana; *q; q++) {
     if (*q < 0x21 || *q > 0x7E) return false;  // also keeps '\n' from matching across lines
   }
-  const char* p = kTzNames;
-  size_t index = 0;
+  TzNames names;
   bool found = false;
-  while (index < kTzCount) {
-    // Compare this line with `iana` byte by byte, then skip to the next line.
-    size_t i = 0;
-    while (iana[i] && mibloRomByte(p + i) == (uint8_t)iana[i]) i++;
-    uint8_t c = mibloRomByte(p + i);
-    if (!iana[i] && c == '\n') {
-      found = true;
-      break;
-    }
-    while (mibloRomByte(p) != '\n') p++;
-    p++;
-    index++;
-  }
+  while (!found && names.next()) found = strcmp(names.name, iana) == 0;
   if (!found) return false;
+  const size_t index = names.index;
   const uint8_t rule = mibloRomByte((const char*)&kTzRule[index]);
   const char* r = kTzRules;
   for (size_t k = 0; k < rule; k++) {

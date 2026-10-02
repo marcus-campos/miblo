@@ -4,6 +4,8 @@
 #include "miblo_config.h"
 #include "miblo_cues.h"
 #include "miblo_snapshot.h"
+#include "../support/fake_canvas.h"
+#include "ui_screens.h"
 
 void setUp() {}
 void tearDown() {}
@@ -99,6 +101,87 @@ static void test_frame_colour_edges() {
   TEST_ASSERT_EQUAL(miblo::FrameColor::None, miblo::frameColorFor(s, 1010));
 }
 
+// Counts the cue's full-screen redraws (a fill across the top edge, the whole width) and the
+// fills straight on the panel over the icon (what would make it blink).
+class CueCanvas : public FakeCanvas {
+ public:
+  using FakeCanvas::FakeCanvas;
+  void fillRect(int x, int y, int w, int h, uint16_t c) override {
+    if (x <= 0 && y <= 0 && x + w >= spec_.w) redraws++;
+    const int cx = spec_.w / 2, cy = spec_.h / 2;
+    if (!inLayer && x <= cx && cx < x + w && y <= cy && cy < y + h) iconFills++;
+    FakeCanvas::fillRect(x, y, w, h, c);
+  }
+  int redraws = 0;
+  int iconFills = 0;
+};
+
+static const ui::ScreenSpec kSpecs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
+static const miblo::CueKind kKinds[] = {miblo::CueKind::FocusEnd, miblo::CueKind::BreakEnd, miblo::CueKind::Timer,
+                                        miblo::CueKind::Alarm, miblo::CueKind::Reminder};
+
+static void test_cue_fits_and_redraws_by_step() {
+  for (const ui::ScreenSpec& sp : kSpecs) {
+    for (miblo::CueKind k : kKinds) {
+      CueCanvas fc(sp);
+      screens::bind(fc);
+      screens::reset();
+      fc.redraws = fc.iconFills = 0;
+      // Every 20 ms for 4.5 s: only a change of step (8 per rise or fall) repaints the screen.
+      for (uint32_t t = 0; t <= 4500; t += 20) screens::cue(k, t);
+      TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+      TEST_ASSERT_TRUE(fc.redraws <= 3 * 2 * 8);
+      TEST_ASSERT_TRUE(fc.redraws >= miblo::cuePulses(k) * 2 * 6);  // it really pulses
+      TEST_ASSERT_EQUAL_INT(0, fc.iconFills);  // the icon is composed off-screen: no blink
+      // At the top of a pulse the screen is mostly the cue's colour.
+      screens::reset();
+      screens::cue(k, miblo::kCuePulseMs / 2);
+      const uint16_t want = k == miblo::CueKind::Timer ? ui::color::AMBER
+                            : (k == miblo::CueKind::FocusEnd || k == miblo::CueKind::BreakEnd) ? ui::color::GREEN
+                                                                                                 : ui::color::VIOLET;
+      TEST_ASSERT_EQUAL_INT(want, fc.colorAt(sp.w / 2, 2));
+      fc.clearLog();
+      screens::cue(k, miblo::kCuePulseMs / 2 + 10);  // same step: nothing drawn
+      TEST_ASSERT_EQUAL_INT(0, fc.calls);
+    }
+  }
+  // Without memory for a layer it still draws, inside the screen.
+  CueCanvas fc({240, 240});
+  fc.layerSupported = false;
+  screens::bind(fc);
+  screens::reset();
+  screens::cue(miblo::CueKind::Timer, 300);
+  TEST_ASSERT_TRUE(fc.calls > 4);
+  TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  screens::reset();
+  fc.clearLog();
+  screens::cue(miblo::CueKind::None, 300);
+  TEST_ASSERT_EQUAL_INT(0, fc.calls);
+}
+
+static void test_state_frame() {
+  for (const ui::ScreenSpec& sp : kSpecs) {
+    FakeCanvas fc(sp);
+    screens::bind(fc);
+    screens::reset();
+    fc.clearLog();
+    screens::stateFrame(miblo::FrameColor::None);
+    TEST_ASSERT_EQUAL_INT(0, fc.calls);
+    screens::stateFrame(miblo::FrameColor::Amber);
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+    TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.colorAt(2, sp.h / 2));            // left
+    TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.colorAt(sp.w - 3, sp.h / 2));     // right
+    TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.colorAt(sp.w / 2, 3));            // top
+    TEST_ASSERT_EQUAL_INT(ui::color::AMBER, fc.colorAt(sp.w / 2, sp.h - 4));     // bottom
+    TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.colorAt(sp.w / 2, sp.h / 2));        // the screen is left alone
+    TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.colorAt(1, sp.h / 2));               // 2 px in from the edge
+    TEST_ASSERT_EQUAL_INT(ui::color::BG, fc.colorAt(4, sp.h / 2));               // 2 px wide
+    screens::stateFrame(miblo::FrameColor::Green);
+    TEST_ASSERT_EQUAL_INT(ui::color::GREEN, fc.colorAt(sp.w / 2, 2));
+    TEST_ASSERT_EQUAL_INT(0, fc.outOfBounds);
+  }
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_cue_pulses);
@@ -106,5 +189,7 @@ int main(int, char**) {
   RUN_TEST(test_cue_brightness_respects_night_mode);
   RUN_TEST(test_frame_colour);
   RUN_TEST(test_frame_colour_edges);
+  RUN_TEST(test_cue_fits_and_redraws_by_step);
+  RUN_TEST(test_state_frame);
   return UNITY_END();
 }

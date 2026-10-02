@@ -99,6 +99,7 @@
 <!-- daily:notes -->
 
 <!-- daily:cues -->
+- **Seen from the corner of your eye:** status frame (off by default), slow pulses with the brightness up for focus/timer/alarms (at night at most twice the night brightness), long commands show their running time. A thin frame around the screen is amber while a session waits for you and green for a minute after one finishes; the end of a focus round, a timer, an alarm or a reminder pulses the whole screen in its colour three times (one soft pulse when a break ends), never over a permission alert, and warmed by the blue light filter like everything else.
 
 <!-- daily:look -->
 

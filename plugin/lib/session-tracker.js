@@ -17,9 +17,30 @@ export const WAIT_AGENTS = '_wait_agents';
 export const WAIT_TASKS = '_wait_tasks';
 // Reserved activity tool while Claude Code compacts the conversation (det empty).
 export const COMPACT = '_compact';
-// permBy of a permission prompt whose owner is unknown (a permission_prompt Notification without
-// agent_id while subagents run): the next event of the main thread or of any subagent clears it.
+// askBy (who a prompt on screen belongs to: null = the main thread, else an agent_id) of a prompt
+// whose owner is unknown (a notification without agent_id while subagents run or the main agent
+// waits): the next event of the main thread or of any subagent clears it.
 const ANY_AGENT = '*';
+
+// What each Claude Code hook event / Notification type does here. Only the ones handled are
+// registered in hooks/hooks.json: every registration spawns a hook process.
+//   perm ("needs you"): PermissionRequest; Notification permission_prompt, worker_permission_prompt
+//     (auto mode's classifier and agent-team workers can prompt without a PermissionRequest).
+//   question: PreToolUse AskUserQuestion; Elicitation; Notification elicitation_dialog,
+//     elicitation_url_dialog, agent_needs_input. ElicitationResult answers it (back to running).
+//   running: UserPromptSubmit, PreToolUse, PostToolUse, PostToolUseFailure, PermissionDenied
+//     (auto mode denied the call and Claude goes on), PreCompact (compacting).
+//   done: Stop, StopFailure (an API error ended the turn; no failure state on the gadget), unless
+//     background work will wake the agent again.
+//   bookkeeping: SessionStart, SessionEnd, SubagentStart, SubagentStop, PostCompact.
+//   ignored on purpose: Notification idle_prompt, auth_success, agent_completed, push_notification,
+//     computer_use_enter/exit, quota_auto_resume_*, model_refusal_fallback; events PostToolBatch,
+//     UserPromptExpansion, Pre/PostModelSwitch, Setup, TeammateIdle, TaskCreated, TaskCompleted,
+//     ConfigChange, WorktreeCreate/Remove, InstructionsLoaded, CwdChanged, FileChanged,
+//     DirectoryAdded, MessageDisplay.
+const PERM_NOTES = new Set(['permission_prompt', 'worker_permission_prompt']);
+const QUESTION_NOTES = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
+const ASKING = new Set(['perm', 'question']);
 
 export function pidAlive(pid) {
   if (!pid) return true;
@@ -65,8 +86,13 @@ export class SessionTracker {
     if (evt.pid !== undefined && evt.pid !== null) s.pid = evt.pid;
 
     const agentId = typeof evt.agent_id === 'string' && evt.agent_id ? evt.agent_id : null;
-    if (name === 'Notification' && evt.notification_type === 'permission_prompt') {
-      this.#permPrompt(s, agentId, evt.tool_name);
+    // Prompts on screen and their answer never touch s.waiting: they may well be a subagent's
+    // while the main agent waits on it.
+    const note = name === 'Notification' ? evt.notification_type : null;
+    const ask = PERM_NOTES.has(note) ? 'perm' : QUESTION_NOTES.has(note) || name === 'Elicitation' ? 'question' : null;
+    if (ask || name === 'ElicitationResult') {
+      if (ask) this.#prompt(s, ask, agentId, evt.tool_name);
+      else if (ASKING.has(s.st)) this.#answered(s);
       if (s.tool !== activity[0] || s.det !== activity[1]) s.cmdLive = false;
       this.#markTool(s, activity, false);
       return created || JSON.stringify(s) !== before;
@@ -80,8 +106,8 @@ export class SessionTracker {
       return created || JSON.stringify(s) !== before;
     }
     // Any main-thread event other than Stop means the main agent is working again.
-    if (name !== 'Stop') s.waiting = false;
-    s.permBy = null;
+    if (name !== 'Stop' && name !== 'StopFailure') s.waiting = false;
+    s.askBy = null;
 
     switch (name) {
       case 'SessionStart':
@@ -116,15 +142,13 @@ export class SessionTracker {
         Object.assign(s, describeTool(evt.tool_name, evt.tool_input));
         this.#enter(s, 'perm');
         break;
-      case 'Notification':
-        if (evt.notification_type !== 'elicitation_dialog') return created;
-        this.#enter(s, 'question');
-        break;
       case 'PostToolUse':
+      case 'PermissionDenied':
       case 'PostToolUseFailure':  // the tool failed (a command exiting non-zero, an interrupt)
         this.#enter(s, 'running');
         break;
-      case 'Stop': {
+      case 'Stop':
+      case 'StopFailure': {
         // The main agent may end its turn only to wait for background work that
         // will wake it up again: that is not "finished".
         const wait = this.#pending(s.id, evt);
@@ -206,7 +230,7 @@ export class SessionTracker {
       const taken = new Set([...this.#sessions.values()].map((x) => x.name));
       let name = base;
       for (let n = 2; taken.has(name); n++) name = `${base} ${n}`;
-      s = { id, name, st: 'idle', since: this.now(), tool: '', det: '', toolSince: this.now(), cmdLive: false, pid: null, waiting: false, permBy: null };
+      s = { id, name, st: 'idle', since: this.now(), tool: '', det: '', toolSince: this.now(), cmdLive: false, pid: null, waiting: false, askBy: null };
       this.#sessions.set(id, s);
     }
     return s;
@@ -229,42 +253,46 @@ export class SessionTracker {
     w.set(agentId, this.now());
     if (name === 'PermissionRequest') {
       Object.assign(s, describeTool(evt.tool_name, evt.tool_input));
-      s.permBy = agentId;
+      s.askBy = agentId;
       this.#enter(s, 'perm');
-    } else if (s.st === 'perm' && (s.permBy === agentId || s.permBy === ANY_AGENT)) {
-      s.permBy = null;
-      this.#enter(s, 'running');
-      if (s.waiting) Object.assign(s, this.#waitDet.get(s.id) ?? { tool: WAIT_AGENTS, det: '' });
+    } else if (ASKING.has(s.st) && (s.askBy === agentId || s.askBy === ANY_AGENT)) {
+      this.#answered(s);
     }
   }
 
-  // Claude Code shows a permission prompt (permission_prompt Notification). Auto mode's classifier
-  // can escalate a call to the user without a PermissionRequest reaching the hooks, so this alone
-  // raises perm; when the PermissionRequest does come too (before or after), the session is
-  // already in perm and alerts once. The notification names no command: the activity shown stays
-  // the last known one unless the message named another tool. It never touches s.waiting: the
-  // prompt may well come from a subagent while the main agent waits.
-  #permPrompt(s, agentId, tool) {
+  // The prompt on screen is gone: back to running, or to the wait the main agent was in.
+  #answered(s) {
+    s.askBy = null;
+    this.#enter(s, 'running');
+    if (s.waiting) Object.assign(s, this.#waitDet.get(s.id) ?? { tool: WAIT_AGENTS, det: '' });
+  }
+
+  // Claude Code shows a prompt (kind 'perm' or 'question'): a Notification or an MCP Elicitation.
+  // Auto mode's classifier can escalate a call to the user without a PermissionRequest reaching
+  // the hooks, so a permission notification alone raises perm. A prompt while one is already
+  // shown (its PermissionRequest, before or after; a second notification) changes nothing: one
+  // alert per prompt. A notification names no command: the activity shown stays the last known
+  // one unless it named another tool.
+  #prompt(s, kind, agentId, tool) {
     if (agentId) {
       let w = this.#workers.get(s.id);
       if (!w) this.#workers.set(s.id, (w = new Map()));
       w.set(agentId, this.now());
     }
-    if (s.st === 'perm') {
-      if (agentId && s.permBy === ANY_AGENT) s.permBy = agentId;
+    if (ASKING.has(s.st)) {
+      if (agentId && s.askBy === ANY_AGENT) s.askBy = agentId;
       return;
     }
     if (typeof tool === 'string' && tool && tool !== s.tool) {
       s.tool = tool;
       s.det = '';
     } else if (!tool && s.tool.startsWith('_')) {
-      // A reserved activity (waiting on agents, compacting) is not the tool asking.
+      // A reserved activity (waiting on agents, compacting) is not what asks.
       s.tool = '';
       s.det = '';
     }
-    // Without agent_id the prompt is the main thread's unless subagents are running.
-    s.permBy = agentId ?? (this.#liveWorkers(s.id) ? ANY_AGENT : null);
-    this.#enter(s, 'perm');
+    s.askBy = agentId ?? (s.waiting || this.#liveWorkers(s.id) ? ANY_AGENT : null);
+    this.#enter(s, kind);
   }
 
   // Structured activity for the background work a Stop waits on, or null if none:

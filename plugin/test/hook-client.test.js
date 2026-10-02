@@ -184,3 +184,9 @@ test('pickEvent turns a permission_prompt message into a tool name only, never t
     pickEvent({ session_id: 's', hook_event_name: 'Notification', notification_type: 'idle_prompt', message: 'Claude needs your permission to use Bash' }),
     { session_id: 's', hook_event_name: 'Notification', notification_type: 'idle_prompt' });
 });
+
+test('pickEvent takes only the tool from a worker_permission_prompt message', () => {
+  const base = { session_id: 's', hook_event_name: 'Notification', notification_type: 'worker_permission_prompt' };
+  assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for Bash' }), { ...base, tool_name: 'Bash' });
+  assert.deepEqual(pickEvent({ ...base, message: 'researcher needs permission for rm -rf secret' }), base);
+});

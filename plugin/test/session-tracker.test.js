@@ -41,6 +41,13 @@ test('transition table', () => {
     [['Notification', { notification_type: 'elicitation_dialog' }], 'question', 'question'],
     [['PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } }], 'perm', 'perm'],
     [['Stop'], 'done', 'done'],
+    [['Notification', { notification_type: 'permission_prompt' }], 'perm', 'perm'],
+    [['Notification', { notification_type: 'worker_permission_prompt', tool_name: 'Bash' }], 'perm', 'perm'],
+    [['Notification', { notification_type: 'elicitation_url_dialog' }], 'question', 'question'],
+    [['Notification', { notification_type: 'agent_needs_input' }], 'question', 'question'],
+    [['Elicitation'], 'question', 'question'],
+    [['PermissionDenied', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } }], 'running', null],
+    [['StopFailure'], 'done', 'done'],
   ];
   for (const [[name, extra], st, alertKind] of table) {
     const { tracker, ev } = setup();
@@ -153,7 +160,13 @@ test('events without session_id or with unknown names are ignored', () => {
   ev('s1', 'SessionStart');
   assert.equal(ev('s1', 'SubagentStop'), false);
   assert.equal(ev('s1', 'Notification', { notification_type: 'idle_prompt' }), false);
-  assert.equal(ev('s1', 'Notification', { notification_type: 'agent_needs_input' }), false);
+  for (const type of ['auth_success', 'agent_completed', 'push_notification', 'computer_use_enter', 'computer_use_exit',
+    'quota_auto_resume_fired', 'quota_auto_resume_stale', 'quota_auto_resume_disabled', 'model_refusal_fallback']) {
+    assert.equal(ev('s1', 'Notification', { notification_type: type }), false, type);
+  }
+  for (const name of ['TeammateIdle', 'TaskCreated', 'PostToolBatch', 'UserPromptExpansion', 'PreModelSwitch', 'CwdChanged']) {
+    assert.equal(ev('s1', name), false, name);
+  }
   assert.equal(tracker.sessions()[0].st, 'idle');
 });
 
@@ -264,7 +277,6 @@ test('subagent events never flip the main session state', () => {
     ['PreToolUse', { tool_name: 'Bash', tool_input: { command: 'npm test' } }],
     ['PreToolUse', { tool_name: 'AskUserQuestion', tool_input: {} }],
     ['PostToolUse', { tool_name: 'Read', tool_input: {} }],
-    ['Notification', { notification_type: 'elicitation_dialog' }],
     ['Stop', {}],
     ['SubagentStop', {}],
   ];
@@ -612,4 +624,91 @@ test('Stop and UserPromptSubmit leave a permission_prompt perm', () => {
     ev('s1', name);
     assert.equal(tracker.sessions()[0].st, st, name);
   }
+});
+
+// Prompts that wait on the user's answer (MCP elicitation, a dialog asking for input) show the
+// question state, whoever asked: the dialog is on screen either way.
+test('a subagent elicitation raises question; that agent\'s next event returns to the waiting state', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'Notification', { ...agent('a1'), notification_type: 'elicitation_dialog' });
+  let [s] = tracker.sessions();
+  assert.equal(s.st, 'question');
+  assert.equal(s.waiting, true);
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['question']);
+  ev('s1', 'PostToolUse', { ...agent('a2'), tool_name: 'Read', tool_input: {} });
+  assert.equal(tracker.sessions()[0].st, 'question');
+  ev('s1', 'PostToolUse', { ...agent('a1'), tool_name: 'mcp__x__y', tool_input: {} });
+  [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['running', '_wait_agents', '1']);
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('Elicitation then its elicitation_dialog alert once; ElicitationResult goes back to running', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'Elicitation');
+  ev('s1', 'Notification', { notification_type: 'elicitation_dialog' });
+  assert.equal(tracker.sessions()[0].st, 'question');
+  assert.equal(tracker.alerts().length, 1);
+  ev('s1', 'ElicitationResult');
+  assert.equal(tracker.sessions()[0].st, 'running');
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('ElicitationResult of a subagent\'s elicitation keeps the main agent waiting', () => {
+  const { tracker, ev } = setup();
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'Elicitation');
+  assert.equal(tracker.sessions()[0].st, 'question');
+  ev('s1', 'ElicitationResult');
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det, s.waiting], ['running', '_wait_agents', '1', true]);
+});
+
+test('a second needs-you prompt while one is shown does not alert again', () => {
+  for (const [first, second] of [['permission_prompt', 'agent_needs_input'], ['agent_needs_input', 'permission_prompt'],
+    ['worker_permission_prompt', 'permission_prompt']]) {
+    const { tracker, ev } = setup();
+    ev('s1', 'Notification', { notification_type: first });
+    const st = tracker.sessions()[0].st;
+    ev('s1', 'Notification', { notification_type: second });
+    assert.equal(tracker.sessions()[0].st, st, `${first} ${second}`);
+    assert.equal(tracker.alerts().length, 1, `${first} ${second}`);
+  }
+});
+
+test('PermissionDenied clears the perm raised for that call, without an alert', () => {
+  // Main thread.
+  let { tracker, ev } = setup();
+  ev('s1', 'PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } });
+  ev('s1', 'PermissionDenied', { tool_name: 'Bash', tool_input: { command: 'rm -rf /' } });
+  assert.equal(tracker.sessions()[0].st, 'running');
+  assert.deepEqual(tracker.alerts(), []);
+  // A subagent's, while the main agent waits.
+  ({ tracker, ev } = setup());
+  ev('s1', 'SubagentStart', agent('a1'));
+  ev('s1', 'Stop', bg('subagent'));
+  ev('s1', 'Notification', permNote({ ...agent('a1'), tool_name: 'Bash' }));
+  ev('s1', 'PermissionDenied', { ...agent('a1'), tool_name: 'Bash', tool_input: {} });
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det], ['running', '_wait_agents', '1']);
+  assert.deepEqual(tracker.alerts(), []);
+});
+
+test('StopFailure follows the Stop rules: done once, or still waiting on background work', () => {
+  let { tracker, ev } = setup();
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'StopFailure');
+  ev('s1', 'StopFailure');
+  assert.equal(tracker.sessions()[0].st, 'done');
+  assert.deepEqual(tracker.alerts().map((a) => a.kind), ['done']);
+  ({ tracker, ev } = setup());
+  ev('s1', 'UserPromptSubmit');
+  ev('s1', 'StopFailure', bg('shell'));
+  const [s] = tracker.sessions();
+  assert.deepEqual([s.st, s.tool, s.det, s.waiting], ['running', '_wait_tasks', '1', true]);
+  assert.deepEqual(tracker.alerts(), []);
 });

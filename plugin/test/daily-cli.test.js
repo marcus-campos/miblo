@@ -483,13 +483,35 @@ test('blue tells an old firmware to update, and a busy one to try again', async 
   const d = deps({ client: new DeviceClient({ busyRetryMs: [1, 1] }) });
   try {
     pair(d, none, levels);
+    // Before the filter: nothing at all.
     for (const argv of [['blue'], ['blue', 'on'], ['blue', '60%'], ['blue', 'off']]) {
-      const r = await run(argv, d);
+      const r = await run([...argv, '--id', 'miblo-aaaa'], d);
       assert.equal(r.code, 1, argv.join(' '));
       assert.match(r.out, /Amon does not support this yet: update it with \/miblo:update\./);
+    }
+    // Before the slider: on, off and the schedule work; only a strength asks for the update.
+    for (const argv of [['blue', '60%'], ['blue', 'on', 'high'], ['blue', '21:00', '07:00', '30']]) {
+      const r = await run([...argv, '--id', 'miblo-bbbb'], d);
+      assert.equal(r.code, 1, argv.join(' '));
       assert.match(r.out, /Shiru does not support this yet: update it with \/miblo:update\./);
     }
     assert.deepEqual(levels.state.config, {});  // nothing sent to a firmware that would ignore the strength
+    let r = await run(['blue', 'ON', '--id', 'miblo-bbbb'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter always on for Shiru\./);
+    r = await run(['blue', '22:00', '06:00', '--id', 'miblo-bbbb'], d);
+    assert.match(r.out, /Blue light filter on from 22:00 to 06:00 for Shiru\./);
+    assert.deepEqual([levels.state.config.blueFilter, levels.state.config.blueFrom, levels.state.config.blueTo], [2, 1320, 360]);
+    r = await run(['blue', '--id', 'miblo-bbbb'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter on Shiru: on from 22:00 to 06:00 \(to choose the strength, update it with \/miblo:update\)\./);
+    r = await run(['blue', 'Off', '--id', 'miblo-bbbb'], d);
+    assert.match(r.out, /Blue light filter off for Shiru\./);
+    assert.equal(levels.state.config.blueFilter, 0);
+    // Both at once: one takes it, the other is told to update.
+    r = await run(['blue', 'on'], d);
+    assert.equal(r.code, 0);
+    assert.match(r.out, /Blue light filter always on for Shiru\.\nAmon does not support this yet/);
     const fresh = await fake({ id: 'miblo-cccc', name: 'Kuro' });
     try {
       pair(d, fresh);

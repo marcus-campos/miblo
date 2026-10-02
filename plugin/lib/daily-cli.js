@@ -604,16 +604,16 @@ const hhmm = (m) => `${pad2(Math.floor(m / 60))}:${pad2(m % 60)}`;
 // ("on" may come with them); a number (with or without %) or low/medium/high is the strength,
 // alone (the filter's state is kept) or with the rest; "off" takes nothing else.
 export function parseBlueArgs(args) {
-  if (!args.length || (args.length === 1 && args[0] === 'status')) return { status: true };
+  if (!args.length || (args.length === 1 && String(args[0]).toLowerCase() === 'status')) return { status: true };
   let state;
   let strength;
   const times = [];
   for (const a of args) {
     const t = /^(\d{1,2})[:h](\d{2})$/.exec(a);
     const word = String(a).toLowerCase();
-    if (a === 'on' || a === 'off') {
+    if (word === 'on' || word === 'off') {
       if (state !== undefined) return { error: `Give "on" or "off" once.\n${BLUE_USAGE}` };
-      state = a;
+      state = word;
     } else if (t) {
       const h = Number(t[1]);
       const m = Number(t[2]);
@@ -643,8 +643,11 @@ export function parseBlueArgs(args) {
 const blueWhen = (c) => (c.blueFilter === 1 ? 'always on'
   : c.blueFilter === 2 ? `on from ${hhmm(c.blueFrom)} to ${hhmm(c.blueTo)}` : 'off');
 
-// One gadget's filter from /api/info -> "on from 21:00 to 07:00 (strength 60%)".
-const blueLine = (info) => `${blueWhen(info)} (strength ${info.blueStrength}%)`;
+// One gadget's filter from /api/info -> "on from 21:00 to 07:00 (strength 60%)". A firmware from
+// before the slider reports only the old level.
+const blueLine = (info) => (Number.isInteger(info.blueStrength)
+  ? `${blueWhen(info)} (strength ${info.blueStrength}%)`
+  : `${blueWhen(info)} (to choose the strength, update it with /miblo:update)`);
 
 async function blue(args, { store, client }) {
   const { id, rest, error } = takeId(args);
@@ -654,13 +657,16 @@ async function blue(args, { store, client }) {
   const t = targetsFor(store, id);
   if (t.error) return t.error;
 
-  // /api/info first: a firmware from before the slider would accept the patch and silently ignore
-  // blueStrength (unknown fields are ignored), one from before the filter all of it.
+  // /api/info first: unknown config fields are ignored, so a firmware from before the filter would
+  // accept the patch and do nothing, and one from before the slider (it has on/off/schedule) would
+  // silently drop blueStrength: those are told to update instead.
+  const wantsStrength = parsed.patch?.blueStrength !== undefined;
   const infos = (await each(t.targets, (d) => client.info(d.addr, d.token))).map((r) => {
     if (r.err) return r;
     if (isReducedInfo(r.reply)) return { ...r, err: { status: 401 } };
     const n = (k) => Number.isInteger(r.reply[k]);
-    if (!n('blueStrength') || !n('blueFilter') || !n('blueFrom') || !n('blueTo')) return { ...r, err: { status: 404 } };
+    if (!n('blueFilter') || !n('blueFrom') || !n('blueTo')) return { ...r, err: { status: 404 } };
+    if (wantsStrength && !n('blueStrength')) return { ...r, err: { status: 404 } };
     return r;
   });
 

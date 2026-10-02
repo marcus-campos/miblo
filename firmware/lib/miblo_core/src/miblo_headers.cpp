@@ -90,6 +90,24 @@ GatherResult gatherHeaders(HeaderBuffer& buf, ByteSource& src, uint32_t budgetMs
   }
 }
 
+size_t drainInput(ByteSource& src, uint32_t budgetMs, size_t maxBytes) {
+  char sink[64];
+  size_t total = 0;
+  const uint32_t start = src.nowMs();
+  while (total < maxBytes && src.nowMs() - start < budgetMs) {
+    size_t k = src.available();
+    if (k) {
+      if (k > sizeof(sink)) k = sizeof(sink);
+      if (k > maxBytes - total) k = maxBytes - total;
+      total += src.read(sink, k);
+      continue;
+    }
+    if (!src.connected()) break;
+    src.wait();
+  }
+  return total;
+}
+
 BodyAction decideBody(HeaderVerdict v, bool isPost, bool isUpdatePath, bool armed, bool locked) {
   switch (v) {
     case HeaderVerdict::Plain:

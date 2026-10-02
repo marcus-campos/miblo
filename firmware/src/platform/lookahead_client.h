@@ -11,6 +11,8 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
+#include <memory>
+
 #include "miblo_headers.h"
 
 class LookaheadClient : public WiFiClient {
@@ -26,6 +28,15 @@ class LookaheadClient : public WiFiClient {
   miblo::GatherResult gatherHeaders(uint32_t budgetMs) {
     Source src{*this};
     return miblo::gatherHeaders(ahead_, src, budgetMs);
+  }
+  // Drops what the client still sends (the read-ahead bytes, then the socket) for a bounded time:
+  // the lingering close after a refused upload (miblo::drainInput).
+  void discardInput(uint32_t budgetMs, size_t maxBytes) {
+    const size_t ahead = ahead_.pending();
+    ahead_.clear();
+    if (ahead >= maxBytes) return;
+    Source src{*this};
+    miblo::drainInput(src, budgetMs, maxBytes - ahead);
   }
   // The bytes read ahead and not consumed yet, as one header block.
   miblo::HeaderVerdict aheadVerdict() const { return ahead_.verdict(); }
@@ -51,10 +62,14 @@ class LookaheadClient : public WiFiClient {
     else WiFiClient::peekConsume(n);
   }
   uint8_t connected() override { return ahead_.pending() ? 1 : WiFiClient::connected(); }
-  void stop() override {
+  void stop() override { (void)stop(0); }
+  bool stop(unsigned int maxWaitMs) {  // WiFiClient's is not virtual: keep both in step
     ahead_.clear();
-    WiFiClient::stop();
+    return WiFiClient::stop(maxWaitMs);
   }
+  // A copy carries the bytes still to replay (HeaderBuffer copies are deep).
+  std::unique_ptr<WiFiClient> clone() const override { return std::unique_ptr<WiFiClient>(new LookaheadClient(*this)); }
+  using WiFiClient::flush;  // output only: nothing to do with the read-ahead
 
  private:
   // gatherHeaders' view of the socket itself (never the read-ahead bytes).
@@ -68,7 +83,9 @@ class LookaheadClient : public WiFiClient {
       const int r = c.WiFiClient::read((uint8_t*)dst, n);
       return r > 0 ? (size_t)r : 0;
     }
-    bool connected() override { return c.WiFiClient::connected(); }
+    // The socket itself: WiFiClient::connected() would count the read-ahead bytes (it calls the
+    // virtual available()), hiding a peer that closed mid-headers.
+    bool connected() override { return c.status() == ESTABLISHED || c.WiFiClient::available() > 0; }
     uint32_t nowMs() override { return millis(); }
     void wait() override { delay(1); }
     LookaheadClient& c;

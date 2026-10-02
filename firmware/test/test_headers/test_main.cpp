@@ -149,13 +149,46 @@ static void test_padding_bypass_with_a_late_multipart_content_type_is_seen() {
 static void test_slowloris_is_refused_within_the_wait() {
   FakeSource src;
   src.segments = {"Host: x\r\n", "X-A: 1\r\n", "X-B: 2\r\n"};
-  src.gapMs = 200;  // a line every 200 ms, never the blank line
+  src.gapMs = 400;  // a line every 400 ms, never the blank line
   HeaderBuffer b;
   TEST_ASSERT_EQUAL(GatherResult::TimedOut, gatherHeaders(b, src, kHeaderWaitMs));
   TEST_ASSERT_LESS_OR_EQUAL(kHeaderWaitMs + 1, src.now);
   TEST_ASSERT_EQUAL(BodyAction::HeadersIncomplete, decideGather(GatherResult::TimedOut));
   b.clear();
   TEST_ASSERT_FALSE(b.allocated());
+}
+
+static void test_a_retransmitted_segment_still_arrives_in_time() {
+  // The second segment was lost on a weak link and comes back after a retransmission timeout
+  // (lwIP's minimum RTO is in the hundreds of ms): the wait covers it.
+  FakeSource src;
+  src.segments = segments(chromeHeaders("application/json"));
+  src.gapMs = 600;
+  HeaderBuffer b;
+  TEST_ASSERT_GREATER_OR_EQUAL(1000, kHeaderWaitMs);
+  TEST_ASSERT_LESS_OR_EQUAL(2000, kHeaderWaitMs);  // still bounded
+  src.segments = {src.segments[0], src.segments[1] + src.segments[2]};
+  TEST_ASSERT_EQUAL(GatherResult::Ready, gatherHeaders(b, src, kHeaderWaitMs));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, b.verdict());
+}
+
+// drainInput: the lingering close after a refused upload.
+static void test_drain_input_is_bounded() {
+  FakeSource src;  // a body that keeps coming: 64 KB, 1 KB per ms
+  for (int i = 0; i < 64; i++) src.segments.push_back(std::string(1024, 'x'));
+  src.gapMs = 1;
+  TEST_ASSERT_EQUAL(32768, drainInput(src, kLingerMs, kLingerMaxBytes));  // stops at the byte cap
+  FakeSource slow;  // a trickle: stops at the time cap
+  for (int i = 0; i < 64; i++) slow.segments.push_back("y");
+  slow.gapMs = 100;
+  const size_t n = drainInput(slow, kLingerMs, kLingerMaxBytes);
+  TEST_ASSERT_LESS_OR_EQUAL(kLingerMs + 1, slow.now);
+  TEST_ASSERT_LESS_OR_EQUAL(11, n);
+  FakeSource closing;  // the client gives up: stops at once
+  closing.segments = {"abc"};
+  closing.closeAtEnd = true;
+  TEST_ASSERT_EQUAL(3, drainInput(closing, kLingerMs, kLingerMaxBytes));
+  TEST_ASSERT_LESS_OR_EQUAL(1, closing.now);
 }
 
 static void test_oversized_header_block_is_refused() {
@@ -233,6 +266,8 @@ int main() {
   RUN_TEST(test_complete_first_segment_needs_no_buffer);
   RUN_TEST(test_padding_bypass_with_a_late_multipart_content_type_is_seen);
   RUN_TEST(test_slowloris_is_refused_within_the_wait);
+  RUN_TEST(test_a_retransmitted_segment_still_arrives_in_time);
+  RUN_TEST(test_drain_input_is_bounded);
   RUN_TEST(test_oversized_header_block_is_refused);
   RUN_TEST(test_closed_connection_is_refused);
   RUN_TEST(test_body_decisions);

@@ -25,6 +25,8 @@ export function startFakeDevice({
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
   busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
   busyPath = null,
+  resetUploads = 0,  // the next `resetUploads` POST /update are reset (RST) before the body is read,
+  // as the firmware's hook does when it refuses an upload it cannot answer in time
 } = {}) {
   const state = {
     token: null, tokens: [...tokens], snapshots: [], config: {}, resets: 0, badCodes: 0, lockedUntil: 0,
@@ -35,7 +37,7 @@ export function startFakeDevice({
     reminders: [],  // [{id, dueAt} one-off (ids 1..4) | {id, at, days} recurring (ids 5..8), with text]
     lastRemind: null, held: false,  // held: the cat holds a reminder now (POST {dismiss:true} clears it)
     clockKnown,
-    busyLeft: busy, busyPath, busyHits: 0,  // busyHits: requests refused with 503
+    busyLeft: busy, busyPath, busyHits: 0, resetUploadsLeft: resetUploads,  // busyHits: requests refused with 503
   };
   const readRaw = (req) =>
     new Promise((resolve) => {
@@ -109,6 +111,10 @@ export function startFakeDevice({
 
   const server = http.createServer(async (req, res) => {
     const send = (code, obj) => { res.writeHead(code, { 'content-type': 'application/json' }); res.end(JSON.stringify(obj)); };
+    if (req.method === 'POST' && /^\/update(\?|$)/.test(req.url) && state.resetUploadsLeft > 0) {
+      state.resetUploadsLeft -= 1;
+      return req.socket.resetAndDestroy();
+    }
     const raw = req.method === 'POST' ? await readRaw(req) : null;
     if (state.rebooting) return req.socket.destroy();
     const url = new URL(req.url, 'http://x');

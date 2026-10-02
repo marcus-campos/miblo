@@ -68,6 +68,10 @@ export function parseUpdateArgs(args) {
   return out;
 }
 
+// A reset this soon after the upload starts is the gadget refusing it, not a crash mid-flash.
+const UPLOAD_RESET_WINDOW_MS = 5000;
+const RESET_CODES = new Set(['ECONNRESET', 'EPIPE', 'UND_ERR_SOCKET']);
+const isReset = (err) => RESET_CODES.has(err?.cause?.code) || RESET_CODES.has(err?.code);
 const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
 
 export class FirmwareUpdater {
@@ -214,6 +218,7 @@ export class FirmwareUpdater {
     ]);
     const qs = pending.codeRequired ? `?code=${encodeURIComponent(code)}` : '';
     let res, text;
+    const startedAt = Date.now();
     try {
       res = await this.fetch(`http://${d.addr}/update${qs}`, {
         method: 'POST',
@@ -222,7 +227,12 @@ export class FirmwareUpdater {
         signal: AbortSignal.timeout(this.rebootTimeoutMs),
       });
       text = await res.text();
-    } catch {
+    } catch (err) {
+      // The gadget refuses an upload it cannot take (window closed, locked out) before reading the
+      // body, so its answer is often lost to a connection reset: say what that most likely means.
+      if (isReset(err) && Date.now() - startedAt < UPLOAD_RESET_WINDOW_MS) {
+        fail(2, `${cleanName(d.name)} stopped the upload: the update window may have closed or the gadget is locked after wrong codes — run /miblo:update again.`);
+      }
       fail(1, `Could not reach ${cleanName(d.name)} during the upload. Its previous firmware stays in place.`);
     }
     let data = null;

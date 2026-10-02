@@ -1307,7 +1307,7 @@ static WebServerT::ClientFuture refuse(WiFiClient* client, PGM_P status, PGM_P b
 // the last Content-Type wins there):
 //   - usually the first TCP segment holds it, judged in place (no copy);
 //   - otherwise (a browser's ~1.1 KB of headers spans 2-3 segments of 536 B) the connection reads
-//     it ahead into a 2 KB heap buffer (LookaheadClient), waiting at most kHeaderWaitMs, and
+//     it ahead into a 2 KB heap buffer (LookaheadClient), waiting at most kHeaderWaitMs (1 s), and
 //     replays those bytes to the server unchanged. No complete block within 2 KB → 431; not
 //     within the wait, or the peer closed → 400; no memory for the buffer → 503.
 // A multipart body then passes only as POST /update while an upload window is open
@@ -1347,21 +1347,38 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
       verdict == miblo::HeaderVerdict::Multipart || verdict == miblo::HeaderVerdict::BadMultipart;
   const bool isUpload = method == F("POST") && url == F("/update");
   const bool armed = multipart && isUpload && ota::uploadArmed(*client);
+  WebServerT::ClientFuture refused;
   switch (miblo::decideBody(verdict, method == F("POST"), url == F("/update"), armed, ctx.presence.locked(now))) {
     case BodyAction::Continue:
       return WebServerT::CLIENT_REQUEST_CAN_CONTINUE;  // the firmware upload, streamed to flash
     case BodyAction::NotOpen:
-      return refuse(client, kBad, PSTR("{\"error\":\"update not open\"}"));
+      refused = refuse(client, kBad, PSTR("{\"error\":\"update not open\"}"));
+      break;
     case BodyAction::Locked:  // too many wrong codes: say so, as the upload itself would
-      return refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
-                    (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      refused = refuse(client, PSTR("429 Too Many Requests"), PSTR("{\"error\":\"locked\",\"retryAfter\":%u}"),
+                       (unsigned)((ctx.presence.lockRemainingMs(now) + 999) / 1000));
+      break;
     case BodyAction::BadBoundary:
-      return refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
+      refused = refuse(client, kBad, PSTR("{\"error\":\"bad boundary\"}"));
+      break;
     case BodyAction::CheckSize:
+      refused = WebServerT::CLIENT_REQUEST_CAN_CONTINUE;
       break;
     default:  // BadRequest (HeadersIncomplete cannot happen with a judged block)
-      return refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
+      refused = refuse(client, kBad, PSTR("{\"error\":\"bad request\"}"));
+      break;
   }
+  if (multipart) {
+    // A refused upload: the client is still sending its body. Closing now, with that body unread,
+    // resets the connection and the reply above is usually lost. Linger instead: drop what keeps
+    // coming for up to kLingerMs / kLingerMaxBytes, then the server closes. (WiFiClient has no
+    // half-close to signal the end of the reply earlier; Connection: close and Content-Length
+    // already tell the client.) Bounded: the loop pauses at most ~1 s per refused upload.
+    client->flush();
+    client->discardInput(miblo::kLingerMs, miblo::kLingerMaxBytes);
+    return refused;
+  }
+  if (refused != WebServerT::CLIENT_REQUEST_CAN_CONTINUE) return refused;
   // The header block is now complete in peekBuffer() (in place, or the read-ahead bytes).
   uint32_t len = 0;
   const bool haveLen = miblo::findContentLength(client->peekBuffer(), client->peekAvailable(), len);

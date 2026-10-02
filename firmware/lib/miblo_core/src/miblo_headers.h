@@ -61,8 +61,17 @@ struct ByteSource {
 };
 
 // How long a request's headers may take to arrive once its request line did. Bounds the hook's
-// added latency; a browser's segments come back to back, milliseconds apart.
-constexpr uint32_t kHeaderWaitMs = 300;
+// added latency. A browser's segments come back to back, milliseconds apart, but one lost on a weak
+// link only comes back after a retransmission timeout (hundreds of ms): 1 s covers that.
+constexpr uint32_t kHeaderWaitMs = 1000;
+
+// The lingering close after refusing an upload: the reply is written, then the body the client
+// is still sending is read and dropped for up to kLingerMs / kLingerMaxBytes (whichever comes
+// first, or until the client closes), so closing does not reset the connection before the client
+// has read the reply. Returns the bytes dropped.
+constexpr uint32_t kLingerMs = 1000;
+constexpr size_t kLingerMaxBytes = 32768;
+size_t drainInput(ByteSource& src, uint32_t budgetMs, size_t maxBytes);
 
 enum class GatherResult : uint8_t { Ready, TooLarge, TimedOut, Closed, NoMemory };
 

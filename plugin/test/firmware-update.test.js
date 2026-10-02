@@ -189,6 +189,18 @@ test('a send after the upload window closed (5 min) says to open it again; nothi
   }
 });
 
+test('a gadget that resets the upload right away (window closed, locked) says why and to run /miblo:update again', async () => {
+  const t = await setup({ device: { resetUploads: 1 } });
+  try {
+    await t.cli('open', 'miblo-0000');
+    const r = await t.cli('send', 'miblo-0000', '1234');
+    assert.equal(r.code, 2, r.out);
+    assert.match(r.out, /Miblo-0000 stopped the upload: the update window may have closed or the gadget is locked after wrong codes — run \/miblo:update again\./);
+    assert.equal(t.dev.state.uploads.length, 0);
+    assert.equal((await t.cli('send', 'miblo-0000', '1234')).code, 0);  // still pending: a retry works
+  } finally { await t.close(); }
+});
+
 test('lockout after repeated wrong codes reports retryAfter (on send and on open)', async () => {
   let now = 0;
   const t = await setup({ device: { now: () => now } });

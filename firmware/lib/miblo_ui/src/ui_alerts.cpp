@@ -210,11 +210,16 @@ void fanfare(Lang lang, const char* name, uint32_t durSec, uint32_t ms) {
   centred2(line, Font::BodyBold, color::GREEN, Y(160), Y(28), maxW);
 }
 
-// A tie, the knot at (cx, top): knot, blade and tip, in violet.
+// A tie on a shirt collar, the collar's top at (cx, top), 240-grid units: two light collar
+// wings, a small knot, then the blade widening down to its point (without the collar and the
+// narrow neck it read as a down arrow).
 static void tie(int cx, int top) {
-  szTri(cx, top, -3, 0, 3, 0, 0, 4, color::VIOLET);
-  szTri(cx, top, 0, 2, -4, 11, 4, 11, color::VIOLET);
-  szTri(cx, top, -4, 11, 4, 11, 0, 15, color::VIOLET);
+  szTri(cx, top, -1, 0, -6, 0, -4, 4, color::MUTED);  // collar, left wing
+  szTri(cx, top, 1, 0, 6, 0, 4, 4, color::MUTED);     // collar, right wing
+  szTri(cx, top, -2, 1, 2, 1, 0, 4, color::VIOLET);   // knot
+  szTri(cx, top, -1, 4, 1, 4, 3, 12, color::VIOLET);  // blade, widening
+  szTri(cx, top, -1, 4, 3, 12, -3, 12, color::VIOLET);
+  szTri(cx, top, -3, 12, 3, 12, 0, 15, color::VIOLET);  // point
 }
 
 // Meeting badge, an overlay drawn every frame over whatever screen is up (it has no region of

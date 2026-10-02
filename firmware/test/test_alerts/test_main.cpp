@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <unity.h>
 
@@ -335,6 +336,196 @@ static void test_extend_hero_for_the_fanfare() {
   TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, t.flashMs + kFanfareMs).phase);
 }
 
+static void setState(const char* id, SessionState st) {
+  for (int i = 0; i < snap.count; i++) {
+    if (strcmp(snap.sessions[i].id, id) == 0) snap.sessions[i].st = st;
+  }
+}
+
+// Runs the sequencer until nothing is on screen; returns the time.
+static uint32_t drain(AlertSequencer& q, uint32_t now) {
+  while (q.update(snap, now).phase != AlertPhase::None) now += 100;
+  return now;
+}
+
+// Eight sessions finish during a focus round: the held "finished" alerts fill the queue. A
+// permission that comes in then still flashes right away, with or without reminders.
+static void test_held_finished_never_crowds_out_a_permission() {
+  const uint32_t reminders[] = {120000u, 0u};
+  for (uint32_t reminder : reminders) {
+    AlertSequencer q;
+    AlertTiming t;
+    t.reminderMs = reminder;
+    q.setTiming(t);
+    q.setModifiers({true, false, true});
+    reset();
+    char id[4];
+    for (int i = 0; i < kMaxAlerts; i++) {
+      snprintf(id, sizeof(id), "d%d", i);
+      session(id, SessionState::Done);
+    }
+    for (int i = 0; i < kMaxAlerts; i++) {
+      snap.alertCount = 0;
+      snprintf(id, sizeof(id), "d%d", i);
+      alert((uint32_t)i + 1, AlertKind::Done, id);
+      q.ingest(snap, 0);
+    }
+    TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, 10).phase);
+    TEST_ASSERT_EQUAL_UINT8(kMaxAlerts, q.queued());
+    session("p", SessionState::Perm);
+    snap.alertCount = 0;
+    alert(100, AlertKind::Perm, "p");
+    q.ingest(snap, 20);
+    const AlertView& v = q.update(snap, 20);
+    TEST_ASSERT_EQUAL(AlertPhase::Flash, v.phase);
+    TEST_ASSERT_EQUAL(AlertKind::Perm, v.kind);
+    TEST_ASSERT_EQUAL_STRING("p", v.sid);
+  }
+}
+
+// The same session finishing twice during the hold (no Running seen in between) shows one
+// "finished" at the break, not two.
+static void test_held_finished_shows_once_per_session() {
+  AlertSequencer q;
+  q.setModifiers({true, false, true});
+  reset();
+  session("d", SessionState::Done);
+  alert(1, AlertKind::Done, "d");
+  q.ingest(snap, 0);
+  snap.alertCount = 0;
+  alert(2, AlertKind::Done, "d");
+  q.ingest(snap, 10);
+  TEST_ASSERT_EQUAL_UINT8(1, q.queued());
+  q.setModifiers({true, false, false});
+  TEST_ASSERT_EQUAL(AlertKind::Done, q.update(snap, 20).kind);
+  const uint32_t now = drain(q, 20);
+  TEST_ASSERT_EQUAL(AlertPhase::None, q.update(snap, now + 100).phase);
+  TEST_ASSERT_EQUAL_UINT8(0, q.queued());
+}
+
+// Insistence follows the session being reminded: when it stops waiting, the next session's
+// reminders start plain again; a brand-new permission always starts at level 0.
+static void test_insistence_resets_per_session() {
+  AlertSequencer q;
+  reset();
+  session("a", SessionState::Perm, 100);
+  session("b", SessionState::Perm, 200);
+  uint32_t now = 0;
+  q.update(snap, now);
+  char first[9] = "";
+  uint8_t level = 0;
+  for (int i = 0; i < 5; i++) {
+    now += 200000;
+    const AlertView& v = q.update(snap, now);
+    TEST_ASSERT_EQUAL(AlertPhase::Flash, v.phase);
+    strcpy(first, v.sid);
+    level = v.level;
+    now = drain(q, now);
+  }
+  TEST_ASSERT_EQUAL_UINT8(2, level);
+  setState(first, SessionState::Running);  // answered; the other one still waits
+  now += 200000;
+  const AlertView& v = q.update(snap, now);
+  TEST_ASSERT_EQUAL(AlertPhase::Flash, v.phase);
+  TEST_ASSERT_TRUE(strcmp(first, v.sid) != 0);
+  TEST_ASSERT_EQUAL_UINT8(0, v.level);
+  now = drain(q, now);
+  // Push the second wait to level 2, then a new permission arrives: it starts plain.
+  for (int i = 0; i < 4; i++) {
+    now += 200000;
+    q.update(snap, now);
+    now = drain(q, now);
+  }
+  session("c", SessionState::Perm, 300);
+  alert(50, AlertKind::Perm, "c");
+  q.ingest(snap, now + 1);
+  const AlertView& c = q.update(snap, now + 1);
+  TEST_ASSERT_EQUAL_STRING("c", c.sid);
+  TEST_ASSERT_EQUAL_UINT8(0, c.level);
+}
+
+// Property: random finishes, permissions and questions over 12 sessions, the focus hold going
+// on and off, reminders on or off: every permission/question flashes and reaches its hero
+// while its session still waits, within one alert cycle per alert queued ahead of it.
+static void test_every_needs_you_alert_is_shown() {
+  const int kSessions = 12;
+  for (uint32_t seed = 1; seed <= 60; seed++) {
+    uint32_t r = seed * 2654435761u;
+    auto rnd = [&](uint32_t n) {
+      r = r * 1103515245u + 12345u;
+      return (r >> 16) % n;
+    };
+    AlertSequencer q;
+    AlertTiming t;
+    t.reminderMs = (seed % 2) ? 120000 : 0;
+    q.setTiming(t);
+    reset();
+    char ids[kSessions][4];
+    for (int i = 0; i < kSessions; i++) {
+      snprintf(ids[i], sizeof(ids[i]), "s%d", i);
+      session(ids[i], SessionState::Running, 100 + i);
+    }
+    uint32_t pendingId[kSessions] = {};   // alert id still to be shown for that session
+    uint32_t pendingAt[kSessions] = {};   // when it came in
+    bool sawFlash[kSessions] = {};
+    const uint32_t cycle = t.flashMs + t.heroPermMs;
+    const uint32_t bound = (kMaxAlerts + 1) * (2 * cycle) + 1000;
+    uint32_t now = 0, nextId = 1;
+    bool hold = false;
+    for (int step = 0; step < 120; step++) {
+      const uint32_t ev = rnd(10);
+      const int k = (int)rnd(kSessions);
+      snap.alertCount = 0;
+      int waiting = 0;
+      for (int i = 0; i < kSessions; i++) waiting += snap.sessions[i].st == SessionState::Perm ||
+                                                     snap.sessions[i].st == SessionState::Question;
+      if (ev < 4) {  // a session finishes (not one that waits on the user)
+        if (!pendingId[k] && snap.sessions[k].st != SessionState::Perm && snap.sessions[k].st != SessionState::Question) {
+          snap.sessions[k].st = SessionState::Done;
+          alert(nextId++, AlertKind::Done, ids[k]);
+        }
+      } else if (ev < 7) {  // a session asks (at most kMaxAlerts waiting at once)
+        if (snap.sessions[k].st != SessionState::Perm && snap.sessions[k].st != SessionState::Question &&
+            waiting < kMaxAlerts) {
+          const bool perm = rnd(2);
+          snap.sessions[k].st = perm ? SessionState::Perm : SessionState::Question;
+          pendingId[k] = nextId;
+          pendingAt[k] = now;
+          sawFlash[k] = false;
+          alert(nextId++, perm ? AlertKind::Perm : AlertKind::Question, ids[k]);
+        }
+      } else if (ev < 8) {  // a session that was shown gets its answer
+        if (!pendingId[k] && (snap.sessions[k].st == SessionState::Perm || snap.sessions[k].st == SessionState::Question)) {
+          snap.sessions[k].st = SessionState::Running;
+        }
+      } else if (ev < 9) {
+        hold = !hold;
+      } else if (snap.sessions[k].st == SessionState::Done || snap.sessions[k].st == SessionState::Idle) {
+        snap.sessions[k].st = SessionState::Running;  // a new prompt
+      }
+      snap.seq++;
+      q.setModifiers({true, false, hold});
+      q.ingest(snap, now);
+      const uint32_t until = now + rnd(30000);
+      for (; now < until; now += 100) {
+        const AlertView& v = q.update(snap, now);
+        for (int i = 0; i < kSessions; i++) {
+          if (!pendingId[i] || strcmp(v.sid, ids[i]) != 0 || v.kind == AlertKind::Done) continue;
+          if (v.phase == AlertPhase::Flash) sawFlash[i] = true;
+          if (v.phase == AlertPhase::Hero && sawFlash[i]) pendingId[i] = 0;
+        }
+        for (int i = 0; i < kSessions; i++) {
+          if (pendingId[i] && now - pendingAt[i] > bound) {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "seed %u session %d alert %u", (unsigned)seed, i, (unsigned)pendingId[i]);
+            TEST_FAIL_MESSAGE(msg);
+          }
+        }
+      }
+    }
+  }
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_flash_then_hero_then_summary_for_permission);
@@ -353,5 +544,9 @@ int main() {
   RUN_TEST(test_hold_done_only_holds_finished);
   RUN_TEST(test_held_done_is_dropped_when_stale);
   RUN_TEST(test_extend_hero_for_the_fanfare);
+  RUN_TEST(test_held_finished_never_crowds_out_a_permission);
+  RUN_TEST(test_held_finished_shows_once_per_session);
+  RUN_TEST(test_insistence_resets_per_session);
+  RUN_TEST(test_every_needs_you_alert_is_shown);
   return UNITY_END();
 }

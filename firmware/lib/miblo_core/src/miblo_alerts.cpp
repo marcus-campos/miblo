@@ -77,10 +77,38 @@ void AlertSequencer::ingest(const Snapshot& s, uint32_t nowMs) {
     const AlertItem& a = s.alerts[i];
     if (a.id <= maxId_) continue;
     maxId_ = a.id;
-    if (!t_.enabled || qn_ >= kMaxAlerts) continue;
+    if (!t_.enabled) continue;
+    // One queued alert per session and kind family: a newer "finished" replaces an older one
+    // still held for that session (it would show twice at the break), a newer "needs you"
+    // replaces an older one. Items whose session moved on are dropped to make room.
+    for (uint8_t j = 0; j < qn_;) {
+      const AlertItem& o = queue_[j];
+      const bool same = strcmp(o.sid, a.sid) == 0 && isAmber(o.kind) == isAmber(a.kind);
+      if (same || !stillValid(s, o.kind, o.sid)) {
+        removeAt(j);
+      } else {
+        j++;
+      }
+    }
+    if (qn_ >= kMaxAlerts && isAmber(a.kind)) {
+      // Full (e.g. "finished" alerts held through a focus round): a "needs you" alert is never
+      // dropped; the newest queued "finished" makes room for it.
+      for (uint8_t j = qn_; j-- > 0;) {
+        if (queue_[j].kind == AlertKind::Done) {
+          removeAt(j);
+          break;
+        }
+      }
+    }
+    if (qn_ >= kMaxAlerts) continue;  // 8 sessions already wait on you: the reminder covers the rest
     queue_[qn_++] = a;
   }
   sortQueue(s);
+}
+
+void AlertSequencer::removeAt(uint8_t i) {
+  for (uint8_t j = i + 1; j < qn_; j++) queue_[j - 1] = queue_[j];
+  qn_--;
 }
 
 void AlertSequencer::start(AlertKind kind, const char* sid, uint32_t nowMs, uint8_t level) {
@@ -117,7 +145,13 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
     pendingSinceMs_ = nowMs;
   } else if (!pending) {
     pendingObserved_ = false;
-    reminders_ = 0;  // nobody waits any more: insistence starts over
+  }
+  if (remindSid_[0]) {  // the session being reminded stopped waiting: insistence starts over
+    const int i = findSession(s, remindSid_);
+    if (i < 0 || (s.sessions[i].st != SessionState::Perm && s.sessions[i].st != SessionState::Question)) {
+      reminders_ = 0;
+      remindSid_[0] = 0;
+    }
   }
   if (!t_.enabled) {
     view_.phase = AlertPhase::None;
@@ -147,10 +181,9 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
         i++;
         continue;
       }
-      for (uint8_t j = i + 1; j < qn_; j++) queue_[j - 1] = queue_[j];
-      qn_--;
+      removeAt(i);
       if (valid) {
-        start(next.kind, next.sid, nowMs, isAmber(next.kind) ? levelNow() : 0);
+        start(next.kind, next.sid, nowMs, 0);  // a new alert: plain, whatever came before
         return view_;
       }
     }
@@ -161,6 +194,11 @@ const AlertView& AlertSequencer::update(const Snapshot& s, uint32_t nowMs) {
         int h = selectHero(s, false);
         if (h >= 0) {
           const SessionRow& r = s.sessions[h];
+          if (strcmp(remindSid_, r.id) != 0) {  // reminding another session: its own count
+            reminders_ = 0;
+            strncpy(remindSid_, r.id, sizeof(remindSid_) - 1);
+            remindSid_[sizeof(remindSid_) - 1] = 0;
+          }
           if (reminders_ < 255) reminders_++;
           start(r.st == SessionState::Perm ? AlertKind::Perm : AlertKind::Question, r.id, nowMs, levelNow());
         }

@@ -41,6 +41,11 @@ const ANY_AGENT = '*';
 const PERM_NOTES = new Set(['permission_prompt', 'worker_permission_prompt']);
 const QUESTION_NOTES = new Set(['elicitation_dialog', 'elicitation_url_dialog', 'agent_needs_input']);
 const ASKING = new Set(['perm', 'question']);
+// A prompt notification can reach the bridge after the prompt was answered (hooks run async):
+// one of the same kind this soon after the session left that state is that prompt, not a new one.
+const LATE_PROMPT_MS = 2000;
+// Subagent events that end a tool call: they answer an ownerless prompt that named that tool.
+const TOOL_ENDS = new Set(['PostToolUse', 'PostToolUseFailure', 'PermissionDenied']);
 
 export function pidAlive(pid) {
   if (!pid) return true;
@@ -66,6 +71,10 @@ export class SessionTracker {
   #waitDet = new Map();
   // session id -> compaction trigger ('manual' | 'auto') while one is in progress.
   #compacting = new Map();
+  // session id -> { kind, at }: the prompt state ('perm' | 'question') it last left, and when.
+  #leftAsk = new Map();
+  // session id -> the tool an ownerless (ANY_AGENT) prompt named, if any.
+  #askTool = new Map();
 
   constructor({ now = () => Date.now(), isAlive = pidAlive } = {}) {
     this.now = now;
@@ -92,7 +101,7 @@ export class SessionTracker {
     const ask = PERM_NOTES.has(note) ? 'perm' : QUESTION_NOTES.has(note) || name === 'Elicitation' ? 'question' : null;
     if (ask || name === 'ElicitationResult') {
       if (ask) this.#prompt(s, ask, agentId, evt.tool_name);
-      else if (ASKING.has(s.st)) this.#answered(s);
+      else if (s.st === 'question') this.#answered(s);
       if (s.tool !== activity[0] || s.det !== activity[1]) s.cmdLive = false;
       this.#markTool(s, activity, false);
       return created || JSON.stringify(s) !== before;
@@ -107,7 +116,6 @@ export class SessionTracker {
     }
     // Any main-thread event other than Stop means the main agent is working again.
     if (name !== 'Stop' && name !== 'StopFailure') s.waiting = false;
-    s.askBy = null;
 
     switch (name) {
       case 'SessionStart':
@@ -167,6 +175,9 @@ export class SessionTracker {
       default:
         return created;
     }
+    // The prompt shown is now the main thread's (its PermissionRequest, AskUserQuestion), or none.
+    // Bookkeeping (SessionStart, PostCompact) leaves a subagent's prompt and its owner alone.
+    if (!ASKING.has(s.st) || name === 'PermissionRequest' || name === 'PreToolUse') this.#setAskBy(s, null);
     // A main-thread PreToolUse is always a new tool call, even one repeating the last command;
     // its PermissionRequest (same call) only moves the mark if it names something else.
     this.#markTool(s, activity, name === 'PreToolUse');
@@ -253,16 +264,30 @@ export class SessionTracker {
     w.set(agentId, this.now());
     if (name === 'PermissionRequest') {
       Object.assign(s, describeTool(evt.tool_name, evt.tool_input));
-      s.askBy = agentId;
+      this.#setAskBy(s, agentId);
       this.#enter(s, 'perm');
-    } else if (ASKING.has(s.st) && (s.askBy === agentId || s.askBy === ANY_AGENT)) {
+    } else if (ASKING.has(s.st) && (s.askBy === agentId || this.#answersAny(s, name, evt))) {
       this.#answered(s);
     }
   }
 
+  // Whether this subagent event answers an ownerless prompt: any event does, unless the prompt
+  // named a tool, then only the end of that tool's call (parallel subagents keep working).
+  #answersAny(s, name, evt) {
+    if (s.askBy !== ANY_AGENT) return false;
+    const tool = this.#askTool.get(s.id);
+    return !tool || (TOOL_ENDS.has(name) && evt.tool_name === tool);
+  }
+
+  #setAskBy(s, by, tool = '') {
+    s.askBy = by;
+    if (by === ANY_AGENT && tool) this.#askTool.set(s.id, tool);
+    else this.#askTool.delete(s.id);
+  }
+
   // The prompt on screen is gone: back to running, or to the wait the main agent was in.
   #answered(s) {
-    s.askBy = null;
+    this.#setAskBy(s, null);
     this.#enter(s, 'running');
     if (s.waiting) Object.assign(s, this.#waitDet.get(s.id) ?? { tool: WAIT_AGENTS, det: '' });
   }
@@ -280,18 +305,21 @@ export class SessionTracker {
       w.set(agentId, this.now());
     }
     if (ASKING.has(s.st)) {
-      if (agentId && s.askBy === ANY_AGENT) s.askBy = agentId;
+      if (agentId && s.askBy === ANY_AGENT) this.#setAskBy(s, agentId);
       return;
     }
-    if (typeof tool === 'string' && tool && tool !== s.tool) {
-      s.tool = tool;
+    const left = this.#leftAsk.get(s.id);
+    if (left && left.kind === kind && this.now() - left.at < LATE_PROMPT_MS) return;
+    const named = typeof tool === 'string' && tool ? tool : '';
+    if (named && named !== s.tool) {
+      s.tool = named;
       s.det = '';
-    } else if (!tool && s.tool.startsWith('_')) {
+    } else if (!named && s.tool.startsWith('_')) {
       // A reserved activity (waiting on agents, compacting) is not what asks.
       s.tool = '';
       s.det = '';
     }
-    s.askBy = agentId ?? (s.waiting || this.#liveWorkers(s.id) ? ANY_AGENT : null);
+    this.#setAskBy(s, agentId ?? (s.waiting || this.#liveWorkers(s.id) ? ANY_AGENT : null), named);
     this.#enter(s, kind);
   }
 
@@ -335,6 +363,7 @@ export class SessionTracker {
 
   #enter(s, st, { alert = true } = {}) {
     if (s.st === st) return;
+    if (ASKING.has(s.st) && !ASKING.has(st)) this.#leftAsk.set(s.id, { kind: s.st, at: this.now() });
     s.st = st;
     s.since = this.now();
     this.#alerts = this.#alerts.filter((a) => a.sid !== s.id);
@@ -348,6 +377,8 @@ export class SessionTracker {
     this.#workers.delete(id);
     this.#waitDet.delete(id);
     this.#compacting.delete(id);
+    this.#leftAsk.delete(id);
+    this.#askTool.delete(id);
     this.#lastSeen.delete(id);
     this.#alerts = this.#alerts.filter((a) => a.sid !== id);
     return this.#sessions.delete(id);

@@ -132,7 +132,7 @@ The gadget updates on your next Claude Code activity.
 
 ## Commands
 
-The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you can leave it out wherever it's optional.
+The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you can leave it out wherever it's optional. The daily-life commands (focus, meeting, find, timer, say) go to every paired gadget; add `--id <id>` to send one to a single gadget.
 
 | Command | Arguments | What it does |
 |---|---|---|
@@ -144,6 +144,11 @@ The gadget `id` is shown by `/miblo:status`. When only one gadget is paired, you
 | `/miblo:rename` | `[id] [name]` | Renames a gadget (up to 20 characters). The name shows on the gadget screen, in the `/miblo` commands and, with visits on, to the other Miblos it visits. The network itself (mDNS) only ever sees the id-based `Miblo-XXXX`. With no arguments, it asks which gadget and the new name. `--default` brings back `Miblo-XXXX`. |
 | `/miblo:owner` | `[id] [--name <name>] [--birthday <DD/MM>]` | Tells the gadget your first name and birthday (day first, e.g. `14/03`, or `03-14`), so it says good morning and wishes you a happy birthday. `clear` removes either one. Both stay on the gadget only. |
 | `/miblo:demo` | `[minutes\|stop]` | Needs two or more paired Miblos. Puts them all in pet mode right away (10 minutes by default, 1–30), to show it off or to test visits between Miblos: the first visit comes within about 10 seconds. Alerts still show; it ends when Claude Code starts new work, or early with `stop`. |
+| `/miblo:focus` | `[focus-min [break-min [rounds]]] \| stop \| status` | Starts a focus session (Pomodoro) timed on the gadget: 25 min of focus, 5 min breaks and 4 rounds by default (focus 5–120 min, break 1–60, rounds 1–12; with only the focus length the break is a fifth of it). A minute of "Back to focus?" follows each break, and a long break the last round. With no arguments and a focus already on, it shows the round and the time left. `stop` ends it. |
+| `/miblo:meeting` | `[minutes] \| off` | Meeting mode for 60 min by default (1–480): no project, command or tool names on the screen (alerts say "A session needs you"), a single blink instead of the flash, a tie on the cat and an "In a meeting" badge. It never hides that a session needs you. Ends by itself or with `off`. |
+| `/miblo:find` | `[--id <id>]` | The gadget blinks, the cat waves and the settings page's QR code shows for 10 s, to spot one Miblo among several. |
+| `/miblo:timer` | `<minutes> \| stop` | A big visible countdown on the screen (1–180 min). When it ends, the screen pulses slowly and the cat holds "Time's up!". `stop` cancels it. |
+| `/miblo:say` | `<text> [--min N] \| off` | A message for people passing by your desk ("back in 10 min"), held up by the cat for 30 min by default (1–480) or until `off`. Up to 40 characters (47 bytes, so fewer with emoji or CJK). |
 | `/miblo:settings` | `[id]` | Opens the gadget's web settings page in your browser and prints its URL (also reachable at `http://<id>.local`). A paired gadget's page asks for the code shown on its screen first. |
 | `/miblo:update` | `[id] [--file path]` | Updates the plugin and then the gadget firmware from the latest GitHub release. You confirm each step and type the on-screen code. `--file` sends a local `miblo-<board>-<version>.bin` instead. |
 | `/miblo:link-statusline` | | Links Claude Code's status line to Miblo. Your original status line keeps its exact output. |

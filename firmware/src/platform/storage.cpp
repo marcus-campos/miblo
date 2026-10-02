@@ -10,6 +10,12 @@ namespace storage {
 static const char* kConfig = "/miblo/config.json";
 static const char* kTokens = "/miblo/pairs.json";
 static const char* kBoot = "/miblo/boot.cnt";
+// Recurring alarms and the countdown (miblo_desknotes.h), apart from the config.
+static const char* kNotes = "/miblo/notes.json";
+static const char* kNotesTmp = "/miblo/notes.tmp";
+// The notes document: 4 alarms (texts < 48 B) and a countdown need ~650 B on the ESP8266 when
+// read back (strings copied). Transient, on the heap, only at boot and when the notes change.
+static constexpr size_t kNotesJsonCapacity = 768;
 // Root markers, outside /miblo so that factory reset (which empties /miblo) never touches them.
 static const char* kFsMarker = "/.miblo_fs";      // this LittleFS was initialised by Miblo
 static const char* kConfigured = "/.configured";  // the unit was configured at least once
@@ -83,16 +89,38 @@ bool loadConfig(miblo::Config& cfg) {
   return true;
 }
 
-// Stub (daily-life foundation): track D implements it.
+// A missing, damaged or oversized file leaves the notes empty (DeskNotes::fromJson skips any
+// entry it does not trust).
 bool loadNotes(miblo::DeskNotes& n) {
-  (void)n;
-  return false;
+  File f = LittleFS.open(kNotes, "r");
+  if (!f) return false;
+  if (f.size() > 1024) {  // never ours: don't parse it
+    f.close();
+    return false;
+  }
+  DynamicJsonDocument doc(kNotesJsonCapacity);
+  DeserializationError err = deserializeJson(doc, f);
+  f.close();
+  if (err) return false;
+  return n.fromJson(doc.as<JsonObjectConst>());
 }
 
-// Stub (daily-life foundation): track D implements it.
+// Written to a temporary file and renamed, so a power cut never leaves half a file behind.
 bool saveNotes(const miblo::DeskNotes& n) {
-  (void)n;
-  return false;
+  DynamicJsonDocument doc(kNotesJsonCapacity);
+  n.toJson(doc.to<JsonObject>());
+  if (doc.overflowed()) return false;
+  File f = LittleFS.open(kNotesTmp, "w");
+  if (!f) return false;
+  const bool ok = serializeJson(doc, f) > 0;
+  f.close();
+  if (!ok) {
+    LittleFS.remove(kNotesTmp);
+    return false;
+  }
+  if (LittleFS.rename(kNotesTmp, kNotes)) return true;
+  LittleFS.remove(kNotes);  // in case this LittleFS won't rename over an existing file
+  return LittleFS.rename(kNotesTmp, kNotes);
 }
 
 bool saveConfig(const miblo::Config& cfg) {
@@ -164,6 +192,8 @@ void factoryReset() {
   LittleFS.remove(kConfig);
   LittleFS.remove(kTokens);
   LittleFS.remove(kBoot);
+  LittleFS.remove(kNotes);
+  LittleFS.remove(kNotesTmp);
   WiFi.persistent(true);
 #if defined(ESP8266)
   WiFi.disconnect(true);  // with persistent(true), erases the SSID/password saved in the SDK

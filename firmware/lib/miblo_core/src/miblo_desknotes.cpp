@@ -48,6 +48,28 @@ static bool cleanText(const char* in, char* out, size_t cap, uint8_t maxChars) {
   return true;
 }
 
+// ---- JSON fields (requests and /notes.json) ----
+
+// A flag such as {"off":true}: absent (on = false), true (on = true), anything else (*bad = key).
+static bool flag(JsonObjectConst body, const char* key, bool& on, const char** bad) {
+  on = false;
+  if (!body.containsKey(key)) return true;
+  if (!body[key].is<bool>() || !body[key].as<bool>()) {
+    *bad = key;
+    return false;
+  }
+  on = true;
+  return true;
+}
+
+// A whole number in [lo, hi] (not a float, a string or a boolean).
+static bool intField(JsonObjectConst body, const char* key, long lo, long hi, long& out) {
+  JsonVariantConst v = body[key];
+  if (!v.is<long>()) return false;
+  out = v.as<long>();
+  return out >= lo && out <= hi;
+}
+
 // Days since 1970-01-01 (proleptic Gregorian), for whole-day differences.
 static int32_t dayNumber(const Date& d) {
   const int y = d.year - (d.month <= 2);
@@ -59,6 +81,15 @@ static int32_t dayNumber(const Date& d) {
 }
 
 static bool before(const Date& a, const Date& b) { return dayNumber(a) < dayNumber(b); }
+
+static bool leapYear(unsigned y) { return y % 4 == 0 && (y % 100 != 0 || y % 400 == 0); }
+
+// A real calendar day (no table: a static array would sit in RAM on the ESP8266).
+static bool realDay(long y, long m, long d) {
+  if (m < 1 || m > 12 || d < 1) return false;
+  const long days = m == 2 ? 28 + leapYear((unsigned)y) : 30 + ((m + (m > 7)) & 1);
+  return d <= days;
+}
 
 // ---- say ----
 
@@ -79,30 +110,70 @@ const char* DeskNotes::saying(uint32_t nowMs) const {
 
 // ---- reminders and alarms ----
 
+uint8_t DeskNotes::addReminder(uint32_t dueMs, const char* text) {
+  char clean[kNoteBytes];
+  if (!cleanText(text, clean, sizeof(clean), kNoteChars)) return 0;
+  uint8_t slot = kMaxReminders;
+  for (uint8_t i = 0; i < kMaxReminders && slot == kMaxReminders; i++) {
+    if (!rem_[i].text[0]) slot = i;
+  }
+  // A reminder the cat is holding still occupies its slot (its text lives there): a new one
+  // takes its place rather than being refused, and the cat puts the old one down.
+  if (slot == kMaxReminders && heldKind_ == NoteKind::Reminder) {
+    slot = heldId_ - 1;
+    release();
+  }
+  if (slot == kMaxReminders) return 0;
+  rem_[slot].dueMs = dueMs;
+  memcpy(rem_[slot].text, clean, sizeof(clean));
+  return slot + 1;
+}
+
 uint8_t DeskNotes::remindIn(uint16_t minutes, const char* text, uint32_t nowMs) {
-  (void)minutes;
-  (void)text;
-  (void)nowMs;
-  return 0;
+  if (!minutes || minutes > 1440) return 0;
+  return addReminder(nowMs + minutes * kMinMs, text);
 }
 
 uint8_t DeskNotes::remindAt(uint16_t minute, int nowMinute, const char* text, uint32_t nowMs) {
-  (void)minute;
-  (void)nowMinute;
-  (void)text;
-  (void)nowMs;
-  return 0;
+  if (minute >= 1440 || nowMinute < 0 || nowMinute >= 1440) return 0;
+  int ahead = (int)minute - nowMinute;
+  if (ahead <= 0) ahead += 1440;  // this minute or earlier: tomorrow
+  return addReminder(nowMs + (uint32_t)ahead * kMinMs, text);
 }
 
 uint8_t DeskNotes::addAlarm(uint16_t minute, uint8_t days, const char* text) {
-  (void)minute;
-  (void)days;
-  (void)text;
+  char clean[kNoteBytes];
+  if (minute >= 1440 || !days || days > 0x7F || !cleanText(text, clean, sizeof(clean), kNoteChars)) return 0;
+  for (uint8_t i = 0; i < kMaxAlarms; i++) {
+    Alarm& a = alarms_[i];
+    if (a.days) continue;
+    a.minute = minute;
+    a.days = days;
+    a.lastDay = 0;
+    memcpy(a.text, clean, sizeof(clean));
+    due_ &= ~(1u << i);
+    dirty_ = true;
+    return kMaxReminders + 1 + i;
+  }
   return 0;
 }
 
 bool DeskNotes::remove(uint8_t id) {
-  (void)id;
+  if (id >= 1 && id <= kMaxReminders) {
+    if (!rem_[id - 1].text[0]) return false;
+    if (heldKind_ == NoteKind::Reminder && heldId_ == id) release();
+    rem_[id - 1].text[0] = 0;
+    return true;
+  }
+  if (id > kMaxReminders && id <= kMaxReminders + kMaxAlarms) {
+    const uint8_t i = id - kMaxReminders - 1;
+    if (!alarms_[i].days) return false;
+    if (heldKind_ == NoteKind::Alarm && heldId_ == id) release();
+    alarms_[i] = Alarm{};
+    due_ &= ~(1u << i);
+    dirty_ = true;
+    return true;
+  }
   return false;
 }
 
@@ -187,14 +258,22 @@ uint32_t DeskNotes::findElapsed(uint32_t nowMs) const { return nowMs - findStart
 // ---- every frame ----
 
 NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int minute) {
-  (void)dayKey;
-  (void)weekday;
-  (void)minute;
   if (finding_ && nowMs - findStartMs_ >= kFindMs) finding_ = false;  // never "finding" again after a wrap
   if (heldKind_ != NoteKind::None && nowMs - heldStartMs_ >= kHeldMs) release();
   if (timerLenMs_ && nowMs - timerStartMs_ >= timerLenMs_) {
     timerLenMs_ = 0;
     due_ |= kDueTimer;
+  }
+  // Alarms only with the local time known: at their minute, or the one after it when the loop
+  // missed it; once per day.
+  if (dayKey && minute >= 0 && weekday < 7) {
+    for (uint8_t i = 0; i < kMaxAlarms; i++) {
+      Alarm& a = alarms_[i];
+      const int late = minute - (int)a.minute;
+      if (!(a.days >> weekday & 1) || late < 0 || late > 1 || a.lastDay == (uint16_t)dayKey) continue;
+      a.lastDay = (uint16_t)dayKey;
+      due_ |= 1u << i;
+    }
   }
   // One thing at a time: what came due while the cat held something waits for it to go.
   if (heldKind_ != NoteKind::None) return NoteKind::None;
@@ -202,6 +281,22 @@ NoteKind DeskNotes::update(uint32_t nowMs, uint32_t dayKey, uint8_t weekday, int
     due_ &= ~kDueTimer;
     hold(NoteKind::Timer, 0, nowMs);
     return NoteKind::Timer;
+  }
+  // The most overdue one-off reminder.
+  uint8_t pick = kMaxReminders;
+  for (uint8_t i = 0; i < kMaxReminders; i++) {
+    if (!rem_[i].text[0] || (int32_t)(nowMs - rem_[i].dueMs) < 0) continue;
+    if (pick == kMaxReminders || (int32_t)(rem_[pick].dueMs - rem_[i].dueMs) > 0) pick = i;
+  }
+  if (pick < kMaxReminders) {
+    hold(NoteKind::Reminder, pick + 1, nowMs);
+    return NoteKind::Reminder;
+  }
+  for (uint8_t i = 0; i < kMaxAlarms; i++) {
+    if (!(due_ & (1u << i))) continue;
+    due_ &= ~(1u << i);
+    hold(NoteKind::Alarm, kMaxReminders + 1 + i, nowMs);
+    return NoteKind::Alarm;
   }
   return NoteKind::None;
 }
@@ -226,42 +321,81 @@ bool DeskNotes::takeDirty() {
   return d;
 }
 
-void DeskNotes::toJson(JsonObject out) const { (void)out; }
-
-bool DeskNotes::fromJson(JsonObjectConst in) {
-  (void)in;
-  return false;
+// {"v":1,"alarms":[{"m":585,"d":62,"t":"daily"}],"cd":{"l":"release","y":2026,"mo":10,"d":15}}
+// Texts are not copied: the document must not outlive this object.
+void DeskNotes::toJson(JsonObject out) const {
+  out["v"] = 1;
+  JsonArray arr = out.createNestedArray("alarms");
+  for (const Alarm& a : alarms_) {
+    if (!a.days) continue;
+    JsonObject o = arr.createNestedObject();
+    o["m"] = a.minute;
+    o["d"] = a.days;
+    o["t"] = (const char*)a.text;
+  }
+  if (countdown_.label[0]) {
+    JsonObject cd = out.createNestedObject("cd");
+    cd["l"] = (const char*)countdown_.label;
+    cd["y"] = countdown_.date.year;
+    cd["mo"] = countdown_.date.month;
+    cd["d"] = countdown_.date.day;
+  }
 }
 
+// Read back from /notes.json, which may be damaged: anything that is not exactly what toJson
+// writes is skipped, entry by entry. False (nothing changed) when it is not a version-1 object.
+bool DeskNotes::fromJson(JsonObjectConst in) {
+  if (in.isNull() || !in["v"].is<int>() || in["v"].as<int>() != 1) return false;
+  for (uint8_t i = 0; i < kMaxAlarms; i++) {
+    if (heldKind_ == NoteKind::Alarm && heldId_ == kMaxReminders + 1 + i) release();
+    alarms_[i] = Alarm{};
+  }
+  due_ &= kDueTimer;
+  for (JsonObjectConst a : in["alarms"].as<JsonArrayConst>()) {
+    long m, d;
+    if (!intField(a, "m", 0, 1439, m) || !intField(a, "d", 1, 0x7F, d)) continue;
+    if (!addAlarm((uint16_t)m, (uint8_t)d, a["t"].as<const char*>())) continue;
+  }
+  countdown_ = Countdown{};
+  JsonObjectConst cd = in["cd"];
+  long y, mo, d;
+  if (intField(cd, "y", 2020, 2199, y) && intField(cd, "mo", 1, 12, mo) && intField(cd, "d", 1, 31, d) &&
+      realDay(y, mo, d)) {
+    setCountdown(cd["l"].as<const char*>(), Date{(uint16_t)y, (uint8_t)mo, (uint8_t)d});
+  }
+  dirty_ = false;
+  return true;
+}
+
+// GET /api/remind: [{"id":1,"in":840,"text":"…"}, {"id":5,"at":"09:45","days":62,"text":"daily"}]
+// (`in`: seconds left, rounded up; 0 = due, waiting for the cat). Texts are not copied.
 void DeskNotes::listJson(JsonArray out, uint32_t nowMs, uint32_t nowEpoch) const {
-  (void)out;
-  (void)nowMs;
   (void)nowEpoch;
+  for (uint8_t i = 0; i < kMaxReminders; i++) {
+    const Reminder& r = rem_[i];
+    if (!r.text[0] || (heldKind_ == NoteKind::Reminder && heldId_ == i + 1)) continue;
+    const int32_t left = (int32_t)(r.dueMs - nowMs);
+    JsonObject o = out.createNestedObject();
+    o["id"] = i + 1;
+    o["in"] = left > 0 ? ((uint32_t)left + 999) / 1000 : 0;
+    o["text"] = (const char*)r.text;
+  }
+  for (uint8_t i = 0; i < kMaxAlarms; i++) {
+    const Alarm& a = alarms_[i];
+    if (!a.days) continue;
+    const unsigned h = a.minute / 60, m = a.minute % 60;
+    const char at[6] = {(char)('0' + h / 10), (char)('0' + h % 10), ':', (char)('0' + m / 10), (char)('0' + m % 10), 0};
+    JsonObject o = out.createNestedObject();
+    o["id"] = kMaxReminders + 1 + i;
+    o["at"] = at;  // char[]: copied
+    o["days"] = a.days;
+    o["text"] = (const char*)a.text;
+  }
 }
 
 // ---- request handlers ----
 // Every field present is checked before anything changes; *bad names the first bad one, with the
 // same names as the CLI's FakeDevice (plugin/test/fakes/fake-device.js).
-
-// A flag such as {"off":true}: absent (on = false), true (on = true), anything else (*bad = key).
-static bool flag(JsonObjectConst body, const char* key, bool& on, const char** bad) {
-  on = false;
-  if (!body.containsKey(key)) return true;
-  if (!body[key].is<bool>() || !body[key].as<bool>()) {
-    *bad = key;
-    return false;
-  }
-  on = true;
-  return true;
-}
-
-// A whole number in [lo, hi] (not a float, a string or a boolean).
-static bool intField(JsonObjectConst body, const char* key, long lo, long hi, long& out) {
-  JsonVariantConst v = body[key];
-  if (!v.is<long>()) return false;
-  out = v.as<long>();
-  return out >= lo && out <= hi;
-}
 
 int sayRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, const char** bad) {
   const char* dummy;
@@ -286,15 +420,88 @@ int sayRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, const char** 
   return 200;
 }
 
+// "HH:MM" (two digits each) -> minute of the day.
+static bool parseHHMM(const char* s, uint16_t& minute) {
+  if (!s || strlen(s) != 5 || s[2] != ':') return false;
+  for (int i = 0; i < 5; i++) {
+    if (i != 2 && (s[i] < '0' || s[i] > '9')) return false;
+  }
+  const int h = (s[0] - '0') * 10 + (s[1] - '0'), m = (s[3] - '0') * 10 + (s[4] - '0');
+  if (h > 23 || m > 59) return false;
+  minute = (uint16_t)(h * 60 + m);
+  return true;
+}
+
 int remindRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, int nowMinute, JsonObject reply,
                   const char** bad) {
-  (void)n;
-  (void)body;
-  (void)nowMs;
-  (void)nowMinute;
-  (void)reply;
-  if (bad) *bad = "in";
-  return 400;
+  const char* dummy;
+  if (!bad) bad = &dummy;
+  if (body.containsKey("dismiss")) {
+    bool on;
+    if (!flag(body, "dismiss", on, bad)) return 400;
+    if (n.held(nowMs) == NoteKind::None) {
+      *bad = "none";
+      return 409;
+    }
+    n.dismiss();
+    return 200;
+  }
+  if (body.containsKey("delete")) {
+    long id;
+    if (!intField(body, "delete", 1, kMaxReminders + kMaxAlarms, id) || !n.remove((uint8_t)id)) {
+      *bad = "delete";
+      return 400;
+    }
+    return 200;
+  }
+  char text[kNoteBytes];
+  const bool textOk = cleanText(body["text"].as<const char*>(), text, sizeof(text), kNoteChars);
+  uint8_t id;
+  if (body.containsKey("in")) {
+    long min;
+    if (!intField(body, "in", 1, 1440, min)) {
+      *bad = "in";
+      return 400;
+    }
+    if (!textOk) {
+      *bad = "text";
+      return 400;
+    }
+    id = n.remindIn((uint16_t)min, text, nowMs);
+  } else if (body.containsKey("at")) {
+    uint16_t minute;
+    long days = 0;
+    if (!parseHHMM(body["at"].as<const char*>(), minute)) {
+      *bad = "at";
+      return 400;
+    }
+    if (body.containsKey("days") && !intField(body, "days", 1, 0x7F, days)) {
+      *bad = "days";
+      return 400;
+    }
+    if (!textOk) {
+      *bad = "text";
+      return 400;
+    }
+    if (days) {
+      id = n.addAlarm(minute, (uint8_t)days, text);
+    } else {
+      if (nowMinute < 0) {  // the time is unknown: "at 16:30" can't be placed
+        *bad = "clock";
+        return 409;
+      }
+      id = n.remindAt(minute, nowMinute, text, nowMs);
+    }
+  } else {
+    *bad = "in";
+    return 400;
+  }
+  if (!id) {
+    *bad = "full";
+    return 409;
+  }
+  reply["id"] = id;
+  return 200;
 }
 
 int timerRequest(DeskNotes& n, JsonObjectConst body, uint32_t nowMs, const char** bad) {
@@ -347,8 +554,7 @@ int countdownRequest(DeskNotes& n, JsonObjectConst body, const Date* today, cons
     // The next occurrence, today included; 02-29 waits for a leap year (at most 8 years away).
     d.year = today->year;
     for (int i = 0; i < 9; i++, d.year++) {
-      const bool leap = d.year % 4 == 0 && (d.year % 100 != 0 || d.year % 400 == 0);
-      if ((d.month != 2 || d.day != 29 || leap) && !before(d, *today)) break;
+      if (realDay(d.year, d.month, d.day) && !before(d, *today)) break;
     }
   } else {
     *bad = "date";

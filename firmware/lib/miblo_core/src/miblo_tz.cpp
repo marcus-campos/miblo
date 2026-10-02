@@ -30,8 +30,9 @@ bool tzLookup(const char* iana, char* out, size_t cap) {
     index++;
   }
   if (!found) return false;
-  const char* r = kTzPosix;
-  for (size_t k = 0; k < index; k++) {
+  const uint8_t rule = mibloRomByte((const char*)&kTzRule[index]);
+  const char* r = kTzRules;
+  for (size_t k = 0; k < rule; k++) {
     while (mibloRomByte(r) != '\n') r++;
     r++;
   }

@@ -57,8 +57,9 @@ static void test_table_shape() {
   for (size_t i = 0; i < kTzNamesLen; i++) lines += kTzNames[i] == '\n';
   TEST_ASSERT_EQUAL_size_t(kTzCount, lines);
   lines = 0;
-  for (const char* p = kTzPosix; *p; p++) lines += *p == '\n';
-  TEST_ASSERT_EQUAL_size_t(kTzCount, lines);
+  for (const char* p = kTzRules; *p; p++) lines += *p == '\n';
+  TEST_ASSERT_EQUAL_size_t(kTzRuleCount, lines);
+  for (size_t i = 0; i < kTzCount; i++) TEST_ASSERT_TRUE(kTzRule[i] < kTzRuleCount);
 }
 
 static void test_looks_posix() {

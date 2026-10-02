@@ -1,5 +1,6 @@
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { tokenTag } from '../../lib/relocation.js';
 
 // Executable contract of the firmware's HTTP API: after 5 wrong
 // pairing codes, /api/pair answers 429 for 60 s; up to 4 tokens are kept and
@@ -28,6 +29,10 @@ export function startFakeDevice({
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
   busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
   busyPath = null,
+  // GET /api/challenge?n=<32 hex>&t=<tokenTag> (firmware 1.14.0+, no token needed): {id, mac:
+  // hex HMAC-SHA256(token, n || id)} with the token whose tag is t. 'hmac' answers it, 'none' is a
+  // firmware before it (404), 'forge' is an impostor that does not know the token (a wrong mac).
+  challenge = legacy ? 'none' : 'hmac',
   resetUploads = 0,  // the next `resetUploads` POST /update are reset (RST) before the body is read,
   // as the firmware's hook does when it refuses an upload it cannot answer in time
 } = {}) {
@@ -41,6 +46,7 @@ export function startFakeDevice({
     lastRemind: null, held: false,  // held: the cat holds a reminder now (POST {dismiss:true} clears it)
     clockKnown,
     busyLeft: busy, busyPath, busyHits: 0, resetUploadsLeft: resetUploads,  // busyHits: requests refused with 503
+    challenges: 0, authHeaders: [],  // authHeaders: every Authorization header received, in order
   };
   const readRaw = (req) =>
     new Promise((resolve) => {
@@ -157,6 +163,7 @@ export function startFakeDevice({
       state.resetUploadsLeft -= 1;
       return req.socket.resetAndDestroy();
     }
+    if (req.headers.authorization !== undefined) state.authHeaders.push(req.headers.authorization);
     const raw = req.method === 'POST' ? await readRaw(req) : null;
     if (state.rebooting) return req.socket.destroy();
     const url = new URL(req.url, 'http://x');
@@ -176,6 +183,15 @@ export function startFakeDevice({
       // lang = the language the screen uses (automatic mode: en here); langSet = chosen explicitly.
       const langSet = Boolean(state.config.lang);
       return send(200, { id, name: currentName(), fw: state.fw, board, build: 'fake', proto: 1, paired: state.tokens.length > 0, lang: state.config.lang || 'en', langSet, ...rotation(), ...nightCfg(), ...blueCfg(), ...(legacy ? {} : dailyInfo()) });
+    }
+    if (req.method === 'GET' && url.pathname === '/api/challenge' && challenge !== 'none') {
+      state.challenges += 1;
+      const n = url.searchParams.get('n') ?? '';
+      if (!/^[0-9a-f]{32}$/.test(n)) return send(400, { error: 'invalid', field: 'n' });
+      if (challenge === 'forge') return send(200, { id, mac: crypto.randomBytes(32).toString('hex') });
+      const t = state.tokens.find((k) => tokenTag(k) === url.searchParams.get('t'));
+      if (!t) return send(403, { error: 'unknown' });
+      return send(200, { id, mac: crypto.createHmac('sha256', t).update(n + id).digest('hex') });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {

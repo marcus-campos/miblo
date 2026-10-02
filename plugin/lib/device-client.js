@@ -63,6 +63,13 @@ export class DeviceClient {
     return this.#retryBusy(addr, '/api/info', { token });
   }
 
+  // Proof that the gadget at `addr` holds this computer's token, without sending it (firmware
+  // 1.14.0+; an older one answers 404): {id, mac: hex HMAC-SHA256(token, nonce || id)}. `tag` is
+  // the token's tokenTag, so the gadget knows which of its tokens to use.
+  challenge(addr, nonce, tag) {
+    return this.#retryBusy(addr, `/api/challenge?n=${encodeURIComponent(nonce)}&t=${encodeURIComponent(tag)}`);
+  }
+
   // A busy (503) pair is resent: the firmware refused it before checking the code. A pair that got
   // no answer is not: it may have succeeded, and the code rotates on success, so a resend would
   // only come back "bad code" and count as a wrong guess towards the lockout.

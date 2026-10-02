@@ -178,6 +178,108 @@ static void test_greeting_lines() {
   TEST_ASSERT_EQUAL_STRING("It's my birthday!", l2);
 }
 
+static void test_easter_2024_to_2040() {
+  const struct {
+    uint16_t y;
+    uint8_t m, d;
+  } kEaster[] = {{2024, 3, 31}, {2025, 4, 20}, {2026, 4, 5},  {2027, 3, 28}, {2028, 4, 16}, {2029, 4, 1},
+                 {2030, 4, 21}, {2031, 4, 13}, {2032, 3, 28}, {2033, 4, 17}, {2034, 4, 9},  {2035, 3, 25},
+                 {2036, 4, 13}, {2037, 4, 5},  {2038, 4, 25}, {2039, 4, 10}, {2040, 4, 1}};
+  for (const auto& e : kEaster) {
+    const Date d = easterSunday(e.y);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(e.y, d.year, "year");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(e.m, d.month, "month");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(e.d, d.day, "day");
+    TEST_ASSERT_EQUAL_UINT8(0, weekdayOf(d));  // a Sunday
+  }
+}
+
+static void test_weekday_of() {
+  TEST_ASSERT_EQUAL_UINT8(5, weekdayOf(D(2026, 11, 13)));  // a Friday
+  TEST_ASSERT_EQUAL_UINT8(4, weekdayOf(D(2026, 10, 1)));   // a Thursday
+  TEST_ASSERT_EQUAL_UINT8(1, weekdayOf(D(2024, 1, 1)));    // a Monday
+  TEST_ASSERT_EQUAL_UINT8(4, weekdayOf(D(2024, 2, 29)));   // a Thursday
+  TEST_ASSERT_EQUAL_UINT8(6, weekdayOf(D(2000, 1, 1)));    // a Saturday
+}
+
+static void test_new_global_occasions() {
+  Config c;
+  TEST_ASSERT_EQUAL(Occasion::Valentine, occasionOn(c, D(2027, 2, 14)));
+  TEST_ASSERT_EQUAL(Occasion::Easter, occasionOn(c, D(2026, 4, 5)));
+  TEST_ASSERT_EQUAL(Occasion::None, occasionOn(c, D(2026, 4, 6)));
+  TEST_ASSERT_EQUAL(Occasion::ProgrammersDay, occasionOn(c, D(2027, 9, 13)));
+  TEST_ASSERT_EQUAL(Occasion::ProgrammersDay, occasionOn(c, D(2028, 9, 12)));  // leap year: day 256
+  TEST_ASSERT_EQUAL(Occasion::None, occasionOn(c, D(2028, 9, 13)));
+  TEST_ASSERT_EQUAL(Occasion::Friday13, occasionOn(c, D(2026, 11, 13)));
+  TEST_ASSERT_EQUAL(Occasion::None, occasionOn(c, D(2026, 10, 13)));           // a Tuesday
+  TEST_ASSERT_EQUAL(Occasion::ProgrammersDay, occasionOn(c, D(2030, 9, 13)));  // a Friday: the holiday wins
+  TEST_ASSERT_EQUAL(Occasion::None, occasionOn(c, D(2026, 6, 12)));           // no regional dates
+  strcpy(c.birthday, "02-14");
+  TEST_ASSERT_EQUAL(Occasion::OwnerBirthday, occasionOn(c, D(2027, 2, 14)));
+  TEST_ASSERT_EQUAL(Accessory::BunnyEars, accessoryFor(Occasion::Easter));
+  TEST_ASSERT_EQUAL(Accessory::Glasses, accessoryFor(Occasion::ProgrammersDay));
+  TEST_ASSERT_EQUAL(Accessory::Hearts, accessoryFor(Occasion::Valentine));
+  TEST_ASSERT_EQUAL(Accessory::None, accessoryFor(Occasion::Friday13));
+}
+
+static void test_occasion_priority() {
+  // Owner's birthday > Miblo's birthday > New Year > Christmas > Halloween > Easter > Valentine's >
+  // Programmer's Day > Friday the 13th.
+  Config c;
+  strcpy(c.born, "2020-04-05");
+  TEST_ASSERT_EQUAL(Occasion::MibloBirthday, occasionOn(c, D(2026, 4, 5)));  // over Easter
+  strcpy(c.birthday, "04-05");
+  TEST_ASSERT_EQUAL(Occasion::OwnerBirthday, occasionOn(c, D(2026, 4, 5)));
+  Config m;
+  strcpy(m.born, "2020-09-13");
+  TEST_ASSERT_EQUAL(Occasion::MibloBirthday, occasionOn(m, D(2030, 9, 13)));  // over Programmer's Day
+  Config f;
+  strcpy(f.born, "2020-11-13");
+  TEST_ASSERT_EQUAL(Occasion::MibloBirthday, occasionOn(f, D(2026, 11, 13)));  // over Friday the 13th
+  strcpy(f.birthday, "10-31");
+  TEST_ASSERT_EQUAL(Occasion::OwnerBirthday, occasionOn(f, D(2026, 10, 31)));  // over Halloween
+}
+
+static void test_programmers_day_greeting() {
+  Config c;
+  strcpy(c.owner, "Ana");
+  Greeter g;
+  g.update(0, true, true, D(2027, 9, 13), 9 * 60, c);
+  TEST_ASSERT_EQUAL(Greeting::ProgrammersDay, g.showing(0));
+  char l1[64], l2[64];
+  greetingLines(Lang::En, Greeting::ProgrammersDay, "Ana", "Tofu", l1, sizeof(l1), l2, sizeof(l2));
+  TEST_ASSERT_EQUAL_STRING("Ana", l1);
+  TEST_ASSERT_EQUAL_STRING("Happy Programmer's Day!", l2);
+  greetingLines(Lang::En, Greeting::ProgrammersDay, "", "Tofu", l1, sizeof(l1), l2, sizeof(l2));
+  TEST_ASSERT_EQUAL_STRING("", l1);
+  TEST_ASSERT_EQUAL_STRING("Happy Programmer's Day!", l2);
+  TEST_ASSERT_TRUE(greetingIsParty(Greeting::ProgrammersDay));
+  // Without a name it still greets, like Christmas.
+  Config anon;
+  Greeter a;
+  a.update(0, true, true, D(2028, 9, 12), 9 * 60, anon);
+  TEST_ASSERT_EQUAL(Greeting::ProgrammersDay, a.showing(0));
+  // The other new dates bring only their look, not a greeting of their own.
+  Greeter v, e;
+  v.update(0, true, true, D(2027, 2, 14), 9 * 60, anon);
+  TEST_ASSERT_EQUAL(Greeting::None, v.showing(0));
+  e.update(0, true, true, D(2026, 4, 5), 9 * 60, c);
+  TEST_ASSERT_EQUAL(Greeting::Morning, e.showing(0));
+}
+
+static void test_black_cat_schedule() {
+  uint32_t at = 0;
+  TEST_ASSERT_FALSE(passerbyAt(kPasserbyEveryMs - 1, &at));
+  TEST_ASSERT_TRUE(passerbyAt(kPasserbyEveryMs, &at));
+  TEST_ASSERT_EQUAL_UINT32(0, at);
+  TEST_ASSERT_TRUE(passerbyAt(kPasserbyEveryMs + kPasserbyMs - 1, &at));
+  TEST_ASSERT_EQUAL_UINT32(kPasserbyMs - 1, at);
+  TEST_ASSERT_FALSE(passerbyAt(kPasserbyEveryMs + kPasserbyMs, &at));
+  TEST_ASSERT_TRUE(passerbyAt(2 * kPasserbyEveryMs + 10, &at));
+  TEST_ASSERT_EQUAL_UINT32(10, at);
+  TEST_ASSERT_FALSE(passerbyAt(0, nullptr));
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_month_day_and_date_parsing);
@@ -186,5 +288,11 @@ int main(int, char**) {
   RUN_TEST(test_daily_greeting_waits_for_the_first_activity_of_the_day);
   RUN_TEST(test_party_greetings);
   RUN_TEST(test_greeting_lines);
+  RUN_TEST(test_easter_2024_to_2040);
+  RUN_TEST(test_weekday_of);
+  RUN_TEST(test_new_global_occasions);
+  RUN_TEST(test_occasion_priority);
+  RUN_TEST(test_programmers_day_greeting);
+  RUN_TEST(test_black_cat_schedule);
   return UNITY_END();
 }

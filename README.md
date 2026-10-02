@@ -103,6 +103,7 @@
 - **Seen from the corner of your eye:** status frame (off by default), slow pulses with the brightness up for focus/timer/alarms (at night at most twice the night brightness), long commands show their running time. A thin frame around the screen is amber while a session waits for you and green for a minute after one finishes; the end of a focus round, a timer, an alarm or a reminder pulses the whole screen in its colour three times (one soft pulse when a break ends), never over a permission alert, and warmed by the blue light filter like everything else.
 
 <!-- daily:look -->
+- **More special days and looks:** on Valentine's Day (Feb 14) little hearts float around the mascot; on Easter Sunday (worked out on the gadget, every year) it wears bunny ears; on Programmer's Day (the 256th day of the year: Sep 13, or Sep 12 in a leap year) it wears glasses and greets you with "Happy Programmer's Day!". On a Friday the 13th, now and then a black cat walks across pet mode, stops to look at you and goes on its way. Only dates that are the same everywhere; your birthday and the gadget's always come first. In meeting mode every mascot wears a tie; during a focus round the cat wears headphones; after 8 hours of Claude working in a day it gets faint bags under its eyes.
 
 <!-- daily:screens -->
 

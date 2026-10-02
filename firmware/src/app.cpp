@@ -492,7 +492,9 @@ void loop() {
   const bool petOn = petLatch.update(activity, idleMs, sinceSeen, petMin, now);
   const bool pet = petOn || demo;
   if (pet) screen = ScreenId::Roam;
-  if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit) roamSinceMs = now;
+  if (screen == ScreenId::Roam && current != ScreenId::Roam && current != ScreenId::Visit &&
+      current != ScreenId::Passerby)  // the black cat passes through pet mode, it does not end it
+    roamSinceMs = now;
 
   // Other Miblos on the network: what we tell them (in pet mode, napping, limits past 80%), and
   // a visit takes over the pet mode screen.

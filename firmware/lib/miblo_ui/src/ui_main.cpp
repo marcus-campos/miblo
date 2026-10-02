@@ -637,7 +637,9 @@ static uint32_t lookHash(uint32_t salt, const MascotLook& k) {
   uint32_t h = hashInt(salt, (uint32_t)(uint8_t)k.dx | (uint32_t)(uint8_t)k.dy << 8 | (uint32_t)(uint8_t)k.gx << 16 |
                                  (uint32_t)(uint8_t)k.gy << 24);
   h = hashInt(h, (uint32_t)k.eyes | (uint32_t)k.paws << 8 | (uint32_t)k.extras << 16);
-  return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8);  // a hat or colour change redraws
+  // A hat, colour, tie or mood change redraws.
+  return hashInt(h, (uint32_t)mascotAccessory() | (uint32_t)mascotStyle() << 8 | (uint32_t)mascotTie() << 16 |
+                        (uint32_t)catMood() << 24);
 }
 
 // The mascot in its box (`half` on the 240 grid), only redrawn when the expression changes. It

@@ -1,5 +1,6 @@
 #include <qrcode.h>
 
+#include "miblo_mood.h"
 #include "miblo_rom.h"
 #include "ui_screens.h"
 
@@ -146,7 +147,8 @@ uint16_t mascotSkin() { return mascotColors().skin; }
 
 // Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
 // even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
-static void drawHat(MascotPen& d, int x, int b) {
+// `phase` moves the Valentine's hearts (it changes with the look).
+static void drawHat(MascotPen& d, int x, int b, uint8_t phase) {
   switch (g_accessory) {
     case 1:  // Santa hat: red, white brim and pompom, tipped to the right
       d.tri(-15 + x, -18 + b, 15 + x, -18 + b, 11 + x, -40 + b, color::RED);
@@ -164,7 +166,71 @@ static void drawHat(MascotPen& d, int x, int b) {
       d.rect(-4 + x, -31 + b, 8, 2, color::GREEN);
       d.circle(x, -39 + b, 3, color::AMBER);
       break;
+    case 4:  // bunny ears between the cat's own, leaning out a little: white with pink insides
+      for (int e = -1; e <= 1; e += 2) {
+        const int o = e < 0 ? -1 : 0;  // mirror a w-unit-wide shape: left edge e * a + o * w
+        d.rrect(e * 6 + o * 12 + x, -28 + b, 12, 12, 5, color::WHITE);   // the base, on the head
+        d.rrect(e * 8 + o * 12 + x, -43 + b, 12, 20, 6, color::WHITE);   // the tip, leaning out
+        d.rrect(e * 10 + o * 6 + x, -39 + b, 6, 14, 3, color::EAR_IN);
+        d.rrect(e * 9 + o * 6 + x, -28 + b, 6, 8, 3, color::EAR_IN);
+      }
+      break;
+    case 5: {  // nerdy square glasses over the eyes: 2-unit rims, a bridge and the temples
+      const uint16_t rim = g_style == 2 ? color::MUTED : color::PUPIL;  // light rims on the black cat
+      for (int e = -14; e <= 14; e += 28) {
+        d.rect(e - 9 + x, -5 + b, 18, 2, rim);
+        d.rect(e - 9 + x, 15 + b, 18, 2, rim);
+        d.rect(e - 11 + x, -3 + b, 2, 18, rim);
+        d.rect(e + 9 + x, -3 + b, 2, 18, rim);
+        d.rect(e - 8 + x, -1 + b, 2, 4, color::WHITE);  // a glint on the lens
+      }
+      d.rect(-3 + x, 1 + b, 6, 2, rim);
+      d.rect(-32 + x, 1 + b, 7, 2, rim);
+      d.rect(25 + x, 1 + b, 7, 2, rim);
+      break;
+    }
+    case 6: {  // hearts floating around the head; they bob with each change of look
+      const int hb = b > 0 ? b : 0;  // they follow the cat down, never up out of the box
+      for (int i = 0; i < 3; i++) {  // above the head, by the left cheek, by the right cheek
+        const int hx = i == 0 ? 0 : i == 1 ? -41 : 41;
+        const int hy = (i == 0 ? -38 : i == 1 ? -2 : 10) + hb - 2 * ((phase + i) % 3);
+        const uint16_t c = i == 1 ? color::EAR_IN : color::RED;
+        d.circle(hx - 3, hy, 4, c);
+        d.circle(hx + 3, hy, 4, c);
+        d.tri(hx - 6, hy + 2, hx + 6, hy + 2, hx, hy + 9, c);
+      }
+      break;
+    }
     default: break;
+  }
+}
+
+// Meeting mode's tie (setMascotTie): a knot and a diamond blade under the chin, on every mascot.
+static void drawTie(MascotPen& d, int x, int b) {
+  d.tri(-8 + x, 29 + b, -2 + x, 32 + b, -5 + x, 35 + b, color::WHITE);  // the collar's points
+  d.tri(8 + x, 29 + b, 2 + x, 32 + b, 5 + x, 35 + b, color::WHITE);
+  d.rect(-3 + x, 30 + b, 6, 4, color::VIOLET);  // the knot
+  d.tri(-3 + x, 34 + b, 3 + x, 34 + b, -5 + x, 40 + b, color::VIOLET);  // the blade, widening ...
+  d.tri(3 + x, 34 + b, 5 + x, 40 + b, -5 + x, 40 + b, color::VIOLET);
+  d.tri(-5 + x, 40 + b, 5 + x, 40 + b, x, 46 + b, color::VIOLET);       // ... to a point
+}
+
+// Focus headphones (kHeadphones): a band hugging the top of the head (discs along a circle just
+// outside the head's rounded corner) and a cup on each side. Under any hat.
+static const int8_t kBand[][2] MIBLO_ROM = {{8, -22}, {13, -22}, {17, -20}, {21, -19},
+                                            {25, -16}, {28, -13}, {31, -9}, {32, -5}};
+static void drawHeadphones(MascotPen& d, int x, int b) {
+  d.rect(-13 + x, -24 + b, 26, 5, color::DIM);
+  for (size_t i = 0; i < sizeof(kBand) / sizeof(kBand[0]); i++) {
+    int8_t p[2];
+    mibloRomCopy(p, kBand[i], sizeof(p));
+    d.circle(-p[0] + x, p[1] + b, 2, color::DIM);
+    d.circle(p[0] + x, p[1] + b, 2, color::DIM);
+  }
+  for (int s = -1; s <= 1; s += 2) {
+    const int o = s < 0 ? -1 : 0;  // mirror a w-unit-wide piece: left edge s * a + o * w
+    d.rrect(s * 30 + o * 9 + x, -7 + b, 9, 19, 4, color::DIM);
+    d.rect(s * 30 + o * 2 + x, -4 + b, 2, 13, color::FAINT);  // the cushion against the head
   }
 }
 
@@ -235,8 +301,21 @@ static void drawCat(MascotPen& d, const MascotLook& k, bool innerEars, bool desk
       }
       break;
   }
+  // Tired (8 h of Claude working today, or kEyeBags): faint bags under the eyes.
+  if ((k.extras & kEyeBags) || catMood() == (uint8_t)miblo::CatMood::Tired) {
+    const int low = k.eyes == Eyes::Wide ? 2 : 0;
+    // Subtle but visible on every colour: the black cat's line colour is darker than its skin.
+    const uint16_t bag = g_style == 1 ? 0x9900 : g_style == 2 ? 0x7BCF : mc.line;
+    for (int e = -14; e <= 14; e += 28) {
+      d.rect(e - 6 + x, 16 + low + b, 2, 1, bag);
+      d.rect(e - 4 + x, 17 + low + b, 8, 1, bag);
+      d.rect(e + 4 + x, 16 + low + b, 2, 1, bag);
+    }
+  }
   d.rrect(-4 + x, 17 + b, 8, 5, 2, mc.nose);
-  drawHat(d, x, b);
+  if (k.extras & kHeadphones) drawHeadphones(d, x, b);
+  if (mascotTie()) drawTie(d, x, b);
+  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64));
   if (!desk) return;
   if (k.extras & kMouthO) d.circle(x, 26 + b, 3, mc.lid);
   if (k.extras & kMouthWide) {  // a yawn or a sneeze

@@ -425,4 +425,4 @@ Add `firmware/boards/<board>/` and a PlatformIO environment, then declare the sc
 Embedded third-party fonts and libraries keep their own licenses:
 
 - [`firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md`](firmware/lib/U8g2TFT/THIRD_PARTY_NOTICES.md): U8g2_for_TFT_eSPI (BSD-2-Clause) and the bitmap fonts. The fonts are under permissive licenses (SIL OFL 1.1, X11, public domain).
-- [`firmware/THIRD_PARTY_NOTICES.md`](firmware/THIRD_PARTY_NOTICES.md): the ESP8266 Arduino core (LGPL 2.1), TFT_eSPI, ArduinoJson, QRCode and the time zone table from posix_tz_db. License texts are in [`firmware/licenses/`](firmware/licenses/).
+- [`firmware/THIRD_PARTY_NOTICES.md`](firmware/THIRD_PARTY_NOTICES.md): the ESP8266 Arduino core (LGPL 2.1), TFT_eSPI, ArduinoJson, QRCode and the time zone table (the IANA tz database, public domain). License texts are in [`firmware/licenses/`](firmware/licenses/).

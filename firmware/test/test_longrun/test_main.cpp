@@ -121,9 +121,12 @@ class Sim {
     cfg_.flashBlinks = 2;
     cfg_.petMin = pick(rng_, {5, 10, 15});
     cfg_.sleepMin = pick(rng_, {0, 30, 60});
-    cfg_.breakAfterMin = pick(rng_, {0, 60, 90, 120});
-    cfg_.waterMin = pick(rng_, {0, 60, 90});
+    cfg_.breakAfterMin = pick(rng_, {0, 15, 45, 60, 90, 120, 235});
+    cfg_.waterMin = pick(rng_, {0, 15, 45, 60, 90, 235});
     cfg_.eyes = rng_.below(2);
+    cfg_.breakLenMin = (uint8_t)(1 + rng_.below(30));    // 1..30
+    cfg_.eyesEveryMin = (uint8_t)(10 + rng_.below(51));  // 10..60
+    cfg_.eyesSec = (uint8_t)(10 + rng_.below(51));       // 10..60
     cfg_.endOfDay = true;
     cfg_.weekly = true;
     cfg_.fanfareMin = pick(rng_, {0, 3, 5, 10});

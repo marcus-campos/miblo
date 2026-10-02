@@ -38,7 +38,7 @@ DYNAMIC_BOUNDS = [
     (r'^qrcode_initBytes$', 272, 'LOCK_VERSION=3 (29x29), inlined: codewords 71 + function grid 106 + ECC 71 + 15 + 2'),
     (r'^void setTZ\(', 48, 'tzram[strlen(rule) + 1]: the rule is net.cpp applyTimezone() char[48]'),
     (r'^umm_info_safe_printf_P$', 80, 'ram_buf[strlen(fmt) + 1]: umm_malloc formats are <= 68 bytes'),
-    (r'::_parseForm\(', 80, 'fastBoundary[boundary + 5]: a multipart boundary is <= 70 characters (RFC 2046)'),
+    (r'::_parseForm\(', 80, 'fastBoundary[boundary + 5]: web.cpp limitPostBody admits a multipart body only with a boundary <= 70 characters (RFC 2046)'),
 ]
 
 

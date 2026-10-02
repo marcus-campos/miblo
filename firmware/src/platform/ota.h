@@ -12,5 +12,10 @@ namespace ota {
 
 using ProgressHook = void (*)(uint8_t pct);
 void begin(WebServerT& server, ProgressHook onProgress);
+// Is an upload window open right now, for a request from `client`? True while the update code
+// (POST /update/open) is active, or, on a unit that needs no code, for PresenceGate::kTtlMs after
+// its POST /update/open. Outside a window the server refuses every multipart request before
+// parsing it (web.cpp, limitPostBody): a multipart body is only ever the firmware upload.
+bool uploadArmed(WiFiClient& client);
 
 }  // namespace ota

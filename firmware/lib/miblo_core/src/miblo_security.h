@@ -15,9 +15,28 @@ bool constantTimeEquals(const char* a, const char* b);
 // Finds the Content-Length header in raw HTTP header bytes (not NUL-terminated; starts at the
 // first header line, stops at the blank line). Case-insensitive. false if absent or malformed.
 bool findContentLength(const char* headers, size_t len, uint32_t& out);
-// Same raw header bytes: true only if a Content-Type header is present and its value starts with
-// "multipart/" (case-insensitive). Absent or truncated before the value → false.
-bool contentTypeIsMultipart(const char* headers, size_t len);
+
+// What ESP8266WebServer will make of a request's header block, judged from raw header bytes (the
+// first TCP segment, peeked before the server reads it). The scan follows the server's own reading
+// exactly: a line ends at '\r' and the rest up to '\n' is skipped; an empty line, or a line
+// without ':', ends the headers. For every body method the server parses a multipart/... body with
+// _parseForm, which puts the boundary on the stack (a VLA): an unbounded boundary is a crash.
+//   Plain        complete block, no multipart Content-Type.
+//   Multipart    complete block with exactly one Content-Type, multipart/..., whose value has
+//                "boundary=" as its first parameter and a boundary of 1..kMaxBoundary characters
+//                as the server sees it (everything after the first '=', quotes dropped, trimmed).
+//   BadMultipart complete block with a multipart Content-Type that is not like that (missing,
+//                empty or long boundary, another '=' first, or more than one Content-Type).
+//   Incomplete   the block does not end within the bytes: headers not seen here could still carry
+//                a multipart Content-Type (a later one wins), so nothing can be said.
+//   Malformed    a NUL byte inside the header lines (the server's String functions would read
+//                such a line differently from this scan).
+// Case-insensitive (the server matches "multipart/" case-sensitively: this is stricter). One pass
+// over `len` bytes. When the verdict is Multipart and `boundary` is given, the boundary is copied
+// there (truncated to cap - 1 characters, NUL-terminated).
+enum class HeaderVerdict : uint8_t { Plain, Multipart, BadMultipart, Incomplete, Malformed };
+constexpr size_t kMaxBoundary = 70;  // RFC 2046
+HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundary = nullptr, size_t cap = 0);
 
 // Escalating brute-force lockout shared by PairingGuard and PresenceGate: the 5th failure in a
 // row locks for 60 s, each further lockout doubles it (capped at 1 h). Only success() ends the

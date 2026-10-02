@@ -51,7 +51,7 @@ The target functions also build as a libFuzzer entry point (`-DMIBLO_LIBFUZZER
 | `friends_play` | Streams of packets, `update`/`demo`/identity changes into a `FriendPlay` | Every outgoing packet encodes and decodes; ≤ `kMaxFriends`; visit and greeting names bounded |
 | `mdns` | mDNS queries → `mdnsRespond`, with any reply buffer size | Reply ≤ cap |
 | `mdns_announce` | Any id/name/buffer sizes → `mdnsPublicIdentity` + `mdnsAnnounce` | Within cap |
-| `http` | Raw header bytes (`findContentLength`, `contentTypeIsMultipart`), `bearerToken`, `infoView`, TokenStore, PairingGuard, PresenceGate, WebSession | Within cap |
+| `http` | Raw header bytes (`findContentLength`, `checkRequestHeaders`: the multipart boundary guard), `bearerToken`, `infoView`, TokenStore, PairingGuard, PresenceGate, WebSession | Within cap |
 | `canvas_text` | Any bytes drawn with the real `TftCanvas` and u8g2 fonts (every font, width, alignment) | No out-of-bounds glyph lookup |
 | `ui_note` | Any text on the cat's sign (`wrap()`), fanfare, flash, hello, updateAvailable, paired | No crash or UB |
 | `screens` | A fuzzed snapshot drawn by overview, sessions, limits, hero, desk, summary, limitReset, roam, dayEnd and weekRecap | No crash or UB |

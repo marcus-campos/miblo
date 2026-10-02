@@ -767,15 +767,32 @@ const char* const kHttpSeeds[] = {
     "Content-Length: 99999999999999999999\r\n",
     "Content-Length: -1\r\nContent-Length: 5\r\n",
     "1234",
+    "Host: x\r\nContent-Type: multipart/form-data; boundary=\"----WebKitFormBoundary7MA4YWxkTrZu0gW\"\r\n\r\n",
+    "Content-Type: multipart/form-data; charset=x; boundary=y\r\nContent-Type: text/plain\r\n\r\n",
+    "X: a\r\n\nContent-Type:multipart/x;boundary=0123456789012345678901234567890123456789012345678901234567890123456789\r\n\r\n",
     nullptr};
 const char* const kHttpDict[] = {"Content-Length:", "content-length: ", "Content-Type:", "multipart/", "Bearer ",
-                                 "bearer\t", "\r\n", "\r\n\r\n", ": ", nullptr};
+                                 "bearer\t", "\r\n", "\r\n\r\n", ": ", "boundary=", "; boundary=\"", "\r", "\n",
+                                 nullptr};
 
 void fuzzHttp(const uint8_t* d, size_t n) {
   ExactBuf hdr(d, n);  // the raw header buffer is not NUL-terminated
   uint32_t clen = 0;
   if (findContentLength(hdr.p, hdr.n, clen)) fuzz::reached();
-  contentTypeIsMultipart(hdr.p, hdr.n);
+  // The multipart guard: a Multipart verdict always carries a 1..70 character boundary, and a
+  // smaller output buffer changes only the copy, never the verdict.
+  char boundary[kMaxBoundary + 8];
+  const HeaderVerdict v = checkRequestHeaders(hdr.p, hdr.n, boundary, sizeof(boundary));
+  if (v == HeaderVerdict::Multipart) {
+    fuzz::reached();
+    const size_t bl = strlen(boundary);
+    FUZZ_CHECK(bl <= kMaxBoundary, "boundary %zu > %zu", bl, kMaxBoundary);
+  } else {
+    FUZZ_CHECK(boundary[0] == 0, "boundary copied for a non-multipart verdict");
+  }
+  char small[3];
+  FUZZ_CHECK(checkRequestHeaders(hdr.p, hdr.n, small, sizeof(small)) == v, "verdict depends on the buffer");
+  FUZZ_CHECK(strlen(small) < sizeof(small), "small boundary overflow");
   CStr s(d, n);
   for (size_t cap : {(size_t)1, (size_t)8, (size_t)33, (size_t)64}) {
     char* tok = static_cast<char*>(malloc(cap));

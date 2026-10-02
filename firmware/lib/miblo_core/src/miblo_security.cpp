@@ -72,29 +72,95 @@ bool findContentLength(const char* headers, size_t len, uint32_t& out) {
   return found;
 }
 
-bool contentTypeIsMultipart(const char* headers, size_t len) {
-  static const char kName[] MIBLO_ROM = "content-type:";
-  static const char kPrefix[] MIBLO_ROM = "multipart/";
-  const size_t nameLen = sizeof(kName) - 1;
-  const size_t prefixLen = sizeof(kPrefix) - 1;
-  size_t i = 0;
-  while (i < len) {
-    if (headers[i] == '\r' || headers[i] == '\n') break;  // blank line: end of headers
-    bool match = len - i > nameLen;
-    for (size_t k = 0; match && k < nameLen; k++) match = lower(headers[i + k]) == (char)mibloRomByte(kName + k);
-    if (match) {
-      size_t j = i + nameLen;
-      while (j < len && (headers[j] == ' ' || headers[j] == '\t')) j++;
-      if (len - j < prefixLen) return false;
-      for (size_t k = 0; k < prefixLen; k++) {
-        if (lower(headers[j + k]) != (char)mibloRomByte(kPrefix + k)) return false;
-      }
-      return true;
-    }
-    while (i < len && headers[i] != '\n') i++;  // next line
-    i++;
+// The characters String::trim() removes (isspace in the C locale).
+static bool blank(char c) { return c == ' ' || c == '\t' || c == '\n' || c == '\v' || c == '\f' || c == '\r'; }
+
+// Case-insensitive compare of `n` bytes at `p` with a lowercase literal kept in flash.
+static bool matchesLower(const char* p, const char* romLower, size_t n) {
+  for (size_t k = 0; k < n; k++) {
+    if (lower(p[k]) != (char)mibloRomByte(romLower + k)) return false;
   }
-  return false;
+  return true;
+}
+
+// One Content-Type value [v, end) (after the ':'). Returns false if it is multipart without a
+// usable boundary; `multipart` tells whether it is multipart at all.
+static bool checkContentType(const char* v, const char* end, bool& multipart, char* out, size_t cap) {
+  static const char kPrefix[] MIBLO_ROM = "multipart/";
+  static const char kParam[] MIBLO_ROM = "boundary";
+  const size_t prefixLen = sizeof(kPrefix) - 1;
+  const size_t paramLen = sizeof(kParam) - 1;
+  while (v < end && blank(*v)) v++;  // the server trims the value
+  while (end > v && blank(end[-1])) end--;
+  multipart = (size_t)(end - v) >= prefixLen && matchesLower(v, kPrefix, prefixLen);
+  if (!multipart) return true;
+  // The server's boundary: everything after the FIRST '=' of the value, with every '"' removed.
+  const char* eq = v;
+  while (eq < end && *eq != '=') eq++;
+  if (eq == end) return false;
+  // That '=' must be the boundary parameter's ("...; boundary=").
+  const char* name = eq;
+  while (name > v && (name[-1] == ' ' || name[-1] == '\t')) name--;
+  if ((size_t)(name - v) < paramLen + 1) return false;
+  name -= paramLen;
+  if (!matchesLower(name, kParam, paramLen)) return false;
+  if (name[-1] != ';' && name[-1] != ' ' && name[-1] != '\t') return false;
+  size_t n = 0;
+  for (const char* p = eq + 1; p < end; p++) {
+    if (*p == '"') continue;
+    if (out && n + 1 < cap) out[n] = *p;
+    n++;
+  }
+  if (out && cap) out[n < cap ? n : cap - 1] = 0;
+  return n >= 1 && n <= kMaxBoundary;
+}
+
+// The scan behind checkRequestHeaders; may leave a boundary copied whatever the verdict.
+static HeaderVerdict scanHeaders(const char* h, size_t len, char* boundary, size_t cap) {
+  static const char kName[] MIBLO_ROM = "content-type";
+  const size_t nameLen = sizeof(kName) - 1;
+  if (!h) return HeaderVerdict::Incomplete;
+  uint8_t contentTypes = 0;  // saturates: any count above 1 is refused anyway
+  bool multipart = false;
+  bool bad = false;
+  size_t i = 0;
+  for (;;) {
+    // The line, as the server reads it: up to '\r'.
+    size_t e = i;
+    while (e < len && h[e] != '\r') {
+      if (h[e] == 0) return HeaderVerdict::Malformed;
+      e++;
+    }
+    if (e >= len) return HeaderVerdict::Incomplete;
+    if (e == i) break;  // empty line: end of the headers
+    size_t colon = i;
+    while (colon < e && h[colon] != ':') colon++;
+    if (colon == e) break;  // no ':': the server stops reading headers here too
+    if (colon - i == nameLen && matchesLower(h + i, kName, nameLen)) {
+      if (contentTypes < 2) contentTypes++;
+      bool isMultipart = false;
+      // Copy only the first multipart's boundary; with several Content-Types the verdict is bad.
+      if (!checkContentType(h + colon + 1, h + e, isMultipart, multipart ? nullptr : boundary, cap)) bad = true;
+      multipart = multipart || isMultipart;
+    }
+    // The server then skips up to and including '\n'.
+    size_t n = e + 1;
+    while (n < len && h[n] != '\n') {
+      if (h[n] == 0) return HeaderVerdict::Malformed;
+      n++;
+    }
+    if (n >= len) return HeaderVerdict::Incomplete;
+    i = n + 1;
+  }
+  if (!multipart) return HeaderVerdict::Plain;
+  return bad || contentTypes > 1 ? HeaderVerdict::BadMultipart : HeaderVerdict::Multipart;
+}
+
+HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundary, size_t cap) {
+  if (boundary && cap) boundary[0] = 0;
+  const HeaderVerdict v = scanHeaders(headers, len, boundary, cap);
+  if (v != HeaderVerdict::Multipart && boundary && cap) boundary[0] = 0;
+  return v;
 }
 
 void PairingGuard::setCode(const char* code4) {

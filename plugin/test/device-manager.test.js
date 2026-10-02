@@ -75,3 +75,55 @@ test('reads the gadget caps with its pairing token and tolerates the reduced /ap
   assert.equal(pushes.length, 1);
   assert.equal(mgr.status()[0].online, true);
 });
+
+// Live time zone offsets (tz-offsets.js): each gadget gets those of its own zones (/api/info tz
+// and tz2), worked out on this computer; an older firmware (no tz in /api/info) gets none.
+function zoneSetup(infos) {
+  const pushes = [];
+  let t = Date.parse('2026-10-02T12:00:00Z');
+  const client = {
+    async info(addr) { return infos[addr]; },
+    async pushState(addr, token, snap) { pushes.push([addr, snap]); },
+  };
+  const store = memStore(Object.keys(infos).map((addr, i) => ({ id: `g${i}`, name: `G${i}`, addr, token: 't' })));
+  const zones = { withZones: (snap, list, nowMs) => (list.length ? { ...snap, tz: list.map((z) => ({ z, at: nowMs })) } : snap) };
+  const mgr = new DeviceManager({ client, store, zones, now: () => t });
+  return { mgr, pushes, advance: (ms) => { t += ms; } };
+}
+
+test('sends each gadget the live offsets of its own zones', async () => {
+  const { mgr, pushes } = zoneSetup({
+    'a:80': { id: 'g0', fw: '1.11.0', tz: 'Europe/Lisbon', tz2: 'Asia/Tokyo' },
+    'b:80': { id: 'g1', fw: '1.11.0', tz: 'America/Sao_Paulo', tz2: '' },
+    'c:80': { id: 'g2', fw: '1.10.1' },  // older firmware: no tz in /api/info
+  });
+  await mgr.pushAll({ v: 1, sessions: [] });
+  const by = Object.fromEntries(pushes);
+  assert.deepEqual(by['a:80'].tz.map((e) => e.z), ['Europe/Lisbon', 'Asia/Tokyo']);
+  assert.deepEqual(by['b:80'].tz.map((e) => e.z), ['America/Sao_Paulo']);
+  assert.equal(by['c:80'].tz, undefined);
+});
+
+test('live offsets are worked out at push time; the zones are read with the caps', async () => {
+  const { mgr, pushes, advance } = zoneSetup({ 'a:80': { id: 'g0', fw: '1.11.0', tz: 'Europe/Lisbon' } });
+  await mgr.pushAll({ v: 1, sessions: [] });
+  advance(60_000);
+  await mgr.pushAll({ v: 1, sessions: [] });
+  assert.equal(pushes[1][1].tz[0].at - pushes[0][1].tz[0].at, 60_000);
+});
+
+test('the live offsets count toward the gadget\'s byte cap', async () => {
+  const pushes = [];
+  const client = {
+    async info() { return { id: 'g1', fw: '1.11.0', tz: 'Europe/Lisbon', maxSessions: 20, maxBytes: 400 }; },
+    async pushState(addr, token, snap) { pushes.push(snap); },
+  };
+  const store = memStore([{ id: 'g1', name: 'G1', addr: 'a:80', token: 't' }]);
+  const zones = { withZones: (snap) => ({ ...snap, tz: [{ z: 'Europe/Lisbon', pad: 'x'.repeat(200) }] }) };
+  const mgr = new DeviceManager({ client, store, zones, now: () => 0 });
+  const sessions = [1, 2, 3].map((i) => ({ id: `s${i}`, name: 'n'.repeat(40) }));
+  await mgr.pushAll({ v: 1, sessions, more: 0 });
+  assert.ok(Buffer.byteLength(JSON.stringify(pushes[0])) <= 400);
+  assert.ok(pushes[0].tz);
+  assert.ok(pushes[0].sessions.length < 3);
+});

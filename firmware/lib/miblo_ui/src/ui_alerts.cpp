@@ -1,4 +1,4 @@
-// Alerts: the flash when one comes in, the hero that follows, and (track B) the long task
+// Alerts: the flash when one comes in, the hero that follows, and the long task
 // fanfare and the meeting badge.
 #include <stdio.h>
 #include <string.h>

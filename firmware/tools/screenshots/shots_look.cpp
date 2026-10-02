@@ -1,4 +1,4 @@
-// Screenshots of track F's screens (see shots.h): the special days' accessories, the meeting tie,
+// Screenshots of the mascot's looks (see shots.h): the special days' accessories, the meeting tie,
 // focus headphones, tired eye bags and Friday the 13th's black cat.
 #include "miblo_mood.h"
 #include "miblo_occasions.h"

@@ -78,7 +78,7 @@ class DeskNotes {
   };
   struct Alarm {
     uint16_t minute;   // local minute of the day, 0..1439
-    uint16_t lastDay;  // low 16 bits of the dayKey it last fired on (not saved)
+    uint16_t lastDay;  // low 16 bits of the dayKey it last fired on (saved as "ld")
     uint8_t days;      // bit 0 = Sunday; 0 = free slot
     char text[kNoteBytes];
   };

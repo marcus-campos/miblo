@@ -1,4 +1,4 @@
-// Screenshots of track B's screens (see shots.h): meeting mode, insistence and the fanfare.
+// Screenshots of the alert screens (see shots.h): meeting mode, insistence and the fanfare.
 #include "miblo_overview.h"
 #include "shots.h"
 

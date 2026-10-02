@@ -178,7 +178,7 @@ screens::Clock clock() {
 
 namespace {
 
-// What the per-track files (shots.h) share, used here unqualified.
+// What the per-feature files (shots.h) share, used here unqualified.
 using shots::attention;
 using shots::clock;
 using shots::gNow;
@@ -578,7 +578,7 @@ void renderAll(Lang L) {
   mascotFrames("41-disconnected-asleep", screens::DeskMood::Asleep, [&](uint32_t ms) {
     screens::disconnected(L, clk, "192.168.0.42", "miblo-4f2a", "4827", ms, 3600000);
   });
-  // Daily life: the foundation's overlays, then one file per track (shots.h).
+  // Daily life: the shared overlays, then one file per feature (shots.h).
   shots::renderDaily(L);
   shots::renderFocus(L);
   shots::renderAlerts(L);

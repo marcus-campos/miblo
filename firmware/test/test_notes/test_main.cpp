@@ -14,7 +14,7 @@ void tearDown() {}
 
 static constexpr uint32_t M = 60000;
 
-// ---- Task 11: say, timer, countdown, find ----
+// ---- Say, timer, countdown, find ----
 
 static void test_say_note_and_its_limits() {
   miblo::DeskNotes n;
@@ -269,7 +269,7 @@ static void test_find() {
   TEST_ASSERT_FALSE(n.finding(0xFFFFFFFFu - 10 + miblo::kFindMs));
 }
 
-// ---- Task 12: reminders, recurring alarms, persistence ----
+// ---- Reminders, recurring alarms, persistence ----
 
 static int remind(miblo::DeskNotes& n, const char* json, uint32_t nowMs, int nowMinute, const char** bad,
                   int* id = nullptr) {
@@ -571,7 +571,7 @@ static void test_saved_notes_round_trip_and_garbage() {
   TEST_ASSERT_EQUAL_INT(0, list.size());
 }
 
-// ---- Task 13: the screens ----
+// ---- The screens ----
 
 static const ui::ScreenSpec kSpecs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
 static const char* const kW40 = "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW";

@@ -1,4 +1,4 @@
-// Screenshots of track A's screens (see shots.h): the focus (Pomodoro) screen in each phase.
+// Screenshots of the focus screens (see shots.h): the focus (Pomodoro) screen in each phase.
 #include "shots.h"
 
 namespace shots {

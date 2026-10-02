@@ -1,4 +1,4 @@
-// Track C: the day's rhythm — wellness nudges, the end of the work day, Monday's recap, the cat's mood.
+// The day's rhythm — wellness nudges, the end of the work day, Monday's recap, the cat's mood.
 #include <string.h>
 #include <unity.h>
 

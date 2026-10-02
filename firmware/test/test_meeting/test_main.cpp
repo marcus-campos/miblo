@@ -1,4 +1,4 @@
-// Meeting mode (MeetingMode, POST /api/meeting) and track B's screens: the anonymous flash and
+// Meeting mode (MeetingMode, POST /api/meeting) and its screens: the anonymous flash and
 // hero, the meeting badge and the long task fanfare.
 #include <ArduinoJson.h>
 #include <string.h>

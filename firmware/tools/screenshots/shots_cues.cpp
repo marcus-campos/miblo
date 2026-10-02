@@ -1,4 +1,4 @@
-// Screenshots of track E's screens (see shots.h): the strong cue's pulse and the status frame.
+// Screenshots of the cue screens (see shots.h): the strong cue's pulse and the status frame.
 #include "miblo_cues.h"
 #include "miblo_overview.h"
 #include "shots.h"

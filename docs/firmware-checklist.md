@@ -240,10 +240,12 @@ notes.
       stop` cancels it; an alert during the timer shows and the timer comes back after it.
     - **Countdown:** `/miblo:countdown "release" 15/10`: the Desk shows "release in N days"
       ("tomorrow", "is today!"); it survives a power cycle and `/miblo:countdown off` removes it.
-    - **Daylight saving (expected, not a bug):** a recurring alarm at a time the clock skips
-      when it springs forward (e.g. 02:30) does not fire that day; one at a time that repeats
-      when the clock falls back fires once. A one-off `remind HH:MM` is counted in minutes from
-      when it was set, so it fires 1 h early or late if the clock changes before it is due.
+    - **Daylight saving:** a recurring alarm at a time the clock skips when it springs forward
+      (e.g. 02:30) fires at 03:00; one at a time that repeats when the clock falls back fires
+      once. A one-off `remind HH:MM` set before the change still fires at that local time.
+    - **Missed alarm:** unplug the gadget a minute before a recurring alarm and plug it back in
+      10 min later: once it has the time, the alarm fires (late, once). Unplugged until more
+      than 30 min after it, it is skipped that day.
     - **Find:** `/miblo:find`: for 10 s the top and bottom bands pulse, the cat waves, and the QR
       code opens the settings page on a phone on the same Wi-Fi.
 
@@ -302,3 +304,28 @@ notes.
       asking for permission, an MCP server asking for input (elicitation). A call auto mode
       denies goes back to running with no alert; a turn ended by an API error stops showing
       running.
+26. **Multipart guard (security):** a multipart body is only ever the firmware upload, and only
+    while an update is open. The gadget reads each request's whole header block (up to 2 KB, over
+    several TCP segments) before deciding. From a computer on the same network, with no update
+    open (no code on the screen), check each answer, and that the gadget keeps running (no
+    reboot, the screen does not stall):
+    - `curl -i -F x=1 http://<ip>/update` → `400 {"error":"update not open"}`;
+    - `curl -i -F x=1 http://<ip>/settings` (and `-X PUT`) → `400 {"error":"bad request"}`;
+    - the same with `-H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)"` (the multipart Content-Type
+      lands in a later segment) → still `400 {"error":"bad request"}`;
+    - `curl -i -F x=1 -H "Content-Type: multipart/form-data; boundary=$(head -c 100 /dev/zero | tr '\0' a)" http://<ip>/update`
+      → `update not open`; with an update open (code on the screen) → `{"error":"bad boundary"}`;
+      with `head -c 3000` → `431 {"error":"headers too large"}`, never a crash;
+    - `curl -i -H "X-Pad: $(head -c 700 /dev/zero | tr '\0' a)" -H 'Content-Type: application/json' -d '{}' http://<ip>/settings-unlock`
+      → the page's normal answer (not 400/431): large headers are fine up to 2 KB;
+    - `(printf 'POST /settings HTTP/1.1\r\nHost: x\r\n'; sleep 2) | nc <ip> 80` → `400 {"error":"incomplete headers"}`
+      within about 1 s.
+    Then the real browsers, whose headers often span 2-3 segments: save the settings page and
+    join a Wi-Fi from the setup portal with desktop Chrome or Edge, Firefox, and a phone (iOS
+    captive sheet, Android Chrome); both update paths work inside the window: `/miblo:update`
+    (open, type the code, send) and the browser page `http://<ip>/update` flash and reboot. A send
+    more than 5 minutes after `update open` says the update window closed and flashes nothing.
+    With 5 wrong codes the next upload reports the lockout (`429`), not `update not open`. A refused
+    upload's reply reaches the client (the gadget drops the rest of the body for up to 1 s first):
+    `curl -i -F firmware=@miblo.bin http://<ip>/update` with no update open prints the `400`; when it
+    is cut off anyway, `/miblo:update` says the gadget stopped the upload and to run it again.

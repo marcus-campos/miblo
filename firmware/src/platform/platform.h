@@ -8,7 +8,10 @@
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
 #include <Updater.h>
-using WebServerT = ESP8266WebServer;
+
+#include "lookahead_client.h"
+// The web server reads request headers ahead (lookahead_client.h); otherwise ESP8266WebServer.
+using WebServerT = esp8266webserver::ESP8266WebServerTemplate<LookaheadServer>;
 inline uint32_t hwRandom() { return RANDOM_REG32; }  // hardware generator
 inline uint32_t chipId() { return ESP.getChipId(); }
 inline uint32_t flashChipId() { return ESP.getFlashChipId(); }

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <unity.h>
 
@@ -200,17 +201,121 @@ static void test_find_content_length() {
   TEST_ASSERT_EQUAL_UINT32(90000, n);
 }
 
-static void test_content_type_is_multipart() {
-  const char h1[] = "Host: x\r\ncontent-TYPE:  Multipart/form-data; boundary=abc\r\n\r\n";
-  TEST_ASSERT_TRUE(contentTypeIsMultipart(h1, sizeof(h1) - 1));
-  const char h2[] = "Content-Type: application/json\r\n\r\n";
-  TEST_ASSERT_FALSE(contentTypeIsMultipart(h2, sizeof(h2) - 1));
-  const char h3[] = "Host: x\r\n\r\nContent-Type: multipart/form-data";  // body, not a header
-  TEST_ASSERT_FALSE(contentTypeIsMultipart(h3, sizeof(h3) - 1));
-  const char h4[] = "Content-Type: multi";  // truncated
-  TEST_ASSERT_FALSE(contentTypeIsMultipart(h4, sizeof(h4) - 1));
-  TEST_ASSERT_FALSE(contentTypeIsMultipart("X-Content-Type: multipart/x\r\n", 29));
-  TEST_ASSERT_FALSE(contentTypeIsMultipart("Host: x\r\n", 9));
+// checkRequestHeaders: raw header bytes as ESP8266WebServer will read them (lines end at '\r',
+// the rest up to '\n' is skipped; an empty line or a line without ':' ends the headers).
+static HeaderVerdict verdict(const char* h, char* b = nullptr, size_t cap = 0) {
+  return checkRequestHeaders(h, strlen(h), b, cap);
+}
+
+static void test_headers_plain_and_complete() {
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("Host: x\r\nContent-Type: application/json\r\n\r\n{}"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("\r\n"));  // no headers at all
+  // A line without ':' ends the headers for the server too: what follows is body.
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("Host: x\r\nnot a header\r\nContent-Type: multipart/x; boundary=a\r\n"));
+  // After the blank line it is body, not a header.
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("Host: x\r\n\r\nContent-Type: multipart/form-data; boundary=a\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("X-Content-Type: multipart/x; boundary=a\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("Content-Type : multipart/x; boundary=a\r\n\r\n"));  // not the name
+}
+
+static void test_headers_incomplete() {
+  // The header block must end within the bytes: unseen headers could carry a Content-Type.
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, verdict(""));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, checkRequestHeaders(nullptr, 0));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, verdict("Host: x\r\nX-Pad: aaaa"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, verdict("Host: x\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, verdict("Host: x\r"));  // where the next line starts is unknown
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, verdict("Content-Type: multipart/form-data; bound"));
+  // A valid Content-Type seen first proves nothing while the block goes on (a later one wins).
+  char b[8] = "junk";
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete,
+                    verdict("Content-Type: multipart/form-data; boundary=abc\r\nContent-Length: 9\r\nX-Pad: a", b, sizeof(b)));
+  TEST_ASSERT_EQUAL_STRING("", b);  // a boundary only comes with a Multipart verdict
+}
+
+static void test_headers_multipart_boundary() {
+  char b[80];
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart,
+                    verdict("Host: x\r\ncontent-TYPE:  Multipart/form-data; boundary=----miblo0123\r\n\r\n", b, sizeof(b)));
+  TEST_ASSERT_EQUAL_STRING("----miblo0123", b);
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart,
+                    verdict("Content-Type: multipart/form-data; BOUNDARY=\"a b\"  \r\n\r\n", b, sizeof(b)));
+  TEST_ASSERT_EQUAL_STRING("a b", b);  // quotes dropped, trailing blanks trimmed, as the server does
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart,
+                    verdict("Content-Type:multipart/form-data;boundary=x\r\n\r\n", b, sizeof(b)));
+  TEST_ASSERT_EQUAL_STRING("x", b);
+  // Browser and Node boundaries.
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart,
+                    verdict("Content-Type: multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart,
+                    verdict("Content-Type: multipart/form-data; boundary=----geckoformboundaryc3a5f6b8e0d1a2b3c4d5e6f7a8b9c0d1\r\n\r\n"));
+  // Lines split at '\r' only, like the server: a bare '\n' does not start a new header.
+  TEST_ASSERT_EQUAL(HeaderVerdict::Plain, verdict("X: a\nContent-Type: multipart/x; boundary=a\r\n\r\n"));
+  // ... but a line starting after "\r\n\n" is still a header line for the server (not the end).
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart, verdict("Host: x\r\n\nX: y\r\nContent-Type: multipart/x; boundary=a\r\n\r\n"));
+}
+
+static void test_headers_boundary_length() {
+  char h[200];
+  char b[80];
+  const char* pre = "Content-Type: multipart/form-data; boundary=";
+  // 70 characters: the RFC 2046 limit is accepted, 71 is refused.
+  snprintf(h, sizeof(h), "%s%070d\r\n\r\n", pre, 7);
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart, verdict(h, b, sizeof(b)));
+  TEST_ASSERT_EQUAL_size_t(70, strlen(b));
+  snprintf(h, sizeof(h), "%s%071d\r\n\r\n", pre, 7);
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict(h));
+  // Quotes do not count (the server removes them), so a quoted 70 is fine.
+  snprintf(h, sizeof(h), "%s\"%070d\"\r\n\r\n", pre, 7);
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart, verdict(h));
+  // A small output buffer only truncates the copy, never the verdict.
+  char tiny[4];
+  snprintf(h, sizeof(h), "%s%070d\r\n\r\n", pre, 7);
+  TEST_ASSERT_EQUAL(HeaderVerdict::Multipart, verdict(h, tiny, sizeof(tiny)));
+  TEST_ASSERT_EQUAL_STRING("000", tiny);
+}
+
+static void test_headers_huge_boundary() {
+  // The attack: a multi-KB boundary (the server puts it in a stack array).
+  static char h[6000];
+  const char* pre = "Content-Type: multipart/form-data; boundary=";
+  size_t n = strlen(pre);
+  memcpy(h, pre, n);
+  memset(h + n, 'A', 5000);
+  memcpy(h + n + 5000, "\r\n\r\n", 4);
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, checkRequestHeaders(h, n + 5004));
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, checkRequestHeaders(h, n + 3000));  // only the first part arrived
+}
+
+static void test_headers_bad_multipart() {
+  // Missing or empty boundary.
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict("Content-Type: multipart/form-data\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict("Content-Type: multipart/form-data; boundary=\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict("Content-Type: multipart/form-data; boundary=\"\"\r\n\r\n"));
+  // The server takes everything after the FIRST '=' as the boundary: another parameter first is refused.
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart,
+                    verdict("Content-Type: multipart/form-data; charset=utf-8; boundary=abc\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict("Content-Type: multipart/form-data; xboundary=abc\r\n\r\n"));
+  // Two Content-Type headers where one is multipart: the server keeps the multipart one's boundary.
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart,
+                    verdict("Content-Type: multipart/form-data; boundary=a\r\nContent-Type: application/json\r\n\r\n"));
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart,
+                    verdict("Content-Type: text/plain\r\nContent-Type: multipart/form-data; boundary=a\r\n\r\n"));
+  // Leading blanks before the type are trimmed by the server too.
+  TEST_ASSERT_EQUAL(HeaderVerdict::BadMultipart, verdict("Content-Type: \t multipart/mixed\r\n\r\n"));
+}
+
+static void test_headers_garbage() {
+  // A NUL byte: the server's String functions would read the line differently. Refused.
+  const char h[] = "Content-Type: multi\0part/x; boundary=a\r\n\r\n";
+  TEST_ASSERT_EQUAL(HeaderVerdict::Malformed, checkRequestHeaders(h, sizeof(h) - 1));
+  const char h2[] = "Host: x\r\0\nContent-Type: a\r\n\r\n";
+  TEST_ASSERT_EQUAL(HeaderVerdict::Malformed, checkRequestHeaders(h2, sizeof(h2) - 1));
+  // Binary noise without a line end: never "complete".
+  uint8_t noise[256];
+  for (int i = 0; i < 256; i++) noise[i] = (uint8_t)(i * 37 + 11) | 1;  // no NUL
+  for (int i = 0; i < 256; i++) if (noise[i] == '\r') noise[i] = 'x';
+  TEST_ASSERT_EQUAL(HeaderVerdict::Incomplete, checkRequestHeaders((const char*)noise, sizeof(noise)));
 }
 
 // Re-opening (a new code) must not grant fresh guesses: 4 bad, re-open, 1 bad → locked.
@@ -475,7 +580,13 @@ int main() {
   RUN_TEST(test_token_store_same_host_appends);
   RUN_TEST(test_token_store_remove_and_seen);
   RUN_TEST(test_find_content_length);
-  RUN_TEST(test_content_type_is_multipart);
+  RUN_TEST(test_headers_plain_and_complete);
+  RUN_TEST(test_headers_incomplete);
+  RUN_TEST(test_headers_multipart_boundary);
+  RUN_TEST(test_headers_boundary_length);
+  RUN_TEST(test_headers_huge_boundary);
+  RUN_TEST(test_headers_bad_multipart);
+  RUN_TEST(test_headers_garbage);
   RUN_TEST(test_presence_lockout_escalates);
   RUN_TEST(test_presence_lockout_caps_at_one_hour);
   RUN_TEST(test_presence_failures_survive_reopen);

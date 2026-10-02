@@ -26,6 +26,10 @@ static bool started = false;
 static bool endedOk = false;  // Update.end(true) succeeded (image written and verified)
 static size_t expected = 0;
 static uint8_t lastPct = 255;
+// The codeless upload window (see uploadArmed): opened by POST /update/open on a unit that needs
+// no code, for as long as a code would last.
+static bool codelessOpen = false;
+static uint32_t codelessOpenedAtMs = 0;
 
 static void octets(const IPAddress& ip, uint8_t out[4]) {
   for (int i = 0; i < 4; i++) out[i] = ip[i];
@@ -33,11 +37,11 @@ static void octets(const IPAddress& ip, uint8_t out[4]) {
 
 // Evaluated per request: codeless only for a never-configured unit (no saved Wi-Fi, no pairings,
 // no "ever configured" marker) reached over its own setup AP (see miblo::otaCodeRequired).
-static bool codeRequired() {
+static bool codeRequired(WiFiClient& client) {
   const bool hasWifiCreds = WiFi.SSID().length() > 0;  // SDK station config, as in net::begin
   uint8_t remote[4], local[4], softAp[4];
-  octets(srv->client().remoteIP(), remote);
-  octets(srv->client().localIP(), local);
+  octets(client.remoteIP(), remote);
+  octets(client.localIP(), local);
   octets(WiFi.softAPIP(), softAp);
   const bool viaSoftAp = miblo::viaSoftApSubnet(net::apActive(), remote, local, softAp);
   return miblo::otaCodeRequired(storage::everConfigured(), hasWifiCreds, ctx.tokens.count(), viaSoftAp);
@@ -58,8 +62,10 @@ static void openGate() {
     return;
   }
   if (!web::requireJson(*srv)) return;  // 415: CSRF guard
-  if (!codeRequired()) {
-    // Never-configured unit on its own AP: no gate, no code on screen.
+  if (!codeRequired(srv->client())) {
+    // Never-configured unit on its own AP: no gate, no code on screen; the upload window opens.
+    codelessOpen = true;
+    codelessOpenedAtMs = millis();
     web::sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":false}"));
     return;
   }
@@ -101,15 +107,18 @@ static void page() {
   t["bad"] = web::tr(lang, S::WebBadCode);
   t["failed"] = web::tr(lang, S::WebFailed);
   serializeJson(t, out);
+  // The upload must happen while the window opened here is open (5 min): with a code, the code
+  // shown expires with it (reload the page); without one, up() opens it again just before sending.
   out += F(";let nc=0;const $=k=>document.getElementById(k);"
-           "fetch('/update/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})"
-           ".then(r=>{if(r.status===429)return r.json().then(j=>{$('st').textContent=T.failed+' ('+j.retryAfter+' s)';});"
+           "const op=()=>fetch('/update/open',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});"
+           "op().then(r=>{if(r.status===429)return r.json().then(j=>{$('st').textContent=T.failed+' ('+j.retryAfter+' s)';});"
            "if(!r.ok){$('st').textContent=T.failed;return;}"
            "return r.json().then(j=>{if(j.codeRequired===false){nc=1;$('cl').style.display=$('code').style.display='none';}});})"
            ".catch(()=>{$('st').textContent=T.failed;});"
            "function up(){const f=$('f').files[0];if(!f)return;const d=new FormData();d.append('firmware',f);"
            "$('st').textContent='...';"
-           "fetch(nc?'/update':'/update?code='+encodeURIComponent($('code').value),{method:'POST',body:d})"
+           "(nc?op():Promise.resolve()).then(()=>"
+           "fetch(nc?'/update':'/update?code='+encodeURIComponent($('code').value),{method:'POST',body:d}))"
            ".then(r=>r.text().then(x=>{$('st').textContent=r.ok?T.ok:(r.status===403?T.bad:T.failed+': '+x);}))"
            ".catch(()=>{$('st').textContent=T.failed;});}</script>");
   web::pageEnd(out);
@@ -121,7 +130,7 @@ static void upload() {
     uploadRan = true;
     // Codeless only for a never-configured unit on its own AP; otherwise the code check (and its
     // escalating lockout) applies exactly as before.
-    rejected = codeRequired() &&
+    rejected = codeRequired(srv->client()) &&
                !ctx.presence.check(PresenceGate::Purpose::Update, srv->arg(F("code")).c_str(), millis());
     started = false;
     endedOk = false;
@@ -175,11 +184,19 @@ static void done() {
   } else {
     // Success: keep ctx.updating set so the progress screen stays up until the reboot.
     ctx.presence.close();
+    codelessOpen = false;
     srv->send(200, F("text/plain"), F("OK"));
     ctx.rebootRequested = true;
     ctx.rebootAtMs = now + 800;
   }
   resetState();
+}
+
+bool uploadArmed(WiFiClient& client) {
+  const uint32_t now = millis();
+  if (ctx.presence.active(now) && ctx.presence.purpose() == PresenceGate::Purpose::Update) return true;
+  if (codelessOpen && now - codelessOpenedAtMs >= PresenceGate::kTtlMs) codelessOpen = false;
+  return codelessOpen && !codeRequired(client);
 }
 
 void begin(WebServerT& server, ProgressHook onProgress) {

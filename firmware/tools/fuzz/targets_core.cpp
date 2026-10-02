@@ -12,6 +12,7 @@
 #include "miblo_focus.h"
 #include "miblo_format.h"
 #include "miblo_friends.h"
+#include "miblo_headers.h"
 #include "miblo_info.h"
 #include "miblo_limits.h"
 #include "miblo_mdns.h"
@@ -235,8 +236,9 @@ FUZZ_REGISTER(config, fuzzConfig, kConfigSeeds, kConfigDict, 3000);
 
 // ============================== daily-life API ==============================
 // api.cpp dailyRoute(): body <= 300 bytes into a StaticJsonDocument<384>, then the module's handler
-// and a StaticJsonDocument<768> reply. The input is a script: lines "<route><json>", a route
-// letter per handler; the same desk notes / timers live across the lines, the clock moves.
+// and a 768-byte reply document (counted at the device's slot size). The input is a script: lines
+// "<route><json>", a route letter per handler; the same desk notes / timers live across the lines,
+// the clock moves.
 
 const char* const kDailySeeds[] = {
     "f{\"focusMin\":25,\"breakMin\":5,\"rounds\":4}\nu\nf{\"stop\":true}",
@@ -261,10 +263,38 @@ void checkStatus(int code, const char* bad, const char* route) {
   if (code != 200) FUZZ_CHECK(fuzz::plainIdent(bad), "%s: bad field not a plain identifier", route);
 }
 
+// ArduinoJson's pool holds 16-byte slots on the ESP8266 (32-bit pointers) but bigger ones on this
+// 64-bit host, so a host document of the device's capacity overflows on content the device holds
+// fine. Documents are made bigger here and their use recounted as the device would.
+constexpr size_t kDeviceSlot = 16;
+constexpr size_t kHostSlot = JSON_OBJECT_SIZE(1);  // sizeof(VariantSlot) on this host
+constexpr size_t hostCapacity(size_t deviceCapacity) { return deviceCapacity / kDeviceSlot * kHostSlot + kHostSlot; }
+
+size_t slotsBelow(JsonVariantConst v) {  // one per member or element, nested ones included
+  size_t n = 0;
+  if (v.is<JsonObjectConst>()) {
+    for (JsonPairConst p : v.as<JsonObjectConst>()) n += 1 + slotsBelow(p.value());
+  } else if (v.is<JsonArrayConst>()) {
+    for (JsonVariantConst e : v.as<JsonArrayConst>()) n += 1 + slotsBelow(e);
+  }
+  return n;
+}
+
+// What `doc` would take on the device: its slots at 16 B, plus the strings it copied.
+size_t deviceUsage(const JsonDocument& doc) {
+  const size_t slots = slotsBelow(doc.as<JsonVariantConst>());
+  return slots * kDeviceSlot + (doc.memoryUsage() - slots * kHostSlot);
+}
+
+// True when `doc` would not fit a device document of `deviceCapacity` bytes.
+bool overflowsOnDevice(const JsonDocument& doc, size_t deviceCapacity) {
+  return doc.overflowed() || deviceUsage(doc) > deviceCapacity;
+}
+
 std::string notesJson(const DeskNotes& n, bool& overflowed) {
-  DynamicJsonDocument doc(768);  // storage.cpp kNotesJsonCapacity
+  DynamicJsonDocument doc(hostCapacity(768));  // storage.cpp kNotesJsonCapacity
   n.toJson(doc.to<JsonObject>());
-  overflowed = doc.overflowed();
+  overflowed = overflowsOnDevice(doc, 768);
   std::string s;
   serializeJson(doc, s);
   return s;
@@ -275,9 +305,12 @@ void checkNotes(DeskNotes& notes, uint32_t nowMs, uint32_t epoch) {
   const std::string saved = notesJson(notes, over);
   FUZZ_CHECK(!over, "notes.json overflows its 768-byte document: %s", saved.c_str());
   FUZZ_CHECK(saved.size() <= 1024, "notes.json over the 1024 bytes loadNotes accepts");
-  StaticJsonDocument<768> reply;
-  notes.listJson(reply.to<JsonObject>().createNestedArray("items"), nowMs, epoch);
-  FUZZ_CHECK(!reply.overflowed(), "GET /api/remind overflows the 768-byte reply");
+  DynamicJsonDocument reply(hostCapacity(768));  // api.cpp dailyRoute kReplyDoc
+  JsonObject out = reply.to<JsonObject>();
+  notes.listJson(out.createNestedArray("items"), nowMs, epoch);
+  out["ok"] = true;  // dailyRoute adds it
+  FUZZ_CHECK(!overflowsOnDevice(reply, 768), "GET /api/remind overflows the 768-byte reply (%zu B on the device)",
+             deviceUsage(reply));
   const char* held = notes.heldText(nowMs);
   FUZZ_CHECK(held && fuzz::validUtf8(held) && utf8Length(held) <= kNoteChars, "held text");
   const char* say = notes.saying(nowMs);
@@ -316,7 +349,7 @@ void fuzzDaily(const uint8_t* d, size_t n) {
     if (!len) doc.to<JsonObject>();
     if (len && !handled++) fuzz::reached();
     JsonObjectConst b = doc.as<JsonObjectConst>();
-    StaticJsonDocument<768> reply;
+    DynamicJsonDocument reply(hostCapacity(768));  // api.cpp dailyRoute kReplyDoc
     JsonObject out = reply.to<JsonObject>();
     const char* bad = nullptr;
     const Date today{(uint16_t)(2026 + (h >> 20) % 3), (uint8_t)(1 + (h >> 8) % 12), (uint8_t)(1 + (h >> 12) % 31)};
@@ -327,7 +360,7 @@ void fuzzDaily(const uint8_t* d, size_t n) {
       case 'r': {
         const int code = remindRequest(notes, b, nowMs, minute, out, &bad);
         checkStatus(code, bad, "remind");
-        FUZZ_CHECK(!reply.overflowed(), "remind reply overflows");
+        FUZZ_CHECK(!overflowsOnDevice(reply, 768), "remind reply overflows");
         break;
       }
       case 't': checkStatus(timerRequest(notes, b, nowMs, &bad), bad, "timer"); break;
@@ -337,7 +370,7 @@ void fuzzDaily(const uint8_t* d, size_t n) {
         bool over;
         const std::string saved = notesJson(notes, over);
         DeskNotes back;
-        DynamicJsonDocument in(768);
+        DynamicJsonDocument in(hostCapacity(768));
         FUZZ_CHECK(!deserializeJson(in, saved) && back.fromJson(in.as<JsonObjectConst>()), "notes.json reload");
         const std::string again = notesJson(back, over);
         FUZZ_CHECK(saved == again, "notes.json round trip differs:\n%s\n%s", saved.c_str(), again.c_str());
@@ -395,7 +428,7 @@ void fuzzNotes(const uint8_t* d, size_t n) {
   bool over;
   const std::string saved = notesJson(notes, over);
   DeskNotes back;
-  DynamicJsonDocument in(768);
+  DynamicJsonDocument in(hostCapacity(768));
   FUZZ_CHECK(!deserializeJson(in, saved) && back.fromJson(in.as<JsonObjectConst>()), "reload");
   FUZZ_CHECK(notesJson(back, over) == saved, "notes.json round trip differs");
   char line[96];
@@ -735,15 +768,69 @@ const char* const kHttpSeeds[] = {
     "Content-Length: 99999999999999999999\r\n",
     "Content-Length: -1\r\nContent-Length: 5\r\n",
     "1234",
+    "Host: x\r\nContent-Type: multipart/form-data; boundary=\"----WebKitFormBoundary7MA4YWxkTrZu0gW\"\r\n\r\n",
+    "Content-Type: multipart/form-data; charset=x; boundary=y\r\nContent-Type: text/plain\r\n\r\n",
+    "X: a\r\n\nContent-Type:multipart/x;boundary=0123456789012345678901234567890123456789012345678901234567890123456789\r\n\r\n",
     nullptr};
 const char* const kHttpDict[] = {"Content-Length:", "content-length: ", "Content-Type:", "multipart/", "Bearer ",
-                                 "bearer\t", "\r\n", "\r\n\r\n", ": ", nullptr};
+                                 "bearer\t", "\r\n", "\r\n\r\n", ": ", "boundary=", "; boundary=\"", "\r", "\n",
+                                 nullptr};
 
 void fuzzHttp(const uint8_t* d, size_t n) {
   ExactBuf hdr(d, n);  // the raw header buffer is not NUL-terminated
   uint32_t clen = 0;
   if (findContentLength(hdr.p, hdr.n, clen)) fuzz::reached();
-  contentTypeIsMultipart(hdr.p, hdr.n);
+  // The multipart guard: a Multipart verdict always carries a 1..70 character boundary, and a
+  // smaller output buffer changes only the copy, never the verdict.
+  char boundary[kMaxBoundary + 8];
+  const HeaderVerdict v = checkRequestHeaders(hdr.p, hdr.n, boundary, sizeof(boundary));
+  if (v == HeaderVerdict::Multipart) {
+    fuzz::reached();
+    const size_t bl = strlen(boundary);
+    FUZZ_CHECK(bl <= kMaxBoundary, "boundary %zu > %zu", bl, kMaxBoundary);
+  } else {
+    FUZZ_CHECK(boundary[0] == 0, "boundary copied for a non-multipart verdict");
+  }
+  char small[3];
+  FUZZ_CHECK(checkRequestHeaders(hdr.p, hdr.n, small, sizeof(small)) == v, "verdict depends on the buffer");
+  FUZZ_CHECK(strlen(small) < sizeof(small), "small boundary overflow");
+  // The read-ahead: the input arrives in segments (sizes from its first byte); whatever the
+  // gather ends with, the bytes replay unchanged and in order, never more than the cap at once.
+  struct Segmented : ByteSource {
+    const char* p;
+    size_t n, pos = 0, seg;
+    uint32_t now = 0;
+    size_t available() override {
+      const size_t arrived = seg * (now + 1);
+      return (arrived < n ? arrived : n) - pos;
+    }
+    size_t read(char* dst, size_t k) override {
+      const size_t a = available();
+      if (k > a) k = a;
+      memcpy(dst, p + pos, k);
+      pos += k;
+      return k;
+    }
+    bool connected() override { return true; }
+    uint32_t nowMs() override { return now; }
+    void wait() override { now += 7; }
+  } src;
+  src.p = hdr.p;
+  src.n = hdr.n;
+  src.seg = n ? 1 + d[0] * 4 : 1;
+  HeaderBuffer ahead;
+  const GatherResult r = gatherHeaders(ahead, src, kHeaderWaitMs);
+  FUZZ_CHECK(ahead.pending() <= HeaderBuffer::kCap, "read ahead %zu", ahead.pending());
+  FUZZ_CHECK(ahead.pending() == src.pos, "read ahead %zu of %zu read", ahead.pending(), src.pos);
+  if (r == GatherResult::Ready) {
+    fuzz::reached();
+    FUZZ_CHECK(ahead.verdict() != HeaderVerdict::Incomplete, "ready without a block");
+  }
+  FUZZ_CHECK(ahead.pending() == 0 || memcmp(ahead.data(), hdr.p, ahead.pending()) == 0, "replay differs");
+  HeaderBuffer copy(ahead);
+  FUZZ_CHECK(copy.pending() == ahead.pending(), "copy");
+  while (ahead.pending()) ahead.readByte();
+  FUZZ_CHECK(!ahead.allocated(), "not freed once drained");
   CStr s(d, n);
   for (size_t cap : {(size_t)1, (size_t)8, (size_t)33, (size_t)64}) {
     char* tok = static_cast<char*>(malloc(cap));

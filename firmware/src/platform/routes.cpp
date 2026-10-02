@@ -8,7 +8,7 @@ namespace {
 // One request handler for a whole table of routes in flash. Same contract as the core's
 // FunctionRequestHandler: canHandle() = exact method and path; an upload goes to the route's
 // upload function only when it has one and the request is a POST to that path.
-class TableHandler : public esp8266webserver::RequestHandler<WiFiServer> {
+class TableHandler : public esp8266webserver::RequestHandler<LookaheadServer> {
  public:
   TableHandler(const Route* table, size_t n) : table_(table), n_(n) {}
 
@@ -20,13 +20,13 @@ class TableHandler : public esp8266webserver::RequestHandler<WiFiServer> {
     Route r;
     return find(HTTP_POST, uri, r) && r.upload;
   }
-  bool handle(ESP8266WebServer&, HTTPMethod method, const String& uri) override {
+  bool handle(WebServerT&, HTTPMethod method, const String& uri) override {
     Route r;
     if (!find(method, uri, r)) return false;
     r.fn();
     return true;
   }
-  void upload(ESP8266WebServer&, const String& uri, HTTPUpload&) override {
+  void upload(WebServerT&, const String& uri, HTTPUpload&) override {
     Route r;
     if (find(HTTP_POST, uri, r) && r.upload) r.upload();
   }

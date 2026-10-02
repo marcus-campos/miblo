@@ -16,6 +16,11 @@ const startOfDay = (ms) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 };
 const keyOf = (y, m, d) => dayKey(new Date(y, m, d).getTime());
+// 'YYYY-M-D' -> local midnight in ms (NaN if malformed), to order day keys by date.
+const keyTime = (k) => {
+  const m = /^(\d+)-(\d+)-(\d+)$/.exec(String(k));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : NaN;
+};
 const DAYS_KEPT = 14;
 const count = (v) => (Number.isInteger(v) && v >= 0 ? v : 0);
 const amount = (v) => (Number.isFinite(v) && v >= 0 ? v : 0);
@@ -129,6 +134,9 @@ export class DayStats {
   #roll(t) {
     const key = dayKey(t);
     if (key === this.#day) return;
+    // The clock stepped back to an earlier day: keep counting on the current one rather than
+    // start that day over (it would later replace the real one in the history).
+    if (keyTime(key) < keyTime(this.#day)) return;
     this.#keep({ day: this.#day, turns: this.#turns, workMs: this.#workMs, usd: this.#usd });
     this.#day = key;
     this.#turns = 0;
@@ -143,9 +151,11 @@ export class DayStats {
   // Adds a finished day to the history (replacing one with the same key) and keeps the last 14.
   #keep(entry) {
     const p = pastDay(entry);
-    if (!p) return;
+    if (!p || Number.isNaN(keyTime(p.day))) return;
     this.#days = this.#days.filter((x) => x.day !== p.day);
     this.#days.push(p);
+    // Oldest first by date (the file's order is not trusted), then drop the oldest.
+    this.#days.sort((a, b) => keyTime(a.day) - keyTime(b.day));
     if (this.#days.length > DAYS_KEPT) this.#days.splice(0, this.#days.length - DAYS_KEPT);
   }
 
@@ -155,8 +165,10 @@ export class DayStats {
     if (!this.#file) return;
     try {
       const d = JSON.parse(fs.readFileSync(this.#file, 'utf8'));
-      if (Array.isArray(d?.days)) for (const x of d.days) if (x?.day !== this.#day) this.#keep(x);
-      if (d?.day === this.#day) {
+      if (Array.isArray(d?.days)) for (const x of d.days) if (x?.day !== this.#day && x?.day !== d.day) this.#keep(x);
+      if (d?.day === this.#day || keyTime(d?.day) > keyTime(this.#day)) {
+        // Today's file, or one from a later day than the clock says (it stepped back): stay on it.
+        this.#day = d.day;
         this.#turns = count(d.turns);
         this.#workMs = amount(d.workMs);
         this.#usd = amount(d.usd);

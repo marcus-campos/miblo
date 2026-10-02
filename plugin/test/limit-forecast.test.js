@@ -79,3 +79,11 @@ test('LimitForecast keeps only two hours, so an old pace fades out', () => {
   t += 3 * 3600_000;  // the bridge heard nothing for 3 h
   assert.equal(f.eta(), null);
 });
+
+test('no forecast more than 5 hours out (a 5-hour window cannot last longer), even with no reset known', () => {
+  const slow = ramp(0, 61, 60, 10, 0.05);  // 3 points an hour from 10%: about 29 h left
+  assert.equal(forecastEta(slow, 3600, null), null);
+  assert.equal(forecastEta(slow, 3600, 0), null);
+  // Just inside 5 h still counts.
+  assert.equal(forecastEta(ramp(0, 21, 60, 40, 0.2), 1200, null), 1200 + Math.round(56 / (0.2 / 60)));
+});

@@ -64,6 +64,9 @@ export class SessionTracker {
     const agentId = typeof evt.agent_id === 'string' && evt.agent_id ? evt.agent_id : null;
     if (name === 'SubagentStart' || name === 'SubagentStop' || agentId) {
       this.#subagentEvent(s, name, agentId, evt);
+      // A subagent that changes the activity shown (its permission prompt) replaces the main
+      // thread's command, and the gadget never sees when the subagent's command runs or ends.
+      if (s.tool !== activity[0] || s.det !== activity[1]) s.cmdLive = false;
       this.#markTool(s, activity, false);
       return created || JSON.stringify(s) !== before;
     }
@@ -109,6 +112,7 @@ export class SessionTracker {
         this.#enter(s, 'question');
         break;
       case 'PostToolUse':
+      case 'PostToolUseFailure':  // the tool failed (a command exiting non-zero, an interrupt)
         this.#enter(s, 'running');
         break;
       case 'Stop': {
@@ -133,12 +137,10 @@ export class SessionTracker {
     // A main-thread PreToolUse is always a new tool call, even one repeating the last command;
     // its PermissionRequest (same call) only moves the mark if it names something else.
     this.#markTool(s, activity, name === 'PreToolUse');
-    // cmdLive: a shell command is in flight (from its PreToolUse until the next main-thread event,
-    // normally its PostToolUse), so the gadget's command timer stops when the command does, not
-    // when Claude moves on. Only meaningful while tool is Bash; other tools leave it alone so their
-    // PostToolUse does not cost a push.
-    if (name === 'PreToolUse' || name === 'PermissionRequest') s.cmdLive = s.tool === 'Bash';
-    else if (s.tool === 'Bash') s.cmdLive = false;
+    // cmdLive: a main-thread shell command is in flight (from its PreToolUse until the next
+    // main-thread event, normally its PostToolUse or PostToolUseFailure), so the gadget's command
+    // timer stops when the command does, not when Claude moves on.
+    s.cmdLive = (name === 'PreToolUse' || name === 'PermissionRequest') && s.tool === 'Bash';
     return created || JSON.stringify(s) !== before;
   }
 

@@ -10,10 +10,11 @@ const KEEP_MS = 2 * 3600_000;    // readings kept in memory
 const SAMPLE_EVERY_MS = 60_000;  // an unchanged percentage is kept at most once a minute
 const RESET_DROP = 5;            // a fall of more than this many points means a new window
 const RESET_MOVE_SEC = 60;       // a reset time that moves more than this means a new window
+const MAX_AHEAD_SEC = 5 * 3600;  // the window resets within 5 h, whatever the reading says
 
 // Pure: least-squares pace over the last hour of samples [{t (epoch s), pct}] -> epoch s or null.
 // null when fewer than 10 min of data, fewer than 3 distinct values, not rising, already at 100,
-// or the window resets first.
+// the window resets first, or it is more than 5 h away.
 export function forecastEta(samples, nowSec, resetSec) {
   const s = (samples ?? []).filter((x) => x.t >= nowSec - FIT_WINDOW_SEC && x.t <= nowSec);
   if (s.length < 2) return null;
@@ -38,6 +39,7 @@ export function forecastEta(samples, nowSec, resetSec) {
   if (!(slope > 0)) return null;
   const eta = Math.round(nowSec + (100 - last.pct) / slope);
   if (resetSec && eta >= resetSec) return null;
+  if (eta > nowSec + MAX_AHEAD_SEC) return null;  // also covers a reading with no reset time
   return eta;
 }
 

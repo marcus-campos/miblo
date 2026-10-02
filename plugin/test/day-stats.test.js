@@ -224,3 +224,42 @@ test('an old day-stats.json (single day) still loads', () => {
   assert.deepEqual(later.today(), { turns: 0, work: 0 });
   assert.deepEqual(later.week(), { work: 90, turns: 4, usd: 0, top: 2 });
 });
+
+test('the clock going back across midnight does not wipe the real day', () => {
+  let t = new Date(2026, 8, 22, 23, 59, 0).getTime();  // Tuesday, last week
+  const d = new DayStats({ now: () => t });
+  d.observe([], { usd: 3 });
+  t = new Date(2026, 8, 23, 0, 0, 30).getTime();      // Wednesday
+  d.observe([], { usd: 3 });
+  t = new Date(2026, 8, 22, 23, 59, 50).getTime();    // the clock steps back to Tuesday
+  d.observe([], { usd: 0 });
+  t = new Date(2026, 8, 23, 0, 1).getTime();          // and forward again
+  d.observe([], { usd: 3 });
+  t = new Date(2026, 8, 28, 9).getTime();             // next Monday
+  assert.equal(d.week().usd, 6);
+});
+
+test('days from the file are kept by date, not by their order in the file', () => {
+  const dir = tmp();
+  const days = [];
+  for (let i = 1; i <= 14; i++) days.push({ day: `2026-9-${i + 6}`, turns: 1, workMs: i === 14 ? 120_000 : 60_000, usd: 1 });  // 7/09..20/09
+  days.unshift(days.pop());           // 20/09 first in the file
+  days.splice(3, 0, { day: '2026-8-1', turns: 9, workMs: 1, usd: 9 }); // an ancient day in the middle
+  fs.writeFileSync(path.join(dir, 'day-stats.json'), JSON.stringify({ day: '2026-9-21', turns: 0, workMs: 0, days }));
+  const t = new Date(2026, 8, 21, 9).getTime();  // Monday 21/09: last week is 14/09..20/09
+  const d = new DayStats({ dataDir: dir, now: () => t });
+  assert.deepEqual(d.week(), { work: 8 * 60, turns: 7, usd: 7, top: 0 });  // Sunday 20/09 the busiest
+  d.observe([], { usd: 0.5 });
+  const kept = JSON.parse(fs.readFileSync(path.join(dir, 'day-stats.json'), 'utf8')).days.map((x) => x.day);
+  assert.equal(kept.length, 14);
+  assert.ok(!kept.includes('2026-8-1'));
+  assert.equal(kept.at(-1), '2026-9-20');
+  assert.equal(kept[0], '2026-9-7');
+});
+
+test('a file from a later day than the clock (it stepped back) is kept as the current day', () => {
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'day-stats.json'), JSON.stringify({ day: '2026-9-30', turns: 5, workMs: 60_000, usd: 2, days: [] }));
+  const d = new DayStats({ dataDir: dir, now: () => at(23, 59) });  // 29/09
+  assert.deepEqual(d.today(), { turns: 5, work: 60 });
+});

@@ -95,7 +95,18 @@ enum class ScreenId : uint8_t {
   LimitReset,     // the 5h window just reset after real use: "limit freed"
   Summary,        // quiet spell: today's responses, time worked and cost
   Visit,          // pet mode: another Miblo's mascot is here, or ours went out (miblo_friends.h)
-  Hello           // a greeting: the new name, good morning, happy birthday (miblo_occasions.h)
+  Hello,          // a greeting: the new name, good morning, happy birthday (miblo_occasions.h)
+  // ---- Daily life (chosen by miblo_daily.h over the screens above) ----
+  Focus,          // /miblo:focus: focus round, break, "back to focus?" (miblo_focus.h)
+  Timer,          // /miblo:timer: the hourglass and the time left (miblo_desknotes.h)
+  Note,           // the cat holding a text: /miblo:say, a reminder, an alarm, "Time's up!"
+  Cue,            // the strong visual cue: slow full-screen pulses (miblo_cues.h)
+  Find,           // /miblo:find: waving + the settings QR
+  Nudge,          // a wellness nudge: break, water, eye rest (miblo_wellness.h)
+  DayEnd,         // end of the work day: today's summary (miblo_dayend.h)
+  WeekRecap,      // Monday: last week's summary (miblo_dayend.h)
+  Fanfare,        // a long task finished: confetti in place of the "finished" hero
+  Passerby        // Friday the 13th in pet mode: a black cat crossing (miblo_occasions.h)
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;

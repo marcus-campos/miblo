@@ -67,7 +67,7 @@ static void test_invalid_patch_changes_nothing() {
 static void test_config_json_roundtrip() {
   Config a;
   TEST_ASSERT_TRUE(patch(a, "{\"mode\":\"sessions\",\"lang\":\"zh\",\"name\":\"X\"}"));
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<4096> doc;
   configToJson(a, doc.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING("sessions", doc["mode"]);
   TEST_ASSERT_EQUAL_STRING("zh", doc["lang"]);
@@ -81,11 +81,11 @@ static void test_config_json_roundtrip() {
 // What loadConfig/saveConfig do (src/platform/storage.cpp): the flash round-trip must keep the
 // screen language, explicit or automatic (the negotiated one), across a reboot.
 static Config storedRoundTrip(const Config& a) {
-  StaticJsonDocument<1024> doc;
+  StaticJsonDocument<4096> doc;
   configToStored(a, doc.to<JsonObject>());
-  char text[1024];
+  char text[2048];
   serializeJson(doc, text, sizeof(text));
-  StaticJsonDocument<1024> in;
+  StaticJsonDocument<4096> in;
   TEST_ASSERT_FALSE(deserializeJson(in, text));
   Config b;
   TEST_ASSERT_TRUE(applyConfigPatch(b, in.as<JsonObjectConst>(), nullptr));
@@ -109,7 +109,7 @@ static void test_language_survives_reboot() {
   TEST_ASSERT_EQUAL(Lang::PtBR, b.lang);
 
   // The API/page view is unchanged: automatic mode still reads as "".
-  StaticJsonDocument<512> doc;
+  StaticJsonDocument<4096> doc;
   configToJson(autoLang, doc.to<JsonObject>());
   TEST_ASSERT_EQUAL_STRING("", doc["lang"]);
   TEST_ASSERT_TRUE(doc["langAuto"].isNull());
@@ -890,6 +890,56 @@ static void test_blue_filter() {
   TEST_ASSERT_EQUAL_UINT16(1020, r.blueTo);
 }
 
+// Daily-life settings: defaults (everything that nags is off), ranges, and the work hours rule.
+static void test_daily_life_config_defaults_and_ranges() {
+  Config c;
+  TEST_ASSERT_TRUE(c.focusQuiet);
+  TEST_ASSERT_TRUE(c.insist);
+  TEST_ASSERT_EQUAL_UINT8(0, c.breakAfterMin);
+  TEST_ASSERT_EQUAL_UINT8(0, c.waterMin);
+  TEST_ASSERT_FALSE(c.eyes);
+  TEST_ASSERT_FALSE(c.endOfDay);
+  TEST_ASSERT_EQUAL_UINT16(9 * 60, c.workFrom);
+  TEST_ASSERT_EQUAL_UINT16(18 * 60, c.workTo);
+  TEST_ASSERT_EQUAL_HEX8(0x3E, c.workDays);  // Mon..Fri (bit 0 = Sunday)
+  TEST_ASSERT_EQUAL_UINT8(5, c.fanfareMin);
+  TEST_ASSERT_FALSE(c.frame);
+  TEST_ASSERT_EQUAL_STRING("", c.tz2);
+  TEST_ASSERT_EQUAL_STRING("", c.tz2Label);
+  TEST_ASSERT_FALSE(c.deskQr);
+  TEST_ASSERT_TRUE(c.weekly);
+
+  StaticJsonDocument<512> doc;
+  deserializeJson(doc,
+                  "{\"breakAfterMin\":90,\"waterMin\":60,\"eyes\":true,\"endOfDay\":true,\"workFrom\":480,"
+                  "\"workTo\":1020,\"workDays\":127,\"fanfareMin\":10,\"frame\":true,\"tz2\":\"Europe/Lisbon\","
+                  "\"tz2Label\":\"Lisboa\",\"deskQr\":true,\"weekly\":false,\"focusQuiet\":false,\"insist\":false}");
+  TEST_ASSERT_TRUE(applyConfigPatch(c, doc.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL_UINT8(90, c.breakAfterMin);
+  TEST_ASSERT_EQUAL_STRING("Europe/Lisbon", c.tz2);
+  TEST_ASSERT_EQUAL_STRING("Lisboa", c.tz2Label);
+
+  const char* bad = nullptr;
+  const char* const rejected[][2] = {
+      {"{\"breakAfterMin\":45}", "breakAfterMin"},  // only 0, 60, 90, 120
+      {"{\"waterMin\":120}", "waterMin"},           // only 0, 60, 90
+      {"{\"fanfareMin\":4}", "fanfareMin"},         // only 0, 3, 5, 10
+      {"{\"workDays\":0}", "workDays"},             // at least one day
+      {"{\"workDays\":128}", "workDays"},
+      {"{\"workFrom\":1080}", "workFrom"},          // must start before workTo (18:00 here is not)
+      {"{\"tz2\":\"Mars/Base\"}", "tz2"},           // IANA names from the table only (or "")
+      {"{\"tz2Label\":\"a very long city name\"}", "tz2Label"},  // <= 12 characters
+  };
+  for (const auto& r : rejected) {
+    Config before = c;
+    StaticJsonDocument<128> d;
+    deserializeJson(d, r[0]);
+    TEST_ASSERT_FALSE_MESSAGE(applyConfigPatch(c, d.as<JsonObjectConst>(), &bad), r[0]);
+    TEST_ASSERT_EQUAL_STRING(r[1], bad);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &c, sizeof(Config));
+  }
+}
+
 // The saved config is read back into a kConfigJsonCapacity-byte JSON document (storage.cpp
 // loadConfig), and the settings page posts it whole into another (web.cpp handleSettings): a
 // document that is too small fails the load and every setting falls back to the defaults. Worst
@@ -901,6 +951,8 @@ static void test_stored_config_fits_on_the_gadget() {
   memset(c.name, 'n', sizeof(c.name) - 1);
   memset(c.owner, 'o', sizeof(c.owner) - 1);
   memset(c.tz, 't', sizeof(c.tz) - 1);
+  memset(c.tz2, 't', sizeof(c.tz2) - 1);
+  memset(c.tz2Label, 'l', sizeof(c.tz2Label) - 1);
   strcpy(c.birthday, "12-31");
   strcpy(c.born, "2026-10-01");
   c.mode = Mode::Overview;  // the longest mode code
@@ -953,6 +1005,7 @@ int main() {
   RUN_TEST(test_mascot_style_config);
   RUN_TEST(test_screen_care);
   RUN_TEST(test_blue_filter);
+  RUN_TEST(test_daily_life_config_defaults_and_ranges);
   RUN_TEST(test_stored_config_fits_on_the_gadget);
   RUN_TEST(test_pet_latch);
   RUN_TEST(test_demo_ends_on_new_activity);

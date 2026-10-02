@@ -161,3 +161,22 @@ notes.
     Remove another computer: after the confirmation it leaves the list, its `/miblo:status`
     shows `unauthorized: true`, and `/miblo:pair` brings it back. Removing the last one leaves
     the gadget unpaired (the page reloads open).
+25. **Daily life (firmware 1.11):** each part below, on one gadget, with the plugin from the same branch.
+
+<!-- daily:focus -->
+
+<!-- daily:alerts -->
+
+<!-- daily:rhythm -->
+
+<!-- daily:notes -->
+
+<!-- daily:cues -->
+
+<!-- daily:look -->
+
+<!-- daily:screens -->
+
+<!-- daily:settings -->
+
+<!-- daily:bridge -->

@@ -93,11 +93,26 @@ static void test_pace_window_and_reset_clear_history() {
   TEST_ASSERT_EQUAL_UINT32(0, w.exhaustAt());
 }
 
+// The bridge's forecast wins; without it (older plugin) the gadget's own projection.
+static void test_eta_prefers_the_bridge() {
+  miblo::Snapshot s{};
+  s.hasUsage = true;
+  s.h5 = {true, 70, 2000, 1500};
+  miblo::LimitWatch w;
+  TEST_ASSERT_EQUAL_UINT32(1500, miblo::etaFor(s, w));
+  s.h5.eta = 0;
+  TEST_ASSERT_EQUAL_UINT32(w.exhaustAt(), miblo::etaFor(s, w));
+  s.h5.present = false;
+  s.h5.eta = 1500;
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::etaFor(s, w));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_reset_after_real_use_is_celebrated);
   RUN_TEST(test_missing_usage_is_not_a_reset);
   RUN_TEST(test_burn_rate_projection);
   RUN_TEST(test_pace_window_and_reset_clear_history);
+  RUN_TEST(test_eta_prefers_the_bridge);
   return UNITY_END();
 }

@@ -8,6 +8,8 @@
 
 namespace miblo {
 
+Config::Config() = default;
+
 const char* modeCode(Mode m) {
   switch (m) {
     case Mode::Overview: return "overview";
@@ -66,12 +68,33 @@ bool parseDate(const char* s, uint16_t& year, uint8_t& month, uint8_t& day) {
   return true;
 }
 
-// A name typed by a person: <= 20 characters, no control characters.
-static bool personName(const char* s, size_t cap) {
-  if (!s || strlen(s) >= cap || utf8Length(s) > 20) return false;
+// No control characters (typed by a person).
+static bool printableUtf8(const char* s) {
   for (const char* p = s; *p; p++) {
     if ((uint8_t)*p < 0x20 || *p == 0x7F) return false;
   }
+  return true;
+}
+
+// A name typed by a person: <= 20 characters, no control characters.
+static bool personName(const char* s, size_t cap) {
+  return s && strlen(s) < cap && utf8Length(s) <= 20 && printableUtf8(s);
+}
+
+// An integer from a fixed set of choices (the settings page's selects). Unused slots are -1. No
+// table: a const array would sit in the ESP8266's RAM.
+static bool oneOf(JsonVariantConst v, uint8_t& out, int a, int b, int c, int d = -1) {
+  if (!v.is<int>()) return false;
+  const int x = v.as<int>();
+  if (x < 0 || (x != a && x != b && x != c && x != d)) return false;
+  out = (uint8_t)x;
+  return true;
+}
+
+// A plain bool field.
+static bool boolField(JsonVariantConst v, bool& out) {
+  if (!v.is<bool>()) return false;
+  out = v.as<bool>();
   return true;
 }
 
@@ -175,6 +198,41 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = intIn16(v, 0, 240, next.sleepMin);
     } else if (strcmp(k, "petMin") == 0) {
       ok = intIn(v, 1, 60, next.petMin);
+    } else if (strcmp(k, "focusQuiet") == 0) {
+      ok = boolField(v, next.focusQuiet);
+    } else if (strcmp(k, "insist") == 0) {
+      ok = boolField(v, next.insist);
+    } else if (strcmp(k, "eyes") == 0) {
+      ok = boolField(v, next.eyes);
+    } else if (strcmp(k, "endOfDay") == 0) {
+      ok = boolField(v, next.endOfDay);
+    } else if (strcmp(k, "frame") == 0) {
+      ok = boolField(v, next.frame);
+    } else if (strcmp(k, "deskQr") == 0) {
+      ok = boolField(v, next.deskQr);
+    } else if (strcmp(k, "weekly") == 0) {
+      ok = boolField(v, next.weekly);
+    } else if (strcmp(k, "breakAfterMin") == 0) {
+      ok = oneOf(v, next.breakAfterMin, 0, 60, 90, 120);
+    } else if (strcmp(k, "waterMin") == 0) {
+      ok = oneOf(v, next.waterMin, 0, 60, 90);
+    } else if (strcmp(k, "fanfareMin") == 0) {
+      ok = oneOf(v, next.fanfareMin, 0, 3, 5, 10);
+    } else if (strcmp(k, "workFrom") == 0) {
+      ok = intIn16(v, 0, 1439, next.workFrom);
+    } else if (strcmp(k, "workTo") == 0) {
+      ok = intIn16(v, 0, 1439, next.workTo);
+    } else if (strcmp(k, "workDays") == 0) {
+      ok = intIn(v, 1, 127, next.workDays);
+    } else if (strcmp(k, "tz2") == 0) {
+      const char* s = v.as<const char*>();
+      // Off ("") or an IANA name from the table (no POSIX rules: the page only offers the table).
+      ok = s && strlen(s) < sizeof(next.tz2) && (s[0] == 0 || tzIsKnown(s));
+      if (ok) strcpy(next.tz2, s);
+    } else if (strcmp(k, "tz2Label") == 0) {
+      const char* s = v.as<const char*>();
+      ok = s && strlen(s) < sizeof(next.tz2Label) && utf8Length(s) <= 12 && printableUtf8(s);
+      if (ok) strcpy(next.tz2Label, s);
     }
     if (!ok) {
       bad = k;
@@ -188,6 +246,8 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
   // An empty night window (start == end) is meaningless: reject whichever end the patch moved.
   if (!bad && next.nightFrom == next.nightTo) bad = patch["nightTo"].isNull() ? "nightFrom" : "nightTo";
   if (!bad && next.blueFrom == next.blueTo) bad = patch["blueTo"].isNull() ? "blueFrom" : "blueTo";
+  // Work hours stay within one day (no overnight shifts): the start comes first.
+  if (!bad && next.workFrom >= next.workTo) bad = patch["workTo"].isNull() ? "workFrom" : "workTo";
   if (bad) {
     if (badField) *badField = bad;
     return false;
@@ -229,6 +289,21 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   out["born"] = cfg.born;
   out["friends"] = cfg.friends;
   out["friendsSide"] = cfg.friendsSide;
+  out["focusQuiet"] = cfg.focusQuiet;
+  out["insist"] = cfg.insist;
+  out["breakAfterMin"] = cfg.breakAfterMin;
+  out["waterMin"] = cfg.waterMin;
+  out["eyes"] = cfg.eyes;
+  out["endOfDay"] = cfg.endOfDay;
+  out["workFrom"] = cfg.workFrom;
+  out["workTo"] = cfg.workTo;
+  out["workDays"] = cfg.workDays;
+  out["fanfareMin"] = cfg.fanfareMin;
+  out["frame"] = cfg.frame;
+  out["tz2"] = cfg.tz2;
+  out["tz2Label"] = cfg.tz2Label;
+  out["deskQr"] = cfg.deskQr;
+  out["weekly"] = cfg.weekly;
 }
 
 void configToStored(const Config& cfg, JsonObject out) {

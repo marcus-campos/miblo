@@ -19,11 +19,23 @@ struct AlertTiming {
 
 enum class AlertPhase : uint8_t { None, Flash, Hero };
 
+// Insistence (spec 3): from the 3rd reminder of the same wait twice the blinks and twice the
+// hero time; from the 5th, red blinks. Back to 0 when no session waits any more.
+constexpr uint8_t kInsistLevel1From = 3, kInsistLevel2From = 5;
+constexpr uint32_t kFanfareMs = 8000;  // a long task's "finished" stays this long (spec 6)
+
+struct AlertModifiers {
+  bool insist = true;       // cfg.insist
+  bool quietFlash = false;  // meeting mode: a single blink
+  bool holdDone = false;    // focus with cfg.focusQuiet: "finished" alerts wait (still queued)
+};
+
 struct AlertView {
   AlertPhase phase;
   AlertKind kind;
   char sid[9];
   uint32_t phaseStartMs;
+  uint8_t level;  // insistence step of this alert: 0, 1, 2
 };
 
 // Alert queue: deduplicates by `id` (highest id seen so far), amber before blue, and every
@@ -32,6 +44,9 @@ class AlertSequencer {
  public:
   void setTiming(const AlertTiming& t);
   const AlertTiming& timing() const { return t_; }
+  void setModifiers(const AlertModifiers& m);
+  // The hero on screen stays at least `ms` in total (the fanfare). No-op without a hero.
+  void extendHero(uint32_t ms);
   // On every accepted snapshot.
   void ingest(const Snapshot& s, uint32_t nowMs);
   // On every loop iteration: advances the phases and returns what should be on screen.
@@ -47,7 +62,8 @@ class AlertSequencer {
   uint32_t maxId_ = 0;
   uint32_t lastSeq_ = 0;
   bool haveSeq_ = false;
-  AlertView view_ = {AlertPhase::None, AlertKind::Done, {0}, 0};
+  AlertView view_ = {AlertPhase::None, AlertKind::Done, {0}, 0, 0};
+  AlertModifiers mods_;
   bool amberShown_ = false;
   uint32_t lastAmberEndMs_ = 0;
   bool pendingObserved_ = false;

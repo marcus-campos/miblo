@@ -2037,7 +2037,9 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     char who[40];
     if (v.extra) snprintf(who, sizeof(who), "%s +%u", v.name, (unsigned)v.extra);  // a group
     else snprintf(who, sizeof(who), "%s", v.name);
-    snprintf(buf, sizeof(buf), t(lang, (S)mibloRomByte((const char*)&kLine[g])), who);
+    S line;
+    mibloRomCopy(&line, &kLine[g], sizeof(S));  // S is 16 bits: copy it whole from flash
+    snprintf(buf, sizeof(buf), t(lang, line), who);
     if (!guest) buf[0] = 0;
   }
   if (vertical) return;

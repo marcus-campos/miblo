@@ -24,7 +24,7 @@ bool toolVerb(const char* tool, S& out) {
     size_t k = 0;
     while (k < sizeof(m.tool) && tool[k] && tool[k] == (char)mibloRomByte(m.tool + k)) k++;
     if (k < sizeof(m.tool) && !tool[k] && !mibloRomByte(m.tool + k)) {
-      out = (S)mibloRomByte((const char*)&m.verb);
+      mibloRomCopy(&out, &m.verb, sizeof(S));  // S is 16 bits: copy it whole from flash
       return true;
     }
   }

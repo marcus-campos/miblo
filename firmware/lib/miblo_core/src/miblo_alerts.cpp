@@ -22,6 +22,12 @@ void AlertSequencer::setTiming(const AlertTiming& t) {
   if (!t_.enabled) clear();
 }
 
+// Stub (daily-life foundation): track B implements it (kept, not used yet).
+void AlertSequencer::setModifiers(const AlertModifiers& m) { mods_ = m; }
+
+// Stub (daily-life foundation): track B implements it.
+void AlertSequencer::extendHero(uint32_t ms) { (void)ms; }
+
 void AlertSequencer::clear() {
   qn_ = 0;
   view_.phase = AlertPhase::None;

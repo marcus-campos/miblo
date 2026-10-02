@@ -70,8 +70,11 @@ bool loadConfig(miblo::Config& cfg) {
   if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), &bad)) {
     // A time zone saved by an older firmware that today's rules reject must not cost the user
     // every other setting: drop just that field (back to UTC; the settings page re-detects it).
-    if (!bad || strcmp(bad, "tz") != 0) return false;
-    doc.remove("tz");
+    // Same for the second clock's zone (back to off).
+    if (!bad) return false;
+    if (strcmp(bad, "tz") == 0) doc.remove("tz");
+    else if (strcmp(bad, "tz2") == 0) doc.remove("tz2");
+    else return false;
     loaded = miblo::Config();
     if (!miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), nullptr)) return false;
   }

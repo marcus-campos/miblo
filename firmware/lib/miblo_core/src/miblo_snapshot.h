@@ -26,6 +26,7 @@ struct SessionRow {
   char model[25];    // <= 12 characters
   int16_t ctx;       // -1 = null
   uint32_t since;    // epoch in seconds
+  uint32_t ts;       // when the running Bash command started, epoch s (0 = not sent / not a long command)
   int32_t tok;       // -1 = null (context size: well under 2^31)
 };
 
@@ -33,6 +34,16 @@ struct UsageWindow {
   bool present;
   uint8_t pct;
   uint32_t reset;  // epoch in seconds
+  uint32_t eta;    // h5 only: when the bridge expects 100% at the current pace (0 = no forecast)
+};
+
+// Last week's totals, sent by the bridge on Mondays only (miblo_dayend.h WeeklyRecap).
+struct WeekStats {
+  bool present;
+  uint32_t workSec;
+  uint16_t turns;
+  float usd;
+  uint8_t busiest;  // weekday with the most work, 0 = Sunday .. 6; 255 = unknown
 };
 
 struct AlertItem {
@@ -51,6 +62,7 @@ struct Snapshot {
   float todayUsd;  // today's cost (today.usd); the protocol no longer has today.tok
   uint16_t todayTurns;    // responses finished today (today.turns; 0 from older plugins)
   uint32_t todayWorkSec;  // time with a session working today (today.work, seconds)
+  WeekStats week;         // last week (Mondays only; week.present false otherwise / older plugin)
   char latest[16];        // newest released firmware, "1.0.2" ("" = unknown / older plugin)
   uint8_t count;
   SessionRow sessions[kMaxSessions];
@@ -73,5 +85,9 @@ bool parseAlertKind(const char* s, AlertKind& out);
 
 // Index of the session with that short id, or -1.
 int findSession(const Snapshot& s, const char* id);
+
+// A running Bash command's elapsed seconds once it passed kLongCommandSec, else 0 (spec 10).
+constexpr uint32_t kLongCommandSec = 30;
+uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch);
 
 }  // namespace miblo

@@ -41,6 +41,11 @@ Accessory accessoryFor(Occasion o) {
     case Occasion::NewYear:
     case Occasion::MibloBirthday:
     case Occasion::OwnerBirthday: return Accessory::PartyHat;
+    // Stub (daily-life foundation): track F dresses these up.
+    case Occasion::Valentine:
+    case Occasion::Easter:
+    case Occasion::ProgrammersDay:
+    case Occasion::Friday13:
     case Occasion::None: break;
   }
   return Accessory::None;
@@ -70,6 +75,11 @@ void Greeter::update(uint32_t nowMs, bool active, bool timeKnown, const Date& to
       if (today.day == 25) g = Greeting::Christmas;
       break;
     case Occasion::Halloween:
+    // Stub (daily-life foundation): track F greets on these.
+    case Occasion::Valentine:
+    case Occasion::Easter:
+    case Occasion::ProgrammersDay:
+    case Occasion::Friday13:
     case Occasion::None: break;
   }
   if (g == Greeting::None && cfg.owner[0]) {
@@ -123,8 +133,25 @@ void greetingLines(Lang lang, Greeting g, const char* owner, const char* self, c
       if (named) snprintf(line1, cap1, "%s", owner);
       tr(lang, S::HappyNewYear, line2, cap2);
       break;
+    case Greeting::ProgrammersDay:  // Stub (daily-life foundation): track F implements it.
     case Greeting::None: break;
   }
+}
+
+// Stub (daily-life foundation): track F implements it.
+Date easterSunday(uint16_t year) { return Date{year, 4, 1}; }
+
+// Stub (daily-life foundation): track F implements it.
+uint8_t weekdayOf(const Date& d) {
+  (void)d;
+  return 0;
+}
+
+// Stub (daily-life foundation): track F implements it.
+bool passerbyAt(uint32_t petMs, uint32_t* atMs) {
+  (void)petMs;
+  if (atMs) *atMs = 0;
+  return false;
 }
 
 }  // namespace miblo

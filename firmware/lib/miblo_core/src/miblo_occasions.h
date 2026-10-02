@@ -13,7 +13,18 @@ struct Date {
   uint8_t day;    // 1..31
 };
 
-enum class Occasion : uint8_t { None, Halloween, Christmas, NewYear, MibloBirthday, OwnerBirthday };
+enum class Occasion : uint8_t {
+  None,
+  Halloween,
+  Christmas,
+  NewYear,
+  MibloBirthday,
+  OwnerBirthday,
+  Valentine,       // Feb 14
+  Easter,          // Easter Sunday (easterSunday)
+  ProgrammersDay,  // day 256 of the year (Sep 13, Sep 12 in leap years)
+  Friday13         // no hat: a black cat crosses pet mode now and then (passerbyAt)
+};
 // The occasion of a local date, the most personal first: the owner's birthday, the gadget's own
 // (a year or more after cfg.born), New Year (Dec 31, Jan 1), Christmas (Dec 20-26), Halloween
 // (Oct 29-31). An owner born on Feb 29 celebrates on Feb 28 in other years.
@@ -21,8 +32,14 @@ Occasion occasionOn(const Config& cfg, const Date& d);
 // Whole years since cfg.born (0 when unknown or not a year yet).
 uint16_t mibloAge(const Config& cfg, const Date& d);
 
-enum class Accessory : uint8_t { None, SantaHat, WitchHat, PartyHat };
+enum class Accessory : uint8_t { None, SantaHat, WitchHat, PartyHat, BunnyEars, Glasses, Hearts };
 Accessory accessoryFor(Occasion o);
+
+Date easterSunday(uint16_t year);    // Gregorian (anonymous algorithm)
+uint8_t weekdayOf(const Date& d);    // 0 = Sunday .. 6
+// Friday the 13th: a black cat crosses the screen in pet mode for kPasserbyMs every kPasserbyEveryMs.
+constexpr uint32_t kPasserbyEveryMs = 600000, kPasserbyMs = 8000;
+bool passerbyAt(uint32_t petMs, uint32_t* atMs);  // true while it is crossing; *atMs = time into it
 
 enum class Greeting : uint8_t {
   None,
@@ -33,7 +50,8 @@ enum class Greeting : uint8_t {
   OwnerBirthday,  // "Happy birthday, Ana!"
   MibloBirthday,  // "Today is my birthday!"
   Christmas,      // Dec 25
-  NewYear         // Jan 1
+  NewYear,        // Jan 1
+  ProgrammersDay  // day 256: "Happy Programmer's Day!"
 };
 
 // Decides when the greeting screen comes up. Daily greetings wait for the first activity of the

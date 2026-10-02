@@ -48,4 +48,8 @@ class LimitWatch {
   uint8_t count_ = 0;
 };
 
+// The 5h window's expected exhaustion: the bridge's forecast (h5.eta) when it sent one, else the
+// gadget's own projection (older plugin); 0 without a 5h window.
+uint32_t etaFor(const Snapshot& s, const LimitWatch& w);
+
 }  // namespace miblo

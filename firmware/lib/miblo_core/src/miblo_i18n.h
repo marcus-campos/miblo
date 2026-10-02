@@ -7,7 +7,7 @@ namespace miblo {
 enum class Lang : uint8_t { En, PtBR, PtPT, Es, Fr, It, De, Ru, Zh, Count };
 
 // String identifiers. The order matches the tables in miblo_strings.cpp.
-enum class S : uint8_t {
+enum class S : uint16_t {
   Connecting,
   Hello,
   ScanPhone,
@@ -242,6 +242,45 @@ enum class S : uint8_t {
   WebSideUp,
   WebSideDown,
   FriendBusy,           // visit cut short: "%s got busy" (the host's human got back to work)
+  // ---- Daily life (focus, wellness, meeting, notes, forecast) ----
+  FocusUntil,           // focus screen: "focus until 15:30"
+  FocusBreak,           // focus screen: the break between rounds
+  FocusBack,            // focus screen: the minute after a break
+  FocusLongBreak,       // focus screen: the break after the last round
+  NudgeBreak,           // wellness: after long continuous work
+  NudgeWater,           // wellness: water reminder
+  NudgeEyes,            // wellness: 20-20-20 eye rest
+  RestWell,             // end of the work day, no owner name
+  RestWellName,         // end of the work day: "Have a good rest, Ana!"
+  LastWeekTitle,        // Monday recap header
+  BusiestDay,           // Monday recap: "busiest day: Wed"
+  InMeeting,            // meeting mode badge
+  ASessionNeedsYou,     // meeting mode: an alert without the session name
+  FinishedAfter,        // long task fanfare: "api finished after 23 min"
+  FinishedAfterAnon,    // long task fanfare in meeting mode (no name)
+  RunsOutAt,            // Limits screen: the 5h forecast
+  RunsOutShort,         // Overview: the 5h forecast under 30 min
+  TimesUp,              // timer: the time is over
+  CountdownDays,        // countdown: "release in 3 days"
+  CountdownTomorrow,    // countdown: "release tomorrow"
+  CountdownToday,       // countdown: "release is today!"
+  FindMe,               // /miblo:find
+  HappyProgrammersDay,  // greeting on day 256
+  WebSecWellness,       // settings: wellness section title
+  WebBreakAfter,        // settings: break after long work (select)
+  WebWater,             // settings: water reminder (select)
+  WebEyes,              // settings: 20-20-20 toggle
+  WebWorkHours,         // settings: work hours
+  WebWorkDays,          // settings: work days
+  WebEndOfDay,          // settings: end of day summary toggle
+  WebFanfare,           // settings: long task fanfare (select)
+  WebFocusQuiet,        // settings: hold "finished" during focus
+  WebInsist,            // settings: insistence toggle
+  WebFrame,             // settings: status frame toggle
+  WebTz2,               // settings: second time zone
+  WebTz2Label,          // settings: the second zone's name on screen
+  WebDeskQr,            // settings: settings QR on the Desk screen
+  WebWeekly,            // settings: Monday recap toggle
   Count
 };
 

@@ -7,6 +7,10 @@ namespace miblo {
 // Elapsed time: 42 → "0:42", 192 → "3:12", 3725 → "1:02:05".
 void formatElapsed(uint32_t secs, char* out, size_t cap);
 
+// The big timers (focus, the timer): 0 -> "0:00", 1122 -> "18:42", 3909 -> "1:05:09".
+// Same shape as formatElapsed; its own name so the timer screens can change it alone.
+inline void formatMinSec(uint32_t secs, char* out, size_t cap) { formatElapsed(secs, out, cap); }
+
 // Short time (list/"X ago"): 45 → "45s", 150 → "2m", 7300 → "2h", 180000 → "2d".
 void formatAgo(uint32_t secs, char* out, size_t cap);
 

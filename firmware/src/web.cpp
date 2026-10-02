@@ -1010,7 +1010,7 @@ static void handleSettingsSecret() {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
-  if (heapLowForRequest(2048)) {
+  if (heapLowForRequest(miblo::kConfigJsonCapacity)) {
     sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }

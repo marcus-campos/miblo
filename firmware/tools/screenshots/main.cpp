@@ -132,8 +132,8 @@ void usage(uint8_t h5, uint8_t d7) {
   memset(&snap, 0, sizeof(snap));
   snap.now = gNow;
   snap.hasUsage = true;
-  snap.h5 = {true, h5, gNow + 2 * 3600 + 10 * 60};
-  snap.d7 = {true, d7, gNow + 3 * 86400 + 5 * 3600};
+  snap.h5 = {true, h5, gNow + 2 * 3600 + 10 * 60, 0};
+  snap.d7 = {true, d7, gNow + 3 * 86400 + 5 * 3600, 0};
   snap.todayUsd = 12.40f;
 }
 

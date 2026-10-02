@@ -776,10 +776,10 @@ static void test_desk_mood_and_gauges() {
   TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Watchful, (int)screens::deskMood(50));
   TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Worried, (int)screens::deskMood(80));
   TEST_ASSERT_EQUAL_INT((int)screens::DeskMood::Scared, (int)screens::deskMood(95));
-  const UsageWindow w{true, 88, NOW + 60};
+  const UsageWindow w{true, 88, NOW + 60, 0};
   TEST_ASSERT_EQUAL_UINT8(88, screens::deskPct(w, NOW));
   TEST_ASSERT_EQUAL_UINT8(0, screens::deskPct(w, NOW + 60));  // reset since: back to 0
-  TEST_ASSERT_EQUAL_UINT8(88, screens::deskPct({true, 88, 0}, NOW));  // unknown reset: kept
+  TEST_ASSERT_EQUAL_UINT8(88, screens::deskPct({true, 88, 0, 0}, NOW));  // unknown reset: kept
 
   // Scared of the week gauge (right): it gazes right at some point, never left while focused.
   bool gazedRight = false, alarm = false, covered = false;

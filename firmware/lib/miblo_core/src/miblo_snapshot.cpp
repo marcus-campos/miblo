@@ -58,12 +58,22 @@ static void readWindow(JsonVariantConst v, UsageWindow& w) {
   w.present = v.is<JsonObjectConst>() && v["pct"].is<float>();
   w.pct = w.present ? clampPct(v["pct"]) : 0;
   w.reset = w.present ? v["reset"].as<uint32_t>() : 0;
+  w.eta = w.present ? v["eta"].as<uint32_t>() : 0;  // 0 when absent (older plugin, d7)
+}
+
+uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch) {
+  if (r.st != SessionState::Running || strcmp(r.tool, "Bash") != 0 || !r.ts) return 0;
+  // Compared without overflow: nowEpoch >= ts + kLongCommandSec.
+  if (nowEpoch < r.ts || nowEpoch - r.ts < kLongCommandSec) return 0;
+  return nowEpoch - r.ts;
 }
 
 ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   if (len > kSnapshotMaxBytes) return ParseResult::TooLarge;
 
-  DynamicJsonDocument filter(768);
+  // Exact size on any platform: 11 top-level keys, a 10-key session template, a 3-key alert one.
+  DynamicJsonDocument filter(JSON_OBJECT_SIZE(11) + 2 * JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(10) +
+                             JSON_OBJECT_SIZE(3));
   filter["v"] = true;
   filter["seq"] = true;
   filter["now"] = true;
@@ -72,8 +82,9 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   filter["today"] = true;
   filter["latest"] = true;
   filter["more"] = true;
+  filter["week"] = true;
   JsonObject fs = filter["sessions"].createNestedObject();
-  for (const char* k : {"id", "name", "st", "tool", "det", "since", "model", "ctx", "tok"}) fs[k] = true;
+  for (const char* k : {"id", "name", "st", "tool", "det", "since", "ts", "model", "ctx", "tok"}) fs[k] = true;
   JsonObject fa = filter["alerts"].createNestedObject();
   for (const char* k : {"id", "kind", "sid"}) fa[k] = true;
 
@@ -101,6 +112,14 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   out.todayWorkSec = doc["today"]["work"].as<uint32_t>();
   copyStr(out.latest, sizeof(out.latest), doc["latest"], 15);
 
+  JsonVariantConst week = doc["week"];
+  out.week.present = week.is<JsonObjectConst>();
+  out.week.workSec = week["work"].as<uint32_t>();
+  out.week.turns = week["turns"].as<uint16_t>();
+  out.week.usd = week["usd"].as<float>();
+  const int top = week["top"].is<int>() ? week["top"].as<int>() : -1;
+  out.week.busiest = top >= 0 && top <= 6 ? (uint8_t)top : 255;
+
   out.count = 0;
   uint16_t skipped = 0;
   for (JsonObjectConst s : doc["sessions"].as<JsonArrayConst>()) {
@@ -117,6 +136,7 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
     copyStr(r.tool, sizeof(r.tool), s["tool"], 32);
     copyStr(r.det, sizeof(r.det), s["det"], 32);
     r.since = s["since"].as<uint32_t>();
+    r.ts = s["ts"].as<uint32_t>();
     copyStr(r.model, sizeof(r.model), s["model"], 12);
     r.ctx = s["ctx"].is<int>() ? (int16_t)s["ctx"].as<int>() : -1;
     const int64_t tok = s["tok"].is<int64_t>() ? s["tok"].as<int64_t>() : -1;

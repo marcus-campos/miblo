@@ -152,6 +152,52 @@ static void test_errors_leave_previous_snapshot_untouched() {
   TEST_ASSERT_EQUAL_STRING("keep", snap.host);
 }
 
+// New optional fields: the 5h forecast, when a running command started, and last week's totals.
+// An older plugin sends none of them; an unknown extra field never breaks the parse.
+static void test_daily_life_snapshot_fields() {
+  char json[] =
+      "{\"v\":1,\"seq\":1,\"now\":1790605920,\"usage\":{\"h5\":{\"pct\":62,\"reset\":1790613720,\"eta\":1790611200}},"
+      "\"sessions\":[{\"id\":\"55555555\",\"name\":\"worker\",\"st\":\"running\",\"tool\":\"Bash\",\"det\":\"npm test\","
+      "\"since\":1790605000,\"ts\":1790605818}],"
+      "\"week\":{\"work\":61200,\"turns\":212,\"usd\":31.5,\"top\":3},\"future\":{\"x\":1},\"alerts\":[]}";
+  Snapshot s{};
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
+  TEST_ASSERT_EQUAL_UINT32(1790611200, s.h5.eta);
+  TEST_ASSERT_EQUAL_UINT32(1790605818, s.sessions[0].ts);
+  TEST_ASSERT_TRUE(s.week.present);
+  TEST_ASSERT_EQUAL_UINT32(61200, s.week.workSec);
+  TEST_ASSERT_EQUAL_UINT16(212, s.week.turns);
+  TEST_ASSERT_FLOAT_WITHIN(0.01f, 31.5f, s.week.usd);
+  TEST_ASSERT_EQUAL_UINT8(3, s.week.busiest);
+
+  char old[] = "{\"v\":1,\"seq\":2,\"now\":1,\"usage\":{\"h5\":{\"pct\":10,\"reset\":2}},"
+               "\"sessions\":[{\"id\":\"1\",\"name\":\"a\",\"st\":\"running\",\"tool\":\"Bash\",\"det\":\"x\",\"since\":1}]}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(old, strlen(old), s));
+  TEST_ASSERT_EQUAL_UINT32(0, s.h5.eta);
+  TEST_ASSERT_EQUAL_UINT32(0, s.sessions[0].ts);
+  TEST_ASSERT_FALSE(s.week.present);
+  TEST_ASSERT_EQUAL_UINT8(255, s.week.busiest);
+}
+
+// A Bash command running for 30 s or more shows its elapsed time; anything else does not.
+static void test_long_command_seconds() {
+  miblo::SessionRow r{};
+  strcpy(r.tool, "Bash");
+  r.st = miblo::SessionState::Running;
+  r.ts = 1000;
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 1029));
+  TEST_ASSERT_EQUAL_UINT32(30, miblo::longCommandSec(r, 1030));
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 999));   // clocks out of step
+  r.ts = 0;
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 5000));  // older plugin: unknown
+  r.ts = 1000;
+  strcpy(r.tool, "Edit");
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 5000));
+  strcpy(r.tool, "Bash");
+  r.st = miblo::SessionState::Perm;
+  TEST_ASSERT_EQUAL_UINT32(0, miblo::longCommandSec(r, 5000));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_attention_fixture);
@@ -161,5 +207,7 @@ int main() {
   RUN_TEST(test_unknown_fields_are_ignored_and_extra_sessions_go_to_more);
   RUN_TEST(test_truncates_long_strings_by_characters);
   RUN_TEST(test_errors_leave_previous_snapshot_untouched);
+  RUN_TEST(test_daily_life_snapshot_fields);
+  RUN_TEST(test_long_command_seconds);
   return UNITY_END();
 }

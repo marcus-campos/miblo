@@ -2,6 +2,11 @@
 
 namespace miblo {
 
+uint32_t etaFor(const Snapshot& s, const LimitWatch& w) {
+  if (!s.hasUsage || !s.h5.present) return 0;
+  return s.h5.eta ? s.h5.eta : w.exhaustAt();
+}
+
 void LimitWatch::observe(const Snapshot& s, uint32_t nowMs) {
   if (!s.hasUsage || !s.h5.present) return;  // keep what we knew: no data is not a reset
   const UsageWindow& w = s.h5;

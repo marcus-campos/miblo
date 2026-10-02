@@ -112,6 +112,17 @@ static void test_format_clock_and_usd() {
   TEST_ASSERT_EQUAL_STRING("$0.00", b);
 }
 
+// The big timers ("18:42", "1:05:09").
+static void test_format_min_sec() {
+  char b[16];
+  miblo::formatMinSec(0, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("0:00", b);
+  miblo::formatMinSec(18 * 60 + 42, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("18:42", b);
+  miblo::formatMinSec(3909, b, sizeof(b));
+  TEST_ASSERT_EQUAL_STRING("1:05:09", b);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_utf8_next_decodes_all_widths);
@@ -124,5 +135,6 @@ int main() {
   RUN_TEST(test_format_countdown);
   RUN_TEST(test_format_tokens);
   RUN_TEST(test_format_clock_and_usd);
+  RUN_TEST(test_format_min_sec);
   return UNITY_END();
 }

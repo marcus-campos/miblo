@@ -88,6 +88,26 @@
 - **Up to 20 active sessions at once**, the ones that need you first; the rest cycle through the pages, and an alert is always shown even when memory is tight.
 - **Hard reset without a computer:** power it on 6 times in quick succession, with an on-screen countdown you can cancel (see [Hard reset](#hard-reset)).
 
+### Daily life
+
+<!-- daily:focus -->
+
+<!-- daily:alerts -->
+
+<!-- daily:rhythm -->
+
+<!-- daily:notes -->
+
+<!-- daily:cues -->
+
+<!-- daily:look -->
+
+<!-- daily:screens -->
+
+<!-- daily:settings -->
+
+<!-- daily:bridge -->
+
 **Privacy**
 
 - Everything stays on your local network. The plugin's bridge listens only on `127.0.0.1` and talks to the gadget over your LAN. There's no cloud and no account.

@@ -14,6 +14,10 @@ const char* modeCode(Mode m);  // "overview" | "limits" | "sessions"
 bool modeFromCode(const char* s, Mode& out);
 
 struct Config {
+  // Defined in miblo_config.cpp: on the ESP8266 the defaults below become a constant image that
+  // sits in RAM (.rodata); out of line there is one image for the whole firmware, not one per
+  // file that makes a Config.
+  Config();
   Mode mode = Mode::Overview;
   uint8_t brightness = 80;  // %, 5..100
   bool alerts = true;
@@ -48,6 +52,22 @@ struct Config {
   bool friends = true;           // pet mode: play with other Miblos on the network (miblo_friends.h)
   uint8_t friendsSide = 0;       // where the other Miblos stand: 0 right, 1 left, 2 above, 3 below
                                  // (our cat leaves that way to visit; a guest comes in from there)
+  // ---- Daily life (focus, wellness, end of day...): everything that nags is off by default ----
+  bool focusQuiet = true;        // during focus only "needs you" alerts; "finished" waits for the break
+  bool insist = true;            // a long wait makes the reminder stronger (miblo_alerts.h)
+  uint8_t breakAfterMin = 0;     // suggest a break after this much continuous work: 0, 60, 90, 120
+  uint8_t waterMin = 0;          // drink water every N minutes of the work hours: 0, 60, 90
+  bool eyes = false;             // 20-20-20 eye rest
+  bool endOfDay = false;         // the day's summary at workTo on work days
+  uint16_t workFrom = 9 * 60;    // work hours (local minute of the day), workFrom < workTo
+  uint16_t workTo = 18 * 60;
+  uint8_t workDays = 0x3E;       // bit 0 = Sunday .. bit 6 = Saturday; Mon..Fri by default; never 0
+  uint8_t fanfareMin = 5;        // a response that took this long ends with a party: 0 (off), 3, 5, 10
+  bool frame = false;            // thin status-coloured frame around the screen
+  char tz2[48] = "";             // second time zone, an IANA name from the table ("" = off)
+  char tz2Label[37] = "";        // its name on screen, <= 12 characters ("" = the city of tz2)
+  bool deskQr = false;           // settings QR on the Desk screen (always on /miblo:find)
+  bool weekly = true;            // Monday: last week's summary
 };
 
 constexpr uint8_t kMascotStyles = 4;
@@ -56,7 +76,7 @@ constexpr uint8_t kMascotStyles = 4;
 // settings POST from the page or the plugin, and the page's copy. Too small and the saved config
 // fails to load, which resets every setting: the worst case (every string at its byte limit)
 // must stay within 2/3 of it (test_stored_config_fits_on_the_gadget). A transient allocation.
-constexpr size_t kConfigJsonCapacity = 1536;
+constexpr size_t kConfigJsonCapacity = 2304;  // 1536 before the daily-life settings (worst case ~1.4 KB)
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.

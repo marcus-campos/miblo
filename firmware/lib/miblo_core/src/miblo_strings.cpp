@@ -240,7 +240,45 @@ static const char kEn[] MIBLO_ROM =
     "Left\0"  // WebSideLeft
     "Top\0"  // WebSideUp
     "Bottom\0"  // WebSideDown
-    "%s got busy\0";  // FriendBusy
+    "%s got busy\0"  // FriendBusy
+    "focus until %s\0"  // FocusUntil
+    "Break time\0"  // FocusBreak
+    "Back to focus?\0"  // FocusBack
+    "Long break\0"  // FocusLongBreak
+    "How about a 5 min break?\0"  // NudgeBreak
+    "Time to drink water\0"  // NudgeWater
+    "Look far away\0"  // NudgeEyes
+    "Have a good rest!\0"  // RestWell
+    "Have a good rest, %s!\0"  // RestWellName
+    "LAST WEEK\0"  // LastWeekTitle
+    "busiest day: %s\0"  // BusiestDay
+    "in a meeting\0"  // InMeeting
+    "A session needs you\0"  // ASessionNeedsYou
+    "%s finished after %s\0"  // FinishedAfter
+    "Finished after %s\0"  // FinishedAfterAnon
+    "at this pace, runs out at %s\0"  // RunsOutAt
+    "runs out ~%s\0"  // RunsOutShort
+    "Time's up!\0"  // TimesUp
+    "%s in %u days\0"  // CountdownDays
+    "%s tomorrow\0"  // CountdownTomorrow
+    "%s is today!\0"  // CountdownToday
+    "Here I am!\0"  // FindMe
+    "Happy Programmer's Day!\0"  // HappyProgrammersDay
+    "Wellness\0"  // WebSecWellness
+    "Break after long work\0"  // WebBreakAfter
+    "Drink water reminder\0"  // WebWater
+    "Eye rest (20-20-20)\0"  // WebEyes
+    "Work hours\0"  // WebWorkHours
+    "Work days\0"  // WebWorkDays
+    "End of day summary\0"  // WebEndOfDay
+    "Celebrate long tasks\0"  // WebFanfare
+    "During focus, only \"needs you\" alerts\0"  // WebFocusQuiet
+    "Insist more on long waits\0"  // WebInsist
+    "Status frame around the screen\0"  // WebFrame
+    "Second time zone\0"  // WebTz2
+    "Its name on screen\0"  // WebTz2Label
+    "Settings QR on the desk screen\0"  // WebDeskQr
+    "Monday: last week's summary\0";  // WebWeekly
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -476,7 +514,45 @@ static const char kPtBR[] MIBLO_ROM =
     "À minha esquerda\0"  // WebSideLeft
     "Em cima\0"  // WebSideUp
     "Embaixo\0"  // WebSideDown
-    "%s ficou ocupado\0";  // FriendBusy
+    "%s ficou ocupado\0"  // FriendBusy
+    "em foco até %s\0"  // FocusUntil
+    "Hora da pausa\0"  // FocusBreak
+    "De volta ao foco?\0"  // FocusBack
+    "Pausa longa\0"  // FocusLongBreak
+    "Que tal uma pausa de 5 min?\0"  // NudgeBreak
+    "Hora de beber água\0"  // NudgeWater
+    "Olhe para longe\0"  // NudgeEyes
+    "Bom descanso!\0"  // RestWell
+    "Bom descanso, %s!\0"  // RestWellName
+    "SEMANA PASSADA\0"  // LastWeekTitle
+    "dia mais puxado: %s\0"  // BusiestDay
+    "em reunião\0"  // InMeeting
+    "Uma sessão precisa de você\0"  // ASessionNeedsYou
+    "%s terminou após %s\0"  // FinishedAfter
+    "Terminou após %s\0"  // FinishedAfterAnon
+    "no ritmo atual, acaba às %s\0"  // RunsOutAt
+    "acaba ~%s\0"  // RunsOutShort
+    "Acabou o tempo!\0"  // TimesUp
+    "%s em %u dias\0"  // CountdownDays
+    "%s amanhã\0"  // CountdownTomorrow
+    "%s é hoje!\0"  // CountdownToday
+    "Estou aqui!\0"  // FindMe
+    "Feliz dia do programador!\0"  // HappyProgrammersDay
+    "Bem-estar\0"  // WebSecWellness
+    "Pausa depois de muito trabalho\0"  // WebBreakAfter
+    "Lembrete de água\0"  // WebWater
+    "Descanso dos olhos (20-20-20)\0"  // WebEyes
+    "Horário de trabalho\0"  // WebWorkHours
+    "Dias de trabalho\0"  // WebWorkDays
+    "Resumo no fim do expediente\0"  // WebEndOfDay
+    "Comemorar tarefas longas\0"  // WebFanfare
+    "Durante o foco, só avisos de \"precisa de você\"\0"  // WebFocusQuiet
+    "Insistir mais quando a espera for longa\0"  // WebInsist
+    "Moldura de estado na tela\0"  // WebFrame
+    "Outro fuso\0"  // WebTz2
+    "Nome na tela\0"  // WebTz2Label
+    "QR das configurações na tela da mesa\0"  // WebDeskQr
+    "Segunda: resumo da semana\0";  // WebWeekly
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -712,7 +788,45 @@ static const char kPtPT[] MIBLO_ROM =
     "À minha esquerda\0"  // WebSideLeft
     "Em cima\0"  // WebSideUp
     "Em baixo\0"  // WebSideDown
-    "%s ficou ocupado\0";  // FriendBusy
+    "%s ficou ocupado\0"  // FriendBusy
+    "em foco até às %s\0"  // FocusUntil
+    "Hora da pausa\0"  // FocusBreak
+    "De volta ao foco?\0"  // FocusBack
+    "Pausa longa\0"  // FocusLongBreak
+    "Que tal uma pausa de 5 min?\0"  // NudgeBreak
+    "Hora de beber água\0"  // NudgeWater
+    "Olhe para longe\0"  // NudgeEyes
+    "Bom descanso!\0"  // RestWell
+    "Bom descanso, %s!\0"  // RestWellName
+    "SEMANA PASSADA\0"  // LastWeekTitle
+    "dia mais intenso: %s\0"  // BusiestDay
+    "em reunião\0"  // InMeeting
+    "Uma sessão precisa de si\0"  // ASessionNeedsYou
+    "%s terminou após %s\0"  // FinishedAfter
+    "Terminou após %s\0"  // FinishedAfterAnon
+    "a este ritmo, acaba às %s\0"  // RunsOutAt
+    "acaba ~%s\0"  // RunsOutShort
+    "Acabou o tempo!\0"  // TimesUp
+    "%s daqui a %u dias\0"  // CountdownDays
+    "%s amanhã\0"  // CountdownTomorrow
+    "%s é hoje!\0"  // CountdownToday
+    "Estou aqui!\0"  // FindMe
+    "Feliz Dia do Programador!\0"  // HappyProgrammersDay
+    "Bem-estar\0"  // WebSecWellness
+    "Pausa depois de muito trabalho\0"  // WebBreakAfter
+    "Lembrete para beber água\0"  // WebWater
+    "Descanso dos olhos (20-20-20)\0"  // WebEyes
+    "Horário de trabalho\0"  // WebWorkHours
+    "Dias de trabalho\0"  // WebWorkDays
+    "Resumo no fim do dia de trabalho\0"  // WebEndOfDay
+    "Celebrar tarefas longas\0"  // WebFanfare
+    "Durante o foco, só avisos de \"precisa de si\"\0"  // WebFocusQuiet
+    "Insistir mais quando a espera for longa\0"  // WebInsist
+    "Moldura de estado no ecrã\0"  // WebFrame
+    "Outro fuso horário\0"  // WebTz2
+    "Nome no ecrã\0"  // WebTz2Label
+    "QR das definições no ecrã da secretária\0"  // WebDeskQr
+    "Segunda: resumo da semana\0";  // WebWeekly
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -948,7 +1062,45 @@ static const char kEs[] MIBLO_ROM =
     "A mi izquierda\0"  // WebSideLeft
     "Arriba\0"  // WebSideUp
     "Abajo\0"  // WebSideDown
-    "%s se puso a trabajar\0";  // FriendBusy
+    "%s se puso a trabajar\0"  // FriendBusy
+    "en foco hasta las %s\0"  // FocusUntil
+    "Hora del descanso\0"  // FocusBreak
+    "¿Volvemos al foco?\0"  // FocusBack
+    "Descanso largo\0"  // FocusLongBreak
+    "¿Qué tal un descanso de 5 min?\0"  // NudgeBreak
+    "Hora de beber agua\0"  // NudgeWater
+    "Mira a lo lejos\0"  // NudgeEyes
+    "¡Buen descanso!\0"  // RestWell
+    "¡Buen descanso, %s!\0"  // RestWellName
+    "SEMANA PASADA\0"  // LastWeekTitle
+    "día más intenso: %s\0"  // BusiestDay
+    "en reunión\0"  // InMeeting
+    "Una sesión te necesita\0"  // ASessionNeedsYou
+    "%s terminó tras %s\0"  // FinishedAfter
+    "Terminó tras %s\0"  // FinishedAfterAnon
+    "a este ritmo, se agota a las %s\0"  // RunsOutAt
+    "se agota ~%s\0"  // RunsOutShort
+    "¡Se acabó el tiempo!\0"  // TimesUp
+    "%s en %u días\0"  // CountdownDays
+    "%s mañana\0"  // CountdownTomorrow
+    "%s es hoy!\0"  // CountdownToday
+    "¡Aquí estoy!\0"  // FindMe
+    "¡Feliz Día del Programador!\0"  // HappyProgrammersDay
+    "Bienestar\0"  // WebSecWellness
+    "Pausa tras mucho trabajo\0"  // WebBreakAfter
+    "Recordatorio de agua\0"  // WebWater
+    "Descanso visual (20-20-20)\0"  // WebEyes
+    "Horario laboral\0"  // WebWorkHours
+    "Días laborables\0"  // WebWorkDays
+    "Resumen al final de la jornada\0"  // WebEndOfDay
+    "Celebrar tareas largas\0"  // WebFanfare
+    "Durante el foco, solo avisos de \"te necesita\"\0"  // WebFocusQuiet
+    "Insistir más en esperas largas\0"  // WebInsist
+    "Marco de estado en la pantalla\0"  // WebFrame
+    "Otra zona horaria\0"  // WebTz2
+    "Nombre en pantalla\0"  // WebTz2Label
+    "QR de ajustes en la pantalla del escritorio\0"  // WebDeskQr
+    "Lunes: resumen de la semana\0";  // WebWeekly
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -1184,7 +1336,45 @@ static const char kFr[] MIBLO_ROM =
     "À ma gauche\0"  // WebSideLeft
     "Au-dessus\0"  // WebSideUp
     "En dessous\0"  // WebSideDown
-    "%s est occupé\0";  // FriendBusy
+    "%s est occupé\0"  // FriendBusy
+    "concentré jusqu'à %s\0"  // FocusUntil
+    "C'est la pause\0"  // FocusBreak
+    "On s'y remet ?\0"  // FocusBack
+    "Longue pause\0"  // FocusLongBreak
+    "Une pause de 5 min ?\0"  // NudgeBreak
+    "Buvez un verre d'eau\0"  // NudgeWater
+    "Regardez au loin\0"  // NudgeEyes
+    "Bon repos !\0"  // RestWell
+    "Bon repos, %s !\0"  // RestWellName
+    "SEMAINE DERNIÈRE\0"  // LastWeekTitle
+    "jour le plus chargé : %s\0"  // BusiestDay
+    "en réunion\0"  // InMeeting
+    "Une session a besoin de vous\0"  // ASessionNeedsYou
+    "%s a terminé après %s\0"  // FinishedAfter
+    "Terminé après %s\0"  // FinishedAfterAnon
+    "à ce rythme, épuisé à %s\0"  // RunsOutAt
+    "épuisé ~%s\0"  // RunsOutShort
+    "C'est l'heure !\0"  // TimesUp
+    "%s dans %u jours\0"  // CountdownDays
+    "%s demain\0"  // CountdownTomorrow
+    "%s, c'est aujourd'hui !\0"  // CountdownToday
+    "Je suis là !\0"  // FindMe
+    "Bonne fête des programmeurs !\0"  // HappyProgrammersDay
+    "Bien-être\0"  // WebSecWellness
+    "Pause après un long travail\0"  // WebBreakAfter
+    "Rappel pour boire de l'eau\0"  // WebWater
+    "Repos des yeux (20-20-20)\0"  // WebEyes
+    "Heures de travail\0"  // WebWorkHours
+    "Jours de travail\0"  // WebWorkDays
+    "Résumé en fin de journée\0"  // WebEndOfDay
+    "Fêter les longues tâches\0"  // WebFanfare
+    "Pendant le focus, seulement « besoin de vous »\0"  // WebFocusQuiet
+    "Insister plus si l'attente est longue\0"  // WebInsist
+    "Cadre d'état autour de l'écran\0"  // WebFrame
+    "Second fuseau horaire\0"  // WebTz2
+    "Nom à l'écran\0"  // WebTz2Label
+    "QR des réglages sur l'écran du bureau\0"  // WebDeskQr
+    "Lundi : bilan de la semaine\0";  // WebWeekly
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -1420,7 +1610,45 @@ static const char kIt[] MIBLO_ROM =
     "Alla mia sinistra\0"  // WebSideLeft
     "Sopra\0"  // WebSideUp
     "Sotto\0"  // WebSideDown
-    "%s è impegnato\0";  // FriendBusy
+    "%s è impegnato\0"  // FriendBusy
+    "focus fino alle %s\0"  // FocusUntil
+    "Pausa\0"  // FocusBreak
+    "Si torna al lavoro?\0"  // FocusBack
+    "Pausa lunga\0"  // FocusLongBreak
+    "Che ne dici di 5 min di pausa?\0"  // NudgeBreak
+    "È ora di bere acqua\0"  // NudgeWater
+    "Guarda lontano\0"  // NudgeEyes
+    "Buon riposo!\0"  // RestWell
+    "Buon riposo, %s!\0"  // RestWellName
+    "SETTIMANA SCORSA\0"  // LastWeekTitle
+    "giorno più intenso: %s\0"  // BusiestDay
+    "in riunione\0"  // InMeeting
+    "Una sessione ha bisogno di te\0"  // ASessionNeedsYou
+    "%s ha finito dopo %s\0"  // FinishedAfter
+    "Finito dopo %s\0"  // FinishedAfterAnon
+    "a questo ritmo, finisce alle %s\0"  // RunsOutAt
+    "finisce ~%s\0"  // RunsOutShort
+    "Tempo scaduto!\0"  // TimesUp
+    "%s tra %u giorni\0"  // CountdownDays
+    "%s domani\0"  // CountdownTomorrow
+    "%s è oggi!\0"  // CountdownToday
+    "Sono qui!\0"  // FindMe
+    "Buona festa dei programmatori!\0"  // HappyProgrammersDay
+    "Benessere\0"  // WebSecWellness
+    "Pausa dopo tanto lavoro\0"  // WebBreakAfter
+    "Promemoria per bere\0"  // WebWater
+    "Riposo degli occhi (20-20-20)\0"  // WebEyes
+    "Orario di lavoro\0"  // WebWorkHours
+    "Giorni lavorativi\0"  // WebWorkDays
+    "Riepilogo a fine giornata\0"  // WebEndOfDay
+    "Festeggia i compiti lunghi\0"  // WebFanfare
+    "Durante il focus, solo avvisi \"tocca a te\"\0"  // WebFocusQuiet
+    "Insisti di più nelle attese lunghe\0"  // WebInsist
+    "Cornice di stato sullo schermo\0"  // WebFrame
+    "Secondo fuso orario\0"  // WebTz2
+    "Nome sullo schermo\0"  // WebTz2Label
+    "QR delle impostazioni sulla scrivania\0"  // WebDeskQr
+    "Lunedì: riepilogo della settimana\0";  // WebWeekly
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -1656,7 +1884,45 @@ static const char kDe[] MIBLO_ROM =
     "Links von mir\0"  // WebSideLeft
     "Oben\0"  // WebSideUp
     "Unten\0"  // WebSideDown
-    "%s ist beschäftigt\0";  // FriendBusy
+    "%s ist beschäftigt\0"  // FriendBusy
+    "Fokus bis %s\0"  // FocusUntil
+    "Pausenzeit\0"  // FocusBreak
+    "Zurück zum Fokus?\0"  // FocusBack
+    "Lange Pause\0"  // FocusLongBreak
+    "Wie wär's mit 5 Min. Pause?\0"  // NudgeBreak
+    "Zeit, Wasser zu trinken\0"  // NudgeWater
+    "Schau in die Ferne\0"  // NudgeEyes
+    "Erhol dich gut!\0"  // RestWell
+    "Erhol dich gut, %s!\0"  // RestWellName
+    "LETZTE WOCHE\0"  // LastWeekTitle
+    "stärkster Tag: %s\0"  // BusiestDay
+    "im Meeting\0"  // InMeeting
+    "Eine Sitzung braucht dich\0"  // ASessionNeedsYou
+    "%s fertig nach %s\0"  // FinishedAfter
+    "Fertig nach %s\0"  // FinishedAfterAnon
+    "bei diesem Tempo leer um %s\0"  // RunsOutAt
+    "leer ~%s\0"  // RunsOutShort
+    "Zeit ist um!\0"  // TimesUp
+    "%s in %u Tagen\0"  // CountdownDays
+    "%s morgen\0"  // CountdownTomorrow
+    "%s ist heute!\0"  // CountdownToday
+    "Hier bin ich!\0"  // FindMe
+    "Frohen Programmierertag!\0"  // HappyProgrammersDay
+    "Wohlbefinden\0"  // WebSecWellness
+    "Pause nach langer Arbeit\0"  // WebBreakAfter
+    "Trink-Erinnerung\0"  // WebWater
+    "Augenpause (20-20-20)\0"  // WebEyes
+    "Arbeitszeit\0"  // WebWorkHours
+    "Arbeitstage\0"  // WebWorkDays
+    "Zusammenfassung zum Feierabend\0"  // WebEndOfDay
+    "Lange Aufgaben feiern\0"  // WebFanfare
+    "Im Fokus nur Hinweise \"braucht dich\"\0"  // WebFocusQuiet
+    "Bei langem Warten mehr drängen\0"  // WebInsist
+    "Statusrahmen um den Bildschirm\0"  // WebFrame
+    "Zweite Zeitzone\0"  // WebTz2
+    "Name auf dem Bildschirm\0"  // WebTz2Label
+    "Einstellungs-QR auf dem Schreibtisch\0"  // WebDeskQr
+    "Montag: Wochenrückblick\0";  // WebWeekly
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -1892,7 +2158,45 @@ static const char kRu[] MIBLO_ROM =
     "Слева\0"  // WebSideLeft
     "Сверху\0"  // WebSideUp
     "Снизу\0"  // WebSideDown
-    "%s занят\0";  // FriendBusy
+    "%s занят\0"  // FriendBusy
+    "фокус до %s\0"  // FocusUntil
+    "Время перерыва\0"  // FocusBreak
+    "Снова за работу?\0"  // FocusBack
+    "Долгий перерыв\0"  // FocusLongBreak
+    "Может, перерыв на 5 минут?\0"  // NudgeBreak
+    "Пора выпить воды\0"  // NudgeWater
+    "Посмотрите вдаль\0"  // NudgeEyes
+    "Хорошего отдыха!\0"  // RestWell
+    "Хорошего отдыха, %s!\0"  // RestWellName
+    "ПРОШЛАЯ НЕДЕЛЯ\0"  // LastWeekTitle
+    "самый загруженный день: %s\0"  // BusiestDay
+    "на встрече\0"  // InMeeting
+    "Сессии нужны вы\0"  // ASessionNeedsYou
+    "%s: готово за %s\0"  // FinishedAfter
+    "Готово за %s\0"  // FinishedAfterAnon
+    "в таком темпе кончится в %s\0"  // RunsOutAt
+    "кончится ~%s\0"  // RunsOutShort
+    "Время вышло!\0"  // TimesUp
+    "%s через %u дн.\0"  // CountdownDays
+    "%s завтра\0"  // CountdownTomorrow
+    "%s сегодня!\0"  // CountdownToday
+    "Я здесь!\0"  // FindMe
+    "С Днём программиста!\0"  // HappyProgrammersDay
+    "Самочувствие\0"  // WebSecWellness
+    "Перерыв после долгой работы\0"  // WebBreakAfter
+    "Напоминание о воде\0"  // WebWater
+    "Отдых для глаз (20-20-20)\0"  // WebEyes
+    "Рабочие часы\0"  // WebWorkHours
+    "Рабочие дни\0"  // WebWorkDays
+    "Итоги в конце рабочего дня\0"  // WebEndOfDay
+    "Праздновать долгие задачи\0"  // WebFanfare
+    "Во время фокуса только «нужны вы»\0"  // WebFocusQuiet
+    "Настойчивее при долгом ожидании\0"  // WebInsist
+    "Рамка состояния по краю экрана\0"  // WebFrame
+    "Второй часовой пояс\0"  // WebTz2
+    "Название на экране\0"  // WebTz2Label
+    "QR настроек на экране стола\0"  // WebDeskQr
+    "Понедельник: итоги недели\0";  // WebWeekly
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -2128,7 +2432,45 @@ static const char kZh[] MIBLO_ROM =
     "左边\0"  // WebSideLeft
     "上方\0"  // WebSideUp
     "下方\0"  // WebSideDown
-    "%s 忙起来了\0";  // FriendBusy
+    "%s 忙起来了\0"  // FriendBusy
+    "专注到 %s\0"  // FocusUntil
+    "休息时间\0"  // FocusBreak
+    "继续专注吗?\0"  // FocusBack
+    "长休息\0"  // FocusLongBreak
+    "休息 5 分钟吧?\0"  // NudgeBreak
+    "该喝水了\0"  // NudgeWater
+    "看看远处\0"  // NudgeEyes
+    "好好休息!\0"  // RestWell
+    "%s, 好好休息!\0"  // RestWellName
+    "上周\0"  // LastWeekTitle
+    "最忙的一天: %s\0"  // BusiestDay
+    "开会中\0"  // InMeeting
+    "有会话需要你处理\0"  // ASessionNeedsYou
+    "%s 用时 %s 完成\0"  // FinishedAfter
+    "用时 %s 完成\0"  // FinishedAfterAnon
+    "按当前速度 %s 用完\0"  // RunsOutAt
+    "约 %s 用完\0"  // RunsOutShort
+    "时间到!\0"  // TimesUp
+    "%s 还有 %u 天\0"  // CountdownDays
+    "%s 就在明天\0"  // CountdownTomorrow
+    "%s 就是今天!\0"  // CountdownToday
+    "我在这里!\0"  // FindMe
+    "程序员节快乐!\0"  // HappyProgrammersDay
+    "健康\0"  // WebSecWellness
+    "长时间工作后休息\0"  // WebBreakAfter
+    "喝水提醒\0"  // WebWater
+    "护眼休息 (20-20-20)\0"  // WebEyes
+    "工作时间\0"  // WebWorkHours
+    "工作日\0"  // WebWorkDays
+    "下班时的总结\0"  // WebEndOfDay
+    "庆祝长任务完成\0"  // WebFanfare
+    "专注时只提醒\"需要你处理\"\0"  // WebFocusQuiet
+    "等待太久时更强提醒\0"  // WebInsist
+    "屏幕状态边框\0"  // WebFrame
+    "第二时区\0"  // WebTz2
+    "屏幕上的名称\0"  // WebTz2Label
+    "桌面屏幕显示设置二维码\0"  // WebDeskQr
+    "周一: 上周总结\0";  // WebWeekly
 
 const char* const kLangTables[] MIBLO_ROM = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

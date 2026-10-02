@@ -150,10 +150,13 @@ bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t n
 // Second layer for the human pages. The server hook installed in begin() refuses most POST
 // bodies over kMaxPostBody before ESP8266WebServer buffers them, but only when Content-Length
 // arrived in the first TCP segment; by the time a handler runs the body is already in RAM, so
-// this check enforces the pages' tighter 1 KiB limit and covers what the hook could not see.
+// this check enforces the pages' tighter limit and covers what the hook could not see. The
+// settings page's worst-case save is ~910 B (every field at its longest, CJK names): 1.5 KiB
+// leaves room for the next fields without a large transient copy.
+static constexpr uint32_t kPageBodyMax = 1536;
 static bool bodyTooLarge() {
   String cl = requestHeader(*srv, F("Content-Length"));
-  return cl.length() > 0 && (uint32_t)cl.toInt() > 1024;
+  return cl.length() > 0 && (uint32_t)cl.toInt() > kPageBodyMax;
 }
 
 bool requireJson(WebServerT& server) {
@@ -1182,7 +1185,7 @@ static void handleSettings() {
   }
   ctx.lastInteractionMs = millis();
   if (!requireJson(*srv)) return;
-  if (bodyTooLarge() || srv->arg(F("plain")).length() > 1024) {
+  if (bodyTooLarge() || srv->arg(F("plain")).length() > kPageBodyMax) {
     sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
     return;
   }

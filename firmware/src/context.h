@@ -8,6 +8,7 @@
 #include "miblo_friends.h"
 #include "miblo_i18n.h"
 #include "miblo_limits.h"
+#include "miblo_livetz.h"
 #include "miblo_meeting.h"
 #include "miblo_occasions.h"
 #include "miblo_policy.h"
@@ -39,6 +40,7 @@ struct Context {
   miblo::RateLimiter publicReqs{20, 2};
   miblo::WebSession webSession;  // browser proved the on-screen code: may change settings for a while
   miblo::Snapshot snap{};
+  miblo::LiveTz liveTz;  // the bridge's live offsets for cfg.tz and tz2 (snapshot "tz")
   miblo::AlertSequencer alerts;
   miblo::RunTracker runs;
   miblo::LimitWatch limits;  // "limit freed" and the burn-rate projection

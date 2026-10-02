@@ -69,10 +69,10 @@ static void handleInfo() {
     json(200, out.c_str());
     return;
   }
-  // 43 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
+  // 45 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
   // phase, the countdown date): ~830 B on the ESP8266, plus ~440 B for the keys, which are copied
   // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
-  // ~1.57 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
+  // ~1.61 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
   // the whole of the 4 KB loop() stack. The reply (~1.2 KB) is built on the heap after it.
   constexpr size_t kInfoDoc = 1792;
   if (heapLowForRequest(kInfoDoc + 1280)) {
@@ -109,6 +109,9 @@ static void handleInfo() {
   doc[F("minHeapParse")] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
   doc[F("maxSessions")] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
   doc[F("maxBytes")] = miblo::kSnapshotMaxBytes;
+  // The zones the bridge works out live offsets for (snapshot "tz"). Stable memory: not copied.
+  doc[F("tz")] = (const char*)ctx.cfg.tz;
+  doc[F("tz2")] = (const char*)ctx.cfg.tz2;
   // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
   // and the current WiFi.status() (wl_status_t).
   doc[F("wifiReason")] = net::lastDisconnectReason();
@@ -153,7 +156,7 @@ static void handleInfo() {
   doc[F("countdownDate")] = date;  // char[]: copied
   doc[F("daily")] = 1;
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
-  // ~1.57 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
+  // ~1.61 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
   // dropped silently, so a document that overflowed is an error, never a partial answer.
   if (doc.overflowed()) {
     json(500, "{\"error\":\"info too large\"}");
@@ -252,6 +255,7 @@ static void handleState() {
   if (ctx.snap.hasUsage) ctx.usageEverSeen = true;
   ctx.alerts.ingest(ctx.snap, now);
   ctx.runs.observe(ctx.snap);
+  ctx.liveTz.observe(ctx.snap);  // the clock follows within a second (net::syncTimezone)
   // The settings page's list names each computer by its host name, unless the user named it
   // (stored at most once a minute by the app loop: TokenStore::saveDue).
   ctx.tokens.autoLabel((uint8_t)from, ctx.snap.host);

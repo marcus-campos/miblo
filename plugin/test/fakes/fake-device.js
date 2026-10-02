@@ -379,6 +379,9 @@ export function startFakeDevice({
       countdown: state.countdownLabel,
       countdownDate: state.countdownDate,
       daily: 1,
+      // Its time zone and second clock (the bridge sends their live offsets, tz-offsets.js).
+      tz: state.config.tz ?? 'UTC',
+      tz2: state.config.tz2 ?? '',
     };
   };
 

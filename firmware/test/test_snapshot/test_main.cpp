@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 
+#include "miblo_overview.h"
 #include "miblo_snapshot.h"
 
 using namespace miblo;
@@ -229,7 +230,8 @@ static void test_every_filtered_field_arrives() {
       "\"usage\":{\"h5\":{\"pct\":1,\"reset\":9,\"eta\":0}},\"today\":{\"usd\":1.5,\"turns\":2,\"work\":3},"
       "\"week\":{\"work\":1,\"turns\":2,\"usd\":3,\"top\":0},"
       "\"sessions\":[{\"id\":\"abcdefgh\",\"name\":\"n\",\"st\":\"perm\",\"tool\":\"Bash\",\"det\":\"d\",\"since\":4,"
-      "\"ts\":4,\"model\":\"Opus\",\"ctx\":7,\"tok\":8}],\"alerts\":[{\"id\":11,\"kind\":\"perm\",\"sid\":\"abcdefgh\"}]}";
+      "\"ts\":4,\"model\":\"Opus\",\"ctx\":7,\"tok\":8}],\"alerts\":[{\"id\":11,\"kind\":\"perm\",\"sid\":\"abcdefgh\"}],"
+      "\"tz\":[{\"z\":\"Europe/Lisbon\",\"off\":60,\"next\":9,\"noff\":0}]}";
   Snapshot s{};
   TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
   TEST_ASSERT_EQUAL_STRING("mac", s.host);
@@ -240,6 +242,49 @@ static void test_every_filtered_field_arrives() {
   TEST_ASSERT_EQUAL_INT32(8, s.sessions[0].tok);
   TEST_ASSERT_EQUAL_UINT8(1, s.alertCount);
   TEST_ASSERT_EQUAL_STRING("abcdefgh", s.alerts[0].sid);
+  TEST_ASSERT_EQUAL_UINT8(1, s.zoneCount);
+  TEST_ASSERT_EQUAL_UINT32(hashStr(kHashSeed, "Europe/Lisbon"), s.zones[0].zone);
+  TEST_ASSERT_EQUAL_INT16(60, s.zones[0].off);
+  TEST_ASSERT_EQUAL_UINT32(9, s.zones[0].next);
+  TEST_ASSERT_EQUAL_INT16(0, s.zones[0].noff);
+}
+
+// The live offsets of the gadget's zones (plugin tz-offsets.js), from the contract fixture.
+static void test_zones_fixture() {
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("zones.json"), snap));
+  TEST_ASSERT_EQUAL_UINT8(2, snap.zoneCount);
+  TEST_ASSERT_EQUAL_UINT32(hashStr(kHashSeed, "Europe/Lisbon"), snap.zones[0].zone);
+  TEST_ASSERT_EQUAL_INT16(60, snap.zones[0].off);
+  TEST_ASSERT_EQUAL_UINT32(1792890000, snap.zones[0].next);  // 2026-10-25 01:00 UTC
+  TEST_ASSERT_EQUAL_INT16(0, snap.zones[0].noff);
+  TEST_ASSERT_EQUAL_UINT32(hashStr(kHashSeed, "Australia/Sydney"), snap.zones[1].zone);
+  TEST_ASSERT_EQUAL_INT16(600, snap.zones[1].off);
+  TEST_ASSERT_EQUAL_INT16(660, snap.zones[1].noff);
+  // The other fixtures (a gadget the bridge knows no zone of) carry none.
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseText(loadFixture("idle.json"), snap));
+  TEST_ASSERT_EQUAL_UINT8(0, snap.zoneCount);
+}
+
+// Entries that are not a plausible zone and offset are left out; at most kMaxLiveZones are kept.
+static void test_zones_are_validated() {
+  char json[] =
+      "{\"v\":1,\"tz\":[{\"z\":\"\",\"off\":0,\"next\":0,\"noff\":0},{\"z\":\"A/B\",\"off\":1500,\"next\":0,\"noff\":0},"
+      "{\"z\":\"A/B\",\"off\":\"60\",\"next\":0,\"noff\":0},{\"z\":\"A/B\",\"off\":60,\"next\":-5,\"noff\":0},"
+      "{\"z\":7,\"off\":60,\"next\":0,\"noff\":0},{\"z\":\"A/B\",\"off\":60,\"next\":0,\"noff\":-1500},"
+      "{\"z\":\"Asia/Kathmandu\",\"off\":345,\"next\":0},{\"z\":\"Pacific/Chatham\",\"off\":825,\"next\":1806674400,\"noff\":765},"
+      "{\"z\":\"Etc/UTC\",\"off\":0,\"next\":0,\"noff\":0}]}";
+  Snapshot s{};
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(json, strlen(json), s));
+  TEST_ASSERT_EQUAL_UINT8(kMaxLiveZones, s.zoneCount);
+  TEST_ASSERT_EQUAL_UINT32(hashStr(kHashSeed, "Asia/Kathmandu"), s.zones[0].zone);
+  TEST_ASSERT_EQUAL_INT16(345, s.zones[0].off);
+  TEST_ASSERT_EQUAL_INT16(345, s.zones[0].noff);  // no noff: the same offset
+  TEST_ASSERT_EQUAL_UINT32(0, s.zones[0].next);
+  TEST_ASSERT_EQUAL_UINT32(hashStr(kHashSeed, "Pacific/Chatham"), s.zones[1].zone);
+  TEST_ASSERT_EQUAL_UINT32(1806674400, s.zones[1].next);
+  char none[] = "{\"v\":1,\"tz\":{\"z\":\"A/B\"}}";
+  TEST_ASSERT_EQUAL(ParseResult::Ok, parseSnapshot(none, strlen(none), s));
+  TEST_ASSERT_EQUAL_UINT8(0, s.zoneCount);
 }
 
 // Costs are never negative, NaN or infinite, whatever the bridge sends.
@@ -278,5 +323,7 @@ int main() {
   RUN_TEST(test_long_command_seconds);
   RUN_TEST(test_every_filtered_field_arrives);
   RUN_TEST(test_costs_are_clamped);
+  RUN_TEST(test_zones_fixture);
+  RUN_TEST(test_zones_are_validated);
   return UNITY_END();
 }

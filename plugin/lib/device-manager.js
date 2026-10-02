@@ -1,14 +1,17 @@
 import { trimSnapshot, alertOnlySnapshot } from './snapshot-builder.js';
 import { LEGACY_MAX_SESSIONS, LEGACY_SNAPSHOT_MAX_BYTES } from './constants.js';
+import { ZoneOffsets } from './tz-offsets.js';
 
 export class DeviceManager {
   #health = new Map();
 
-  constructor({ client, store, discover = null, now = () => Date.now() }) {
+  // `zones` (tz-offsets.js ZoneOffsets): the live offsets of each gadget's time zones.
+  constructor({ client, store, discover = null, now = () => Date.now(), zones = new ZoneOffsets() }) {
     this.client = client;
     this.store = store;
     this.discover = discover;
     this.now = now;
+    this.zones = zones;
   }
 
   async pushAll(snapshot) {
@@ -28,7 +31,8 @@ export class DeviceManager {
   }
 
   // A gadget's own caps (from /api/info), cached and refreshed hourly. Unknown until first read:
-  // the legacy 8 sessions / 3072 bytes, which every firmware can accept.
+  // the legacy 8 sessions / 3072 bytes, which every firmware can accept. `zones`: its time zone and
+  // second clock (tz, tz2), for the live offsets; none from a firmware that does not report them.
   async #caps(dev, h) {
     if (h.caps && this.now() - h.capsAt < 3600_000) return h.caps;
     try {
@@ -36,10 +40,11 @@ export class DeviceManager {
       const n = Number(info?.maxSessions);
       const b = Number(info?.maxBytes);
       h.caps = { maxSessions: Number.isInteger(n) && n > 0 ? n : LEGACY_MAX_SESSIONS,
-                 maxBytes: Number.isInteger(b) && b > 0 ? b : LEGACY_SNAPSHOT_MAX_BYTES };
+                 maxBytes: Number.isInteger(b) && b > 0 ? b : LEGACY_SNAPSHOT_MAX_BYTES,
+                 zones: [info?.tz, info?.tz2].filter((z) => typeof z === 'string' && z) };
       h.capsAt = this.now();
     } catch {
-      h.caps = h.caps ?? { maxSessions: LEGACY_MAX_SESSIONS, maxBytes: LEGACY_SNAPSHOT_MAX_BYTES };
+      h.caps = h.caps ?? { maxSessions: LEGACY_MAX_SESSIONS, maxBytes: LEGACY_SNAPSHOT_MAX_BYTES, zones: [] };
     }
     return h.caps;
   }
@@ -50,7 +55,14 @@ export class DeviceManager {
     try {
       const caps = await this.#caps(dev, h);
       try {
-        await this.client.pushState(dev.addr, dev.token, trimSnapshot(snapshot, caps.maxSessions, caps.maxBytes));
+        // The live offsets go in before trimming: they count toward the gadget's byte cap.
+        let own = snapshot;
+        try {
+          own = this.zones.withZones(snapshot, caps.zones, this.now());
+        } catch {
+          // never let the time zones cost the push: the gadget falls back to its own table
+        }
+        await this.client.pushState(dev.addr, dev.token, trimSnapshot(own, caps.maxSessions, caps.maxBytes));
       } catch (e) {
         // Low on memory (503): the full snapshot was refused. Resend just the alerts, which is
         // tiny and gets through, so a session that needs the user is never lost to low memory.

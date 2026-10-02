@@ -54,6 +54,16 @@ struct AlertItem {
   uint16_t host;  // AlertSequencer: which computer queued it (hostTag); not parsed (fits the padding)
 };
 
+// The live offset of one of the gadget's time zones (Config::tz, tz2), worked out by the bridge
+// from the computer's tz database, which its updates keep current (miblo_livetz.h).
+constexpr uint8_t kMaxLiveZones = 2;
+struct LiveZone {
+  uint32_t zone;  // hashStr(kHashSeed, IANA name): only ever compared with the configured names
+  int16_t off;    // minutes east of UTC now
+  int16_t noff;   // minutes east of UTC from `next` on (= off without a change)
+  uint32_t next;  // epoch s of the next change (0 = none within ~400 days)
+};
+
 struct Snapshot {
   uint32_t seq;
   uint32_t now;
@@ -71,6 +81,8 @@ struct Snapshot {
   uint16_t more;
   uint8_t alertCount;
   AlertItem alerts[kMaxAlerts];
+  uint8_t zoneCount;      // 0 = none (an older plugin, a gadget whose zones the bridge doesn't know)
+  LiveZone zones[kMaxLiveZones];
 };
 
 enum class ParseResult : uint8_t { Ok, TooLarge, BadJson, BadVersion };

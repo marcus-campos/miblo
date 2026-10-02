@@ -135,12 +135,26 @@ static void test_config_patch_tz() {
 }
 
 // kTzNameMax (generated) is the longest name in the table: Config::tz2 is sized from it.
-// GET /api/zones serves exactly the list it served before the names were front-coded (same
-// bytes for the same tz database: FNV-1a of the 7390-byte list of posix_tz_db@93447c0ddac3).
+// GET /api/zones serves exactly the plain list the generator front-coded (its FNV-1a is
+// generated beside the table, so a regenerated table needs no test change).
 static void test_served_list_unchanged() {
   uint32_t h = 0x811c9dc5;
   for (char c : plainNames()) h = (h ^ (uint8_t)c) * 0x01000193;
-  TEST_ASSERT_EQUAL_HEX32(0x7fffdac5, h);
+  TEST_ASSERT_EQUAL_HEX32((uint32_t)kTzNamesHash, h);
+}
+
+// Zones that changed rules after the old table was made (tz database 2026): permanent daylight
+// time in British Columbia, permanent UTC-6 in Alberta, Morocco back on UTC+0.
+static void test_recent_rule_changes() {
+  char out[48];
+  TEST_ASSERT_TRUE(tzLookup("America/Vancouver", out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("MST7", out);
+  TEST_ASSERT_TRUE(tzLookup("America/Edmonton", out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("CST6", out);
+  TEST_ASSERT_TRUE(tzLookup("Africa/Casablanca", out, sizeof(out)));
+  TEST_ASSERT_EQUAL_STRING("<+00>0", out);
+  TEST_ASSERT_TRUE(tzLookup("Europe/Kyiv", out, sizeof(out)));  // new names are added...
+  TEST_ASSERT_TRUE(tzLookup("Europe/Kiev", out, sizeof(out)));  // ...and old ones are kept
 }
 
 static void test_longest_name_constant() {
@@ -162,6 +176,7 @@ int main(int, char**) {
   RUN_TEST(test_lookup_known_zones);
   RUN_TEST(test_every_name_resolves);
   RUN_TEST(test_served_list_unchanged);
+  RUN_TEST(test_recent_rule_changes);
   RUN_TEST(test_lookup_unknown_or_malformed);
   RUN_TEST(test_table_shape);
   RUN_TEST(test_looks_posix);

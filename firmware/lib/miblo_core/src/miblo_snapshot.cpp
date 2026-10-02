@@ -4,6 +4,7 @@
 #include <math.h>
 #include <string.h>
 
+#include "miblo_overview.h"
 #include "miblo_utf8.h"
 
 namespace miblo {
@@ -69,6 +70,27 @@ static void readWindow(JsonVariantConst v, UsageWindow& w) {
   w.eta = w.etaSent ? v["eta"].as<uint32_t>() : 0;  // 0 = no forecast
 }
 
+// Real offsets lie between UTC-12 and UTC+14: anything past +-18 h is not one.
+static bool offsetMinutes(JsonVariantConst v, int16_t& out) {
+  if (!v.is<int>()) return false;
+  const int m = v.as<int>();
+  if (m < -18 * 60 || m > 18 * 60) return false;
+  out = (int16_t)m;
+  return true;
+}
+
+// One entry of "tz": {"z": IANA name, "off": minutes, "next": epoch s | 0, "noff": minutes}.
+static bool readZone(JsonObjectConst z, LiveZone& out) {
+  const char* name = z["z"].is<const char*>() ? z["z"].as<const char*>() : nullptr;
+  if (!name || !name[0] || strlen(name) > 47) return false;  // Config::tz holds 47
+  if (!offsetMinutes(z["off"], out.off) || !z["next"].is<uint32_t>()) return false;
+  out.next = z["next"].as<uint32_t>();
+  if (!z.containsKey("noff")) out.noff = out.off;
+  else if (!offsetMinutes(z["noff"], out.noff)) return false;
+  out.zone = hashStr(kHashSeed, name);
+  return true;
+}
+
 uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch) {
   if (r.st != SessionState::Running || strcmp(r.tool, "Bash") != 0 || !r.ts) return 0;
   // Compared without overflow: nowEpoch >= ts + kLongCommandSec.
@@ -79,11 +101,11 @@ uint32_t longCommandSec(const SessionRow& r, uint32_t nowEpoch) {
 ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   if (len > kSnapshotMaxBytes) return ParseResult::TooLarge;
 
-  // Sized on any platform: 11 top-level keys (+1 slot of headroom), a 10-key session template, a
-  // 3-key alert one. A key added without growing it would be dropped silently, so an overflowed
-  // filter refuses every parse (test_every_filtered_field_arrives catches it).
-  DynamicJsonDocument filter(JSON_OBJECT_SIZE(12) + 2 * JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(10) +
-                             JSON_OBJECT_SIZE(3));
+  // Sized on any platform: 12 top-level keys (+1 slot of headroom), a 10-key session template, a
+  // 3-key alert one, a 4-key zone one. A key added without growing it would be dropped silently, so
+  // an overflowed filter refuses every parse (test_every_filtered_field_arrives catches it).
+  DynamicJsonDocument filter(JSON_OBJECT_SIZE(13) + 3 * JSON_ARRAY_SIZE(1) + JSON_OBJECT_SIZE(10) +
+                             JSON_OBJECT_SIZE(3) + JSON_OBJECT_SIZE(4));
   filter["v"] = true;
   filter["seq"] = true;
   filter["now"] = true;
@@ -97,6 +119,8 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
   for (const char* k : {"id", "name", "st", "tool", "det", "since", "ts", "model", "ctx", "tok"}) fs[k] = true;
   JsonObject fa = filter["alerts"].createNestedObject();
   for (const char* k : {"id", "kind", "sid"}) fa[k] = true;
+  JsonObject fz = filter["tz"].createNestedObject();
+  for (const char* k : {"z", "off", "next", "noff"}) fz[k] = true;
   if (filter.overflowed()) return ParseResult::BadJson;
 
   const size_t cap = (len + 1024) * (sizeof(void*) == 4 ? 1 : 2);
@@ -164,6 +188,13 @@ ParseResult parseSnapshot(char* json, size_t len, Snapshot& out) {
     it.id = a["id"].as<uint32_t>();
     it.kind = kind;
     copyStr(it.sid, sizeof(it.sid), a["sid"], 8);
+  }
+
+  out.zoneCount = 0;
+  for (JsonObjectConst z : doc["tz"].as<JsonArrayConst>()) {
+    if (out.zoneCount >= kMaxLiveZones) break;
+    LiveZone lz;
+    if (readZone(z, lz)) out.zones[out.zoneCount++] = lz;
   }
   return ParseResult::Ok;
 }

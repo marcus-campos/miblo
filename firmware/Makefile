@@ -25,6 +25,8 @@
 #   make stack                      worst-case loop() stack (4 KB) through every HTTP handler, screen and
 #                                   save, from the compiler's call graph (tools/stack/stack_report.py);
 #                                   fails over 3 KB. Builds into .pio/stack (make stack-clean deletes it)
+#   make tz-table                   refresh the time zone table from the newest IANA tz database (PyPI
+#                                   tzdata, in .pio/tzdata-venv); `make release` runs it too
 #   make animations                 looping clips of the desk mascot, disconnected and alerts, as
 #                                   mp4 (960x960) + gif (480x480) in dist/animations/<lang>/ (needs ffmpeg)
 #   make animations LANGS="en es"   other languages (default: en pt-BR)
@@ -84,13 +86,21 @@ define ensure_images
 	  $(MAKE) build || exit 1; else echo "Images for $(VER) are up to date."; fi
 endef
 
-.PHONY: asan fuzz fuzz-build fuzz-repro validate validate-clean stack stack-clean help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
+.PHONY: tz-table asan fuzz fuzz-build fuzz-repro validate validate-clean stack stack-clean help build test release images screenshots check-margins animations fleet-ap-plan fleet-ap fleet-ap-loop fleet-ap-scan fleet-plan fleet fleet-update fleet-update-plan fleet-test check-target
 
 help:
 	@sed -n '1,/^$$/p' Makefile | sed 's/^# \{0,1\}//'
 
 build:
 	./scripts/build.sh $(BOARD)
+
+# The table of zone rules frozen into the firmware (scripts/gen_tz_table.py), from the newest
+# tzdata on PyPI. The gadget prefers the live offsets the bridge sends; this is its fallback.
+TZ_VENV := .pio/tzdata-venv
+tz-table:
+	@[ -x $(TZ_VENV)/bin/python ] || $(PYTHON) -m venv $(TZ_VENV)
+	@$(TZ_VENV)/bin/pip install -q --disable-pip-version-check --upgrade tzdata
+	@$(TZ_VENV)/bin/python scripts/gen_tz_table.py
 
 images:
 	$(ensure_images)
@@ -135,10 +145,12 @@ release:
 	if git rev-parse -q --verify "refs/tags/$$tag" >/dev/null; then echo "Tag $$tag already exists." >&2; exit 1; fi; \
 	echo "== Release $$tag =="; \
 	(cd plugin && npm test >/dev/null) && echo "plugin tests: ok"; \
+	make -s -C firmware tz-table || echo "warning: time zone table not refreshed (offline?)" >&2; \
 	$(PYTHON) -m unittest -q firmware/scripts/test_flash_fleet.py 2>/dev/null && echo "script tests: ok"; \
 	(cd firmware && ./scripts/build.sh $(BOARD)); \
-	if [ -n "$$(git status --porcelain firmware/include/miblo_version.h plugin/.claude-plugin/plugin.json)" ]; then \
-	  git add firmware/include/miblo_version.h plugin/.claude-plugin/plugin.json; \
+	tzt="firmware/lib/miblo_core/src/miblo_tz_table.h firmware/lib/miblo_core/src/miblo_tz_table.cpp"; \
+	if [ -n "$$(git status --porcelain firmware/include/miblo_version.h plugin/.claude-plugin/plugin.json $$tzt)" ]; then \
+	  git add firmware/include/miblo_version.h plugin/.claude-plugin/plugin.json $$tzt; \
 	  git commit -q -m "chore: release $$tag"; echo "committed: chore: release $$tag"; fi; \
 	echo; echo "Images in firmware/dist/:"; ls -1 firmware/dist/*-$$version.bin; echo; \
 	if [ ! -t 0 ]; then echo "No terminal — not tagging. To publish: git tag -a $$tag -m $$tag && git push origin $$branch $$tag"; exit 0; fi; \

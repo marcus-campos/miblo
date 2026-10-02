@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "seq": 42,
+  "now": 1790605920,
+  "host": "MacBook-Marcus",
+  "usage": null,
+  "today": {
+    "usd": 0,
+    "turns": 5,
+    "work": 1800
+  },
+  "sessions": [
+    {
+      "id": "99999999",
+      "name": "docs",
+      "st": "done",
+      "tool": "",
+      "det": "",
+      "since": 1790605910,
+      "model": "",
+      "ctx": null,
+      "tok": null
+    }
+  ],
+  "more": 0,
+  "alerts": [
+    {
+      "id": 1,
+      "kind": "done",
+      "sid": "99999999"
+    }
+  ],
+  "latest": "1.0.2",
+  "tz": [
+    {
+      "z": "Europe/Lisbon",
+      "off": 60,
+      "next": 1792890000,
+      "noff": 0
+    },
+    {
+      "z": "Australia/Sydney",
+      "off": 600,
+      "next": 1791043200,
+      "noff": 660
+    }
+  ]
+}

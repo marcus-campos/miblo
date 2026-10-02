@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
 import { buildSnapshot } from '../lib/snapshot-builder.js';
+import { ZoneOffsets, intlOffset } from '../lib/tz-offsets.js';
 
 const dir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fixtures/snapshots');
 const NOW = Date.UTC(2026, 8, 28, 14, 32, 0);
@@ -62,6 +63,14 @@ const scenarios = {
     w.ev('66666666-f', 'Stop', '/w/docs');
     w.sl('66666666-f', 'Opus', 54, 170000, 12000, 1.2, w.rl);
     return w.finish();
+  },
+  // A gadget showing Lisbon with a second clock in Sydney: the live offsets DeviceManager adds
+  // (tz-offsets.js; Node's own data, so the fixture never depends on the computer's zone files).
+  zones() {
+    const w = world({ turns: 5, work: 1800 });
+    w.ev('99999999-i', 'Stop', '/w/docs');
+    const zones = new ZoneOffsets({ source: (z) => (utc) => intlOffset(z, utc * 1000) });
+    return zones.withZones(w.finish(), ['Europe/Lisbon', 'Australia/Sydney'], NOW);
   },
   overflow() {
     const w = world({ turns: 999, work: 86399 });

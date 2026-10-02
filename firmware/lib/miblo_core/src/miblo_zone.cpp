@@ -110,12 +110,12 @@ bool utcOffset(const char* tz, int64_t utc, int32_t& east) {
 
 }  // namespace
 
-bool zoneHHMM(const char* iana, uint32_t epoch, char* out, size_t cap) {
+bool zoneHHMM(const char* iana, uint32_t epoch, char* out, size_t cap, const LiveTz* live) {
   if (cap) out[0] = 0;
   char rule[48];
   int32_t east;
   if (!iana || !iana[0] || !epoch || !tzLookup(iana, rule, sizeof(rule))) return false;
-  if (!utcOffset(rule, epoch, east)) return false;
+  if (!(live && live->offset(iana, epoch, east)) && !utcOffset(rule, epoch, east)) return false;
   const int64_t local = (int64_t)epoch + east;
   const int32_t secOfDay = (int32_t)(((local % 86400) + 86400) % 86400);
   formatHHMM(secOfDay / 3600, secOfDay / 60 % 60, out, cap);

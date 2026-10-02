@@ -51,6 +51,12 @@ jobs:
       - name: No raw request-header reads
         run: "! grep -rnE 'header\\(F\\(\"[^\"]+\"\\)\\)\\.(c_str|toInt)' src"
       - run: pio test -e native
+      # A warning, never a failure: releases refresh the table themselves (release.yml). It says
+      # when a newer tz database is out than the committed table (run `make tz-table`, commit it).
+      - name: Time zone table freshness
+        run: |
+          pip install --upgrade tzdata
+          python scripts/check_tz_table.py --version || echo "::warning file=firmware/lib/miblo_core/src/miblo_tz_table.h::A newer IANA tz database is out: run 'make tz-table' in firmware/ and commit the result"
       - run: pio run -e ${{ matrix.board }}
       - run: pio run -e ${{ matrix.board }}_loader
       - run: pio run -e screenshots   # host screenshot tool (make screenshots) keeps building

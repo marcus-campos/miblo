@@ -178,5 +178,10 @@ notes.
 <!-- daily:screens -->
 
 <!-- daily:settings -->
+    - **Settings page:** open the unlocked page with the browser language set to en, pt-BR, ru and zh: every new label is translated and nothing overflows on a phone-width window.
+      Under Alerts, turn alerts off: insistence and the fanfare hide, the status frame stays. Pick each fanfare choice (off, 3, 5, 10 min) and save; reloading the page and `/miblo:status` (or `GET /api/info`) show the new value.
+      In **Wellness**, change the break (off/60/90/120), water (off/60/90), eye rest, focus filter, end-of-day and weekly switches, save, and reload: each sticks.
+      The work hours block shows only while the water reminder or the end-of-day summary is on. Set 18:00 to 09:00: saving is refused and the start or end time is outlined in red. Untick every work day: the last one ticks itself again. Save Mon, Wed, Fri: `workDays` reads 42.
+      Under This device, the second time zone starts at "Off" (the browser's zone is never preselected); pick a city: its time shows next to the label and the "Its name on screen" field appears (12 characters at most). Save, reload: the zone and its name are kept. Set it back to Off and save: `tz2` is empty. Turn the desk QR on and save: the Desk screen shows the QR.
 
 <!-- daily:bridge -->

@@ -72,7 +72,7 @@ export function openInBrowser(url, platform = process.platform) {
 // The stored addr is "ip:port"; the default HTTP port is dropped for a clean URL.
 export const settingsUrl = (addr) => `http://${cleanAddr(addr).replace(/^(\[[^\]]*\]|[^:]*):80$/, '$1')}/`;
 
-async function settings(args, store, openUrl) {
+async function settings(args, store, openUrl, hostname = '') {
   const ok = (out) => ({ code: 0, out: out + '\n' });
   const fail = (code, out) => ({ code, out: out + '\n' });
   const devices = store.list();
@@ -94,7 +94,8 @@ async function settings(args, store, openUrl) {
     `(also at http://${cleanId(d.id)}.local if the IP changed and your network resolves .local names)`,
   ];
   try {
-    await openUrl(url);
+    // The page marks this computer in its paired computers' list: the host name sent when pairing.
+    await openUrl(hostname ? `${url}#me=${encodeURIComponent(hostname)}` : url);
     lines.push('Opened in your browser.');
   } catch {
     lines.push('Could not open a browser: open the URL by hand.');
@@ -595,7 +596,7 @@ export async function run(argv, deps) {
     case 'night':
       return night(args, store, client);
     case 'settings':
-      return settings(args, store, deps.openUrl ?? openInBrowser);
+      return settings(args, store, deps.openUrl ?? openInBrowser, hostname);
     case 'rename':
       return rename(args, store, client);
     case 'owner':

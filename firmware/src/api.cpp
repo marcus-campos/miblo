@@ -26,7 +26,10 @@ static bool authorized() {
   char token[40];
   const String auth = web::requestHeader(*srv, F("Authorization"));  // never the previous request's
   if (!miblo::bearerToken(auth.c_str(), token, sizeof(token))) return false;
-  return ctx.tokens.matches(token);
+  const int i = ctx.tokens.find(token);
+  if (i < 0) return false;
+  ctx.tokens.seen((uint8_t)i, millis());  // the settings page's "active now"
+  return true;
 }
 
 static void handleInfo() {

@@ -76,15 +76,27 @@ class TokenStore {
  public:
   static constexpr uint8_t kMax = 4;
   void add(const char* token, const char* host);
-  bool matches(const char* token) const;
+  bool matches(const char* token) const { return find(token) >= 0; }
+  int find(const char* token) const;  // its place in the list, -1 if none (constant time)
   uint8_t count() const { return n_; }
   const TokenEntry& at(uint8_t i) const { return e_[i]; }
   void restore(const TokenEntry* entries, uint8_t n);
   void clear() { n_ = 0; }
+  // The settings page's list: remove the computer at place i, only if that place still holds
+  // `host` (the list may have changed since the page read it). The others keep their tokens.
+  bool remove(uint8_t i, const char* host);
+  // When each computer's token last came in (millis(); since boot, never stored).
+  void seen(uint8_t i, uint32_t nowMs) {
+    if (i < n_) seenMs_[i] = nowMs, seenSet_ |= (uint8_t)(1u << i);
+  }
+  bool everSeen(uint8_t i) const { return i < n_ && (seenSet_ >> i) & 1u; }
+  uint32_t seenAt(uint8_t i) const { return seenMs_[i]; }
 
  private:
   TokenEntry e_[kMax] = {};
   uint8_t n_ = 0;
+  uint32_t seenMs_[kMax] = {};
+  uint8_t seenSet_ = 0;  // bit i: entry i has been seen since boot
 };
 
 // Physical presence code: when opening the /update gate (POST /update/open) or requesting a

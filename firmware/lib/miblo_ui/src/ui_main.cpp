@@ -1555,28 +1555,28 @@ struct SignLimits {
   bool shown;
 };
 
-constexpr int kSignIconW = 9;  // both icons, at screen scale 1
+constexpr int kSignIconW = 12;  // both icons, at screen scale 1: big enough to read from afar
 
-static void signClockIcon(int x, int y) {  // (top-left) a round clock, hands at ten past
-  szDisc(x, y, 4, 4, 4, color::MUTED);
-  szDisc(x, y, 4, 4, 3, kSignFill);
-  szRect(x, y, 4, 2, 1, 3, color::MUTED);  // the minute hand, up
-  szRect(x, y, 4, 4, 2, 1, color::MUTED);  // the hour hand, right
+static void signClockIcon(int x, int y) {  // (top-left) a round clock, hands at three o'clock
+  szDisc(x, y, 6, 6, 6, color::MUTED);
+  szDisc(x, y, 6, 6, 4, kSignFill);
+  szRect(x, y, 5, 3, 2, 4, color::MUTED);  // the minute hand, up
+  szRect(x, y, 5, 5, 4, 2, color::MUTED);  // the hour hand, right
 }
 
 static void signCalendarIcon(int x, int y) {  // (top-left) a wall calendar: rings, a header, a page
-  szRect(x, y, 0, 1, 9, 8, color::MUTED);
-  szRect(x, y, 1, 4, 7, 4, kSignFill);
-  szRect(x, y, 2, 0, 1, 2, color::MUTED);
-  szRect(x, y, 6, 0, 1, 2, color::MUTED);
-  szRect(x, y, 2, 5, 2, 2, color::MUTED);  // today
+  szRect(x, y, 0, 2, 12, 10, color::MUTED);
+  szRect(x, y, 2, 6, 8, 4, kSignFill);
+  szRect(x, y, 3, 0, 2, 3, color::MUTED);  // the rings
+  szRect(x, y, 7, 0, 2, 3, color::MUTED);
+  szRect(x, y, 3, 7, 3, 2, color::MUTED);  // today
 }
 
 static void drawSignLimits(int cx, int y, const SignLimits& L) {
   const int icon = Sz(kSignIconW), pad = Sz(4), gap = Sz(14);
   const int b = C().textWidth(L.v5, Font::SmallBold), d = C().textWidth(L.v7, Font::SmallBold);
   int x = cx - (icon + pad + b + gap + icon + pad + d) / 2;
-  const int iy = y - Sz(9);  // the icons sit on the text's baseline
+  const int iy = y - Sz(11);  // the icons stand on the text's baseline, as tall as the digits and a bit more
   signClockIcon(x, iy);
   x += icon + pad;
   C().text(x, y, L.v5, Font::SmallBold, L.c5, Align::Left, b + 1);

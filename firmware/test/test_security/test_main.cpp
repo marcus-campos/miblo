@@ -143,6 +143,42 @@ static void test_token_store_same_host_appends() {
   TEST_ASSERT_TRUE(s.matches("a2"));
 }
 
+// The settings page lists the paired computers and removes one: by its place in the list AND its
+// host name (a list that changed in between never loses the wrong one); the rest keep working.
+// Each entry remembers when its token last came in (not stored: from boot).
+static void test_token_store_remove_and_seen() {
+  TokenStore s;
+  s.add("t1", "mac");
+  s.add("t2", "pc");
+  s.add("t3", "wsl");
+  TEST_ASSERT_EQUAL_INT(1, s.find("t2"));
+  TEST_ASSERT_EQUAL_INT(-1, s.find("nope"));
+  TEST_ASSERT_EQUAL_INT(-1, s.find(nullptr));
+  TEST_ASSERT_FALSE(s.everSeen(1));
+  s.seen(1, 5000);
+  TEST_ASSERT_TRUE(s.everSeen(1));
+  TEST_ASSERT_EQUAL_UINT32(5000, s.seenAt(1));
+  s.seen(2, 7000);
+  TEST_ASSERT_FALSE(s.remove(1, "mac"));  // the host doesn't match that place: nothing removed
+  TEST_ASSERT_FALSE(s.remove(7, "pc"));
+  TEST_ASSERT_EQUAL_UINT8(3, s.count());
+  TEST_ASSERT_TRUE(s.remove(1, "pc"));
+  TEST_ASSERT_EQUAL_UINT8(2, s.count());
+  TEST_ASSERT_FALSE(s.matches("t2"));
+  TEST_ASSERT_TRUE(s.matches("t1"));
+  TEST_ASSERT_TRUE(s.matches("t3"));
+  TEST_ASSERT_EQUAL_STRING("wsl", s.at(1).host);  // the next one moved up, with its "seen"
+  TEST_ASSERT_EQUAL_UINT32(7000, s.seenAt(1));
+  TEST_ASSERT_FALSE(s.everSeen(0));
+  s.add("t4", "linux");  // a new pairing starts unseen
+  TEST_ASSERT_FALSE(s.everSeen(2));
+  TEST_ASSERT_TRUE(s.remove(0, "mac"));
+  TEST_ASSERT_TRUE(s.remove(0, "wsl"));
+  TEST_ASSERT_TRUE(s.remove(0, "linux"));
+  TEST_ASSERT_EQUAL_UINT8(0, s.count());
+  TEST_ASSERT_FALSE(s.remove(0, "linux"));
+}
+
 static void test_find_content_length() {
   uint32_t n = 0;
   const char h1[] = "Host: x\r\ncontent-LENGTH:  5000\r\nX: y\r\n\r\n";
@@ -437,6 +473,7 @@ int main() {
   RUN_TEST(test_token_store_up_to_four_replacing_oldest);
   RUN_TEST(test_presence_gate);
   RUN_TEST(test_token_store_same_host_appends);
+  RUN_TEST(test_token_store_remove_and_seen);
   RUN_TEST(test_find_content_length);
   RUN_TEST(test_content_type_is_multipart);
   RUN_TEST(test_presence_lockout_escalates);

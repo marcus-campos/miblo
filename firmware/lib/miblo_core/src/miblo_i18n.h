@@ -187,8 +187,15 @@ enum class S : uint8_t {
   WebCpu,               // System panel: processing load (last minute graph)
   WebRam,               // System panel: RAM in use (last minute graph)
   WebStorage,           // System panel: storage
-  WebInUse,             // System panel: "%s of %s in use" (amounts like "46 KB", "80 KB")
-  WebFwRoom,            // System panel: "Firmware %s · room for updates %s"
+  WebInUse,             // System panel: "%s in use · %s free of %s" ("66%", "26 KB", "80 KB")
+  WebFwRoom,            // System panel, storage: "Firmware %s · data %s"
+  WebComputers,         // settings > advanced: the paired computers' list heading
+  WebRemove,            // computers list: the button that unpairs one
+  WebRemoveConfirm,     // computers list: "Remove %s? ..." (%s: its host name)
+  WebThisComputer,      // computers list: next to the computer that opened the page (/miblo:settings)
+  WebActiveNow,         // computers list: its token came in within the last minute
+  WebSeenAgo,           // computers list: "seen %s ago" (%s: "5 min", "2 h")
+  WebNotSeen,           // computers list: not heard from since the gadget started
   WebCheckField,        // settings: a save was refused; the offending field is highlighted
   CodeSettings,         // PresenceCode screen: "Code to change settings"
   WebUnlock,            // settings page: "Type the code on the gadget screen to change settings"

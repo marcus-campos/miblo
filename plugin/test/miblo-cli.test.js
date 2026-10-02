@@ -365,8 +365,10 @@ test('settings prints the gadget URL and opens it in the browser', async () => {
   new DeviceStore(d.dataDir).upsert({ id: 'miblo-4f2a', name: 'Miblo-4F2A', addr: '192.168.0.176:80', token: 'secret' });
   const r = await run(['settings'], d);
   assert.equal(r.code, 0);
-  assert.deepEqual(opened, ['http://192.168.0.176/']);
-  assert.match(r.out, /Miblo-4F2A settings: http:\/\/192\.168\.0\.176\//);
+  // The page it opens marks this computer in the paired computers' list (#me=, its host name as
+  // sent when pairing); the printed URL stays plain.
+  assert.deepEqual(opened, ['http://192.168.0.176/#me=test-host']);
+  assert.match(r.out, /Miblo-4F2A settings: http:\/\/192\.168\.0\.176\/\n/);
   assert.match(r.out, /http:\/\/miblo-4f2a\.local/);
   assert.match(r.out, /Opened in your browser/);
   assert.ok(!r.out.includes('secret'));
@@ -380,7 +382,7 @@ test('settings keeps a non-default port and picks a gadget by id', async () => {
   store.upsert({ id: 'b', name: 'B', addr: '10.0.0.6:8080', token: 't' });
   const r = await run(['settings', 'b'], d);
   assert.equal(r.code, 0);
-  assert.deepEqual(opened, ['http://10.0.0.6:8080/']);
+  assert.deepEqual(opened, ['http://10.0.0.6:8080/#me=test-host']);
   assert.equal((await run(['settings', 'zzz'], d)).code, 2);
 });
 

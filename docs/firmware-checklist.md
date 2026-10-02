@@ -155,3 +155,9 @@ notes.
     a few percent while idle; Storage shows the data in use and the firmware size with the room
     left for updates. Closing Advanced stops the reads (no more `/settings-system` requests), and
     on a paired gadget a browser without the on-screen code gets 401 from `/settings-system`.
+24. **Paired computers:** on the settings page, open **Advanced**: each paired computer is
+    listed with its host name and "active now" (the one sending snapshots) or how long ago it
+    was seen; opened through `/miblo:settings`, this computer is marked "(this computer)".
+    Remove another computer: after the confirmation it leaves the list, its `/miblo:status`
+    shows `unauthorized: true`, and `/miblo:pair` brings it back. Removing the last one leaves
+    the gadget unpaired (the page reloads open).

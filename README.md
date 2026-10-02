@@ -74,7 +74,8 @@
 - **Night mode:** dims the screen between two times you choose (for example 22:00 to 07:00 at 10%), in the gadget's time zone. It is set from the settings page or `/miblo:night`.
 - **Blue light filter:** warms every colour on the screen, always or between two times you choose (its own schedule, separate from night mode), at three strengths: low, medium or high (white at 4500 K, 3500 K or 2700 K). At the highest strength the blue status colours look olive or greenish, as they do under any blue light filter. It is set from the settings page.
 - **Optional rotation:** in Overview, switch to the Limits screen for a few seconds every so often. Alerts always take priority.
-- **System panel:** under Advanced on the settings page, live graphs of the last minute of processing load and RAM in use (read once a second while it is open, kept only in the page), and the storage in use.
+- **System panel:** under Advanced on the settings page, live graphs of the last minute of processing load and RAM in use (read once a second while it is open, kept only in the page), with how much is free, and the flash storage in use and free (firmware and data).
+- **Paired computers:** also under Advanced, the computers paired with the gadget (up to 4), each with when it was last seen and a Remove button; `/miblo:settings` marks the computer that opened the page.
 - **9 languages** for the screen and the setup/settings pages: English, Português (BR), Português (PT), Español, Français, Italiano, Deutsch, Русский and 中文.
 
 **Setup and maintenance**

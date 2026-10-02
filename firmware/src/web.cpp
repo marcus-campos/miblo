@@ -10,6 +10,7 @@
 #include "miblo_tz_table.h"
 #include "miblo_version.h"
 #include "platform/net.h"
+#include "platform/storage.h"
 
 namespace web {
 
@@ -44,9 +45,16 @@ static const char kCss[] PROGMEM =
     "border-top:1px solid #26262c;padding:10px 16px calc(10px + env(safe-area-inset-bottom))}"
     ".bar>div{max-width:528px;margin:0 auto;display:flex;align-items:center;gap:12px}"
     ".bar button{margin:0;flex:0 0 45%}#st{flex:1}#st.ok{color:#22c55e}#st.no{color:#ef4444}"
-    ".sy svg{display:block;width:100%;height:56px;margin:6px 0 4px;background:#0b0b0d;border:1px solid #26262c;"
+    // A graph: the line over 25/50/75 % guides, the scale down the left, the current value top right.
+    ".gr{position:relative;margin:6px 0 4px}.gr i{position:absolute;left:6px;font:11px/1 sans-serif;"
+    "font-style:normal;color:#666}.gr i:nth-of-type(1){top:4px}.gr i:nth-of-type(2){top:calc(50% - 5px)}"
+    ".gr i:nth-of-type(3){bottom:4px}.gr b{position:absolute;right:8px;top:6px;font-size:18px;color:#eee}"
+    ".sy svg{display:block;width:100%;height:72px;background:#0b0b0d;border:1px solid #26262c;"
     "border-radius:8px}.mb{height:10px;margin:6px 0;background:#26262c;border-radius:5px;overflow:hidden}"
-    ".mb i{display:block;height:100%;width:0;background:#a78bfa}";
+    ".mb i{display:block;height:100%;width:0;background:#a78bfa}"
+    ".pc{display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid #26262c}"
+    ".pc:first-child{border-top:0}.pc>div{flex:1;min-width:0;overflow-wrap:anywhere}.pc b{color:#eee}"
+    ".pc button{margin:0;width:auto;padding:8px 12px;font-size:14px}.me{color:#f5a524;font-size:13px}";
 
 // Time zone picker shared by the portal and the settings page: a region <select> (`reg`) and a
 // city <select> (`sel`, the value that is submitted), filled from GET /api/zones (the device's
@@ -480,20 +488,40 @@ static const char kSysJs[] PROGMEM =
     "const fmt=(s,...a)=>{let i=0;return s.replace(/%s/g,()=>a[i++]);};"
     "function spark(id,a,c){if(!a.length)return;const W=59,x0=W-(a.length-1);"
     "const p=a.map((v,i)=>(x0+i)+','+(20-Math.min(100,v)/5).toFixed(2)).join(' ');"
-    "$(id).innerHTML='<polygon points=\"'+x0+',20 '+p+' '+W+',20\" fill=\"'+c+'33\"/>'"
+    "$(id).innerHTML=[5,10,15].map(y=>'<line x1=\"0\" x2=\"59\" y1=\"'+y+'\" y2=\"'+y+'\" stroke=\"#26262c\" "
+    "stroke-width=\"1\" stroke-dasharray=\"3 3\" vector-effect=\"non-scaling-stroke\"/>').join('')+'<polygon points=\"'+x0+',20 '+p+' '+W+',20\" fill=\"'+c+'33\"/>'"
     "+'<polyline points=\"'+p+'\" fill=\"none\" stroke=\"'+c+'\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';}"
     "async function sys(){const r=await fetch('/settings-system',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
     "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
     "const ram=s.ram?Math.round(s.ramUsed*100/s.ram):0;"
     "for(const[k,v]of[['cpu',s.cpu],['ram',ram]]){SY[k].push(v);if(SY[k].length>60)SY[k].shift();}"
     "$('cpuv').textContent=s.cpu+'% \\u00b7 '+s.mhz+' MHz';"
-    "$('ramv').textContent=fmt(T.inuse,kb(s.ramUsed),kb(s.ram));"
+    "$('ramv').textContent=fmt(T.inuse,ram+'%',kb(s.ram-s.ramUsed),kb(s.ram));"
     "spark('cpug',SY.cpu,'#f5a524');spark('ramg',SY.ram,'#60a5fa');"
-    "$('fsb').style.width=(s.fs?s.fsUsed*100/s.fs:0)+'%';$('fsv').textContent=fmt(T.inuse,kb(s.fsUsed),kb(s.fs));"
-    "$('fwv').textContent=fmt(T.fwroom,kb(s.fw),kb(s.otaRoom));}"
+    "$('cpun').textContent=s.cpu+'%';$('ramn').textContent=ram+'%';"
+    // Storage: the whole flash chip; what is in use is the firmware and the data (settings, pairings).
+    "const su=s.fw+s.fsUsed,sp=s.chip?Math.round(su*100/s.chip):0;$('fsb').style.width=sp+'%';"
+    "$('fsv').textContent=fmt(T.inuse,sp+'%',kb(Math.max(0,s.chip-su)),kb(s.chip));"
+    "$('fwv').textContent=fmt(T.fwroom,kb(s.fw),kb(s.fsUsed));}"
+    // The paired computers: host name, "active now" / "seen 5 min ago", and Remove. The computer
+    // that opened the page through /miblo:settings is marked (it puts its host name after #me=).
+    "const ME=(()=>{try{return decodeURIComponent((location.hash.match(/me=([^&]*)/)||[])[1]||'').slice(0,32)}catch(e){return ''}})();"
+    "const esc=s=>String(s).replace(/[&<>\"]/g,c=>'&#'+c.charCodeAt(0)+';');"
+    "const dur=s=>s<3600?Math.max(1,Math.round(s/60))+' min':s<86400?Math.round(s/3600)+' h':Math.round(s/86400)+' d';"
+    "async function pcs(){const r=await fetch('/settings-computers',{headers:hdr(),cache:'no-store'}).catch(()=>null);"
+    "if(!r||!r.ok)return;const s=await r.json().catch(()=>null);if(!s)return;"
+    "$('pcs').innerHTML=s.list.map(c=>'<div class=\"pc\"><div><b>'+esc(c.host||'?')+'</b>'"
+    "+(ME&&c.host===ME?' <span class=\"me\">('+esc(T.me)+')</span>':'')+'<br><span class=\"m\">'"
+    "+esc(c.ago<0?T.nos:c.ago<60?T.now:fmt(T.ago,dur(c.ago)))+'</span></div>'"
+    "+'<button class=\"s\" data-i=\"'+c.i+'\">'+esc(T.rm)+'</button></div>').join('');"
+    "for(const b of $('pcs').querySelectorAll('button')){const c=s.list[Number(b.dataset.i)];"
+    "b.onclick=async()=>{if(!confirm(fmt(T.rmq,c.host||'?')))return;"
+    "const q=await areq('/settings-computer-remove',JSON.stringify({i:c.i,host:c.host}));"
+    // The last one gone: the gadget is unpaired again and the page reloads open, as before pairing.
+    "const j=q&&q.ok?await q.json().catch(()=>({})):{};if(j.left===0){location.reload();return;}pcs();};}}"
     // One read at a time (a slow answer never piles requests up), only while the panel is open.
     "function tick(){SYT=null;sys().finally(()=>{if($('adv').open)SYT=setTimeout(tick,1000);});}"
-    "$('adv').addEventListener('toggle',()=>{if($('adv').open){if(!SYT)tick();}"
+    "$('adv').addEventListener('toggle',()=>{if($('adv').open){pcs();if(!SYT)tick();}"
     "else{clearTimeout(SYT);SYT=null;}});";
 
 static const char kSetJs[] PROGMEM =
@@ -831,14 +859,16 @@ static void settingsPage() {
   text(out, lang, S::WebSystem);
   out += F("</h2><div class=\"sy\"><div class=\"t\">");
   text(out, lang, S::WebCpu);
-  out += F("<span class=\"m\" id=\"cpuv\">--</span></div><svg id=\"cpug\" viewBox=\"0 0 59 20\" "
-           "preserveAspectRatio=\"none\"></svg><div class=\"t\">");
+  out += F("<span class=\"m\" id=\"cpuv\">--</span></div><div class=\"gr\"><svg id=\"cpug\" viewBox=\"0 0 59 20\" "
+           "preserveAspectRatio=\"none\"></svg><i>100%</i><i>50%</i><i>0%</i><b id=\"cpun\"></b></div><div class=\"t\">");
   text(out, lang, S::WebRam);
-  out += F("<span class=\"m\" id=\"ramv\">--</span></div><svg id=\"ramg\" viewBox=\"0 0 59 20\" "
-           "preserveAspectRatio=\"none\"></svg><div class=\"t\">");
+  out += F("<span class=\"m\" id=\"ramv\">--</span></div><div class=\"gr\"><svg id=\"ramg\" viewBox=\"0 0 59 20\" "
+           "preserveAspectRatio=\"none\"></svg><i>100%</i><i>50%</i><i>0%</i><b id=\"ramn\"></b></div><div class=\"t\">");
   text(out, lang, S::WebStorage);
   out += F("<span class=\"m\" id=\"fsv\">--</span></div><div class=\"mb\"><i id=\"fsb\"></i></div>"
            "<p class=\"m\" id=\"fwv\"></p></div><h2>");
+  text(out, lang, S::WebComputers);
+  out += F("</h2><div id=\"pcs\"><p class=\"m\">...</p></div><h2>");
   text(out, lang, S::WebFirmware);
   out += F("</h2><button class=\"s\" onclick=\"chk()\">");
   text(out, lang, S::WebCheckUpdates);
@@ -886,6 +916,12 @@ static void settingsPage() {
   txt["again"] = tr(lang, S::WebTryAgain);
   txt["inuse"] = tr(lang, S::WebInUse);
   txt["fwroom"] = tr(lang, S::WebFwRoom);
+  txt["rm"] = tr(lang, S::WebRemove);
+  txt["rmq"] = tr(lang, S::WebRemoveConfirm);
+  txt["me"] = tr(lang, S::WebThisComputer);
+  txt["now"] = tr(lang, S::WebActiveNow);
+  txt["ago"] = tr(lang, S::WebSeenAgo);
+  txt["nos"] = tr(lang, S::WebNotSeen);
   appendJsonForScript(out, txt);
   out += F(";");
   pageSendP(out, kTzJs);
@@ -901,7 +937,13 @@ static void settingsPage() {
 static bool webAuthorized() {
   char token[40];
   const String auth = requestHeader(*srv, F("Authorization"));  // never the previous request's
-  if (miblo::bearerToken(auth.c_str(), token, sizeof(token)) && ctx.tokens.matches(token)) return true;
+  if (miblo::bearerToken(auth.c_str(), token, sizeof(token))) {
+    const int i = ctx.tokens.find(token);
+    if (i >= 0) {
+      ctx.tokens.seen((uint8_t)i, millis());
+      return true;
+    }
+  }
   const String web = requestHeader(*srv, F("X-Miblo-Web"));
   return ctx.webSession.valid(web.c_str(), millis());
 }
@@ -995,13 +1037,58 @@ static void handleSettingsSystem() {
     fsAtMs = now;
   }
   const uint32_t heap = freeHeap(), ram = ramTotal();
-  char out[200];
+  char out[224];
   snprintf_P(out, sizeof(out),
              PSTR("{\"cpu\":%u,\"mhz\":%u,\"ramUsed\":%lu,\"ram\":%lu,\"fw\":%lu,\"otaRoom\":%lu,"
                   "\"chip\":%lu,\"fsUsed\":%lu,\"fs\":%lu}"),
              (unsigned)app::cpuLoad(), (unsigned)ESP.getCpuFreqMHz(), (unsigned long)(heap < ram ? ram - heap : 0),
              (unsigned long)ram, (unsigned long)ESP.getSketchSize(), (unsigned long)ESP.getFreeSketchSpace(),
              (unsigned long)flashChipBytes(), (unsigned long)fsUsed, (unsigned long)fsTotal);
+  sendJson(*srv, 200, out);
+}
+
+// GET /settings-computers: the paired computers, for the settings page (no tokens, ever): each
+// one's host name and how long ago its token last came in (-1: not since the gadget started).
+static void handleSettingsComputers() {
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  StaticJsonDocument<512> doc;
+  JsonArray list = doc.createNestedArray("list");
+  const uint32_t now = millis();
+  for (uint8_t i = 0; i < ctx.tokens.count(); i++) {
+    JsonObject e = list.createNestedObject();
+    e["i"] = i;
+    e["host"] = (const char*)ctx.tokens.at(i).host;
+    e["ago"] = ctx.tokens.everSeen(i) ? (long)((now - ctx.tokens.seenAt(i)) / 1000) : -1L;
+  }
+  String out;
+  serializeJson(doc, out);
+  sendJson(*srv, 200, out.c_str());
+}
+
+// POST /settings-computer-remove {"i":0,"host":"mac"}: unpair one computer. Its token stops
+// working at once; it needs /miblo:pair to come back. The others are untouched.
+static void handleSettingsComputerRemove() {
+  if (!requireJson(*srv)) return;
+  if (!webAuthorized()) {
+    sendJson(*srv, 401, "{\"error\":\"unauthorized\"}");
+    return;
+  }
+  StaticJsonDocument<128> doc;
+  if (deserializeJson(doc, srv->arg(F("plain"))) || !doc["i"].is<int>() || !doc["host"].is<const char*>()) {
+    sendJson(*srv, 400, "{\"error\":\"bad request\"}");
+    return;
+  }
+  const int i = doc["i"].as<int>();
+  if (i < 0 || !ctx.tokens.remove((uint8_t)i, doc["host"].as<const char*>())) {
+    sendJson(*srv, 409, "{\"error\":\"changed\"}");  // the list changed: the page reloads it
+    return;
+  }
+  storage::saveTokens(ctx.tokens);
+  char out[32];
+  snprintf_P(out, sizeof(out), PSTR("{\"ok\":true,\"left\":%u}"), (unsigned)ctx.tokens.count());
   sendJson(*srv, 200, out);
 }
 
@@ -1158,6 +1245,8 @@ void begin(WebServerT& server) {
   server.on(F("/settings-unlock"), HTTP_POST, handleSettingsUnlock);
   server.on(F("/settings-secret"), HTTP_GET, handleSettingsSecret);
   server.on(F("/settings-system"), HTTP_GET, handleSettingsSystem);
+  server.on(F("/settings-computers"), HTTP_GET, handleSettingsComputers);
+  server.on(F("/settings-computer-remove"), HTTP_POST, handleSettingsComputerRemove);
   server.on(F("/api/zones"), HTTP_GET, handleZones);
   server.on(F("/api/wifi-status"), HTTP_GET, handleWifiStatus);
   server.on(F("/pair-code"), HTTP_POST, handlePairCode);

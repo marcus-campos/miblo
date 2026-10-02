@@ -146,6 +146,7 @@ void TokenStore::add(const char* token, const char* host) {
     }
   }
   TokenEntry& e = e_[slot];
+  seenSet_ &= (uint8_t)~(1u << slot);  // a new pairing: not seen yet
   strncpy(e.token, token, sizeof(e.token) - 1);
   e.token[sizeof(e.token) - 1] = 0;
   strncpy(e.host, host, sizeof(e.host) - 1);
@@ -153,14 +154,31 @@ void TokenStore::add(const char* token, const char* host) {
   e.order = order;
 }
 
-bool TokenStore::matches(const char* token) const {
-  if (!token || !token[0]) return false;
-  bool ok = false;
-  for (uint8_t i = 0; i < n_; i++) ok |= constantTimeEquals(token, e_[i].token);
-  return ok;
+int TokenStore::find(const char* token) const {
+  if (!token || !token[0]) return -1;
+  int found = -1;
+  for (uint8_t i = 0; i < n_; i++) {  // every entry compared: the time never tells which matched
+    if (constantTimeEquals(token, e_[i].token) && found < 0) found = i;
+  }
+  return found;
+}
+
+bool TokenStore::remove(uint8_t i, const char* host) {
+  if (i >= n_ || !host || strcmp(e_[i].host, host) != 0) return false;
+  for (uint8_t j = i; j + 1 < n_; j++) {
+    e_[j] = e_[j + 1];
+    seenMs_[j] = seenMs_[j + 1];
+  }
+  // Bits above i move down one place; those below stay.
+  const uint8_t low = seenSet_ & (uint8_t)((1u << i) - 1);
+  seenSet_ = (uint8_t)(low | ((seenSet_ >> (i + 1)) << i));
+  n_--;
+  e_[n_] = TokenEntry{};
+  return true;
 }
 
 void TokenStore::restore(const TokenEntry* entries, uint8_t n) {
+  seenSet_ = 0;
   n_ = n > kMax ? kMax : n;
   for (uint8_t i = 0; i < n_; i++) e_[i] = entries[i];
 }

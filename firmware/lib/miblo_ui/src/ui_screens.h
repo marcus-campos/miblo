@@ -301,6 +301,10 @@ void meetingBadge(Lang lang);  // overlay, every frame while meeting mode is on
 void note(Lang lang, miblo::NoteKind kind, const char* text, const Clock& clk, uint32_t ms);
 void timer(Lang lang, const Clock& clk, uint32_t leftMs, uint32_t lenMs, uint32_t ms);
 void findMe(Lang lang, const char* settingsUrl, uint32_t ms);
+// The settings page's "Preview on Miblo" (ui_preview.cpp): the big mascot in `paint` and `outfit`
+// (unsaved; the current look comes back after drawing), `ms` into it, a bar running out over
+// `showMs`. No text: nothing to translate on screen.
+void preview(const MascotPaint& paint, const MascotOutfit& outfit, uint32_t ms, uint32_t showMs);
 // Cues (ui_cues.cpp): the full-screen slow pulse; the status frame overlay (None clears nothing:
 // the caller redraws the screen when it goes away).
 void cue(miblo::CueKind kind, uint32_t elapsedMs);

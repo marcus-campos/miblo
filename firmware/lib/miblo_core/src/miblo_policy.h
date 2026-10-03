@@ -214,7 +214,8 @@ enum class ScreenId : uint8_t {
   DayEnd,         // end of the work day: today's summary (miblo_dayend.h)
   WeekRecap,      // Monday: last week's summary (miblo_dayend.h)
   Fanfare,        // a long task finished: confetti in place of the "finished" hero
-  Passerby        // Friday the 13th in pet mode: a black cat crossing (miblo_occasions.h)
+  Passerby,       // Friday the 13th in pet mode: a black cat crossing (miblo_occasions.h)
+  Preview         // the settings page's "Preview on Miblo": the unsaved pet look (miblo_preview.h)
 };
 
 constexpr uint32_t kPairedScreenMs = 5000;

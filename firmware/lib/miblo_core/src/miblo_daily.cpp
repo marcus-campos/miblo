@@ -28,6 +28,7 @@ ScreenId dailyScreen(const DailyInputs& in) {
   if (in.screen == ScreenId::AlertHero && in.fanfare) return ScreenId::Fanfare;
   // Alerts, setup, codes and updates are never covered.
   if (!dailyMayReplace(in.screen)) return in.screen;
+  if (in.preview) return ScreenId::Preview;  // asked for on the settings page a moment ago
   if (in.cue != CueKind::None) return ScreenId::Cue;
   if (in.find) return ScreenId::Find;
   if (in.screen == ScreenId::Hello) return ScreenId::Hello;  // a greeting is short: it goes first
@@ -44,7 +45,8 @@ ScreenId dailyScreen(const DailyInputs& in) {
 }
 
 bool dailyActivity(const DailyInputs& in) {
-  return in.focus != FocusPhase::Off || in.timer || in.held != NoteKind::None || in.cue != CueKind::None || in.find;
+  return in.focus != FocusPhase::Off || in.timer || in.held != NoteKind::None || in.cue != CueKind::None || in.find ||
+         in.preview;
 }
 
 bool dailyFullScreen(ScreenId s) {
@@ -55,7 +57,8 @@ bool dailyFullScreen(ScreenId s) {
     case ScreenId::Find:
     case ScreenId::Nudge:
     case ScreenId::DayEnd:
-    case ScreenId::WeekRecap: return true;
+    case ScreenId::WeekRecap:
+    case ScreenId::Preview: return true;
     default: return false;
   }
 }

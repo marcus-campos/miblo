@@ -558,6 +558,8 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   di.focus = ctx.focus.phase();
   di.timer = ctx.notes.timerRunning();
   di.say = ctx.notes.saying(now) != nullptr;
+  if (alert.phase != miblo::AlertPhase::None) ctx.preview.end();  // an alert ends the settings preview
+  di.preview = ctx.preview.active(now);
   const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0)) ||
                         miblo::dailyActivity(di);
   const uint8_t petMin = dayEnd.petMinutes(ctx.cfg, dayKey);  // sooner once the work day ended
@@ -773,6 +775,14 @@ static void __attribute__((noinline)) frame(uint32_t now) {
     case ScreenId::Cue:
       screens::cue(di.cue, cue.elapsed(now));
       break;
+    case ScreenId::Preview: {
+      const miblo::PreviewLook& pl = ctx.preview.look();
+      screens::MascotPaint paint{pl.mascot, pl.pet, pl.petEyes};
+      memcpy(paint.slots, pl.petColors, sizeof(paint.slots));
+      screens::preview(paint, screens::MascotOutfit{pl.accHead, pl.accFace, pl.accNeck}, ctx.preview.elapsed(now),
+                       miblo::LookPreview::kShowMs);
+      break;
+    }
     case ScreenId::Find: {
       char url[32];
       snprintf_P(url, sizeof(url), PSTR("http://%s/"), net::ip().c_str());

@@ -87,7 +87,7 @@ static void test_daily_activity_keeps_pet_mode_away() {
 // Exactly the ordinary screens may be taken over; never setup, codes, updates, alerts or the
 // daily screens themselves.
 static void test_daily_may_replace_exactly_the_ordinary_screens() {
-  for (int i = 0; i <= (int)ScreenId::Passerby; i++) {
+  for (int i = 0; i <= (int)ScreenId::Preview; i++) {
     const ScreenId s = (ScreenId)i;
     const bool want = s == ScreenId::Main || s == ScreenId::Desk || s == ScreenId::Summary ||
                       s == ScreenId::Disconnected || s == ScreenId::Roam || s == ScreenId::Visit ||
@@ -100,9 +100,9 @@ static void test_daily_may_replace_exactly_the_ordinary_screens() {
 // the amber waiting mark while something is pending, and no other screen does (alerts, pet
 // mode and the ordinary screens show it their own way).
 static void test_waiting_mark_on_every_daily_screen() {
-  const ScreenId daily[] = {ScreenId::Focus, ScreenId::Timer, ScreenId::Note,     ScreenId::Find,
-                            ScreenId::Nudge, ScreenId::DayEnd, ScreenId::WeekRecap};
-  for (int i = 0; i <= (int)ScreenId::Passerby; i++) {
+  const ScreenId daily[] = {ScreenId::Focus,  ScreenId::Timer,     ScreenId::Note,   ScreenId::Find,
+                            ScreenId::Nudge,  ScreenId::DayEnd,    ScreenId::WeekRecap, ScreenId::Preview};
+  for (int i = 0; i <= (int)ScreenId::Preview; i++) {
     const ScreenId s = (ScreenId)i;
     bool isDaily = false;
     for (ScreenId d : daily) isDaily = isDaily || d == s;
@@ -120,8 +120,32 @@ static void test_waiting_mark_on_every_daily_screen() {
   TEST_ASSERT_TRUE(waitingMarkOn(dailyScreen(in), 1));
 }
 
+// The settings page's preview: over every ordinary screen and every other daily screen (the
+// person asked for it just now), never over an alert, setup or an update; it counts as someone
+// at the desk.
+static void test_preview_goes_first_but_never_over_an_alert() {
+  DailyInputs in;
+  in.preview = true;
+  in.focus = FocusPhase::Focus;
+  in.cue = CueKind::FocusEnd;
+  in.find = true;
+  in.say = true;
+  for (ScreenId s : {ScreenId::Main, ScreenId::Desk, ScreenId::Roam, ScreenId::Visit, ScreenId::Hello}) {
+    in.screen = s;
+    TEST_ASSERT_EQUAL((int)ScreenId::Preview, (int)dailyScreen(in));
+  }
+  for (ScreenId s : {ScreenId::AlertFlash, ScreenId::AlertHero, ScreenId::Setup, ScreenId::Updating}) {
+    in.screen = s;
+    TEST_ASSERT_EQUAL((int)s, (int)dailyScreen(in));
+  }
+  DailyInputs only;
+  only.preview = true;
+  TEST_ASSERT_TRUE(dailyActivity(only));
+}
+
 int main() {
   UNITY_BEGIN();
+  RUN_TEST(test_preview_goes_first_but_never_over_an_alert);
   RUN_TEST(test_alerts_beat_every_daily_screen);
   RUN_TEST(test_fanfare_replaces_only_the_hero);
   RUN_TEST(test_daily_priority_order);

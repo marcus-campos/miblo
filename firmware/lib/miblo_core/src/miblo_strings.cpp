@@ -307,7 +307,33 @@ static const char kEn[] MIBLO_ROM =
     "Second time zone\0"  // WebTz2
     "Its name on screen\0"  // WebTz2Label
     "Settings QR on the desk screen\0"  // WebDeskQr
-    "Monday: last week's summary\0";  // WebWeekly
+    "Monday: last week's summary\0"  // WebWeekly
+    "Head\0"  // WebWearHead
+    "Face\0"  // WebWearFace
+    "Neck\0"  // WebWearNeck
+    "None\0"  // WebWearNone
+    "Special days dress the pet\0"  // WebOccasionHats
+    "Preview on Miblo\0"  // WebPreview
+    "Cap\0"  // WebWearCap
+    "Beanie\0"  // WebWearBeanie
+    "Beret\0"  // WebWearBeret
+    "Top hat\0"  // WebWearTopHat
+    "Crown\0"  // WebWearCrown
+    "Cowboy hat\0"  // WebWearCowboyHat
+    "Chef's hat\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Flower crown\0"  // WebWearFlowerCrown
+    "Halo\0"  // WebWearHalo
+    "Sunglasses\0"  // WebWearSunglasses
+    "Nerd glasses\0"  // WebWearNerdGlasses
+    "Monocle\0"  // WebWearMonocle
+    "Moustache\0"  // WebWearMoustache
+    "Bow tie\0"  // WebWearBowTie
+    "Scarf\0"  // WebWearScarf
+    "Neckerchief\0"  // WebWearNeckerchief
+    "Bead necklace\0"  // WebWearBeads
+    "Gamer headset\0"  // WebWearHeadset
+    "“Shipped to prod” medal\0";  // WebWearMedal
 
 static const char kPtBR[] MIBLO_ROM =
     "Conectando ao Wi-Fi\0"  // Connecting
@@ -607,7 +633,33 @@ static const char kPtBR[] MIBLO_ROM =
     "Outro fuso\0"  // WebTz2
     "Nome na tela\0"  // WebTz2Label
     "QR das configurações na tela da mesa\0"  // WebDeskQr
-    "Segunda: resumo da semana\0";  // WebWeekly
+    "Segunda: resumo da semana\0"  // WebWeekly
+    "Cabeça\0"  // WebWearHead
+    "Rosto\0"  // WebWearFace
+    "Pescoço\0"  // WebWearNeck
+    "Nenhum\0"  // WebWearNone
+    "Datas especiais vestem o pet\0"  // WebOccasionHats
+    "Ver no Miblo\0"  // WebPreview
+    "Boné\0"  // WebWearCap
+    "Gorro\0"  // WebWearBeanie
+    "Boina\0"  // WebWearBeret
+    "Cartola\0"  // WebWearTopHat
+    "Coroa\0"  // WebWearCrown
+    "Chapéu de caubói\0"  // WebWearCowboyHat
+    "Chapéu de chef\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Coroa de flores\0"  // WebWearFlowerCrown
+    "Auréola\0"  // WebWearHalo
+    "Óculos de sol\0"  // WebWearSunglasses
+    "Óculos de nerd\0"  // WebWearNerdGlasses
+    "Monóculo\0"  // WebWearMonocle
+    "Bigode\0"  // WebWearMoustache
+    "Gravata-borboleta\0"  // WebWearBowTie
+    "Cachecol\0"  // WebWearScarf
+    "Lenço de pescoço\0"  // WebWearNeckerchief
+    "Colar de contas\0"  // WebWearBeads
+    "Headset gamer\0"  // WebWearHeadset
+    "Medalha “Subiu pra produção”\0";  // WebWearMedal
 
 static const char kPtPT[] MIBLO_ROM =
     "A ligar ao Wi-Fi\0"  // Connecting
@@ -907,7 +959,33 @@ static const char kPtPT[] MIBLO_ROM =
     "Outro fuso horário\0"  // WebTz2
     "Nome no ecrã\0"  // WebTz2Label
     "QR das definições no ecrã da secretária\0"  // WebDeskQr
-    "Segunda: resumo da semana\0";  // WebWeekly
+    "Segunda: resumo da semana\0"  // WebWeekly
+    "Cabeça\0"  // WebWearHead
+    "Cara\0"  // WebWearFace
+    "Pescoço\0"  // WebWearNeck
+    "Nenhum\0"  // WebWearNone
+    "Dias especiais vestem o animal\0"  // WebOccasionHats
+    "Ver no Miblo\0"  // WebPreview
+    "Boné\0"  // WebWearCap
+    "Gorro\0"  // WebWearBeanie
+    "Boina\0"  // WebWearBeret
+    "Cartola\0"  // WebWearTopHat
+    "Coroa\0"  // WebWearCrown
+    "Chapéu de cowboy\0"  // WebWearCowboyHat
+    "Chapéu de cozinheiro\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Coroa de flores\0"  // WebWearFlowerCrown
+    "Auréola\0"  // WebWearHalo
+    "Óculos de sol\0"  // WebWearSunglasses
+    "Óculos de nerd\0"  // WebWearNerdGlasses
+    "Monóculo\0"  // WebWearMonocle
+    "Bigode\0"  // WebWearMoustache
+    "Laço\0"  // WebWearBowTie
+    "Cachecol\0"  // WebWearScarf
+    "Lenço de pescoço\0"  // WebWearNeckerchief
+    "Colar de contas\0"  // WebWearBeads
+    "Headset gamer\0"  // WebWearHeadset
+    "Medalha “Em produção”\0";  // WebWearMedal
 
 static const char kEs[] MIBLO_ROM =
     "Conectando al Wi-Fi\0"  // Connecting
@@ -1207,7 +1285,33 @@ static const char kEs[] MIBLO_ROM =
     "Otra zona horaria\0"  // WebTz2
     "Nombre en pantalla\0"  // WebTz2Label
     "QR de ajustes en la pantalla del escritorio\0"  // WebDeskQr
-    "Lunes: resumen de la semana\0";  // WebWeekly
+    "Lunes: resumen de la semana\0"  // WebWeekly
+    "Cabeza\0"  // WebWearHead
+    "Cara\0"  // WebWearFace
+    "Cuello\0"  // WebWearNeck
+    "Ninguno\0"  // WebWearNone
+    "Los días especiales visten a la mascota\0"  // WebOccasionHats
+    "Ver en Miblo\0"  // WebPreview
+    "Gorra\0"  // WebWearCap
+    "Gorro\0"  // WebWearBeanie
+    "Boina\0"  // WebWearBeret
+    "Sombrero de copa\0"  // WebWearTopHat
+    "Corona\0"  // WebWearCrown
+    "Sombrero vaquero\0"  // WebWearCowboyHat
+    "Gorro de chef\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Corona de flores\0"  // WebWearFlowerCrown
+    "Aureola\0"  // WebWearHalo
+    "Gafas de sol\0"  // WebWearSunglasses
+    "Gafas de empollón\0"  // WebWearNerdGlasses
+    "Monóculo\0"  // WebWearMonocle
+    "Bigote\0"  // WebWearMoustache
+    "Pajarita\0"  // WebWearBowTie
+    "Bufanda\0"  // WebWearScarf
+    "Pañuelo\0"  // WebWearNeckerchief
+    "Collar de cuentas\0"  // WebWearBeads
+    "Cascos gamer\0"  // WebWearHeadset
+    "Medalla «En producción»\0";  // WebWearMedal
 
 static const char kFr[] MIBLO_ROM =
     "Connexion au Wi-Fi\0"  // Connecting
@@ -1507,7 +1611,33 @@ static const char kFr[] MIBLO_ROM =
     "Second fuseau horaire\0"  // WebTz2
     "Nom à l'écran\0"  // WebTz2Label
     "QR des réglages sur l'écran du bureau\0"  // WebDeskQr
-    "Lundi : bilan de la semaine\0";  // WebWeekly
+    "Lundi : bilan de la semaine\0"  // WebWeekly
+    "Tête\0"  // WebWearHead
+    "Visage\0"  // WebWearFace
+    "Cou\0"  // WebWearNeck
+    "Aucun\0"  // WebWearNone
+    "Les jours spéciaux habillent l'animal\0"  // WebOccasionHats
+    "Aperçu sur Miblo\0"  // WebPreview
+    "Casquette\0"  // WebWearCap
+    "Bonnet\0"  // WebWearBeanie
+    "Béret\0"  // WebWearBeret
+    "Haut-de-forme\0"  // WebWearTopHat
+    "Couronne\0"  // WebWearCrown
+    "Chapeau de cow-boy\0"  // WebWearCowboyHat
+    "Toque de chef\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Couronne de fleurs\0"  // WebWearFlowerCrown
+    "Auréole\0"  // WebWearHalo
+    "Lunettes de soleil\0"  // WebWearSunglasses
+    "Lunettes de geek\0"  // WebWearNerdGlasses
+    "Monocle\0"  // WebWearMonocle
+    "Moustache\0"  // WebWearMoustache
+    "Nœud papillon\0"  // WebWearBowTie
+    "Écharpe\0"  // WebWearScarf
+    "Foulard\0"  // WebWearNeckerchief
+    "Collier de perles\0"  // WebWearBeads
+    "Casque gamer\0"  // WebWearHeadset
+    "Médaille « En prod »\0";  // WebWearMedal
 
 static const char kIt[] MIBLO_ROM =
     "Connessione al Wi-Fi\0"  // Connecting
@@ -1807,7 +1937,33 @@ static const char kIt[] MIBLO_ROM =
     "Secondo fuso orario\0"  // WebTz2
     "Nome sullo schermo\0"  // WebTz2Label
     "QR delle impostazioni sulla scrivania\0"  // WebDeskQr
-    "Lunedì: riepilogo della settimana\0";  // WebWeekly
+    "Lunedì: riepilogo della settimana\0"  // WebWeekly
+    "Testa\0"  // WebWearHead
+    "Viso\0"  // WebWearFace
+    "Collo\0"  // WebWearNeck
+    "Nessuno\0"  // WebWearNone
+    "I giorni speciali vestono l'animaletto\0"  // WebOccasionHats
+    "Anteprima su Miblo\0"  // WebPreview
+    "Cappellino\0"  // WebWearCap
+    "Berretto\0"  // WebWearBeanie
+    "Basco\0"  // WebWearBeret
+    "Cilindro\0"  // WebWearTopHat
+    "Corona\0"  // WebWearCrown
+    "Cappello da cowboy\0"  // WebWearCowboyHat
+    "Cappello da chef\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Coroncina di fiori\0"  // WebWearFlowerCrown
+    "Aureola\0"  // WebWearHalo
+    "Occhiali da sole\0"  // WebWearSunglasses
+    "Occhiali da nerd\0"  // WebWearNerdGlasses
+    "Monocolo\0"  // WebWearMonocle
+    "Baffi\0"  // WebWearMoustache
+    "Papillon\0"  // WebWearBowTie
+    "Sciarpa\0"  // WebWearScarf
+    "Fazzoletto da collo\0"  // WebWearNeckerchief
+    "Collana di perline\0"  // WebWearBeads
+    "Cuffie da gamer\0"  // WebWearHeadset
+    "Medaglia “In produzione”\0";  // WebWearMedal
 
 static const char kDe[] MIBLO_ROM =
     "Verbinde mit WLAN\0"  // Connecting
@@ -2107,7 +2263,33 @@ static const char kDe[] MIBLO_ROM =
     "Zweite Zeitzone\0"  // WebTz2
     "Name auf dem Bildschirm\0"  // WebTz2Label
     "Einstellungs-QR auf dem Schreibtisch\0"  // WebDeskQr
-    "Montag: Wochenrückblick\0";  // WebWeekly
+    "Montag: Wochenrückblick\0"  // WebWeekly
+    "Kopf\0"  // WebWearHead
+    "Gesicht\0"  // WebWearFace
+    "Hals\0"  // WebWearNeck
+    "Nichts\0"  // WebWearNone
+    "Besondere Tage ziehen das Tier an\0"  // WebOccasionHats
+    "Auf Miblo ansehen\0"  // WebPreview
+    "Kappe\0"  // WebWearCap
+    "Mütze\0"  // WebWearBeanie
+    "Baskenmütze\0"  // WebWearBeret
+    "Zylinder\0"  // WebWearTopHat
+    "Krone\0"  // WebWearCrown
+    "Cowboyhut\0"  // WebWearCowboyHat
+    "Kochmütze\0"  // WebWearChefHat
+    "Bandana\0"  // WebWearBandana
+    "Blumenkranz\0"  // WebWearFlowerCrown
+    "Heiligenschein\0"  // WebWearHalo
+    "Sonnenbrille\0"  // WebWearSunglasses
+    "Nerdbrille\0"  // WebWearNerdGlasses
+    "Monokel\0"  // WebWearMonocle
+    "Schnurrbart\0"  // WebWearMoustache
+    "Fliege\0"  // WebWearBowTie
+    "Schal\0"  // WebWearScarf
+    "Halstuch\0"  // WebWearNeckerchief
+    "Perlenkette\0"  // WebWearBeads
+    "Gaming-Headset\0"  // WebWearHeadset
+    "Medaille „In Produktion“\0";  // WebWearMedal
 
 static const char kRu[] MIBLO_ROM =
     "Подключение к Wi-Fi\0"  // Connecting
@@ -2407,7 +2589,33 @@ static const char kRu[] MIBLO_ROM =
     "Второй часовой пояс\0"  // WebTz2
     "Название на экране\0"  // WebTz2Label
     "QR настроек на экране стола\0"  // WebDeskQr
-    "Понедельник: итоги недели\0";  // WebWeekly
+    "Понедельник: итоги недели\0"  // WebWeekly
+    "Голова\0"  // WebWearHead
+    "Лицо\0"  // WebWearFace
+    "Шея\0"  // WebWearNeck
+    "Нет\0"  // WebWearNone
+    "Наряды в особые дни\0"  // WebOccasionHats
+    "Показать на Miblo\0"  // WebPreview
+    "Кепка\0"  // WebWearCap
+    "Шапка\0"  // WebWearBeanie
+    "Берет\0"  // WebWearBeret
+    "Цилиндр\0"  // WebWearTopHat
+    "Корона\0"  // WebWearCrown
+    "Ковбойская шляпа\0"  // WebWearCowboyHat
+    "Поварской колпак\0"  // WebWearChefHat
+    "Бандана\0"  // WebWearBandana
+    "Венок\0"  // WebWearFlowerCrown
+    "Нимб\0"  // WebWearHalo
+    "Солнечные очки\0"  // WebWearSunglasses
+    "Очки ботаника\0"  // WebWearNerdGlasses
+    "Монокль\0"  // WebWearMonocle
+    "Усы\0"  // WebWearMoustache
+    "Галстук-бабочка\0"  // WebWearBowTie
+    "Шарф\0"  // WebWearScarf
+    "Шейный платок\0"  // WebWearNeckerchief
+    "Бусы\0"  // WebWearBeads
+    "Игровая гарнитура\0"  // WebWearHeadset
+    "Медаль «Выкатили в прод»\0";  // WebWearMedal
 
 static const char kZh[] MIBLO_ROM =
     "正在连接 Wi-Fi\0"  // Connecting
@@ -2707,7 +2915,33 @@ static const char kZh[] MIBLO_ROM =
     "第二时区\0"  // WebTz2
     "屏幕上的名称\0"  // WebTz2Label
     "桌面屏幕显示设置二维码\0"  // WebDeskQr
-    "周一: 上周总结\0";  // WebWeekly
+    "周一: 上周总结\0"  // WebWeekly
+    "头部\0"  // WebWearHead
+    "脸部\0"  // WebWearFace
+    "颈部\0"  // WebWearNeck
+    "无\0"  // WebWearNone
+    "节日自动装扮\0"  // WebOccasionHats
+    "在 Miblo 上预览\0"  // WebPreview
+    "鸭舌帽\0"  // WebWearCap
+    "毛线帽\0"  // WebWearBeanie
+    "贝雷帽\0"  // WebWearBeret
+    "礼帽\0"  // WebWearTopHat
+    "皇冠\0"  // WebWearCrown
+    "牛仔帽\0"  // WebWearCowboyHat
+    "厨师帽\0"  // WebWearChefHat
+    "头巾\0"  // WebWearBandana
+    "花环\0"  // WebWearFlowerCrown
+    "光环\0"  // WebWearHalo
+    "墨镜\0"  // WebWearSunglasses
+    "书呆子眼镜\0"  // WebWearNerdGlasses
+    "单片眼镜\0"  // WebWearMonocle
+    "小胡子\0"  // WebWearMoustache
+    "领结\0"  // WebWearBowTie
+    "围巾\0"  // WebWearScarf
+    "领巾\0"  // WebWearNeckerchief
+    "串珠项链\0"  // WebWearBeads
+    "游戏耳机\0"  // WebWearHeadset
+    "“已上线”奖章\0";  // WebWearMedal
 
 const char* const kLangSource[] MIBLO_ROM = {kEn, kPtBR, kPtPT, kEs, kFr, kIt, kDe, kRu, kZh};
 

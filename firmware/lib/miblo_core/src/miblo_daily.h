@@ -24,16 +24,18 @@ struct DailyInputs {
   Nudge nudge = Nudge::None;
   bool say = false;
   bool passerby = false;             // Friday 13 in pet mode, the black cat crossing now
+  bool preview = false;              // the settings page's preview (LookPreview::active)
 };
 
 // Ordinary screens a daily-life screen may take over (never setup, codes, updates or alerts).
 bool dailyMayReplace(ScreenId s);
 ScreenId dailyScreen(const DailyInputs& in);
 // Counts as someone at the desk for pet mode and the panel's sleep: focus (any phase), a timer,
-// a held text, a cue, find.
+// a held text, a cue, find, the settings page's preview.
 bool dailyActivity(const DailyInputs& in);
 // The daily-life screens that take the whole screen for a while: Focus, Timer, Note, Find, Nudge,
-// DayEnd, WeekRecap (not the short Cue pulse, the Fanfare, which is an alert, or Passerby, pet mode).
+// DayEnd, WeekRecap, Preview (not the short Cue pulse, the Fanfare, which is an alert, or
+// Passerby, pet mode).
 bool dailyFullScreen(ScreenId s);
 // A session waiting for you ("needs you") is never hidden by daily life: on a daily full screen
 // app.cpp draws screens::waitingMark() while `pending` > 0.

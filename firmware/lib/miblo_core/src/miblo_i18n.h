@@ -307,6 +307,32 @@ enum class S : uint16_t {
   WebTz2Label,          // settings: the second zone's name on screen
   WebDeskQr,            // settings: settings QR on the Desk screen
   WebWeekly,            // settings: Monday recap toggle
+  WebWearHead,          // settings: accessory select, the head slot
+  WebWearFace,          // settings: accessory select, the face slot
+  WebWearNeck,          // settings: accessory select, the neck slot
+  WebWearNone,          // settings: accessory: nothing worn
+  WebOccasionHats,      // settings: toggle, special days (Christmas, birthdays...) dress the pet
+  WebPreview,           // settings: button, shows the unsaved pet look on the gadget for a few seconds
+  WebWearCap,           // accessory 1: baseball cap
+  WebWearBeanie,        // accessory 2: knitted beanie
+  WebWearBeret,         // accessory 3: beret
+  WebWearTopHat,        // accessory 4: top hat
+  WebWearCrown,         // accessory 5: crown
+  WebWearCowboyHat,     // accessory 6: cowboy hat
+  WebWearChefHat,       // accessory 7: chef's hat
+  WebWearBandana,       // accessory 8: bandana
+  WebWearFlowerCrown,   // accessory 9: flower crown
+  WebWearHalo,          // accessory 10: halo
+  WebWearSunglasses,    // accessory 11: sunglasses
+  WebWearNerdGlasses,   // accessory 12: nerd glasses (13 is never used)
+  WebWearMonocle,       // accessory 14: monocle
+  WebWearMoustache,     // accessory 15: moustache
+  WebWearBowTie,        // accessory 16: bow tie
+  WebWearScarf,         // accessory 17: scarf
+  WebWearNeckerchief,   // accessory 18: neckerchief
+  WebWearBeads,         // accessory 19: bead necklace
+  WebWearHeadset,       // accessory 20: gamer headset with a mic
+  WebWearMedal,         // accessory 21: a medal for shipping to production
   Count
 };
 

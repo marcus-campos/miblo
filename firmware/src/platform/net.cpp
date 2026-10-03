@@ -5,7 +5,6 @@
 #include <time.h>
 #if defined(ESP8266)
 #include <lwip/etharp.h>
-#include <lwip/ip4_frag.h>
 #include <lwip/netif.h>
 #endif
 
@@ -20,9 +19,6 @@ namespace net {
 
 static miblo::NetPolicy policy;
 static miblo::LinkKeeper keeper;  // the safety net: probes, disconnect+begin cycles, a last restart
-#if defined(ESP8266) && IP_REASSEMBLY
-static miblo::ReassAger reassAger;  // incomplete fragmented datagrams leave the heap sooner
-#endif
 static DNSServer dns;
 static bool apOn = false;
 static bool scanStarted = false;  // a background scan for the setup page was started
@@ -111,16 +107,14 @@ static uint32_t seenDiscSeq = 0;
 static uint32_t seenAssocSeq = 0;
 static uint8_t lastReason = 0;  // survives trials: reported by /api/info
 
-// An AutoIP address (169.254.x.x, DHCP unanswered) is not a connection (miblo::stationLink).
 static miblo::LinkStatus link() {
-  const wl_status_t st = WiFi.status();
+  switch (WiFi.status()) {
+    case WL_CONNECTED: return miblo::LinkStatus::Connected;
 #if defined(ESP8266)
-  const bool wrongPassword = st == WL_WRONG_PASSWORD;
-#else
-  const bool wrongPassword = false;
+    case WL_WRONG_PASSWORD: return miblo::LinkStatus::WrongPassword;
 #endif
-  const bool up = st == WL_CONNECTED;
-  return miblo::stationLink(up, wrongPassword, up ? (uint32_t)WiFi.localIP() : 0);
+    default: return miblo::LinkStatus::Down;
+  }
 }
 
 static void startAp() {
@@ -325,10 +319,6 @@ struct Station {
 };
 
 void loop(uint32_t nowMs, bool heapLow) {
-#if defined(ESP8266) && IP_REASSEMBLY
-  // lwIP's own timeouts run in the SDK's task, which never runs during loop(): no overlap.
-  if (reassAger.due(nowMs, heapLow)) ip_reass_tmr();
-#endif
   const bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
 
   if (pendingCreds && nowMs - pendingAtMs >= 500) {

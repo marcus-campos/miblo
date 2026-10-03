@@ -218,43 +218,10 @@ class LookaheadClient : public WiFiClient {
   static inline bool shedding_ = false;
 };
 
-// The listening side. The firmware is built with lwIP's "feat" variant (platformio.ini) for its
-// listen backlog: without one (the LOW_FLASH variant) lwIP accepted every handshake and WiFiServer
-// queued each with a pcb, a ClientContext and its received bytes, so a burst of idle or half-sent
-// connections took the heap from 28 KB to 17 KB and the Wi-Fi SDK then failed an allocation. Now
-// at most miblo::kPendingConnections wait (handshakes in progress included); lwIP ignores further
-// SYNs and the clients retry them. The accept callback is wrapped (miblo::admitConnection): a
-// connection lwIP could not allocate (it calls with no pcb, which the core would wrap in a
-// ClientContext) or one arriving while the low-memory guard is on is refused, and lwIP resets it.
 class LookaheadServer : public WiFiServer {
  public:
   using WiFiServer::WiFiServer;
   using ClientType = LookaheadClient;
   LookaheadClient accept() { return LookaheadClient(WiFiServer::accept()); }
-  // ESP8266WebServer calls these by the server type.
-  void begin() { begin(_port); }
-  void begin(uint16_t port) {
-    WiFiServer::begin(port, miblo::kPendingConnections);
-    if (_listen_pcb) tcp_accept(_listen_pcb, &LookaheadServer::admit);  // its arg stays this server
-  }
-  // The core's 30 ms rule (drop a silent client while others wait) asks this; the core compares
-  // with MAX_PENDING_CLIENTS_PER_PORT (5), never reached with our backlog.
-  bool hasMaxPendingClients() const {
-    return _listen_pcb && reinterpret_cast<const tcp_pcb_listen*>(_listen_pcb)->accepts_pending >= miblo::kPendingConnections;
-  }
-  // Low-memory guard (app.cpp, miblo::HeapGuard), every loop pass.
-  static void shed(bool on) { heapLow_ = on; }
-  static uint32_t refused() { return refused_; }  // connections refused since boot (/api/info)
-
- private:
-  static err_t admit(void* arg, tcp_pcb* pcb, err_t err) {
-    if (!miblo::admitConnection(pcb != nullptr && err == ERR_OK, heapLow_)) {
-      refused_++;
-      return ERR_MEM;  // lwIP aborts (resets) a pcb whose accept failed
-    }
-    return WiFiServer::_s_accept(arg, pcb, err);
-  }
-  static inline bool heapLow_ = false;
-  static inline uint32_t refused_ = 0;
 };
 

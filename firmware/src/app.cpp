@@ -382,7 +382,6 @@ void loop() {
   }
 #if defined(ESP8266)
   LookaheadClient::shed(heapLow);
-  LookaheadServer::shed(heapLow);  // and new connections are refused (reset)
 #endif
   server.handleClient();
   net::loop(now, heapLow);

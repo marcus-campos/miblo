@@ -21,7 +21,7 @@ import { ensureKey } from '../lib/bridge-auth.js';
 // `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
 // DeviceManager's default when omitted.
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {}, addrOk = null,
-  release = createReleaseCache({ dataDir, now }), zones }) {
+  release = createReleaseCache({ dataDir, now }), zones, challengesPerSecond }) {
   // The bridge key follows <data>/bridge.key: removed or replaced while the bridge runs (a cleanup,
   // another install), the clients' new key is taken up at once (re-made from here if missing).
   let lastKey = ensureKey(dataDir);
@@ -56,6 +56,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
   const server = createBridgeServer({
     version,
     key: currentKey,
+    challengesPerSecond,
     onShutdown,
     onEvent(evt) {
       if (evt?.hook_event_name === 'SessionEnd') metrics.forget(evt.session_id);

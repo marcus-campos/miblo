@@ -283,6 +283,7 @@ test('bridge server: random requests never crash it and the guard always holds',
     getStatus: async () => ({ ok: true }),
     version: 'test',
     key: KEY,
+    challengesPerSecond: 10_000,  // one /health per fuzzed request
   });
   await new Promise((res) => server.listen(0, '127.0.0.1', res));
   const port = server.address().port;

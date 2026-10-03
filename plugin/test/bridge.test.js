@@ -7,7 +7,10 @@ import httpMod from 'node:http';
 import { startFakeDevice } from './fakes/fake-device.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
-import { createBridge } from '../bin/bridge.js';
+import { createBridge as makeBridge } from '../bin/bridge.js';
+
+// These tests fire many requests within a second: lift the bridge's challenges-per-second cap.
+const createBridge = (opts) => makeBridge({ challengesPerSecond: 10_000, ...opts });
 import { bridgeRequest, authHeader, checkedHealth } from '../lib/bridge-auth.js';
 
 async function started(bridge) {

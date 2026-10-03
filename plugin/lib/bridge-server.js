@@ -40,8 +40,9 @@ function guard(req, port) {
 // `key`: the bridge key (bridge-auth.js ensureKey), or a function giving the current one. Every request but /health must answer one of
 // the bridge's challenges with it (x-miblo-auth); without a key all of them are refused, so
 // another local user's programs get nothing and can send nothing.
-export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key: keyOf = null, now }) {
-  const challenges = new Challenges(now ? { now } : {});
+export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key: keyOf = null, now, challengesPerSecond }) {
+  // challengesPerSecond: tests that fire many requests at once raise the cap.
+  const challenges = new Challenges({ ...(now ? { now } : {}), ...(challengesPerSecond ? { perSecond: challengesPerSecond } : {}) });
   const server = http.createServer(async (req, res) => {
     const send = (code, obj, headers = {}) => {
       res.writeHead(code, { 'content-type': 'application/json', ...headers });
@@ -55,7 +56,8 @@ export function createBridgeServer({ onEvent, onStatusline, getStatus, version =
         // Proves this is the user's own bridge (HMAC of the client's nonce with the key) and
         // hands out the single-use challenge its next request answers.
         const nonce = req.headers[NONCE_HEADER];
-        const proof = key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce), [CHALLENGE_HEADER]: challenges.issue() } : {};
+        const challenge = key && isNonce(nonce) ? challenges.issue() : null;
+        const proof = key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce), ...(challenge ? { [CHALLENGE_HEADER]: challenge } : {}) } : {};
         return send(200, { ok: true, app: 'miblo-bridge', version }, proof);
       }
       const raw = await readRaw(req);

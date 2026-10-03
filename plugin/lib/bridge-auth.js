@@ -22,6 +22,9 @@ export const CHALLENGE_HEADER = 'x-miblo-challenge';
 export const AUTH_HEADER = 'x-miblo-auth';
 export const CHALLENGE_TTL_MS = 30_000;
 const MAX_CHALLENGES = 256;
+// Well above real use (parallel sessions and subagents fire bursts of hooks, plus status line
+// refreshes), far below a flood.
+export const CHALLENGES_PER_SECOND = 50;
 const KEY_RE = /^[0-9a-f]{64}$/;
 const NONCE_RE = /^[0-9a-f]{32}$/;
 
@@ -48,17 +51,29 @@ export function requestMac(key, challenge, method, urlPath, body = '') {
 export const authHeader = (key, challenge, method, urlPath, body = '') => `${challenge}:${requestMac(key, challenge, method, urlPath, body)}`;
 
 // The bridge's outstanding challenges: each is made for one /health answer and accepted once,
-// within CHALLENGE_TTL_MS; at most MAX_CHALLENGES wait at a time (the oldest go first).
+// within CHALLENGE_TTL_MS. A flood of /health cannot push out the ones real clients are about to
+// answer: at most `perSecond` are made each second, and while MAX_CHALLENGES unexpired ones are
+// open no new one is made (issue() -> null; the client then sends nothing this time).
 export class Challenges {
   #open = new Map();  // challenge -> expiry (ms)
-  constructor({ now = () => Date.now() } = {}) {
+  #second = -1;
+  #madeThisSecond = 0;
+  constructor({ now = () => Date.now(), perSecond = CHALLENGES_PER_SECOND } = {}) {
     this.now = now;
+    this.perSecond = perSecond;
   }
 
   issue() {
     const t = this.now();
+    const sec = Math.floor(t / 1000);
+    if (sec !== this.#second) {
+      this.#second = sec;
+      this.#madeThisSecond = 0;
+    }
+    if (this.#madeThisSecond >= this.perSecond) return null;
     for (const [c, exp] of this.#open) if (exp <= t) this.#open.delete(c);
-    while (this.#open.size >= MAX_CHALLENGES) this.#open.delete(this.#open.keys().next().value);
+    if (this.#open.size >= MAX_CHALLENGES) return null;
+    this.#madeThisSecond += 1;
     const c = newNonce();
     this.#open.set(c, t + CHALLENGE_TTL_MS);
     return c;

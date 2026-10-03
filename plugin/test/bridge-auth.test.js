@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ensureKey, readKey, proofFor, proofOk, logForeignOnce, Challenges, authHeader, requestMac, CHALLENGE_TTL_MS } from '../lib/bridge-auth.js';
+import { ensureKey, readKey, proofFor, proofOk, logForeignOnce, Challenges, authHeader, requestMac, CHALLENGE_TTL_MS, CHALLENGES_PER_SECOND } from '../lib/bridge-auth.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-key-'));
 
@@ -92,12 +92,28 @@ test('the bridge accepts each challenge once, for that very request, within its 
   assert.ok(!new Challenges().verify(null, 'x', 'GET', '/status'));
 });
 
-test('only the latest 256 challenges stay open', () => {
+// A flood of /health cannot push out the challenges real clients are about to answer: at most
+// 20 are made a second, and when 256 are open new ones are refused (expired ones go first).
+test('challenges are capped per second', () => {
+  let t = 1_000_000;
+  const ch = new Challenges({ now: () => t });
+  assert.ok(CHALLENGES_PER_SECOND >= 20 && CHALLENGES_PER_SECOND <= 100);
+  for (let i = 0; i < CHALLENGES_PER_SECOND; i++) assert.ok(ch.issue(), `#${i}`);
+  assert.equal(ch.issue(), null);
+  t += 1000;
+  assert.ok(ch.issue());
+});
+
+test('a full set of open challenges refuses new ones instead of evicting the oldest', () => {
   const key = 'ab'.repeat(32);
-  const ch = new Challenges();
+  let t = 1_000_000;
+  const ch = new Challenges({ now: () => t });
   const first = ch.issue();
-  for (let i = 0; i < 256; i++) ch.issue();
-  assert.ok(!ch.verify(key, authHeader(key, first, 'GET', '/status'), 'GET', '/status'));
-  const last = ch.issue();
-  assert.ok(ch.verify(key, authHeader(key, last, 'GET', '/status'), 'GET', '/status'));
+  for (let i = 1; i < 256; i++) { t += 50; assert.ok(ch.issue(), `#${i}`); }
+  t += 50;
+  assert.equal(ch.issue(), null, 'full');
+  assert.ok(ch.verify(key, authHeader(key, first, 'GET', '/status'), 'GET', '/status'), 'the oldest still open');
+  assert.ok(ch.issue(), 'room again');
+  t = 1_000_000 + CHALLENGE_TTL_MS + 13_000;  // all expired
+  for (let i = 0; i < 20; i++) assert.ok(ch.issue());
 });

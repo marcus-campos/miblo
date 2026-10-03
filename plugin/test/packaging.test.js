@@ -112,7 +112,7 @@ for (const name of ['update', 'pair']) {
     assert.match(md, /\$ARGUMENTS/);
     assert.match(md, /^description: \S/m);
     const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-    assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+    assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
   });
 }
 
@@ -159,7 +159,7 @@ for (const name of ['remind', 'countdown', 'status']) {
 
 // The commands people run first check that Node.js is there (the launcher finds or downloads it)
 // before anything else, and offer to install it, with the user's consent, when it is not.
-const CHECK = 'sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check --data "${CLAUDE_PLUGIN_DATA}"';
+const CHECK = 'sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check';
 for (const name of ['pair', 'update', 'link-statusline']) {
   test(`the /miblo:${name} command checks for Node.js first and offers to install it`, () => {
     const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
@@ -171,7 +171,7 @@ for (const name of ['pair', 'update', 'link-statusline']) {
     }
     // Installing is never pre-approved: Claude Code still asks before running it.
     const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-    assert.ok(line.includes('Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*)'), name);
+    assert.ok(line.includes('Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check)'), name);
     assert.doesNotMatch(line, /brew|winget|installer|apt|dnf/);
   });
 }
@@ -179,7 +179,7 @@ for (const name of ['pair', 'update', 'link-statusline']) {
 test('/miblo:link-statusline pre-approves only the CLI and the Node.js check', () => {
   const md = fs.readFileSync(path.join(root, 'commands/link-statusline.md'), 'utf8');
   const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-  assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), AskUserQuestion');
+  assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check), AskUserQuestion');
 });
 
 test('the macOS installer the commands offer is the Node.js version the launcher pins', () => {

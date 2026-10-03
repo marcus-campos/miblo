@@ -65,7 +65,7 @@ function setup() {
   // The installed plugin is this repository's, at the place Claude Code installs it. `answers`
   // are what the user types in the terminal (one per line); `devices` is what discovery finds.
   // Asynchronous, so the fake gadgets in this process can answer.
-  const runPairing = ({ answers = null, devices = [], args = [], pipe = true, tty = null, interruptOn = null } = {}) => {
+  const runPairing = ({ answers = null, devices = [], args = [], pipe = true, tty = null, interruptOn = null, extraEnv = {} } = {}) => {
     const installPath = path.join(home, '.claude/plugins/cache/miblo/miblo/1.14.0');
     fs.mkdirSync(path.dirname(installPath), { recursive: true });
     // A copy of this plugin, as Claude Code installs it.
@@ -74,7 +74,7 @@ function setup() {
       fs.cpSync(src, installPath, { recursive: true, filter: (f) => !/^(test|node_modules)(\/|$)/.test(path.relative(src, f)) });
     }
     fs.writeFileSync(path.join(state, 'installpath'), installPath);
-    const env = { ...baseEnv(), PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: JSON.stringify(devices) };
+    const env = { ...baseEnv(), PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: JSON.stringify(devices), ...extraEnv };
     if (tty) env.MIBLO_TTY = tty;
     if (answers !== null) {
       env.MIBLO_TTY = path.join(dir, 'tty');
@@ -208,6 +208,32 @@ test('one gadget found: asks for the code in the terminal and pairs it', { skip 
   } finally {
     await dev.close();
   }
+});
+
+// The installer uses the data folder the hooks get as CLAUDE_PLUGIN_DATA, <config>/plugins/data/
+// miblo-miblo with CLAUDE_CONFIG_DIR respected, so Node is set up once, where the hooks look.
+test('pairing uses the config dir\'s data folder (CLAUDE_CONFIG_DIR), for the devices and the Node cache', { skip }, async () => {
+  const t = setup();
+  pairable(t);
+  const conf = path.join(t.home, 'other-claude');
+  const dev = await startFakeDevice({ name: 'Desk' });
+  try {
+    const r = await t.runPairing({ answers: ['4827'], devices: [{ id: 'miblo-4f2a', name: 'Desk', addr: dev.addr }], extraEnv: { CLAUDE_CONFIG_DIR: conf } });
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const data = path.join(conf, 'plugins/data/miblo-miblo');
+    assert.match(fs.readFileSync(path.join(data, 'devices.json'), 'utf8'), /miblo-4f2a/);
+    assert.ok(fs.existsSync(path.join(data, 'runtime/node-path')), 'Node set up in the hooks\' data folder');
+    assert.ok(!fs.existsSync(path.join(t.home, '.miblo')), 'never a second copy in ~/.miblo');
+  } finally {
+    await dev.close();
+  }
+});
+
+test('install.ps1 passes the config dir\'s data folder too', () => {
+  const ps = fs.readFileSync(path.join(repo, 'install.ps1'), 'utf8');
+  const fn = ps.slice(ps.indexOf('function Get-MibloDataDir'), ps.indexOf('}', ps.indexOf('function Get-MibloDataDir')) + 1);
+  assert.match(fn, /Join-Path \(Get-MibloConfigDir\) 'plugins\\data\\miblo-miblo'/);
+  assert.doesNotMatch(fn, /Split-Path/);
 });
 
 test('a wrong code, then the right one', { skip }, async () => {

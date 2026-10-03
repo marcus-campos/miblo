@@ -84,6 +84,48 @@ if [ "$check" = 0 ]; then
 fi
 
 conf=${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}
+
+# One spelling of a folder, to compare data dirs. On Windows (Git Bash) the same folder comes as
+# C:\x (Claude Code's CLAUDE_PLUGIN_DATA), C:/x (the installer) or /c/x (Git Bash's HOME): all
+# become /c/x (cygpath when there is one), with no doubled or trailing slash and the drive letter
+# in lower case.
+canon() {
+  cn_p=$1
+  case $cn_p in
+    [A-Za-z]:*)
+      # Git Bash's own, by its absolute path: never one found through PATH.
+      if [ -x /usr/bin/cygpath ]; then
+        cn_p=$(/usr/bin/cygpath -u -- "$cn_p" 2> /dev/null) || cn_p=$1
+      fi
+      ;;
+  esac
+  while :; do
+    case $cn_p in
+      *\\*) cn_p="${cn_p%%\\*}/${cn_p#*\\}" ;;
+      *) break ;;
+    esac
+  done
+  case $cn_p in
+    [A-Za-z]:/* | [A-Za-z]:)
+      cn_d=$(printf '%s' "${cn_p%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
+      cn_p="/$cn_d${cn_p#?:}"
+      ;;
+  esac
+  while :; do
+    case $cn_p in
+      *//*) cn_p="${cn_p%%//*}/${cn_p#*//}" ;;
+      *) break ;;
+    esac
+  done
+  while :; do
+    case $cn_p in
+      ?*/) cn_p=${cn_p%/} ;;
+      *) break ;;
+    esac
+  done
+  printf '%s\n' "$cn_p"
+}
+
 data=
 if [ "$check" = 1 ] || [ "${script:-}" = statusline-tap.mjs ]; then
   if [ "${1:-}" = "--data" ]; then
@@ -93,10 +135,12 @@ if [ "$check" = 1 ] || [ "${script:-}" = statusline-tap.mjs ]; then
     # --check is pre-allowed in the slash commands, where a prompt injection could steer it to a
     # cache planted in a cloned repository: there, only the canonical data dirs count.
     if [ "$check" = 1 ] && [ -n "$data" ]; then
-      case ${data%/} in
-        "${CLAUDE_PLUGIN_DATA:-/nonexistent/}" | "$conf/plugins/data/miblo-miblo" | "${HOME:-/nonexistent/}/.miblo") ;;
-        *) data= ;;
-      esac
+      cd_given=$(canon "$data")
+      cd_ok=
+      for cd_dir in "${CLAUDE_PLUGIN_DATA:-}" "$conf/plugins/data/miblo-miblo" "${HOME:+$HOME/.miblo}"; do
+        [ -n "$cd_dir" ] && [ "$(canon "$cd_dir")" = "$cd_given" ] && cd_ok=1
+      done
+      [ -n "$cd_ok" ] || data=
     fi
   fi
 fi

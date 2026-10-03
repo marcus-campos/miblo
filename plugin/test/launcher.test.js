@@ -501,6 +501,35 @@ test('--check --data takes only the canonical data dirs; a planted cache elsewhe
   }
 });
 
+// Windows (Git Bash): the same folder comes as C:\x (Claude Code's CLAUDE_PLUGIN_DATA), C:/x (the
+// installer) or /c/x (Git Bash's HOME). On this test machine a drive path is a relative one, so the
+// folder the launcher picks shows up under the working directory.
+test('--check --data matches the canonical dirs whatever the Windows spelling', () => {
+  const s = sandbox();
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const pluginData = 'C:\\Users\\me\\.claude\\plugins\\data\\miblo-miblo';
+  const picked = (dir) => fs.existsSync(path.join(s.root, dir, 'runtime/node-path'));
+  for (const given of ['C:/Users/me/.claude/plugins/data/miblo-miblo', 'c:/Users/me/.claude/plugins/data/miblo-miblo/',
+    'C:\\Users\\me\\.claude\\plugins\\data\\miblo-miblo\\', 'C:/Users//me/.claude/plugins/data/miblo-miblo//']) {
+    fs.rmSync(path.join(s.root, 'C:'), { recursive: true, force: true });
+    fs.rmSync(path.join(s.root, 'c:'), { recursive: true, force: true });
+    for (const f of fs.readdirSync(s.root)) if (f.startsWith('C:\\')) fs.rmSync(path.join(s.root, f), { recursive: true, force: true });
+    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData }, cwd: s.root }).out, /^ok /, given);
+    assert.ok(picked(given), `${given} was not taken`);
+  }
+  // Another folder (another drive, a repo) is not: the canonical one is used instead.
+  for (const given of ['D:/Users/me/.claude/plugins/data/miblo-miblo', 'C:/Users/me/repo/.cache']) {
+    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData }, cwd: s.root }).out, /^ok /, given);
+    assert.ok(!picked(given), `${given} was taken`);
+    assert.ok(picked(pluginData), given);
+  }
+  // CLAUDE_CONFIG_DIR in the Windows spelling, as the installer passes the folder under it.
+  const conf = 'C:\\Users\\me\\claude-conf';
+  const given = 'C:/Users/me/claude-conf/plugins/data/miblo-miblo';
+  assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: '', CLAUDE_CONFIG_DIR: conf }, cwd: s.root }).out, /^ok /);
+  assert.ok(picked(given));
+});
+
 test('the slash commands run --check without --data', () => {
   for (const f of fs.readdirSync(path.join(BIN, '../commands'))) {
     const md = fs.readFileSync(path.join(BIN, '../commands', f), 'utf8');

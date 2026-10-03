@@ -170,13 +170,11 @@ plugin_dir() {
   done
 }
 
-# The plugin's data folder, the one Claude Code passes to it as CLAUDE_PLUGIN_DATA:
-# <config>/plugins/data/miblo-miblo next to <config>/plugins/cache/miblo/miblo/<version>.
+# The plugin's data folder, the one Claude Code passes to its hooks as CLAUDE_PLUGIN_DATA:
+# <config>/plugins/data/miblo-miblo, the config dir being CLAUDE_CONFIG_DIR or ~/.claude. Spelt as
+# the launcher's canonical one, so it is taken and Node is set up once, where the hooks look.
 data_dir() {
-  case $1 in
-    */cache/miblo/miblo/*) printf '%s/data/miblo-miblo\n' "${1%/cache/miblo/miblo/*}" ;;
-    *) printf '%s/plugins/data/miblo-miblo\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}" ;;
-  esac
+  printf '%s/plugins/data/miblo-miblo\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 }
 
 # The plugin's CLI, the same one /miblo:pair runs.

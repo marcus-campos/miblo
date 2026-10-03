@@ -208,15 +208,11 @@ function Get-MibloPluginDir([string]$Claude) {
   return ($found | Sort-Object -Property Version -Descending | Select-Object -First 1).Path
 }
 
-# The plugin's data folder, the one Claude Code passes to it as CLAUDE_PLUGIN_DATA:
-# <config>\plugins\data\miblo-miblo next to <config>\plugins\cache\miblo\miblo\<version>.
+# The plugin's data folder, the one Claude Code passes to its hooks as CLAUDE_PLUGIN_DATA:
+# <config>\plugins\data\miblo-miblo, the config dir being CLAUDE_CONFIG_DIR or ~\.claude. The
+# launcher takes it in any spelling (C:\x, C:/x, /c/x), so Node is set up once, where the hooks look.
 function Get-MibloDataDir([string]$Plugin) {
-  $plugins = $Plugin
-  foreach ($i in 1..4) { $plugins = Split-Path -Path $plugins -Parent }
-  if (-not $plugins -or (Split-Path -Path $plugins -Leaf) -ne 'plugins') {
-    return (Join-Path (Get-MibloConfigDir) 'plugins\data\miblo-miblo')
-  }
-  return (Join-Path $plugins 'data\miblo-miblo')
+  return (Join-Path (Get-MibloConfigDir) 'plugins\data\miblo-miblo')
 }
 
 # Git for Windows' sh, which runs the plugin's launcher (the same one Claude Code's hooks use).

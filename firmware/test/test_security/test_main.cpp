@@ -1137,8 +1137,60 @@ static void test_presence_anonymous_rate_limit() {
   TEST_ASSERT_TRUE(h.check(P::Settings, "1111", 100));
   h.close();
   TEST_ASSERT_TRUE(h.open(P::Settings, "2222", 200));
-  // waitMs while another purpose's code is up: what is left of it.
-  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs - 100, h.waitMs(P::Reset, 300));
+  // waitMs while another purpose's anonymous code is up: until it may be replaced (kAnonPreemptMs).
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kAnonPreemptMs - 100, h.waitMs(P::Reset, 300));
+  // ...and while a trusted one is up: what is left of it.
+  PresenceGate t;
+  TEST_ASSERT_TRUE(t.open(P::Settings, "1111", 0, true));
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs - 300, t.waitMs(P::Reset, 300));
+}
+
+// F4 residual: a stranger re-opening the Update code every 5 min must not keep an unpaired browser
+// user out of the Settings code. An anonymous request for another purpose replaces an anonymous code
+// that has been on the screen kAnonPreemptMs; the 30 s per-purpose anonymous gap still applies, and
+// an anonymous request never replaces a trusted code.
+static void test_presence_anonymous_preempts_a_stale_anonymous_code() {
+  using P = PresenceGate::Purpose;
+  PresenceGate g;
+  TEST_ASSERT_TRUE(g.open(P::Update, "1111", 0));  // the stranger
+  TEST_ASSERT_FALSE(g.open(P::Settings, "2222", PresenceGate::kAnonPreemptMs - 1));  // too fresh
+  TEST_ASSERT_EQUAL_UINT32(1, g.waitMs(P::Settings, PresenceGate::kAnonPreemptMs - 1));
+  TEST_ASSERT_EQUAL_UINT32(0, g.waitMs(P::Settings, PresenceGate::kAnonPreemptMs));
+  TEST_ASSERT_TRUE(g.open(P::Settings, "2222", PresenceGate::kAnonPreemptMs));  // the browser user
+  TEST_ASSERT_TRUE(g.purpose() == P::Settings);
+  TEST_ASSERT_EQUAL_STRING("2222", g.code());
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs, g.remainingMs(PresenceGate::kAnonPreemptMs));
+  TEST_ASSERT_FALSE(g.check(P::Update, "1111", PresenceGate::kAnonPreemptMs + 1));  // gone
+  // The stranger cannot take it straight back: the new code is fresh for kAnonPreemptMs.
+  const uint32_t t0 = PresenceGate::kAnonPreemptMs;
+  TEST_ASSERT_FALSE(g.open(P::Update, "3333", t0 + 1000));
+  TEST_ASSERT_TRUE(g.check(P::Settings, "2222", t0 + 2000));  // the user gets in
+
+  // Replacing works again and again, each time only once the code on screen is stale.
+  PresenceGate h;
+  TEST_ASSERT_TRUE(h.open(P::Settings, "1111", 0));
+  h.close();
+  TEST_ASSERT_TRUE(h.open(P::Update, "2222", 1000));
+  TEST_ASSERT_TRUE(h.open(P::Settings, "3333", 1000 + PresenceGate::kAnonPreemptMs));  // gap long over
+  h.close();
+  TEST_ASSERT_TRUE(h.open(P::Update, "4444", 200000));
+  TEST_ASSERT_FALSE(h.open(P::Settings, "5555", 200000 + PresenceGate::kAnonPreemptMs - 1));
+  // waitMs is the longer of the two: the code on screen going stale and the purpose's own gap.
+  PresenceGate r;
+  TEST_ASSERT_TRUE(r.open(P::Update, "1111", 0));
+  TEST_ASSERT_TRUE(r.open(P::Reset, "2222", PresenceGate::kAnonPreemptMs));
+  r.close();
+  TEST_ASSERT_TRUE(r.open(P::Update, "3333", PresenceGate::kAnonPreemptMs + 1));
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kAnonPreemptMs - 1, r.waitMs(P::Reset, PresenceGate::kAnonPreemptMs + 2));
+
+  // Never over a trusted code, however old.
+  PresenceGate t;
+  TEST_ASSERT_TRUE(t.open(P::Update, "1111", 0, true));
+  TEST_ASSERT_FALSE(t.open(P::Settings, "2222", PresenceGate::kTtlMs - 1));
+  // Trusted still pre-empts anonymous at once.
+  PresenceGate u;
+  TEST_ASSERT_TRUE(u.open(P::Update, "1111", 0));
+  TEST_ASSERT_TRUE(u.open(P::Settings, "2222", 10, true));
 }
 
 // Joining another network from the setup portal: frictionless only on a fresh unit (never
@@ -1164,6 +1216,7 @@ int main() {
   RUN_TEST(test_presence_code_never_replaced_while_active);
   RUN_TEST(test_presence_trusted_preempts_anonymous);
   RUN_TEST(test_presence_anonymous_rate_limit);
+  RUN_TEST(test_presence_anonymous_preempts_a_stale_anonymous_code);
   RUN_TEST(test_wifi_code_required);
   RUN_TEST(test_wifi_code_a_reset_unit_is_frictionless);
   RUN_TEST(test_info_view);

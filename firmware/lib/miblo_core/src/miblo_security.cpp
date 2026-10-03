@@ -571,11 +571,12 @@ bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs, bool trust
       if (trusted) trusted_ = true;
       return true;
     }
-    if (!trusted || trusted_) return false;  // never replace a code the owner may be reading
-    // A trusted caller replaces a code opened anonymously (F4).
-  } else if (!trusted && (anonArmed_ & (1u << i)) && nowMs - anonAtMs_[i] < kAnonGapMs) {
-    return false;
+    if (trusted_) return false;  // never replace a code the owner may be reading
+    // A code opened anonymously is replaced by a trusted caller at once, and by an anonymous one
+    // once it has been on the screen kAnonPreemptMs (F4).
+    if (!trusted && nowMs - openedAtMs_ < kAnonPreemptMs) return false;
   }
+  if (!trusted && (anonArmed_ & (1u << i)) && nowMs - anonAtMs_[i] < kAnonGapMs) return false;
   open_ = true;
   trusted_ = trusted;
   purpose_ = p;
@@ -598,11 +599,19 @@ void PresenceGate::update(uint32_t nowMs) {
 }
 
 uint32_t PresenceGate::waitMs(Purpose p, uint32_t nowMs) const {
-  if (active(nowMs)) return p == purpose_ ? 0 : remainingMs(nowMs);
+  uint32_t wait = 0;
+  if (active(nowMs)) {
+    if (p == purpose_) return 0;
+    if (trusted_) return remainingMs(nowMs);
+    const uint32_t age = nowMs - openedAtMs_;
+    if (age < kAnonPreemptMs) wait = kAnonPreemptMs - age;
+  }
   const uint8_t i = idx(p);
-  if (!(anonArmed_ & (1u << i))) return 0;
-  const uint32_t since = nowMs - anonAtMs_[i];
-  return since < kAnonGapMs ? kAnonGapMs - since : 0;
+  if (anonArmed_ & (1u << i)) {
+    const uint32_t since = nowMs - anonAtMs_[i];
+    if (since < kAnonGapMs && kAnonGapMs - since > wait) wait = kAnonGapMs - since;
+  }
+  return wait;
 }
 
 bool PresenceGate::active(uint32_t nowMs) const {

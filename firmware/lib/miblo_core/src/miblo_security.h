@@ -282,19 +282,24 @@ class PresenceGate {
   static constexpr uint8_t kPurposes = 4;
   static constexpr uint32_t kTtlMs = 300000;
   static constexpr uint32_t kAnonGapMs = 30000;
+  // An anonymous code on the screen this long may be replaced by an anonymous request for another
+  // purpose (F4: a stranger re-opening one purpose must not keep everyone out of the others).
+  static constexpr uint32_t kAnonPreemptMs = 60000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
   static constexpr uint32_t kLockMaxMs = EscalatingLockout::kMaxMs;
 
   // false (and nothing changes) while that purpose is locked out; while a code for another purpose
-  // is still active (busyFor), unless this caller is trusted and that code was opened anonymously;
-  // or, for an anonymous caller, within kAnonGapMs of the last code it armed for this purpose. For
+  // is still active (busyFor), unless that code was opened anonymously and this caller is trusted
+  // or it has been on the screen kAnonPreemptMs; or, for an anonymous caller, within kAnonGapMs of
+  // the last code it armed for this purpose. For
   // the same purpose an active code is kept as it is (same code, same timer; a trusted caller
   // adopts it). The owner can always ask again once it expires (kTtlMs) or after it was used.
   bool open(Purpose p, const char* code4, uint32_t nowMs, bool trusted = false);
   bool busyFor(Purpose p, uint32_t nowMs) const { return active(nowMs) && p != purpose_; }
   // How long an anonymous open(p) has to wait (0: it would go through, lockouts aside): what is
-  // left of another purpose's code, or of the anonymous gap. The "busy" reply's retryAfter.
+  // left of another purpose's trusted code, or until another purpose's anonymous code may be
+  // replaced, and of the anonymous gap (the longer). The "busy" reply's retryAfter.
   uint32_t waitMs(Purpose p, uint32_t nowMs) const;
   bool locked(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].locked(nowMs); }
   uint32_t lockRemainingMs(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].remainingMs(nowMs); }

@@ -597,6 +597,7 @@ void renderAll(Lang L) {
   shots::renderCues(L);
   shots::renderLook(L);
   shots::renderPets(L);
+  shots::renderVisits(L);
 }
 
 // ---------------- animations ----------------

@@ -150,6 +150,30 @@ void setMascotOutfit(const MascotOutfit& o) {
   g_outfit.neck = miblo::wearFits(miblo::WearSlot::Neck, o.neck) ? o.neck : 0;
 }
 MascotOutfit mascotOutfit() { return g_outfit; }
+static uint8_t g_guestAccessory = 0;
+void setGuestAccessory(uint8_t accessory) { g_guestAccessory = accessory; }
+uint8_t guestAccessory() { return g_guestAccessory; }
+
+void dressGuest(uint8_t style, uint8_t pet, const miblo::FriendLook& look) {
+  MascotPaint p;
+  p.style = style;
+  p.pet = pet;
+  p.eyeShape = look.eyes;
+  miblo::lookSlots(look, p.slots);
+  setMascotPaint(p);
+  // The guest's own accessories, today's holiday hat (if any) taking its slot as on our pet.
+  const miblo::Outfit o = miblo::outfitWith((miblo::Accessory)g_guestAccessory, look.accHead, look.accFace,
+                                            look.accNeck);
+  setMascotAccessory((uint8_t)o.occasion);
+  setMascotOutfit(MascotOutfit{o.head, o.face, o.neck});
+}
+
+MascotPaint strangerPaint(const MascotPaint& own) {
+  MascotPaint p;
+  p.style = 2;  // black
+  p.pet = own.pet;
+  return p;
+}
 
 // ---- Colours (integer only) ----
 static uint16_t rgb565(uint32_t rgb) {

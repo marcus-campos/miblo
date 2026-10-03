@@ -31,6 +31,10 @@ uint16_t mibloAge(const Config& cfg, const Date& d) {
 Occasion occasionOn(const Config& cfg, const Date& d) {
   if (cfg.birthday[0] && isBirthday(cfg.birthday, d)) return Occasion::OwnerBirthday;
   if (cfg.born[0] && isBirthday(cfg.born + 5, d) && mibloAge(cfg, d) > 0) return Occasion::MibloBirthday;
+  return holidayOn(d);
+}
+
+Occasion holidayOn(const Date& d) {
   if ((d.month == 12 && d.day == 31) || (d.month == 1 && d.day == 1)) return Occasion::NewYear;
   if (d.month == 12 && d.day >= 20 && d.day <= 26) return Occasion::Christmas;
   if (d.month == 10 && d.day >= 29) return Occasion::Halloween;
@@ -72,16 +76,20 @@ bool wearFits(WearSlot slot, uint8_t id) {
   return id == 0 || (wearSlotOf(id, s) && s == slot);
 }
 
-Outfit outfitFor(const Config& cfg, Accessory occasion) {
+Outfit outfitWith(Accessory occasion, uint8_t head, uint8_t face, uint8_t neck) {
   Outfit o;
-  o.head = wearFits(WearSlot::Head, cfg.accHead) ? cfg.accHead : 0;
-  o.face = wearFits(WearSlot::Face, cfg.accFace) ? cfg.accFace : 0;
-  o.neck = wearFits(WearSlot::Neck, cfg.accNeck) ? cfg.accNeck : 0;
-  if (!cfg.occasionHats || occasion == Accessory::None) return o;
+  o.head = wearFits(WearSlot::Head, head) ? head : 0;
+  o.face = wearFits(WearSlot::Face, face) ? face : 0;
+  o.neck = wearFits(WearSlot::Neck, neck) ? neck : 0;
+  if (occasion == Accessory::None) return o;
   o.occasion = occasion;
   if (occasion == Accessory::Glasses) o.face = 0;
   else o.head = 0;
   return o;
+}
+
+Outfit outfitFor(const Config& cfg, Accessory occasion) {
+  return outfitWith(cfg.occasionHats ? occasion : Accessory::None, cfg.accHead, cfg.accFace, cfg.accNeck);
 }
 
 void Greeter::start(Greeting g, uint32_t nowMs) {

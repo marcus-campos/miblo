@@ -606,6 +606,18 @@ std::vector<std::string> friendSeeds() {
     p.offset = 12;
     if (t == FriendPacket::Invite) strcpy(p.host, "miblo-0002");
     out.push_back(hexPacket(p));
+    // With a pet and a look: accessories only, then every part (custom colours, eye shape).
+    p.pet = (uint8_t)Pet::Owl;
+    p.look = FriendLook();
+    p.look.accHead = 3;
+    p.look.accNeck = 21;
+    out.push_back(hexPacket(p));
+    uint32_t slots[kPetSlots] = {};
+    slots[kSlotBody] = 0xFF4510 + 1;
+    slots[kSlotEye] = 0x00FF00 + 1;
+    slots[kSlotAccent] = 1;
+    p.look = friendLook(slots, 2, 7, 15, 18);
+    out.push_back(hexPacket(p));
   }
   return out;
 }
@@ -626,6 +638,17 @@ void checkPacket(const FriendPacket& p) {
   checkStr(p.to, 15, "to");
   checkStr(p.host, 15, "host");
   FUZZ_CHECK((uint8_t)p.gift < (uint8_t)Gift::Count, "gift %u", (unsigned)p.gift);
+  FUZZ_CHECK(p.pet < kPetKinds, "pet %u", (unsigned)p.pet);
+  FUZZ_CHECK(p.look.eyes < kEyeShapes && !(p.look.custom & 0x80), "look eyes %u mask %02x", (unsigned)p.look.eyes,
+             (unsigned)p.look.custom);
+  FUZZ_CHECK(knownAccessory(kAccHead, p.look.accHead) == p.look.accHead &&
+                 knownAccessory(kAccFace, p.look.accFace) == p.look.accFace &&
+                 knownAccessory(kAccNeck, p.look.accNeck) == p.look.accNeck,
+             "look accessories %u %u %u", (unsigned)p.look.accHead, (unsigned)p.look.accFace,
+             (unsigned)p.look.accNeck);
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    FUZZ_CHECK((p.look.custom & (1u << i)) || p.look.rgb[i] == 0, "a colour in an Auto slot");
+  }
   FUZZ_CHECK(p.type >= FriendPacket::Beacon && p.type <= FriendPacket::Host, "type");
   // What we decoded encodes again, and decodes to the same packet.
   uint8_t buf[kFriendPacketMax];
@@ -636,6 +659,10 @@ void checkPacket(const FriendPacket& p) {
   FUZZ_CHECK(q.type == p.type && !strcmp(q.id, p.id) && !strcmp(q.name, p.name) && !strcmp(q.to, p.to) &&
                  q.gift == p.gift && q.mascot == p.mascot && q.flags == p.flags,
              "friend packet round trip differs");
+  // The look comes back whole when the packet had room for all of it (it is left out, part by
+  // part, only when it would not fit: then what came is a prefix of it).
+  FUZZ_CHECK(q.pet == p.pet || len == sizeof(buf), "pet round trip");
+  if (len < sizeof(buf) - 2 * kPetSlots - 5) FUZZ_CHECK(q.look == p.look, "look round trip differs");
 }
 
 void fuzzFriendPacket(const uint8_t* d, size_t n) {
@@ -667,7 +694,8 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
   // Like app.cpp: our identity is set every frame, right before update().
   std::string selfName = "Desk";
   const char* selfId = "miblo-0001";
-  uint8_t selfMascot = 1;
+  uint8_t selfMascot = 1, selfPet = 0;
+  FriendLook selfLook;
   uint32_t now = 1000, rnd = 7;
   int heard = 0;
   Reader r(d, n);
@@ -689,7 +717,7 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
         break;
       }
       case 1:
-        f.setSelf(selfId, selfName.c_str(), selfMascot);
+        f.setSelf(selfId, selfName.c_str(), selfMascot, knownPet(selfPet), selfLook);
         f.update(now, (arg & 0x40) == 0, arg & 0x0F, rnd);
         break;
       case 2: f.demo(now, now + (uint32_t)arg * 1000); break;
@@ -699,7 +727,16 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
         selfName = nm.s;  // any bytes: the settings accept more than the other Miblos do
         selfId = (arg & 1) ? "miblo-0001" : "miblo-00ff";
         selfMascot = arg % 4;
-        f.setSelf(selfId, selfName.c_str(), selfMascot);
+        // A look from the record's bytes too, as the settings would give it (any colours, eyes,
+        // accessory ids: friendLook keeps the valid ones).
+        uint32_t slots[kPetSlots] = {};
+        for (uint8_t i = 0; i < kPetSlots; i++) {
+          if (arg & (1u << (i % 8))) slots[i] = (uint32_t)rnd % (kPetColorMax + 2);
+          rnd = rnd * 1103515245u + 12345u;
+        }
+        selfPet = (uint8_t)(rnd >> 8) % (kPetKinds + 1);
+        selfLook = friendLook(slots, (uint8_t)(rnd >> 16) % 4, (uint8_t)(rnd >> 20), (uint8_t)(rnd >> 4), arg);
+        f.setSelf(selfId, selfName.c_str(), selfMascot, knownPet(selfPet), selfLook);
         break;
       }
     }
@@ -707,6 +744,8 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
     FUZZ_CHECK(f.count() <= kMaxFriends, "friends %u > %u", f.count(), kMaxFriends);
     const VisitView v = f.visit(now);
     checkStr(v.name, 20, "visit name");
+    FUZZ_CHECK(v.pet < kPetKinds && v.look.eyes < kEyeShapes, "visit pet %u eyes %u", (unsigned)v.pet,
+               (unsigned)v.look.eyes);
     FUZZ_CHECK(v.extra < kMaxGuests, "extra guests %u", v.extra);
     if (const char* g = f.greeting(now)) FUZZ_CHECK(utf8Length(g) <= 20 && strlen(g) < 64, "greeting");
     if (const char* b = f.napBuddy()) FUZZ_CHECK(strlen(b) < 64, "nap buddy");

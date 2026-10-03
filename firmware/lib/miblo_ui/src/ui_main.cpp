@@ -1828,6 +1828,14 @@ static MascotLook walking(uint32_t ms, int dx, int dy = 0) {
   return k;
 }
 
+// A guest's look in a region hash (a new colour or accessory redraws it).
+static uint32_t friendLookHash(uint32_t h, const miblo::FriendLook& l) {
+  h = hashInt(h, (uint32_t)l.accHead | (uint32_t)l.accFace << 8 | (uint32_t)l.accNeck << 16 | (uint32_t)l.eyes << 24);
+  h = hashInt(h, l.custom);
+  for (uint16_t c : l.rgb) h = hashInt(h, c);
+  return h;
+}
+
 void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitView& v, uint8_t side) {
   using miblo::VisitRole;
   const uint32_t ms = v.ms;
@@ -2044,7 +2052,9 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
   for (uint8_t e = 0; e < extras; e++) {
     h = hashInt(lookHash(hashInt(h, (uint32_t)(exX[e] * 1000 + exY[e])), exLook[e]),
                 (uint32_t)v.extraMascot[e] | (uint32_t)v.extraPet[e] << 8);
+    h = friendLookHash(h, v.extraLook[e]);
   }
+  h = hashInt(friendLookHash(h, v.look), (uint32_t)v.mascot | (uint32_t)v.pet << 8 | (uint32_t)guestAccessory() << 16);
   if (dirty(R_BODY, h)) {
     const int top = vertical ? 0 : tall ? Y(30) : cy - half;
     const int bh = vertical ? Y(240) : tall ? cy + half - Y(30) : 2 * half;
@@ -2055,15 +2065,13 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
       if (mine) deskMascot(myX, myY, me, catHalf, false);
-      if (guest) {  // their own pet and colours, no hat, tie or tired eyes (the day, the meeting are ours)
-        setMascotAccessory(0);
-        setMascotOutfit(MascotOutfit{});  // ours stay ours
+      if (guest) {  // each as in its own pet mode, in today's holiday hat; no tie or tired eyes (ours)
         setMascotTie(false);
         setCatMood(0);
-        setMascotPaint(MascotPaint{v.mascot, v.pet});  // their preset and pet (our own colours stay ours)
+        dressGuest(v.mascot, v.pet, v.look);
         deskMascot(guestX, guestY, them, catHalf, false);
         for (uint8_t e = 0; e < extras; e++) {
-          setMascotPaint(MascotPaint{v.extraMascot[e], v.extraPet[e]});
+          dressGuest(v.extraMascot[e], v.extraPet[e], v.extraLook[e]);
           deskMascot(exX[e], exY[e], exLook[e], catHalf, false);
         }
         setMascotPaint(myPaint);

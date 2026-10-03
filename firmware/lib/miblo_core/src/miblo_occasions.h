@@ -29,6 +29,8 @@ enum class Occasion : uint8_t {
 // (a year or more after cfg.born), New Year (Dec 31, Jan 1), Christmas (Dec 20-26), Halloween
 // (Oct 29-31). An owner born on Feb 29 celebrates on Feb 28 in other years.
 Occasion occasionOn(const Config& cfg, const Date& d);
+// The holiday of a date, for everyone (no birthdays): what guests from other Miblos wear here.
+Occasion holidayOn(const Date& d);
 // Whole years since cfg.born (0 when unknown or not a year yet).
 uint16_t mibloAge(const Config& cfg, const Date& d);
 
@@ -65,6 +67,9 @@ struct Outfit {
   uint8_t head = 0, face = 0, neck = 0;  // Wear ids
 };
 Outfit outfitFor(const Config& cfg, Accessory occasion);
+// The same rule for any pet (a visiting friend's items from its packet): `occasion` takes its slot;
+// an item that does not fit its slot (13, unknown) is nothing.
+Outfit outfitWith(Accessory occasion, uint8_t head, uint8_t face, uint8_t neck);
 
 Date easterSunday(uint16_t year);    // Gregorian (anonymous algorithm)
 uint8_t weekdayOf(const Date& d);    // 0 = Sunday .. 6

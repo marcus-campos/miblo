@@ -222,6 +222,26 @@ static void test_new_global_occasions() {
   TEST_ASSERT_EQUAL(Accessory::None, accessoryFor(Occasion::Friday13));
 }
 
+// What guests from other Miblos wear here: the holiday of the date, never our birthdays (their
+// owner's birthday is not ours, and the party hat stays with us).
+static void test_guests_wear_the_holiday_not_our_birthday() {
+  Config c;
+  strcpy(c.birthday, "12-25");
+  strcpy(c.born, "2020-10-31");
+  TEST_ASSERT_EQUAL(Occasion::OwnerBirthday, occasionOn(c, D(2026, 12, 25)));
+  TEST_ASSERT_EQUAL(Occasion::Christmas, holidayOn(D(2026, 12, 25)));
+  TEST_ASSERT_EQUAL(Occasion::MibloBirthday, occasionOn(c, D(2026, 10, 31)));
+  TEST_ASSERT_EQUAL(Occasion::Halloween, holidayOn(D(2026, 10, 31)));
+  TEST_ASSERT_EQUAL(Occasion::NewYear, holidayOn(D(2027, 1, 1)));
+  TEST_ASSERT_EQUAL(Occasion::Valentine, holidayOn(D(2027, 2, 14)));
+  TEST_ASSERT_EQUAL(Occasion::Easter, holidayOn(D(2026, 4, 5)));
+  TEST_ASSERT_EQUAL(Occasion::ProgrammersDay, holidayOn(D(2027, 9, 13)));
+  TEST_ASSERT_EQUAL(Occasion::Friday13, holidayOn(D(2026, 11, 13)));
+  TEST_ASSERT_EQUAL(Occasion::None, holidayOn(D(2026, 6, 12)));
+  strcpy(c.birthday, "06-12");
+  TEST_ASSERT_EQUAL(Occasion::None, holidayOn(D(2026, 6, 12)));
+}
+
 static void test_occasion_priority() {
   // Owner's birthday > Miblo's birthday > New Year > Christmas > Halloween > Easter > Valentine's >
   // Programmer's Day > Friday the 13th.
@@ -396,6 +416,15 @@ static void test_outfit_for_the_day() {
   o = outfitFor(c, Accessory::None);
   TEST_ASSERT_EQUAL_UINT8(0, o.head);
   TEST_ASSERT_EQUAL_UINT8(0, o.face);
+  // A guest's items (from its packet): the same rule, whatever our own config says.
+  o = outfitWith(Accessory::WitchHat, (uint8_t)Wear::Halo, (uint8_t)Wear::Monocle, 13);
+  TEST_ASSERT_EQUAL(Accessory::WitchHat, o.occasion);
+  TEST_ASSERT_EQUAL_UINT8(0, o.head);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Monocle, o.face);
+  TEST_ASSERT_EQUAL_UINT8(0, o.neck);
+  o = outfitWith(Accessory::None, (uint8_t)Wear::Halo, 0, (uint8_t)Wear::Beads);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Halo, o.head);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Beads, o.neck);
 }
 
 int main(int, char**) {
@@ -410,6 +439,7 @@ int main(int, char**) {
   RUN_TEST(test_weekday_of);
   RUN_TEST(test_new_global_occasions);
   RUN_TEST(test_occasion_priority);
+  RUN_TEST(test_guests_wear_the_holiday_not_our_birthday);
   RUN_TEST(test_programmers_day_greeting);
   RUN_TEST(test_black_cat_schedule);
   RUN_TEST(test_wear_ids_by_slot);

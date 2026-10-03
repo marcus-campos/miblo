@@ -124,6 +124,18 @@ struct MascotPaint {
 };
 void setMascotPaint(const MascotPaint& p);
 MascotPaint mascotPaint();
+// What pets from elsewhere wear here (guests from other Miblos, the Friday stranger): today's
+// holiday hat by our own date (miblo::holidayOn: no birthdays), set like setMascotAccessory().
+void setGuestAccessory(uint8_t accessory);
+uint8_t guestAccessory();
+// Dresses every mascot drawn from now on as a pet from another Miblo looks in its own pet mode:
+// its preset (`style`), `pet` and look (eye shape, custom colours, with its Auto slots derived
+// from them exactly as it derives them), wearing guestAccessory(). The caller saves its own
+// mascotPaint() and mascotAccessory() first and puts them back after.
+void dressGuest(uint8_t style, uint8_t pet, const miblo::FriendLook& look);
+// Friday the 13th's stranger: a pet of our own kind in the black preset (as that pet draws the
+// black preset), with none of our colours or eye shape: not us, not a friend.
+MascotPaint strangerPaint(const MascotPaint& own);
 // Changes whenever the paint does (region hashes: a new colour redraws the mascot).
 uint32_t mascotPaintHash();
 // Desk mascot with front paws: flat primitives only, inside the square

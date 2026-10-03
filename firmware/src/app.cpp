@@ -177,20 +177,22 @@ static void updateOccasion(uint32_t now) {
   occasionAtMs = now;
   miblo::Date d;
   int minute;
-  uint8_t want = 0;
+  uint8_t want = 0, guests = 0;
   occasion = miblo::Occasion::None;
   if (today(d, minute)) {
     occasion = miblo::occasionOn(ctx.cfg, d);
     want = (uint8_t)miblo::accessoryFor(occasion);
+    guests = (uint8_t)miblo::accessoryFor(miblo::holidayOn(d));  // visitors: the holiday, not our birthday
     if (!ctx.cfg.born[0] && ctx.tokens.count() > 0) {
       snprintf_P(ctx.cfg.born, sizeof(ctx.cfg.born), PSTR("%04u-%02u-%02u"), (unsigned)d.year, (unsigned)d.month,
                (unsigned)d.day);
       ctx.configChanged = true;
     }
   }
-  if (want != accessory) {
+  if (want != accessory || guests != screens::guestAccessory()) {
     accessory = want;
     screens::setMascotAccessory(want);
+    screens::setGuestAccessory(guests);
     firstFrame = true;
   }
 }
@@ -570,7 +572,9 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   const screens::DeskMood limitsMood = screens::deskMoodFor(ctx.snap, nowEpoch ? nowEpoch : ctx.snap.now);
   const bool tired = ctx.usageEverSeen &&
                      (limitsMood == screens::DeskMood::Worried || limitsMood == screens::DeskMood::Scared);
-  ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot, ctx.cfg.pet);
+  // Our look as pet mode draws it (the accessory slots join once the config has them).
+  ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot, ctx.cfg.pet,
+                      miblo::friendLook(ctx.cfg.petColors, ctx.cfg.petEyes));
   // Not roaming while the panel sleeps (displayOff is still last frame's): nobody visits a dark
   // screen, and a visit in progress ends the way it does when our human comes back.
   ctx.friends.update(now, ctx.cfg.friends && net::connected(),

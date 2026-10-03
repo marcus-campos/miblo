@@ -1,4 +1,4 @@
-// Special days on screen: Friday the 13th's black cat crossing pet mode.
+// Special days on screen: Friday the 13th's stranger crossing pet mode.
 #include "miblo_occasions.h"
 #include "miblo_overview.h"
 #include "miblo_rom.h"
@@ -16,7 +16,7 @@ constexpr uint32_t kPassStopAt = 3400;  // it stops halfway ...
 constexpr uint32_t kPassStopMs = 1600;  // ... looks at you (and blinks once), and walks on
 constexpr uint32_t kPassStepMs = 180;   // one step: a bob and the other paw
 constexpr int kPassStrips = 8;          // composed in strips, like the desk cat (no big layer)
-// The black cat's tail, raised behind it: a curve leaning back with a hook at the tip (a "?"),
+// The cat's tail (the stranger is a cat), raised behind it: a curve leaning back with a hook at the tip (a "?"),
 // swaying with `f`. (x, y) is its base; it goes up Sz(30) and back Sz(10).
 void tail(int x, int y, uint8_t f) {
   static const int8_t kPath[][2] MIBLO_ROM = {{0, 0},    {-2, -4},  {-4, -8},  {-5, -12}, {-6, -16},
@@ -31,18 +31,20 @@ void tail(int x, int y, uint8_t f) {
 }
 }  // namespace
 
-// A stranger: a black cat (mascot style 2) with a swinging tail walks along the bottom of the
-// screen from left to right in kPasserbyMs, stopping halfway to look at you. No sign, only the
-// clock. Our own pet, hat, tie and mood are not its own: it is a cat, drawn without them.
+// A stranger: a dark one of our own pet's kind (strangerPaint: the black preset) walks along the
+// bottom of the screen from left to right in kPasserbyMs, stopping halfway to look at you, its
+// tail swinging (a cat's curl, or the pet's own Tail antic). No sign, only the clock. Our colours,
+// eye shape, tie and mood are not its own; it wears what guests wear (today's holiday hat).
 void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms) {
   (void)lang;
   (void)s;
   field(R_CLOCK, kHashSeed + 71, X(120), Y(18), clk.hhmm, Font::Body, color::DIM, color::BG, Align::Center, X(80));
 
   const int half = Sz(kPassHalf);
-  const int back = Sz(42);  // the tail reaches this far left of the cat's centre
+  const bool cat = mascotPaint().pet == 0;  // the curl is the cat's; another pet swings its own tail
+  const int back = Sz(42);  // the tail reaches this far left of the centre (a pet's own: either side)
   const int cy = Y(228) - half;
-  const int x0 = X(6) + back, x2 = X(236) - half;
+  const int x0 = X(6) + back, x2 = X(236) - (cat ? half : back);
   const int x1 = (x0 + x2) / 2;
   const uint32_t t = ms < miblo::kPasserbyMs ? ms : miblo::kPasserbyMs;
   const uint32_t walkIn = kPassStopAt, walkOut = miblo::kPasserbyMs - kPassStopAt - kPassStopMs;
@@ -61,6 +63,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
   const uint8_t swing = (uint8_t)(t / 250);
 
   uint32_t h = hashInt(hashInt(kHashSeed + 73, (uint32_t)cx), (uint32_t)swing);
+  h = hashInt(hashInt(h, mascotPaintHash()), guestAccessory());
   h = hashInt(h, (uint32_t)(uint8_t)k.dy | (uint32_t)(uint8_t)k.gx << 8 | (uint32_t)k.eyes << 16 |
                      (uint32_t)k.paws << 24);
   if (!dirty(R_BODY, h)) return;
@@ -71,11 +74,11 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
   auto draw = [&] {
     C().fillRect(0, top, X(240), bh, color::BG);
     C().fillRect(X(6), cy + Sz(27), X(228), Sz(2) > 0 ? Sz(2) : 1, color::DIVIDER);  // the floor it walks on
-    tail(cx - Sz(30), cy + Sz(24), swing);
-    deskMascot(cx, cy, k, kPassHalf, false, false);
+    if (cat) tail(cx - Sz(30), cy + Sz(24), swing);
+    deskMascot(cx, cy, k, kPassHalf, false, false, cat ? 0 : (uint8_t)(swing + 1));
   };
-  setMascotPaint(MascotPaint{2, 0});  // the black preset, a cat
-  setMascotAccessory(0);
+  setMascotPaint(strangerPaint(paint));  // a dark one of our own kind
+  setMascotAccessory(guestAccessory());
   setMascotTie(false);
   setCatMood(0);
   const int stripH = (bh + kPassStrips - 1) / kPassStrips;

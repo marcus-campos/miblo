@@ -301,16 +301,17 @@ static void test_tie_and_mood_redraw_the_cat() {
   TEST_ASSERT_TRUE(fc.calls > 0);
 }
 
-// Friday the 13th: the black cat crosses the screen in kPasserbyMs, never outside it, composed in
-// layers, and leaves our own look as it was.
+// Friday the 13th: the stranger (a dark one of our own pet's kind) crosses the screen in
+// kPasserbyMs, never outside it, composed in layers, and leaves our own look as it was.
 static void test_black_cat_crosses_inside_the_screen() {
+  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
   for (const auto& spec : kSpecs) {
     FakeCanvas fc(spec);
     screens::bind(fc);
     screens::reset();
     screens::MascotPaint paint;
     paint.style = 1;
-    paint.pet = (uint8_t)Pet::Owl;
+    paint.pet = pet;  // the stranger is a dark one of the same kind
     paint.slots[kSlotBody] = 0x336699 + 1;
     screens::setMascotPaint(paint);
     screens::setMascotAccessory((uint8_t)Accessory::PartyHat);
@@ -329,15 +330,68 @@ static void test_black_cat_crosses_inside_the_screen() {
       if (first < 0) first = (int)ms;
       last = (int)ms;
     }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, "out of bounds");
+    char what[48];
+    snprintf(what, sizeof(what), "out of bounds: pet %u, %dx%d", (unsigned)pet, spec.w, spec.h);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, what);
     TEST_ASSERT_EQUAL_INT(0, first);
     TEST_ASSERT_TRUE(last >= (int)kPasserbyMs - 200);
     TEST_ASSERT_EQUAL_UINT8(1, screens::mascotStyle());
-    TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Owl, screens::mascotPet());
+    TEST_ASSERT_EQUAL_UINT8(pet, screens::mascotPet());
     TEST_ASSERT_EQUAL_UINT32(0x336699 + 1, screens::mascotPaint().slots[kSlotBody]);
     TEST_ASSERT_EQUAL_UINT8((uint8_t)Accessory::PartyHat, screens::mascotAccessory());
     TEST_ASSERT_TRUE(screens::mascotTie());
     TEST_ASSERT_EQUAL_UINT8((uint8_t)CatMood::Tired, screens::catMood());
+  }
+  }
+}
+
+// A guest from another Miblo is drawn in exactly the colours it draws itself with: its preset,
+// pet, eye shape and custom slots (through the wire's RGB565), the Auto ones derived from them as
+// on its own screen; it wears our holiday hat.
+static void test_guest_looks_as_on_its_own_miblo() {
+  screens::MascotPaint own;
+  own.style = 1;
+  own.pet = (uint8_t)Pet::Dog;
+  own.eyeShape = (uint8_t)EyeShape::Sleepy;
+  own.slots[kSlotBody] = 0x123457 + 1;  // not a multiple of the RGB565 steps
+  own.slots[kSlotAccent] = 0xFFFFFF + 1;
+  screens::setMascotPaint(own);
+  const screens::PetColors theirs = screens::petColors(screens::kPetDog);
+  // On our screen: we are a grey cat in a party hat, today is Christmas.
+  screens::MascotPaint mine;
+  mine.style = 3;
+  screens::setMascotPaint(mine);
+  screens::setMascotAccessory((uint8_t)Accessory::PartyHat);
+  screens::setGuestAccessory((uint8_t)Accessory::SantaHat);
+  screens::dressGuest(own.style, own.pet, friendLook(own.slots, own.eyeShape, 3, 12, 21));
+  const screens::PetColors here = screens::petColors(screens::kPetDog);
+  TEST_ASSERT_EQUAL_MEMORY(&theirs, &here, sizeof(here));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dog, screens::mascotPet());
+  TEST_ASSERT_EQUAL_UINT8(1, screens::mascotStyle());
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Accessory::SantaHat, screens::mascotAccessory());
+  // A guest in its preset (an older firmware's, no look): every slot Auto.
+  screens::dressGuest(2, (uint8_t)Pet::Cat, FriendLook());
+  for (uint32_t v : screens::mascotPaint().slots) TEST_ASSERT_EQUAL_UINT32(kPetAuto, v);
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPaint().eyeShape);
+  screens::setGuestAccessory(0);
+}
+
+// Friday the 13th's stranger: our own kind of pet in the black preset (none of our colours, eye
+// shape or accessories), readable on the dark background whatever the pet.
+static void test_stranger_is_a_dark_pet_of_our_kind() {
+  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+    screens::MascotPaint own;
+    own.style = 1;
+    own.pet = pet;
+    own.eyeShape = 1;
+    own.slots[kSlotBody] = 0xFFFFFF + 1;
+    const screens::MascotPaint st = screens::strangerPaint(own);
+    TEST_ASSERT_EQUAL_UINT8(2, st.style);
+    TEST_ASSERT_EQUAL_UINT8(pet, st.pet);
+    TEST_ASSERT_EQUAL_UINT8(0, st.eyeShape);
+    for (uint32_t v : st.slots) TEST_ASSERT_EQUAL_UINT32(kPetAuto, v);
+    screens::setMascotPaint(st);
+    TEST_ASSERT_TRUE(screens::luma565(screens::mascotSkin()) >= screens::luma565(ui::color::BG) + 40);
   }
 }
 
@@ -352,5 +406,7 @@ int main(int, char**) {
   RUN_TEST(test_pieces_are_drawn);
   RUN_TEST(test_tie_and_mood_redraw_the_cat);
   RUN_TEST(test_black_cat_crosses_inside_the_screen);
+  RUN_TEST(test_guest_looks_as_on_its_own_miblo);
+  RUN_TEST(test_stranger_is_a_dark_pet_of_our_kind);
   return UNITY_END();
 }

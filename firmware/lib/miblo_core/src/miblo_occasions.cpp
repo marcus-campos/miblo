@@ -31,6 +31,10 @@ uint16_t mibloAge(const Config& cfg, const Date& d) {
 Occasion occasionOn(const Config& cfg, const Date& d) {
   if (cfg.birthday[0] && isBirthday(cfg.birthday, d)) return Occasion::OwnerBirthday;
   if (cfg.born[0] && isBirthday(cfg.born + 5, d) && mibloAge(cfg, d) > 0) return Occasion::MibloBirthday;
+  return holidayOn(d);
+}
+
+Occasion holidayOn(const Date& d) {
   if ((d.month == 12 && d.day == 31) || (d.month == 1 && d.day == 1)) return Occasion::NewYear;
   if (d.month == 12 && d.day >= 20 && d.day <= 26) return Occasion::Christmas;
   if (d.month == 10 && d.day >= 29) return Occasion::Halloween;

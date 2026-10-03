@@ -140,6 +140,29 @@ uint32_t mascotPaintHash() {
 void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
 uint8_t mascotAccessory() { return g_accessory; }
 
+static uint8_t g_guestAccessory = 0;
+void setGuestAccessory(uint8_t accessory) { g_guestAccessory = accessory; }
+uint8_t guestAccessory() { return g_guestAccessory; }
+
+void dressGuest(uint8_t style, uint8_t pet, const miblo::FriendLook& look) {
+  MascotPaint p;
+  p.style = style;
+  p.pet = pet;
+  p.eyeShape = look.eyes;
+  miblo::lookSlots(look, p.slots);
+  setMascotPaint(p);
+  setMascotAccessory(g_guestAccessory);
+  // look.accHead / accFace / accNeck: the guest's own accessories (config accHead, accFace,
+  // accNeck on its Miblo). Hand them to the accessory drawing here once it exists.
+}
+
+MascotPaint strangerPaint(const MascotPaint& own) {
+  MascotPaint p;
+  p.style = 2;  // black
+  p.pet = own.pet;
+  return p;
+}
+
 // ---- Colours (integer only) ----
 static uint16_t rgb565(uint32_t rgb) {
   return (uint16_t)(((rgb >> 8) & 0xF800) | ((rgb >> 5) & 0x07E0) | ((rgb >> 3) & 0x001F));

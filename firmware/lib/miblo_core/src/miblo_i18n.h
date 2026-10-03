@@ -161,6 +161,9 @@ enum class S : uint16_t {
   WebPetDog,            // settings: pet 9 dog
   WebPetAlien,          // settings: pet 10 alien (one big eye, antennae)
   WebPetRiff,           // settings: pet 11 Riff, an original little rocker (a name: the same in every language)
+  WebPetDev,            // settings: pet 12 Dev, a veteran developer with a ponytail (a name; zh: programmer)
+  WebPetDino,           // settings: pet 14 (never 13) a little dinosaur ("Dino")
+  WebPetDevChan,        // settings: pet 15 Dev-chan, a chibi dev companion (a name)
   WebSlotBody,          // settings: colour slot: the body
   WebSlotLine,          // settings: colour slot: outlines
   WebSlotDetail,        // settings: colour slot: inner ears, tongue, inside of the mouth
@@ -333,5 +336,7 @@ Lang pageLanguage(bool paired, bool langSet, Lang stored, Lang browser, bool& st
 
 // Copies the translated string into `out` (always NUL-terminated, never cutting UTF-8 mid-codepoint).
 void tr(Lang lang, S id, char* out, size_t cap);
+// The settings page's name for a pet (miblo::Pet); false for a value that is no pet (13 never is).
+bool petName(uint8_t pet, S& out);
 
 }  // namespace miblo

@@ -1216,7 +1216,8 @@ static void test_riff_plays_a_solo() {
   for (int r = 0; r < 3; r++)
     for (int a = 1; a <= n; a++) TEST_ASSERT_EQUAL_UINT8(1, seen[r][a]);
   TEST_ASSERT_FALSE(screens::anticOnSign(screens::RoamAntic::Solo));
-  for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < miblo::kPetIds; pet++) {
+    if (!miblo::isPet(pet)) continue;
     if (pet == (uint8_t)miblo::Pet::Riff) continue;
     screens::setMascotPet(pet);
     for (uint32_t c = 1; c <= 60; c++)
@@ -1228,7 +1229,8 @@ static void test_riff_plays_a_solo() {
 // Every pet's own tail antic (and Riff's solo), all along it, stays on screen at every resolution.
 static void test_pet_tails_stay_on_screen() {
   const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
-  for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < miblo::kPetIds; pet++) {
+    if (!miblo::isPet(pet)) continue;
     screens::setMascotPet(pet);
     for (const auto& sp : specs) {
       FakeCanvas fc(sp);

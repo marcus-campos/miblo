@@ -5,6 +5,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include "miblo_pet.h"
 #include "miblo_rom.h"
 
 namespace miblo {
@@ -168,6 +169,18 @@ Lang pageLanguage(bool paired, bool langSet, Lang stored, Lang browser, bool& st
   if (langSet) return stored;
   store = browser != stored;
   return browser;
+}
+
+bool petName(uint8_t pet, S& out) {
+  // One per miblo::Pet value; 13 is never a pet (its row is a stand-in that isPet() skips).
+  static const S kNames[] MIBLO_ROM = {S::WebPetCat,   S::WebPetDuck,  S::WebPetBug,     S::WebPetDaemon,
+                                       S::WebPetRobot, S::WebPetMug,   S::WebPetPenguin, S::WebPetCrab,
+                                       S::WebPetOwl,   S::WebPetDog,   S::WebPetAlien,   S::WebPetRiff,
+                                       S::WebPetDev,   S::WebPetCat,   S::WebPetDino,    S::WebPetDevChan};
+  static_assert(sizeof(kNames) / sizeof(kNames[0]) == kPetIds, "one name per miblo::Pet value");
+  if (!isPet(pet)) return false;
+  mibloRomCopy(&out, &kNames[pet], sizeof(out));
+  return true;
 }
 
 }  // namespace miblo

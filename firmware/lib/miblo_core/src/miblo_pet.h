@@ -19,8 +19,16 @@ enum class Pet : uint8_t {
   Dog = 9,
   Alien = 10,   // an alien: one big eye, antennae
   Riff = 11,    // an original little rocker: spiky mohawk, studded collar, a crooked grin
+  Dev = 12,     // a veteran developer: thin glasses, a ponytail, stubble
+  // 13 is never assigned, now or later (the owner's rule: no pet is number 13). knownPet()
+  // treats it as unknown (the cat), so a 13 from a config or a friend is never kept.
+  Dino = 14,    // a little dinosaur: back plates, tiny teeth, a thumping tail
+  DevChan = 15, // a chibi dev companion: big sparkly eyes, pigtails, a hoodie
 };
-constexpr uint8_t kPetKinds = 12;
+constexpr uint8_t kPetReserved = 13;  // never a pet (see above)
+// The values run 0..kPetIds - 1 with a hole at kPetReserved: loop over them with isPet().
+constexpr uint8_t kPetIds = 16;
+constexpr uint8_t kPetCount = kPetIds - 1;  // how many pets there are (the settings list)
 
 // The pet's colours, one slot per part it draws (one set for whichever pet is chosen). Each slot
 // is kPetAuto (derived from the preset in "mascot", or from a custom body colour, exactly as
@@ -42,7 +50,9 @@ constexpr uint32_t kPetColorMax = 0x1000000;  // 0xFFFFFF + 1 (white)
 enum class EyeShape : uint8_t { Round = 0, Big = 1, Sleepy = 2 };  // Big: big and shiny
 constexpr uint8_t kEyeShapes = 3;
 
+// Whether `v` is a pet this firmware knows (13 never is).
+constexpr bool isPet(uint8_t v) { return v < kPetIds && v != kPetReserved; }
 // A received or stored value, as a known kind (anything else is the cat).
-inline uint8_t knownPet(uint8_t v) { return v < kPetKinds ? v : 0; }
+inline uint8_t knownPet(uint8_t v) { return isPet(v) ? v : 0; }
 
 }  // namespace miblo

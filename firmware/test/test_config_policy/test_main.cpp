@@ -836,7 +836,7 @@ static void test_mascot_style_config() {
   TEST_ASSERT_EQUAL_UINT8(3, b.mascot);
 }
 
-// The pet (which animal the mascot is): 0..kPetKinds-1, default 0 (the cat), round trip; the
+// The pet (which animal the mascot is): 0..kPetIds-1 but never 13, default 0 (the cat), round trip; the
 // colour stays its own setting.
 static void test_pet_config() {
   Config c;
@@ -847,8 +847,18 @@ static void test_pet_config() {
   TEST_ASSERT_EQUAL_UINT8(0, c.mascot);
   TEST_ASSERT_TRUE(patch(c, "{\"pet\":11}"));
   TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Riff, c.pet);
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":12}"));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dev, c.pet);
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":14}"));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dino, c.pet);
+  TEST_ASSERT_TRUE(patch(c, "{\"pet\":15}"));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::DevChan, c.pet);
   TEST_ASSERT_TRUE(patch(c, "{\"pet\":10}"));
-  TEST_ASSERT_FALSE(patch(c, "{\"pet\":12}", &bad));
+  TEST_ASSERT_FALSE(patch(c, "{\"pet\":13}", &bad));  // 13 is never a pet
+  TEST_ASSERT_EQUAL_STRING("pet", bad);
+  TEST_ASSERT_EQUAL_UINT8(10, c.pet);
+  bad = nullptr;
+  TEST_ASSERT_FALSE(patch(c, "{\"pet\":16}", &bad));
   TEST_ASSERT_EQUAL_STRING("pet", bad);
   TEST_ASSERT_FALSE(patch(c, "{\"pet\":-1}", &bad));
   TEST_ASSERT_FALSE(patch(c, "{\"pet\":\"duck\"}", &bad));
@@ -862,8 +872,16 @@ static void test_pet_config() {
   StaticJsonDocument<4096> stored;
   configToStored(c, stored.to<JsonObject>());
   TEST_ASSERT_EQUAL(10, stored["pet"].as<int>());
-  TEST_ASSERT_EQUAL_UINT8(0, knownPet(kPetKinds));
-  TEST_ASSERT_EQUAL_UINT8(kPetKinds - 1, knownPet(kPetKinds - 1));
+  TEST_ASSERT_EQUAL_UINT8(0, knownPet(kPetIds));
+  TEST_ASSERT_EQUAL_UINT8(kPetIds - 1, knownPet(kPetIds - 1));
+  TEST_ASSERT_EQUAL_UINT8(0, knownPet(13));  // never a pet
+  TEST_ASSERT_EQUAL_UINT8(12, knownPet(12));
+  TEST_ASSERT_EQUAL_UINT8(14, knownPet(14));
+  TEST_ASSERT_FALSE(isPet(13));
+  int pets = 0;
+  for (int v = 0; v < 256; v++) pets += isPet((uint8_t)v);
+  TEST_ASSERT_EQUAL_INT(kPetCount, pets);
+  TEST_ASSERT_EQUAL_INT(15, kPetCount);
 }
 
 // The pet's colours, one slot per part (PetSlot), stored as one string: "rrggbb" or "" (Auto, as

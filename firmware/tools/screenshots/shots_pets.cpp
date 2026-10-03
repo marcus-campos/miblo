@@ -22,8 +22,9 @@ using screens::MascotPaint;
 using screens::Paws;
 
 const char* const kPetFiles[] = {"cat", "duck",   "bug", "daemon", "robot", "mug",
-                                 "penguin", "crab", "owl", "dog", "alien", "riff"};
-static_assert(sizeof(kPetFiles) / sizeof(kPetFiles[0]) == miblo::kPetKinds, "one file name per pet");
+                                 "penguin", "crab", "owl", "dog", "alien", "riff",
+                                 "dev", nullptr /* 13: never a pet */, "dino", "devchan"};
+static_assert(sizeof(kPetFiles) / sizeof(kPetFiles[0]) == miblo::kPetIds, "one file name per pet value");
 
 // The pet on its own, as everywhere else: the default colours, no hat, tie or mood.
 void plain(uint8_t pet) {
@@ -152,7 +153,8 @@ uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
 
 void renderPets(miblo::Lang L) {
   const screens::Clock clk = shots::clock();
-  for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < miblo::kPetIds; pet++) {
+    if (!miblo::isPet(pet)) continue;
     const std::string n = std::string("70-pet-") + kPetFiles[pet] + "-";
     looks(pet, n + "looks");
     dress(pet, n + "dress");

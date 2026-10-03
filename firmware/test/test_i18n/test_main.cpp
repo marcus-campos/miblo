@@ -6,6 +6,7 @@
 
 #include "miblo_activity.h"
 #include "miblo_i18n.h"
+#include "miblo_pet.h"
 #include "miblo_utf8.h"
 
 using namespace miblo;
@@ -254,9 +255,34 @@ static void test_page_language() {
   TEST_ASSERT_FALSE(store);
 }
 
+// The settings page's pet list: every pet once, with its own name; 13 is never one.
+static void test_pet_names() {
+  int listed = 0;
+  S seen[miblo::kPetIds];
+  for (uint8_t v = 0; v < 255; v++) {
+    S s;
+    if (!petName(v, s)) continue;
+    for (int i = 0; i < listed; i++) TEST_ASSERT_TRUE(seen[i] != s);
+    seen[listed++] = s;
+  }
+  TEST_ASSERT_EQUAL_INT(15, listed);
+  S s;
+  TEST_ASSERT_FALSE(petName(13, s));
+  TEST_ASSERT_TRUE(petName(12, s));
+  TEST_ASSERT_TRUE(s == S::WebPetDev);
+  TEST_ASSERT_TRUE(petName(14, s));
+  TEST_ASSERT_TRUE(s == S::WebPetDino);
+  TEST_ASSERT_TRUE(petName(15, s));
+  TEST_ASSERT_TRUE(s == S::WebPetDevChan);
+  char buf[32];
+  tr(Lang::Zh, S::WebPetDino, buf, sizeof(buf));
+  TEST_ASSERT_EQUAL_STRING("恐龙", buf);
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_page_language);
+  RUN_TEST(test_pet_names);
   RUN_TEST(test_every_language_has_every_string_with_same_placeholders);
   RUN_TEST(test_packed_tables_match_the_source);
   RUN_TEST(test_known_strings);

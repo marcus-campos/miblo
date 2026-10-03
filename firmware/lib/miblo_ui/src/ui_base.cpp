@@ -110,8 +110,10 @@ static MascotPaint g_paint;
 // One per miblo::Pet, in its order.
 static const PetDef* const kPets[] MIBLO_ROM = {&kPetCat,   &kPetDuck,    &kPetBug,  &kPetDaemon,
                                                 &kPetRobot, &kPetMug,     &kPetPenguin, &kPetCrab,
-                                                &kPetOwl,   &kPetDog,     &kPetAlien, &kPetRiff};
-static_assert(sizeof(kPets) / sizeof(kPets[0]) == miblo::kPetKinds, "one drawing per miblo::Pet");
+                                                &kPetOwl,   &kPetDog,     &kPetAlien, &kPetRiff,
+                                                &kPetDev,   &kPetCat,     &kPetDino,  &kPetDevChan};
+// (13 is never a pet: setMascotPet() never lets it through; its row is only a stand-in.)
+static_assert(sizeof(kPets) / sizeof(kPets[0]) == miblo::kPetIds, "one drawing per miblo::Pet value");
 constexpr uint8_t kStyles = sizeof(kMascotColors) / sizeof(kMascotColors[0]);
 
 void setMascotPet(uint8_t pet) { g_paint.pet = miblo::knownPet(pet); }

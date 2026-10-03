@@ -110,7 +110,12 @@ notes.
     the celebrating mascot shows for ~8 s, then the normal screens return.
 16. **Mascot colours and settings command:** `/miblo:settings` opens the settings page; each
     mascot colour saves and applies at once (boot, desk and disconnected mascots), and survives a
-    reboot. Night mode dims and restores the backlight at the configured times.
+    reboot. The Pet select lists 15 pets, cat to Dev-chan (values 0-12, 14 and 15: 13 is never
+    a pet); pick Dev, Dino and Dev-chan in turn: each applies at once on every mascot and survives
+    a reboot, and in pet mode its Tail antic plays (the Dev's ponytail swings, the Dino's tail
+    thumps, Dev-chan's pigtails bounce). A Miblo with one of them visiting another on this
+    firmware shows up as that pet. Night mode dims and restores the backlight at the configured
+    times.
     Blue light filter: set "Always" and drag the strength slider from 1% to 100%: the % next to
     it follows the thumb, and after saving the whole screen (text, mascot, rings, pet mode)
     warms at once and stays readable, a little warmer at each step (1% is barely different from

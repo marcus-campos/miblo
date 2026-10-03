@@ -12,7 +12,9 @@ void tearDown() {}
 static bool parse(const Config& cfg, const char* json, PreviewLook& out, const char** bad = nullptr) {
   StaticJsonDocument<512> doc;
   deserializeJson(doc, json);
-  return previewFromJson(cfg, doc.as<JsonObjectConst>(), out, bad);
+  Config scratch;  // the device allocates it on the heap (web.cpp handlePreview)
+  scratch.accHead = 7;  // whatever it held before is overwritten with `cfg`
+  return previewFromJson(cfg, scratch, doc.as<JsonObjectConst>(), out, bad);
 }
 
 static void test_look_from_the_form() {

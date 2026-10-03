@@ -15,10 +15,11 @@ struct PreviewLook {
 };
 
 // The look in a POST body: the config's own fields (mascot, pet, petEyes, petColors, accHead,
-// accFace, accNeck), validated exactly as a settings patch (applied to a copy of `cfg`: a field
-// left out keeps the saved value; any other config field is validated and ignored). false:
-// `*bad` (if not null) names the invalid field.
-bool previewFromJson(const Config& cfg, JsonObjectConst in, PreviewLook& out, const char** bad);
+// accFace, accNeck), validated exactly as a settings patch (applied to a copy of `cfg` made in
+// `scratch`: a field left out keeps the saved value; any other config field is validated and
+// ignored). `scratch` is the caller's, so the copy need not sit on the 4 KB loop stack next to
+// applyConfigPatch's own. false: `*bad` (if not null) names the invalid field.
+bool previewFromJson(const Config& cfg, Config& scratch, JsonObjectConst in, PreviewLook& out, const char** bad);
 
 class LookPreview {
  public:

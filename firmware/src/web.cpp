@@ -2,6 +2,9 @@
 
 #include <ArduinoJson.h>
 
+#include <memory>
+#include <new>
+
 #include "app.h"
 #include "board.h"
 #include "context.h"
@@ -1465,7 +1468,14 @@ static void handlePreview() {
     sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
     return;
   }
-  if (heapLowForRequest(1024)) {
+  // The scratch copy of the config lives on the heap: on the 4 KB loop stack it would sit next to
+  // applyConfigPatch's own copy (miblo::previewFromJson).
+  if (heapLowForRequest(1024 + sizeof(miblo::Config))) {
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  std::unique_ptr<miblo::Config> scratch(new (std::nothrow) miblo::Config);
+  if (!scratch) {
     sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
     return;
   }
@@ -1476,7 +1486,7 @@ static void handlePreview() {
   }
   miblo::PreviewLook look;
   const char* bad = nullptr;
-  if (!miblo::previewFromJson(ctx.cfg, doc.as<JsonObjectConst>(), look, &bad)) {
+  if (!miblo::previewFromJson(ctx.cfg, *scratch, doc.as<JsonObjectConst>(), look, &bad)) {
     String err = String(F("{\"error\":\"invalid\",\"field\":\"")) + bad + F("\"}");
     sendJson(*srv, 400, err.c_str());
     return;

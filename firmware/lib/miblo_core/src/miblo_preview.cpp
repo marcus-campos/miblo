@@ -4,8 +4,9 @@
 
 namespace miblo {
 
-bool previewFromJson(const Config& cfg, JsonObjectConst in, PreviewLook& out, const char** bad) {
-  Config c = cfg;  // the validators are the settings patch's own; the copy is thrown away
+bool previewFromJson(const Config& cfg, Config& scratch, JsonObjectConst in, PreviewLook& out, const char** bad) {
+  Config& c = scratch;  // the validators are the settings patch's own; the copy is thrown away
+  c = cfg;
   if (!applyConfigPatch(c, in, bad)) return false;
   out.mascot = c.mascot;
   out.pet = c.pet;

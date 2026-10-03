@@ -269,13 +269,20 @@ struct Station {
     }
     return false;
   }
-  // The ARP table is flushed first, so only a fresh reply puts the gateway back in it. Probes run
-  // while nothing is heard from the computer (and at link-up), so flushing costs nobody a packet.
+  // Only a fresh reply may put the gateway in the ARP table, so a gateway already in it has to go
+  // first. The core's lwIP2 cannot forget one entry (static entries are compiled out, the table and
+  // its ages are private, and the glue calls ethernet_input directly, so there is no hook to watch
+  // replies): the interface's table is flushed, only when the gateway is in it. Probes run only
+  // when nothing is heard from the computer for a minute and no web request came in for 10 s
+  // (miblo::linkQuiet), or at link-up, and with ARP_QUEUEING a packet to a forgotten neighbour
+  // waits one ARP round trip instead of being lost.
   void sendProbe() {
     netif* n;
     ip4_addr_t gw;
     if (!target(n, gw)) return;
-    etharp_cleanup_netif(n);
+    struct eth_addr* mac;
+    const ip4_addr_t* found;
+    if (etharp_find_addr(n, &gw, &mac, &found) >= 0) etharp_cleanup_netif(n);
     etharp_request(n, &gw);
   }
   // Nothing to probe (no gateway): counted as answered, never as a dead link.
@@ -399,7 +406,7 @@ void loop(uint32_t nowMs, bool heapLow) {
   // tried or an update runs.
   Station station{nowMs};
   const bool mayAct = savedSsid[0] && !trialBusy() && !apHasStations && !ctx.updating;
-  const bool quiet = !ctx.hasSnapshot || nowMs - ctx.lastSnapshotMs >= miblo::LinkKeeper::kProbeEveryMs;
+  const bool quiet = miblo::linkQuiet(nowMs, ctx.hasSnapshot, ctx.lastSnapshotMs, ctx.hasRequest, ctx.lastRequestMs);
   miblo::runLinkKeeper(keeper, station, nowMs, curLink == miblo::LinkStatus::Connected, mayAct, quiet);
 }
 

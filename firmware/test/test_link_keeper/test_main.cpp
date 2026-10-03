@@ -227,6 +227,24 @@ static void test_new_network_forgets_the_old_gateway() {
   TEST_ASSERT_EQUAL_UINT32(0, s.keeper.deadLinks());
 }
 
+// Quiet (only a probe can tell whether the link works, and a probe forgets the ARP table) means
+// no snapshot from the computer for a minute and no web request for 10 s: a page load never
+// coincides with a probe.
+static void test_quiet_needs_no_snapshot_and_no_page_load() {
+  const uint32_t now = 10 * kMin;
+  // Nothing heard at all since boot.
+  TEST_ASSERT_TRUE(linkQuiet(now, false, 0, false, 0));
+  // A snapshot within the minute: not quiet; a minute old: quiet.
+  TEST_ASSERT_FALSE(linkQuiet(now, true, now - 59000, false, 0));
+  TEST_ASSERT_TRUE(linkQuiet(now, true, now - kMin, false, 0));
+  // A web request (the settings page loading) within 10 s: not quiet, even without a computer.
+  TEST_ASSERT_FALSE(linkQuiet(now, false, 0, true, now - 9000));
+  TEST_ASSERT_FALSE(linkQuiet(now, true, now - 5 * kMin, true, now));
+  TEST_ASSERT_TRUE(linkQuiet(now, false, 0, true, now - LinkKeeper::kHttpQuietMs));
+  // millis() wrapping changes nothing.
+  TEST_ASSERT_FALSE(linkQuiet(5000, false, 0, true, UINT32_MAX - 1000));
+}
+
 // Quiet and healthy (no computer): a probe a minute, never a cycle.
 static void test_quiet_healthy_unit_only_probes() {
   Sim s;
@@ -276,6 +294,7 @@ int main() {
   RUN_TEST(test_wedged_zombie_ends_in_a_restart);
   RUN_TEST(test_gateway_without_arp_never_cycles);
   RUN_TEST(test_new_network_forgets_the_old_gateway);
+  RUN_TEST(test_quiet_needs_no_snapshot_and_no_page_load);
   RUN_TEST(test_quiet_healthy_unit_only_probes);
   RUN_TEST(test_phone_on_the_setup_network_holds_cycles);
   RUN_TEST(test_cycles_do_not_need_the_setup_network);

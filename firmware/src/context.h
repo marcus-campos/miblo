@@ -57,6 +57,8 @@ struct Context {
 
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;
+  bool hasRequest = false;      // a web request since boot (web.cpp), for net.cpp's quiet test
+  uint32_t lastRequestMs = 0;
   bool usageEverSeen = false;
 
   // flags for the main loop

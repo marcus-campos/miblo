@@ -9,9 +9,9 @@ namespace miblo {
 // showed "Disconnected" (drawn only while WiFi.status() is WL_CONNECTED) while it answered nothing,
 // not even ARP, until it was power-cycled. LinkKeeper watches the link and acts on its own:
 // - Connected but quiet (nothing heard from the computer lately), and at every link-up: an ARP
-//   probe of the gateway. Once the gateway has answered one (this boot, on this network), kDeadAfter unanswered in a
-//   row mark the link dead (a gateway that never answers ARP proves nothing, so it is never
-//   judged).
+//   probe of the gateway. Once the gateway has answered one (this boot, on this network),
+//   kDeadAfter unanswered in a row mark the link dead (a gateway that never answers ARP proves
+//   nothing, so it is never judged).
 // - Disconnected for kDownMs, or dead: an explicit disconnect + begin of the saved network. The
 //   waits between such cycles double, up to kMaxWaitMs, and start over once the link works.
 // - Without a working link for kRestartMs, on a network that worked earlier this boot: one clean
@@ -35,6 +35,7 @@ class LinkKeeper {
   static constexpr uint32_t kProbeRetryMs = 10000;   // after an unanswered probe
   static constexpr uint32_t kProbeWaitMs = 2000;     // time the gateway has to answer
   static constexpr uint8_t kDeadAfter = 3;           // unanswered probes in a row: the link is dead
+  static constexpr uint32_t kHttpQuietMs = 10000;    // a web request this recent: not quiet
 
   void begin(uint32_t nowMs);
   // Every loop pass. linkUp: WiFi.status() is WL_CONNECTED. quiet: nothing heard from the network
@@ -70,6 +71,11 @@ class LinkKeeper {
   uint32_t reconnects_ = 0;
   uint32_t deadLinks_ = 0;
 };
+
+// LinkKeeper::update's `quiet`: no snapshot from the computer for kProbeEveryMs (or none since boot)
+// and no web request for kHttpQuietMs (or none since boot). A probe forgets the ARP table, so it
+// must not coincide with a page load; a request also shows the link works.
+bool linkQuiet(uint32_t nowMs, bool hasSnapshot, uint32_t lastSnapshotMs, bool hasRequest, uint32_t lastRequestMs);
 
 // One pass of the safety net, carried out on `w`: net.cpp passes the ESP8266 WiFi (through a thin
 // adapter), the tests a fake. W provides sendProbe(), probeAnswered(), dropStation(), joinSaved()

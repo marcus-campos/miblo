@@ -1678,6 +1678,9 @@ static WebServerT::ClientFuture limitPostBody(const String& method, const String
   using miblo::BodyAction;
   // The server passes its own connection, whose type is WebServerT::ClientType.
   auto* client = static_cast<LookaheadClient*>(wifiClient);
+  // Someone on the network is talking to us: the Wi-Fi safety net holds its ARP probe (net.cpp).
+  ctx.hasRequest = true;
+  ctx.lastRequestMs = millis();
   if (method != F("POST") && method != F("PUT") && method != F("PATCH") && method != F("DELETE")) {
     // The server parses no body for these.
     if (refuseForeign(client)) return WebServerT::CLIENT_MUST_STOP;

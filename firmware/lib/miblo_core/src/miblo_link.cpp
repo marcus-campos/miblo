@@ -94,6 +94,11 @@ void LinkKeeper::probeAnswered(bool answered, uint32_t nowMs) {
   }
 }
 
+bool linkQuiet(uint32_t nowMs, bool hasSnapshot, uint32_t lastSnapshotMs, bool hasRequest, uint32_t lastRequestMs) {
+  if (hasRequest && nowMs - lastRequestMs < LinkKeeper::kHttpQuietMs) return false;
+  return !hasSnapshot || nowMs - lastSnapshotMs >= LinkKeeper::kProbeEveryMs;
+}
+
 void LinkKeeper::networkChanged() {
   arpSeen_ = false;
   proven_ = false;

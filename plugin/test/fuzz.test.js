@@ -273,6 +273,7 @@ function rawRequest(port, text, { timeoutMs = 2000 } = {}) {
   });
 }
 
+const KEY = 'ab'.repeat(32);
 test('bridge server: random requests never crash it and the guard always holds', async (t) => {
   const seen = [];
   const server = createBridgeServer({
@@ -280,6 +281,7 @@ test('bridge server: random requests never crash it and the guard always holds',
     onStatusline: (e) => seen.push(['statusline', e]),
     getStatus: async () => ({ ok: true }),
     version: 'test',
+    key: KEY,
   });
   await new Promise((res) => server.listen(0, '127.0.0.1', res));
   const port = server.address().port;
@@ -300,15 +302,17 @@ test('bridge server: random requests never crash it and the guard always holds',
       // A valid request (POST /event, a loopback Host, JSON, no Origin) with 0..3 parts changed.
       let method = 'POST', path = r.pick(['/event', '/statusline']), host = r.pick(goodHosts), type = 'application/json';
       let origin = null;
+      let key = KEY;
       let body = r.pick(['{"session_id":"s1","hook_event_name":"Stop"}',
         JSON.stringify({ session_id: 's2', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' } })]);
       for (let k = r.int(4); k > 0; k--) {
-        switch (r.int(5)) {
+        switch (r.int(6)) {
           case 0: method = r.pick(['POST', 'GET', 'PUT', 'OPTIONS', 'DELETE']); break;
           case 1: path = r.pick(['/event', '/statusline', '/health', '/status', '/shutdown-not', '/', '/event?x=1', '//event', '/%2e%2e']); break;
           case 2: host = r.pick(hosts); break;
           case 3: type = r.pick(types); origin = r.chance(0.5) ? r.pick(['null', 'https://evil.example', `http://127.0.0.1:${port}`]) : origin; break;
           case 4: body = bodies(); break;
+          case 5: key = r.pick([null, '', KEY.toUpperCase(), KEY.slice(1), 'cd'.repeat(32), `${KEY} `]); break;
         }
       }
       const chunked = r.chance(0.15);
@@ -317,6 +321,7 @@ test('bridge server: random requests never crash it and the guard always holds',
       if (r.chance(0.05)) lines.push(`Host: evil.example`);  // a second Host header
       if (type !== null) lines.push(`Content-Type: ${type}`);
       if (origin !== null) lines.push(`Origin: ${origin}`);
+      if (key !== null) lines.push(`X-Miblo-Key: ${key}`);
       const bytes = Buffer.from(body, 'utf8');
       if (chunked) lines.push('Transfer-Encoding: chunked');
       else lines.push(`Content-Length: ${r.chance(0.1) ? bytes.length + r.int(20) - 10 : bytes.length}`);
@@ -327,12 +332,14 @@ test('bridge server: random requests never crash it and the guard always holds',
       const before = seen.length;
       const reply = await rawRequest(port, payload);
       const status = Number((reply.match(/^HTTP\/1\.1 (\d{3})/) || [])[1] || 0);
-      const ctx = `request ${i}: ${method} ${path} host=${host} type=${type} origin=${origin}`;
+      const ctx = `request ${i}: ${method} ${path} host=${host} type=${type} origin=${origin} key=${key}`;
       const hostOk = goodHosts.includes(host);
       // Node itself answers 400 to a request it cannot parse (no Host, a bad length), else the guard 403s.
       if (status && !hostOk) assert.ok(status === 403 || status === 400, `${ctx}: status ${status}`);
       if (!hostOk || origin !== null) assert.equal(seen.length, before, `${ctx}: a refused request reached the handler`);
       if (method === 'POST' && !String(type ?? '').startsWith('application/json')) assert.equal(seen.length, before, `${ctx}: non-JSON body accepted`);
+      // Node trims header values, so a trailing space still names the key.
+      if (key?.trim() !== KEY) assert.equal(seen.length, before, `${ctx}: a request without the key reached the handler`);
       if (seen.length > before) {
         const [, e] = seen.at(-1);
         assert.ok(e !== undefined, ctx);

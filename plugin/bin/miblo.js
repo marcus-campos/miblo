@@ -11,6 +11,7 @@ import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
 import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
 import { tokenTag } from '../lib/relocation.js';
+import { KEY_HEADER, readKey as readBridgeKey, checkedHealth, logForeignOnce } from '../lib/bridge-auth.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -110,9 +111,19 @@ async function settings(args, store, openUrl) {
   return ok(lines.join('\n'));
 }
 
-async function defaultFetchStatus() {
+// The running bridge's status, or null when it is not running. Asked only of a bridge that
+// proves it knows the bridge key (bridge-auth.js): something else on the port gets nothing.
+export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = globalThis.fetch } = {}) {
+  const base = `http://${HOST}:${port}`;
+  const key = readBridgeKey(dataDir);
+  const h = await checkedHealth(base, key, { fetchImpl, timeoutMs: 800 });
+  if (!h) return null;
+  if (!h.proven) {
+    logForeignOnce(dataDir, port);
+    return null;
+  }
   try {
-    const res = await fetch(`http://${HOST}:${PORT}/status`, { signal: AbortSignal.timeout(800) });
+    const res = await fetchImpl(`${base}/status`, { headers: { [KEY_HEADER]: key }, signal: AbortSignal.timeout(800) });
     return res.ok ? await res.json() : null;
   } catch {
     return null;
@@ -690,7 +701,7 @@ async function main() {
     client: new DeviceClient(),
     discoverFn: fixedDiscovery(process.env) ?? (() => discover()),
     hostname: os.hostname(),
-    fetchStatus: defaultFetchStatus,
+    fetchStatus: () => fetchBridgeStatus(dataDir),
     locale: Intl.DateTimeFormat().resolvedOptions().locale,
     openUrl: (url) => openInBrowser(url),
   });

@@ -8,12 +8,16 @@ import { fileURLToPath } from 'node:url';
 import { PORT, HOST, defaultDataDir, pluginVersion } from '../lib/constants.js';
 import { findClaudePid } from '../lib/proc.js';
 import { pickEvent, wantsPid, deliver } from '../lib/hook-client.js';
+import { KEY_HEADER, ensureKey, checkedHealth, logForeignOnce } from '../lib/bridge-auth.js';
 
 // Hard cap: a hook must never hang Claude Code.
 setTimeout(() => process.exit(0), 3000).unref();
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const base = `http://${HOST}:${PORT}`;
+const dataDir = defaultDataDir();
+// The bridge key (bridge-auth.js): sent only to a bridge that proved it knows it.
+const key = ensureKey(dataDir);
 
 async function readStdin() {
   const chunks = [];
@@ -21,10 +25,10 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function postJson(p, body, timeoutMs = 800) {
+async function postJson(p, body, { timeoutMs = 800, withKey = true } = {}) {
   const res = await fetch(base + p, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...(withKey && key ? { [KEY_HEADER]: key } : {}) },
     body,
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -41,23 +45,9 @@ async function postJson(p, body, timeoutMs = 800) {
   }
 }
 
-async function health() {
-  let res;
-  try {
-    res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(300) });
-  } catch {
-    return null;
-  }
-  try {
-    return (await res.json()) ?? {};
-  } catch {
-    return {};
-  }
-}
-
 function startBridge() {
   try {
-    const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', defaultDataDir()], {
+    const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', dataDir], {
       cwd: os.homedir(),
       detached: true,
       stdio: 'ignore',
@@ -75,14 +65,15 @@ async function main() {
     JSON.stringify(evt),
     {
       post: (body) => postJson('/event', body),
-      health,
-      shutdown: () => postJson('/shutdown', '{}', 300),
+      health: () => checkedHealth(base, key),
+      // The key only to our own bridge; an older one (before the key) shuts down without it.
+      shutdown: (withKey) => postJson('/shutdown', '{}', { timeoutMs: 300, withKey }),
       startBridge,
+      foreign: () => logForeignOnce(dataDir, PORT),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     },
     {
       allowSpawn: process.env.MIBLO_NO_SPAWN !== '1',
-      checkVersion: evt.hook_event_name === 'SessionStart',  // spare the old bridge a session it would drop
       version: pluginVersion(),
     },
   );

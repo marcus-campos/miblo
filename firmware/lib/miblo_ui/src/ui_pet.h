@@ -39,6 +39,9 @@
 //    kGrumpy (frowning lids), kEyeBags or the Tired mood (petTired(): faint bags under the eyes),
 //    and, with c.desk, kFluffed (bristling). c.detail is false on the small 48 px boot mascot:
 //    leave out fine details there.
+//    head() alone, eyes Open, c.detail false, is also the brand row's logo (screens::logo, ~22 px,
+//    the box 96 * size / 90 px): keep it legible there (the 71-logo-pets-* screenshots) and no
+//    lower than y 42 (test_ui_look's test_logo_is_the_current_pet).
 //  - front(c), desk mascot only: the mouth states (kMouthO "o", kMouthWide yawn/sneeze, kTongue),
 //    and the front paws (or wings, claws, hands) in every Paws pose: Down (resting on the table
 //    edge at y 40), ReachLeft/ReachRight (batting at a gauge beside it), Cover (over the eyes),

@@ -445,7 +445,7 @@ void overview(Lang lang, const Snapshot& s, miblo::Pager& pager, uint32_t nowMs,
     g = {Y(46), Y(52), Y(20), Y(40)};
   } else {
     // Brand row (logo, "miblo", clock), then the limits strip, then the cards.
-    const uint32_t hb = hashInt(kHashSeed + 41, 1);
+    const uint32_t hb = hashInt(kHashSeed + 41, mascotPaintHash());  // the logo is the pet
     if (region(R_HEADER, hb, 0, 0, X(240), Y(24))) {
       logo(X(19), Y(12), Sz(22));
       C().text(X(35), Y(21), "miblo", Font::Brand, color::TEXT, Align::Left, X(120));

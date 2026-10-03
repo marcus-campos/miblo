@@ -152,6 +152,35 @@ void colors(uint8_t pet, const std::string& name) {
   save(s, name);
 }
 
+// The brand row's logo of every pet at the size the header draws it (22 px), to check it stays
+// legible: one cell per pet in kPetFiles order (13, never a pet, left empty), 2 x 2 logos in it.
+// `eyes` false: the four presets; true: the round, big and sleepy eyes and a custom paint. The
+// logo is at the header's own scale: read the @4x PNG.
+void logoSheet(bool eyes, const std::string& name) {
+  Shot s;
+  for (uint8_t pet = 0; pet < miblo::kPetIds; pet++) {
+    if (!miblo::isPet(pet)) continue;
+    const int cx = 6 + (pet % 4) * 57 + 28, cy = 6 + (pet / 4) * 57 + 28;
+    for (int i = 0; i < 4; i++) {
+      MascotPaint p;
+      p.pet = pet;
+      if (!eyes) {
+        p.style = (uint8_t)i;
+      } else if (i < 3) {
+        p.eyeShape = (uint8_t)i;
+      } else {
+        p.eyeShape = 1;
+        p.slots[miblo::kSlotBody] = 0x3FA34D + 1;  // a green body with violet eyes
+        p.slots[miblo::kSlotEye] = 0x8A5CF6 + 1;
+      }
+      screens::setMascotPaint(p);
+      screens::logo(cx - 14 + 28 * (i % 2), cy - 14 + 28 * (i / 2), 22);
+    }
+  }
+  save(s, name);
+  plain(0);
+}
+
 // The first antic of kind `a` from pet mode's start, `into` ms into it (0: none).
 uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
   for (uint32_t c = 1; c <= 2 * (screens::kAnticCount + 1); c++) {
@@ -318,6 +347,13 @@ void renderPets(miblo::Lang L) {
       save(s, n + "visit");
     }
     { Shot s; screens::boot(L, 0); save(s, n + "boot"); }
+    working();
+    {
+      miblo::Pager pager(3, 5000);
+      Shot s;
+      screens::overview(L, snap, pager, 0, clk, false);
+      save(s, n + "overview");  // the brand row's logo
+    }
     if (pet == (uint8_t)miblo::Pet::Riff) {  // its own long-task fanfare: air guitar
       for (uint32_t ms : {650u, 1500u}) {
         Shot s;
@@ -327,6 +363,8 @@ void renderPets(miblo::Lang L) {
     }
   }
   plain(0);
+  logoSheet(false, "71-logo-pets-colors");
+  logoSheet(true, "71-logo-pets-eyes");
 }
 
 }  // namespace shots

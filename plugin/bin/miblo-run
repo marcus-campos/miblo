@@ -457,6 +457,15 @@ lock_is_stale() {
   [ -n "$("$FIND" "$rt/lock" -prune -mmin +10 2> /dev/null)" ]
 }
 
+# Removes the download lock only while it is still this process's: one taken over (wrongly
+# judged stale) and re-made by another hook is left to that hook.
+release_lock() {
+  rl_pid=
+  [ -f "$rt/lock/pid" ] && IFS= read -r rl_pid < "$rt/lock/pid"
+  [ "$rl_pid" = "$$" ] && rm -rf "$rt/lock"
+  return 0
+}
+
 install_runtime() {
   platform || {
     fail "no official Node.js build for this platform"
@@ -473,11 +482,25 @@ install_runtime() {
   waited=0
   until mkdir "$rt/lock" 2> /dev/null; do
     if lock_is_stale; then
-      # Atomic takeover: of several processes seeing the same stale lock, one mv wins.
+      # Atomic takeover: of several processes seeing the same stale lock, one mv wins. The lock
+      # moved may not be the one judged stale (re-made in between) or its owner may still be
+      # downloading: then it goes back (unless a new one is already there) and this hook waits.
       if mv "$rt/lock" "$rt/lock.stale.$$" 2> /dev/null; then
-        rm -rf "$rt/lock.stale.$$"
+        st_pid=
+        [ -f "$rt/lock.stale.$$/pid" ] && IFS= read -r st_pid < "$rt/lock.stale.$$/pid"
+        if [ -n "$st_pid" ] && kill -0 "$st_pid" 2> /dev/null; then
+          if [ ! -e "$rt/lock" ] && mv "$rt/lock.stale.$$" "$rt/lock" 2> /dev/null; then
+            :
+          else
+            rm -rf "$rt/lock.stale.$$"
+          fi
+        else
+          rm -rf "$rt/lock.stale.$$"
+          continue
+        fi
+      else
+        continue
       fi
-      continue
     fi
     # Another hook is downloading: use its result once it is there.
     if try "$exe"; then
@@ -491,7 +514,7 @@ install_runtime() {
     waited=$((waited + 1))
   done
   echo $$ > "$rt/lock/pid"
-  trap 'rm -rf "$rt/lock"' EXIT
+  trap 'release_lock' EXIT
   trap 'exit 1' HUP INT TERM
   in_status=0
   if ! try "$exe"; then
@@ -502,7 +525,7 @@ install_runtime() {
       in_status=1
     fi
   fi
-  rm -rf "$rt/lock"
+  release_lock
   trap - EXIT HUP INT TERM
   [ "$in_status" -eq 0 ] || {
     [ -d "$rt/$name" ] && fail "the downloaded $name does not run"

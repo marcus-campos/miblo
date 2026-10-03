@@ -492,3 +492,32 @@ test('downloads only over https (curl --proto =https, wget --https-only)', () =>
   assert.ok(src.includes('wget --https-only') || src.includes('--https-only'));
   assert.ok(src.includes('rm -rf "${rt:?}/${name:?}"'));
 });
+
+// The takeover is a mv: if the lock it moved turns out to belong to a live process (it was
+// re-made between the stale check and the mv, or a download outlived the age limit), it is
+// put back and the hook waits instead of downloading alongside.
+test('a lock taken over by mistake from a live process is put back, and nothing is downloaded', { skip: !hasCurl }, () => {
+  const s = sandbox();
+  const d = dist(s, 'linux-x64');
+  const holder = spawn('sleep', ['30']);
+  try {
+    const lock = path.join(s.runtime, 'lock');
+    fs.mkdirSync(lock, { recursive: true });
+    fs.writeFileSync(path.join(lock, 'pid'), String(holder.pid));
+    const old = new Date(Date.now() - 3600_000);
+    fs.utimesSync(lock, old, old);
+    const r = run(s, ['hook.js'], { env: { MIBLO_NODE_BASE_URL: d.base, MIBLO_NODE_PLATFORM: 'linux-x64', MIBLO_NODE_SHA256: d.sha, MIBLO_WAIT: '1' } });
+    assert.equal(r.code, 0);
+    assert.equal(r.out, '');
+    assert.ok(!fs.existsSync(path.join(s.runtime, d.name)));
+    assert.equal(fs.readFileSync(path.join(lock, 'pid'), 'utf8').trim(), String(holder.pid));
+    assert.deepEqual(fs.readdirSync(s.runtime).filter((f) => f.startsWith('lock.')), []);
+  } finally {
+    holder.kill();
+  }
+});
+
+test('a hook releases the download lock only while it is still its own', () => {
+  assert.match(src, /release_lock\(\)/);
+  assert.match(src, /\[ "\$rl_pid" = "\$\$" \] && rm -rf "\$rt\/lock"/);
+});

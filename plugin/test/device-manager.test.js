@@ -145,3 +145,35 @@ test('a zone that fails to work out never fails the push', async () => {
   assert.equal(pushes[0].tz, undefined);
   assert.equal(mgr.status()[0].online, true);
 });
+
+// ---- 503 busy: the gadget's low-memory guard answered; it is there, just short of memory ----
+const busyErr = () => Object.assign(new Error('busy'), { status: 503 });
+
+test('a busy gadget (503) is never counted as a failed push: no rediscovery, no growing backoff', async () => {
+  let t = 0;
+  let discovers = 0;
+  const client = { async pushState() { throw busyErr(); } };
+  const store = memStore([{ id: 'g1', name: 'G1', addr: '10.0.0.5:80', token: 't' }]);
+  const mgr = new DeviceManager({ client, store, now: () => t, sleep: async () => {}, discover: async () => { discovers++; return [{ id: 'g1', addr: '10.0.0.9:80' }]; } });
+  for (let i = 0; i < 8; i++) { await mgr.pushAll({ alerts: [] }); t += 1000; }
+  assert.equal(discovers, 0);
+  assert.equal(store.list()[0].addr, '10.0.0.5:80');
+  assert.equal(mgr.status()[0].needsPair, false);
+  assert.equal(mgr.status()[0].online, true);  // it answered
+});
+
+test('the alerts-only resend backs off briefly and retries when the gadget is still busy', async () => {
+  const sent = [];
+  const delays = [];
+  let busyLeft = 2;  // the full snapshot and the first alerts-only resend
+  const client = { async pushState(addr, token, snap) { if (busyLeft-- > 0) throw busyErr(); sent.push(snap); } };
+  const store = memStore([{ id: 'g1', name: 'G1', addr: '10.0.0.5:80', token: 't' }]);
+  const mgr = new DeviceManager({ client, store, now: () => 0, sleep: async (ms) => { delays.push(ms); } });
+  const snap = { v: 1, seq: 1, sessions: [{ id: 's1', name: 'api', st: 'perm' }], alerts: [{ sid: 's1', kind: 'perm' }] };
+  await mgr.pushAll(snap);
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0].alerts, snap.alerts);
+  assert.equal(delays.length, 1);
+  assert.ok(delays[0] > 0 && delays[0] <= 1000);
+  assert.equal(mgr.status()[0].online, true);
+});

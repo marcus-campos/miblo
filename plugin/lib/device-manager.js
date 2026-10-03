@@ -1,14 +1,23 @@
 import { trimSnapshot, alertOnlySnapshot } from './snapshot-builder.js';
 import { LEGACY_MAX_SESSIONS, LEGACY_SNAPSHOT_MAX_BYTES } from './constants.js';
 import { ZoneOffsets } from './tz-offsets.js';
+import { isBusy } from './device-client.js';
 import { verifyNewAddr, isLanAddr, hasChallenge } from './relocation.js';
+
+// A busy gadget (503) is asked again after this long, without counting as a failure.
+const BUSY_WAIT_MS = 1000;
+// Waits before resending the alerts-only snapshot to a gadget still busy.
+const ALERT_RETRY_MS = [250, 750];
 
 export class DeviceManager {
   #health = new Map();
 
   // `zones` (tz-offsets.js ZoneOffsets): the live offsets of each gadget's time zones.
   // `addrOk`: which addresses a gadget may move to (relocation.js isLanAddr; tests relax it).
-  constructor({ client, store, discover = null, now = () => Date.now(), zones = new ZoneOffsets(), addrOk = isLanAddr }) {
+  // `sleep`: the short waits between alerts-only resends to a busy gadget (tests make it instant).
+  constructor({ client, store, discover = null, now = () => Date.now(), zones = new ZoneOffsets(), addrOk = isLanAddr,
+    sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+    this.sleep = sleep;
     this.client = client;
     this.store = store;
     this.discover = discover;
@@ -77,13 +86,28 @@ export class DeviceManager {
         await this.client.pushState(dev.addr, dev.token, trimSnapshot(own, caps.maxSessions, caps.maxBytes));
       } catch (e) {
         // Low on memory (503): the full snapshot was refused. Resend just the alerts, which is
-        // tiny and gets through, so a session that needs the user is never lost to low memory.
-        const alertOnly = e?.status === 503 ? alertOnlySnapshot(snapshot) : null;
+        // tiny and gets through, so a session that needs the user is never lost to low memory;
+        // still busy, it is resent after a short wait.
+        const alertOnly = isBusy(e) ? alertOnlySnapshot(snapshot) : null;
         if (!alertOnly) throw e;
-        await this.client.pushState(dev.addr, dev.token, alertOnly);
+        for (let i = 0; ; i++) {
+          try {
+            await this.client.pushState(dev.addr, dev.token, alertOnly);
+            break;
+          } catch (e2) {
+            if (!isBusy(e2) || i >= ALERT_RETRY_MS.length) throw e2;
+            await this.sleep(ALERT_RETRY_MS[i]);
+          }
+        }
       }
       Object.assign(h, { fails: 0, nextTry: 0, online: true, unauthorized: false, needsPair: false, lastOk: this.now() });
     } catch (e) {
+      if (isBusy(e)) {
+        // The gadget answered (its low-memory guard): it is there, so this is no failed push and
+        // no reason to look for it elsewhere. Try again shortly.
+        Object.assign(h, { online: true, unauthorized: false, nextTry: this.now() + BUSY_WAIT_MS });
+        return;
+      }
       h.fails += 1;
       h.online = false;
       h.unauthorized = e?.status === 401;

@@ -253,7 +253,7 @@ Then make it yours, one colour part at a time: body, outline, inner detail, nose
 └──────────────┘  official JSON   └──────────────────────────┘                └──────────────┘
 ```
 
-- **Plugin** (`plugin/`) is a Claude Code plugin in Node.js with no dependencies. Async hooks track every session's state and never slow Claude Code down. The status-line tap forwards a copy of the official status-line JSON and then runs your original status line command unchanged. A local bridge (started on demand, it exits after 30 minutes without sessions and hands over to a newer plugin at its first hook event) builds a small snapshot and pushes it to every paired gadget.
+- **Plugin** (`plugin/`) is a Claude Code plugin in Node.js with no dependencies. Hooks, the status line and the commands start through a small POSIX `sh` launcher (`plugin/bin/miblo-run`) that finds Node, or downloads a pinned LTS once. Async hooks track every session's state and never slow Claude Code down. The status-line tap forwards a copy of the official status-line JSON and then runs your original status line command unchanged. A local bridge (started on demand, it exits after 30 minutes without sessions and hands over to a newer plugin at its first hook event) builds a small snapshot and pushes it to every paired gadget.
 - **Firmware** (`firmware/`) is ESP8266 firmware for the GeekMagic "Ultra" desk clock (240×240 IPS). It joins your Wi-Fi, announces itself over mDNS, pairs with a 4-digit code (which issues a random 128-bit token; 5 wrong codes in a row lock pairing for 60 s, then every 3 more lock it again for twice as long, up to 24 h, kept across a restart) and draws the screens.
 - **What the bridge works out for the gadget:** when the 5-hour limit runs out at the current pace, how long a shell command has been running, the live offsets of the gadget's time zones and, on Mondays, last week's totals (hours, responses, cost, busiest day).
 
@@ -261,7 +261,15 @@ Then make it yours, one colour part at a time: body, outline, inner detail, nose
 
 For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#do-it-yourself-build-your-own-miblo).
 
-**Requirement:** [Node.js](https://nodejs.org) **20 or newer** on your `PATH`. The native Claude Code installer doesn't include Node. macOS, Linux and Windows (including WSL) are supported.
+**Where it works:** Claude Code on your computer, in any of its forms:
+
+- the terminal (`claude`);
+- the **Claude desktop app** (the Code tab);
+- the **VS Code, Cursor and JetBrains** extensions.
+
+macOS, Linux and Windows (including WSL) are supported. **Not supported:** cloud sessions (claude.ai/code, and cloud sessions started from the desktop or mobile app) and GitHub Copilot's Claude agent. They run away from your computer, so they can't reach the gadget on your network, or they don't run plugin hooks.
+
+**Node.js:** Miblo runs on [Node.js](https://nodejs.org) 20 or newer, and you don't need to set it up. It finds the Node you already have even when the app doesn't see your shell's `PATH` (the desktop app and IDEs don't): Homebrew, Volta, nvm, fnm, asdf, mise, nodenv or your login shell. If there is none, it downloads the official Node.js LTS once (about 50 MB, checked against a SHA-256 pinned in the plugin) into its own data folder. `/miblo:pair` checks this first and, if Node still can't be set up (no internet, an unusual system), offers to install it for you, only after you say yes.
 
 1. **Install the plugin.** In Claude Code, run:
 
@@ -270,6 +278,8 @@ For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#
    /plugin install miblo@miblo
    /reload-plugins
    ```
+
+   In the **desktop app**, open the Code tab and add it from **+ → Plugins** (add the `marcus-campos/miblo` marketplace, then install `miblo`), or run `claude plugin marketplace add marcus-campos/miblo` and `claude plugin install miblo@miblo` in a terminal; the desktop app and the IDE extensions share the plugins installed for Claude Code.
 
 2. **Connect the gadget to Wi-Fi.** Plug it in. The screen shows a QR code and the network name `Miblo-Setup-XXXX`. Scan the code with your phone (or join that network), and the setup page opens. Pick your network and type the password.
    - Miblo works only with **2.4 GHz** Wi-Fi.
@@ -452,6 +462,7 @@ Miblo's own update page (`http://miblo-xxxx.local/update`, with the on-screen co
 | No limits on the screen ("limits unavailable") | Run `/miblo:status` to see whether the status line is linked. If it isn't, run `/miblo:link-statusline`. Limits appear after the next response. The 5-hour and weekly limits exist only on **Pro/Max** subscriptions. With an API key, the gadget shows today's cost instead. |
 | `/miblo:status` or `/miblo:update` says a gadget is `unauthorized` or "no longer accepts this pairing" | The gadget was reset or paired to something else. Run `/miblo:pair` again. |
 | Gadget shows **Disconnected** | It hasn't received anything for 30 s. The bridge starts again with the next Claude Code activity. Check `/miblo:status`. |
+| Nothing reaches the gadget from the desktop app or an IDE | Run `/miblo:update` there: like `/miblo:pair`, it checks Node.js first and says what is missing. The launcher's log is `runtime/launcher.log` in the plugin's data folder (`~/.claude/plugins/data/miblo-miblo/` by default). |
 | Blank status line after uninstalling the plugin | Always run `/miblo:unlink-statusline` **before** uninstalling. If you already uninstalled, reinstall the plugin, run `/miblo:unlink-statusline`, then uninstall again. |
 
 ## Development
@@ -463,7 +474,7 @@ Miblo's own update page (`http://miblo-xxxx.local/update`, with the on-screen co
 ```
 .claude-plugin/        marketplace manifest
 plugin/                Claude Code plugin (Node.js ≥ 20, zero dependencies)
-  bin/                 hook.js, statusline-tap.mjs, bridge.js, miblo.js (CLI), onboard.js
+  bin/                 miblo-run (sh launcher: finds or fetches Node), hook.js, statusline-tap.mjs, bridge.js, miblo.js (CLI), onboard.js
   commands/            the /miblo:* slash commands
   hooks/hooks.json     hook registrations
   lib/                 session tracker, metrics, snapshot builder, device manager, mDNS, updates

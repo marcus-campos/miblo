@@ -2,6 +2,8 @@
 // settings patch, shown for kShowMs, at most one every kEveryMs.
 #include <unity.h>
 
+#include <string>
+
 #include "miblo_preview.h"
 
 using namespace miblo;
@@ -9,12 +11,19 @@ using namespace miblo;
 void setUp() {}
 void tearDown() {}
 
+// `bad` points into the JSON document (as on the device, where the document outlives its use):
+// copied out here, since this helper's document dies when it returns.
+static std::string badField;
 static bool parse(const Config& cfg, const char* json, PreviewLook& out, const char** bad = nullptr) {
   StaticJsonDocument<512> doc;
   deserializeJson(doc, json);
   Config scratch;  // the device allocates it on the heap (web.cpp handlePreview)
   scratch.accHead = 7;  // whatever it held before is overwritten with `cfg`
-  return previewFromJson(cfg, scratch, doc.as<JsonObjectConst>(), out, bad);
+  const char* field = nullptr;
+  const bool ok = previewFromJson(cfg, scratch, doc.as<JsonObjectConst>(), out, &field);
+  badField = field ? field : "";
+  if (bad) *bad = field ? badField.c_str() : nullptr;
+  return ok;
 }
 
 static void test_look_from_the_form() {

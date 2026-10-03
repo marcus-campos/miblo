@@ -5,6 +5,7 @@
 //   colors  the four presets across, by eye shape (round, big, sleepy) and two custom paints
 // and the pet on the main screens: desk, focus, limit freed, pet mode, a few antics, a visit,
 // the boot screen's small mascot.
+#include <vector>
 #include <string.h>
 
 #include "miblo_focus.h"
@@ -12,6 +13,15 @@
 #include "miblo_occasions.h"
 #include "miblo_preview.h"
 #include "shots.h"
+
+
+// The pets in id order, without the reserved 13 (miblo::isPet).
+static const std::vector<uint8_t> kPetList = [] {
+  std::vector<uint8_t> v;
+  for (uint8_t p = 0; p < miblo::kPetIds; p++)
+    if (miblo::isPet(p)) v.push_back(p);
+  return v;
+}();
 
 namespace shots {
 
@@ -166,11 +176,11 @@ void wear(miblo::Lang L, const screens::Clock& clk) {
                  {"neck", {16, 17, 18, 19, 21}, 2}};
   const Grid g{6, 5};
   for (const auto& gr : kGroups) {
-    for (uint8_t first = 0; first < miblo::kPetKinds; first += 6) {
+    for (uint8_t first = 0; first < kPetList.size(); first += 6) {
       Shot s;
       for (int r = 0; r < 5; r++) {
-        for (int c = 0; c < 6 && first + c < miblo::kPetKinds; c++) {
-          plain((uint8_t)(first + c));
+        for (int c = 0; c < 6 && first + c < kPetList.size(); c++) {
+          plain(kPetList[first + c]);
           screens::MascotOutfit o;
           (gr.slot == 0 ? o.head : gr.slot == 1 ? o.face : o.neck) = gr.ids[r];
           screens::setMascotOutfit(o);
@@ -186,8 +196,8 @@ void wear(miblo::Lang L, const screens::Clock& clk) {
     static const uint8_t kHead[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 5, 4};
     static const uint8_t kFace[] = {11, 12, 14, 15, 20, 11, 12, 14, 15, 20, 11, 15};
     static const uint8_t kNeck[] = {16, 17, 18, 19, 21, 16, 17, 18, 19, 21, 21, 16};
-    for (uint8_t pet = 0; pet < miblo::kPetKinds && pet < 12; pet++) {
-      plain(pet);
+    for (uint8_t pet = 0; pet < 12; pet++) {
+      plain(kPetList[pet]);
       screens::setMascotOutfit(screens::MascotOutfit{kHead[pet], kFace[pet], kNeck[pet]});
       a.draw(pet % 4, pet / 4, MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0});
     }
@@ -198,7 +208,7 @@ void wear(miblo::Lang L, const screens::Clock& clk) {
     Shot s;
     for (int i = 0; i < 12; i++) {
       MascotPaint p;
-      p.pet = (uint8_t)(i % miblo::kPetKinds);
+      p.pet = kPetList[i % kPetList.size()];
       p.style = (uint8_t)(i % 4);
       screens::setMascotPaint(p);
       screens::setMascotOutfit(screens::MascotOutfit{(uint8_t)(i < 4 ? 0 : 1 + i % 10), (uint8_t)(i % 2 ? 20 : 11),

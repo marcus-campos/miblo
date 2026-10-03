@@ -1,13 +1,13 @@
 ---
 description: Update the Miblo plugin and a paired gadget's firmware
 argument-hint: "[id] [--file path]"
-allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
 ---
 
 You manage Miblo desk gadgets with this CLI (call it `MIBLO` below):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js" --data "${CLAUDE_PLUGIN_DATA}"
+sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js --data "${CLAUDE_PLUGIN_DATA}"
 ```
 
 Arguments: `$ARGUMENTS`

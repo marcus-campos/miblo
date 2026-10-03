@@ -18,11 +18,41 @@ test('manifest and marketplace agree on the plugin name', () => {
   assert.equal(read('package.json').engines.node, '>=20');
 });
 
+// Every command goes through bin/miblo-run, which finds Node even where the shell's PATH is not
+// inherited (the Claude desktop app, IDE extensions) or downloads it once.
+const LAUNCH = 'sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run"';
+
+test('every hook runs through the launcher; the synchronous one never waits for a download', () => {
+  const { hooks } = read('hooks/hooks.json');
+  for (const [ev, matchers] of Object.entries(hooks)) {
+    for (const h of matchers.flatMap((m) => m.hooks)) {
+      assert.ok(h.command.startsWith(`${LAUNCH} `), `${ev}: ${h.command}`);
+      if (h.async !== true) assert.ok(h.command.startsWith(`${LAUNCH} --no-wait `), `${ev}: ${h.command}`);
+    }
+  }
+  assert.equal(hooks.SessionStart[0].hooks.find((c) => c.command.includes('hook.js')).command, `${LAUNCH} hook.js`);
+  assert.equal(hooks.SessionStart[0].hooks.find((c) => c.command.includes('onboard.js')).command, `${LAUNCH} --no-wait onboard.js`);
+});
+
+test('no hook or command runs a bare node', () => {
+  const files = ['hooks/hooks.json', ...fs.readdirSync(path.join(root, 'commands')).map((f) => `commands/${f}`)];
+  for (const f of files) {
+    const text = fs.readFileSync(path.join(root, f), 'utf8');
+    assert.doesNotMatch(text, /(^|[\s"'`(])node\s+["$]/m, f);
+    assert.doesNotMatch(text, /bin\/miblo\.js/, f);
+  }
+});
+
+test('the launcher is executable and shipped next to the scripts it runs', () => {
+  const st = fs.statSync(path.join(root, 'bin/miblo-run'));
+  assert.ok(st.mode & 0o111);
+});
+
 test('every tracked event runs hook.js asynchronously', () => {
   const { hooks } = read('hooks/hooks.json');
   for (const ev of EVENTS) {
     const cmds = hooks[ev].flatMap((m) => m.hooks);
-    const h = cmds.find((c) => c.command.includes('bin/hook.js'));
+    const h = cmds.find((c) => / hook\.js$/.test(c.command));
     assert.ok(h, ev);
     assert.equal(h.async, true, ev);
   }
@@ -32,7 +62,7 @@ test('every tracked event runs hook.js asynchronously', () => {
   assert.ok(!('matcher' in hooks.Notification[0]) || hooks.Notification[0].matcher === '*');
   // Every registration spawns a hook process: nothing the tracker ignores is registered.
   assert.deepEqual(Object.keys(hooks).sort(), [...EVENTS].sort());
-  const onboard = hooks.SessionStart.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/onboard.js'));
+  const onboard = hooks.SessionStart.flatMap((m) => m.hooks).find((c) => / onboard\.js$/.test(c.command));
   assert.ok(onboard);
   assert.notEqual(onboard.async, true);
 });
@@ -49,9 +79,9 @@ test('miblo.md was split into one command per action (plugins namespace commands
 });
 
 for (const name of COMMANDS) {
-  test(`the /miblo:${name} command references the CLI with the data dir`, () => {
+  test(`the /miblo:${name} command runs the CLI through the launcher with the data dir`, () => {
     const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
-    assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
+    assert.ok(md.includes('sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js --data "${CLAUDE_PLUGIN_DATA}"'), name);
     assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
     assert.match(md, /\$ARGUMENTS/);
   });
@@ -61,7 +91,7 @@ for (const name of COMMANDS) {
     test(`the /miblo:${name} command pre-approves only the miblo CLI`, () => {
       const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
       const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-      assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion');
+      assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), AskUserQuestion');
       assert.ok(!line.includes('Bash(node:*)'));
     });
   }
@@ -77,12 +107,12 @@ for (const name of COMMANDS) {
 for (const name of ['update', 'pair']) {
   test(`the /miblo:${name} command references the CLI and pre-approves only miblo.js and the two plugin-update commands`, () => {
     const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
-    assert.match(md, /\$\{CLAUDE_PLUGIN_ROOT\}\/bin\/miblo\.js/);
+    assert.ok(md.includes('sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js --data "${CLAUDE_PLUGIN_DATA}"'), name);
     assert.match(md, /\$\{CLAUDE_PLUGIN_DATA\}/);
     assert.match(md, /\$ARGUMENTS/);
     assert.match(md, /^description: \S/m);
     const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-    assert.equal(line, 'allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+    assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
   });
 }
 

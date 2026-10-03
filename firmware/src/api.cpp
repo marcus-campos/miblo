@@ -484,19 +484,26 @@ static void handleFind() {
 }
 
 // GET /api/challenge?n=<32 lowercase hex nonce>&t=<8 lowercase hex tokenTag>, no Authorization:
-// {"id","mac"} with mac = hex HMAC-SHA256(key = the token, message = n || id). 400 malformed, 403
-// unknown tag (never 404, which tells the plugin the firmware predates the route), 429 over the
-// limit. The full contract is at miblo::answerChallenge (miblo_security.h). The plugin checks a
-// gadget found again at a new address with it before sending its token there (M3).
+// {"id","ip","v":2,"mac"} with ip = the gadget's own station IPv4 (WiFi.localIP(), dotted) and
+// mac = hex HMAC-SHA256(key = the token, message = n || id || ip). 400 malformed, 409 no station
+// IP (setup mode), 403 unknown tag (never 404, which tells the plugin the firmware predates the
+// route), 429 over the limit. The full contract is at miblo::answerChallenge (miblo_security.h).
+// The plugin checks a gadget found again at a new address with it before sending its token there
+// (M3), and checks that ip is the address it connected to, so a relaying spoofer fails (F1).
 static void handleChallenge() {
   if (!ctx.challengeReqs.allow(millis())) {
     json(429, F("{\"error\":\"slow down\"}"));
     return;
   }
+  const String ip = net::connected() ? WiFi.localIP().toString() : String();
   char mac[65];
-  switch (miblo::answerChallenge(ctx.tokens, srv->arg(F("n")).c_str(), srv->arg(F("t")).c_str(), ctx.ident.id, mac)) {
+  switch (miblo::answerChallenge(ctx.tokens, srv->arg(F("n")).c_str(), srv->arg(F("t")).c_str(), ctx.ident.id,
+                                 ip.c_str(), mac)) {
     case miblo::ChallengeResult::BadRequest:
       json(400, F("{\"error\":\"bad challenge\"}"));
+      return;
+    case miblo::ChallengeResult::NoNetwork:
+      json(409, F("{\"error\":\"no network\"}"));
       return;
     case miblo::ChallengeResult::UnknownTag:
       json(403, F("{\"error\":\"unknown\"}"));
@@ -504,8 +511,9 @@ static void handleChallenge() {
     case miblo::ChallengeResult::Ok:
       break;
   }
-  char out[112];
-  snprintf_P(out, sizeof(out), PSTR("{\"id\":\"%s\",\"mac\":\"%s\"}"), ctx.ident.id, mac);
+  char out[144];
+  snprintf_P(out, sizeof(out), PSTR("{\"id\":\"%s\",\"ip\":\"%s\",\"v\":2,\"mac\":\"%s\"}"), ctx.ident.id,
+             ip.c_str(), mac);
   json(200, out);
 }
 

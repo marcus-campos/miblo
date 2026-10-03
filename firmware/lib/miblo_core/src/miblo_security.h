@@ -241,21 +241,26 @@ class TokenStore {
 void tokensToJson(const TokenStore& tokens, JsonObject out);
 void tokensFromJson(JsonObjectConst in, TokenStore& tokens);
 
-// GET /api/challenge?n=<nonce>&t=<tag> (M3): lets a computer check that an address answers as
+// GET /api/challenge?n=<nonce>&t=<tag> (M3, F1): lets a computer check that an address answers as
 // the gadget it paired with BEFORE it sends its token there (the plugin follows a gadget that moved,
-// found again by mDNS, which any LAN host can answer). Contract (plugin/lib/relocation.js):
+// found again by mDNS, which any LAN host can answer). Contract v2 (plugin/lib/relocation.js):
 //   n    exactly 32 lowercase hex characters (a fresh random nonce)
 //   t    exactly 8 lowercase hex characters: tokenTag() of the caller's token
-//   200  {"id":"<device id>","mac":"<64 lowercase hex>"}, mac = HMAC-SHA256(key = the token's 32
-//        ASCII characters, message = the 32 nonce characters immediately followed by the id)
-//   400  n or t malformed;  403  no paired token has that tag (never 404: that means a firmware
-//        without the route, which the plugin treats differently);  429  over the rate limit.
-// Only someone holding the token can compute the mac, and the token never travels. Every stored
-// token's tag is compared and a mac is always computed (a dummy key when none matches), so the
-// time does not tell a known tag from an unknown one.
-enum class ChallengeResult : uint8_t { Ok, BadRequest, UnknownTag };
+//   200  {"id":"<device id>","ip":"<station IPv4, dotted>","v":2,"mac":"<64 lowercase hex>"},
+//        mac = HMAC-SHA256(key = the token's 32 ASCII characters, message = the 32 nonce
+//        characters immediately followed by the id, immediately followed by the ip, e.g.
+//        "0123...cdef" "miblo-4f2a" "192.168.15.181")
+//   400  n or t malformed;  409 {"error":"no network"} no station IP (setup mode);  403  no paired
+//        token has that tag (never 404: that means a firmware without the route, which the plugin
+//        treats differently);  429  over the rate limit.
+// Only someone holding the token can compute the mac, and the token never travels. The ip is the
+// gadget's OWN station address (WiFi.localIP()): the plugin compares it with the address it
+// connected to, so a spoofer that relays the nonce to the real gadget gets back a mac over the
+// real gadget's IP, never its own (F1). Every stored token's tag is compared and a mac is always
+// computed (a dummy key when none matches), so the time does not tell a known tag from an unknown.
+enum class ChallengeResult : uint8_t { Ok, BadRequest, UnknownTag, NoNetwork };
 ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
-                                char macHex[65]);
+                                const char* ip, char macHex[65]);
 
 // Physical presence code: when opening the /update gate (POST /update/open), requesting a factory
 // reset, unlocking the settings page or joining a network from the portal, the screen shows a

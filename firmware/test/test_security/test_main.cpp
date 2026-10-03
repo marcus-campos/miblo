@@ -510,8 +510,9 @@ static void test_sha256_and_hmac() {
   TEST_ASSERT_EQUAL_STRING("60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54", h);
 }
 
-// M3: the plugin's mirror (plugin/lib/relocation.js tokenTag + challengeMac) gives these same
-// values: the contract is pinned on both sides.
+// M3 + F1: the plugin's mirror (plugin/lib/relocation.js tokenTag + challengeMac) gives these same
+// values: the contract is pinned on both sides. The mac covers the gadget's own station IP, so a
+// spoofer relaying the plugin's nonce gets back a mac over the real gadget's IP, not its own.
 static void test_address_challenge() {
   TokenStore ts;
   ts.add("ffeeddccbbaa99887766554433221100", "other");
@@ -521,18 +522,27 @@ static void test_address_challenge() {
   TEST_ASSERT_EQUAL_STRING("de18ad43", tag);
   char mac[65];
   const char* nonce = "0123456789abcdef0123456789abcdef";
-  TEST_ASSERT_EQUAL(ChallengeResult::Ok, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", mac));
-  TEST_ASSERT_EQUAL_STRING("719d917eb19b57d6af19069d9887a9708f2f767439c8e952881c7f954c96fe85", mac);
-  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(ts, nonce, "00000000", "miblo-4f2a", mac));
+  const char* ip = "192.168.15.181";
+  TEST_ASSERT_EQUAL(ChallengeResult::Ok, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", ip, mac));
+  TEST_ASSERT_EQUAL_STRING("7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c", mac);
+  // Another address gives another mac: the answer is bound to the IP.
+  TEST_ASSERT_EQUAL(ChallengeResult::Ok, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", "192.168.15.182", mac));
+  TEST_ASSERT_FALSE(strcmp("7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c", mac) == 0);
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(ts, nonce, "00000000", "miblo-4f2a", ip, mac));
   TEST_ASSERT_EQUAL_STRING("", mac);  // nothing computed with the dummy key ever leaves
-  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, "0123", "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, "0123", "de18ad43", "miblo-4f2a", ip, mac));
   TEST_ASSERT_EQUAL(ChallengeResult::BadRequest,
-                    answerChallenge(ts, "0123456789ABCDEF0123456789abcdef", "de18ad43", "miblo-4f2a", mac));
-  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad4", "miblo-4f2a", mac));
-  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad43x", "miblo-4f2a", mac));
-  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nullptr, "de18ad43", "miblo-4f2a", mac));
+                    answerChallenge(ts, "0123456789ABCDEF0123456789abcdef", "de18ad43", "miblo-4f2a", ip, mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad4", "miblo-4f2a", ip, mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nonce, "de18ad43x", "miblo-4f2a", ip, mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::BadRequest, answerChallenge(ts, nullptr, "de18ad43", "miblo-4f2a", ip, mac));
+  // Setup mode (no station IP): nothing to bind the answer to.
+  TEST_ASSERT_EQUAL(ChallengeResult::NoNetwork, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", nullptr, mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::NoNetwork, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", "", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::NoNetwork, answerChallenge(ts, nonce, "de18ad43", "miblo-4f2a", "0.0.0.0", mac));
+  TEST_ASSERT_EQUAL_STRING("", mac);
   TokenStore none;
-  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(none, nonce, "de18ad43", "miblo-4f2a", mac));
+  TEST_ASSERT_EQUAL(ChallengeResult::UnknownTag, answerChallenge(none, nonce, "de18ad43", "miblo-4f2a", ip, mac));
 }
 
 // A paired computer's token proves it is no rebinding page (a page cannot know it): the plugin

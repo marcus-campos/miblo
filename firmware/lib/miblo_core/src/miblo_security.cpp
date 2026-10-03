@@ -524,9 +524,12 @@ bool lowerHex(const char* s, size_t n) {
 }  // namespace
 
 ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, const char* tag, const char* id,
-                                char macHex[65]) {
+                                const char* ip, char macHex[65]) {
   macHex[0] = 0;
   if (!lowerHex(nonce, 32) || !lowerHex(tag, 8) || !id) return ChallengeResult::BadRequest;
+  if (!ip || !ip[0] || strcmp(ip, "0.0.0.0") == 0) return ChallengeResult::NoNetwork;
+  char tail[64];  // id || ip: the second HMAC part (the id is <= 32, an IPv4 <= 15 characters)
+  if (snprintf(tail, sizeof(tail), "%s%s", id, ip) >= (int)sizeof(tail)) return ChallengeResult::BadRequest;
   char dummy[33];  // on the stack: a const table would sit in RAM for good
   memset(dummy, '0', 32);
   dummy[32] = 0;
@@ -541,7 +544,7 @@ ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, con
     }
   }
   uint8_t mac[32];
-  hmacSha256(reinterpret_cast<const uint8_t*>(key), strlen(key), nonce, 32, id, strlen(id), mac);
+  hmacSha256(reinterpret_cast<const uint8_t*>(key), strlen(key), nonce, 32, tail, strlen(tail), mac);
   if (!known) return ChallengeResult::UnknownTag;
   auto hex = [](int v) { return (char)(v < 10 ? '0' + v : 'a' + v - 10); };
   for (int i = 0; i < 32; i++) {

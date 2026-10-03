@@ -340,6 +340,7 @@ void setup() {
   lockouts::restore(millis());  // a reset never hands out fresh code guesses (M2)
 
   bootMs = millis();
+  ctx.heap.begin(crashlog::heapRestartStreak());
   net::begin(bootMs);
   web::begin(server);
   api::begin(server);
@@ -355,9 +356,12 @@ void loop() {
   // Low-memory guard: while the heap is low, held and new requests are answered 503 busy at once,
   // the setup network is not opened, and pet visits and mDNS replies wait (miblo::HeapGuard).
   const bool heapLow = ctx.heap.update(freeHeap(), maxFreeBlock(), now);
-  // Low for a whole minute: it is not coming back (a fragmented heap). Restart through the
+  // Low for a whole minute (longer after restarts in a row): it is not coming back (a fragmented heap). Restart through the
   // reboot path below, which flushes pending saves first. Here no request is in flight; not during
   // an update or while a submitted network is tried.
+  // The wait grows after a few such restarts in a row (HeapGuard::restartWaitMs); a healthy
+  // stretch ends the streak.
+  if (ctx.heap.streakEnded(now)) crashlog::endHeapRestartStreak();
   if (!ctx.rebootRequested && ctx.heap.restartDue(now, ctx.updating || net::trialBusy())) {
     crashlog::noteHeapRestart();  // /api/info "heapRestarts"
     ctx.rebootRequested = true;

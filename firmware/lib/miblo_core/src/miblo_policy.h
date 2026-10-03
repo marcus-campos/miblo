@@ -96,9 +96,24 @@ class HeapGuard {
   // Low without a break for this long: the heap is not coming back (fragmentation can leave the
   // largest block between kLowBlock and kOkBlock for good), so the unit restarts (app.cpp).
   static constexpr uint32_t kRestartAfterMs = 60000;
+  // Backoff: after kBackoffAfter such restarts in a row the wait is 10 min, after twice as many 1 h,
+  // so a heap low for good from boot does not restart (and write flash) every minute forever.
+  // kHealthyMs without going low ends the streak.
+  static constexpr uint8_t kBackoffAfter = 3;
+  static constexpr uint32_t kHealthyMs = 600000;
+  static uint32_t restartWaitMs(uint8_t consecutive) {
+    if (consecutive < kBackoffAfter) return kRestartAfterMs;
+    return consecutive < 2 * kBackoffAfter ? 600000 : 3600000;
+  }
 
+  // At boot: the guard's restarts in a row before this boot (kept in RTC memory by app.cpp).
+  void begin(uint8_t consecutive) { consecutive_ = consecutive; }
   // Call on every loop pass. Returns low(). Safe across millis() wrap.
   bool update(uint32_t freeBytes, uint32_t maxBlock, uint32_t nowMs) {
+    if (!started_) {
+      started_ = true;
+      okSinceMs_ = nowMs;
+    }
     if (!low_) {
       if (freeBytes < kLowFree || maxBlock < kLowBlock) {
         low_ = true;
@@ -107,19 +122,32 @@ class HeapGuard {
       }
     } else if (freeBytes >= kOkFree && maxBlock >= kOkBlock && nowMs - sinceMs_ >= kHoldMs) {
       low_ = false;
+      okSinceMs_ = nowMs;
     }
     return low_;
   }
   bool low() const { return low_; }
-  // Time to restart: low for kRestartAfterMs without a break, and not `busy` (an update in
-  // progress, a submitted network being tried). Safe across millis() wrap.
-  bool restartDue(uint32_t nowMs, bool busy) const { return low_ && !busy && nowMs - sinceMs_ >= kRestartAfterMs; }
+  // Time to restart: low for restartWaitMs(consecutive()) without a break, and not `busy` (an
+  // update in progress, a submitted network being tried). Safe across millis() wrap.
+  bool restartDue(uint32_t nowMs, bool busy) const {
+    return low_ && !busy && nowMs - sinceMs_ >= restartWaitMs(consecutive_);
+  }
+  // True once when a streak of restarts ends: fine for kHealthyMs. consecutive() is 0 from then.
+  bool streakEnded(uint32_t nowMs) {
+    if (!consecutive_ || !started_ || low_ || nowMs - okSinceMs_ < kHealthyMs) return false;
+    consecutive_ = 0;
+    return true;
+  }
+  uint8_t consecutive() const { return consecutive_; }
   // How many times it went low since boot (diagnostics).
   uint32_t episodes() const { return episodes_; }
 
  private:
+  bool started_ = false;
   bool low_ = false;
+  uint8_t consecutive_ = 0;
   uint32_t sinceMs_ = 0;
+  uint32_t okSinceMs_ = 0;
   uint32_t episodes_ = 0;
 };
 

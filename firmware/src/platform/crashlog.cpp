@@ -19,16 +19,18 @@ struct Record {
 };
 
 // Restarts by the low-memory guard: one RTC block, the free one between this record (96..110) and
-// lockouts.cpp's (112..127). Magic in the high half, the count in the low half.
+// lockouts.cpp's (112..127). Magic in the top byte, the restarts in a row (the backoff's streak) in
+// the next, the total since power-on in the low half.
 constexpr uint32_t kHeapBlock = 111;
-constexpr uint32_t kHeapMagic = 0x4D480000u;  // "MH"
+constexpr uint32_t kHeapMagic = 0x4D000000u;  // "M"
 static_assert(kBlock + sizeof(Record) / 4 <= kHeapBlock, "crash record overlaps the restart count");
 
-uint32_t heapRestarts() {
+uint32_t heapWord() {
   uint32_t v = 0;
-  if (!ESP.rtcUserMemoryRead(kHeapBlock, &v, sizeof(v)) || (v & 0xFFFF0000u) != kHeapMagic) return 0;
-  return v & 0xFFFFu;
+  if (!ESP.rtcUserMemoryRead(kHeapBlock, &v, sizeof(v)) || (v & 0xFF000000u) != kHeapMagic) return kHeapMagic;
+  return v;
 }
+void writeHeapWord(uint32_t v) { ESP.rtcUserMemoryWrite(kHeapBlock, &v, sizeof(v)); }
 
 // Code lives in IRAM (0x40100000..) or is mapped from flash (0x40200000..0x40300000).
 bool isCode(uint32_t a) { return (a >= 0x40100000u && a < 0x40108000u) || (a >= 0x40201000u && a < 0x40300000u); }
@@ -54,13 +56,19 @@ extern "C" void custom_crash_callback(struct rst_info* ri, uint32_t stack, uint3
 namespace crashlog {
 
 void noteHeapRestart() {
-  const uint32_t n = heapRestarts();
-  uint32_t v = kHeapMagic | (n < 0xFFFFu ? n + 1 : n);
-  ESP.rtcUserMemoryWrite(kHeapBlock, &v, sizeof(v));
+  const uint32_t v = heapWord();
+  uint32_t streak = (v >> 16) & 0xFFu, total = v & 0xFFFFu;
+  if (streak < 0xFFu) streak++;
+  if (total < 0xFFFFu) total++;
+  writeHeapWord(kHeapMagic | (streak << 16) | total);
 }
 
+uint8_t heapRestartStreak() { return (uint8_t)(heapWord() >> 16); }
+
+void endHeapRestartStreak() { writeHeapWord(heapWord() & ~0x00FF0000u); }
+
 void report(JsonObject info) {
-  if (const uint32_t n = heapRestarts()) info["heapRestarts"] = n;
+  if (const uint32_t n = heapWord() & 0xFFFFu) info["heapRestarts"] = n;
   const uint32_t reason = ESP.getResetInfoPtr()->reason;
   if (reason != REASON_EXCEPTION_RST && reason != REASON_SOFT_WDT_RST && reason != REASON_WDT_RST) return;
   Record r{};
@@ -86,5 +94,7 @@ void report(JsonObject info) {
 namespace crashlog {
 void report(JsonObject) {}
 void noteHeapRestart() {}
+uint8_t heapRestartStreak() { return 0; }
+void endHeapRestartStreak() {}
 }  // namespace crashlog
 #endif

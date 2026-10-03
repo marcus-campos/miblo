@@ -370,6 +370,46 @@ static void test_heap_guard_restart_ceiling() {
   TEST_ASSERT_TRUE(w.restartDue(0xFFFFFF00u + HeapGuard::kRestartAfterMs, false));
 }
 
+// A heap low for good right after boot must not restart the unit every ~70 s forever (two flash
+// writes per boot): after kBackoffAfter restarts in a row the wait grows to 10 min, then 1 h. A
+// healthy stretch (kHealthyMs without going low) ends the streak.
+static void test_heap_guard_restart_backoff() {
+  TEST_ASSERT_EQUAL_UINT32(HeapGuard::kRestartAfterMs, HeapGuard::restartWaitMs(0));
+  TEST_ASSERT_EQUAL_UINT32(HeapGuard::kRestartAfterMs, HeapGuard::restartWaitMs(HeapGuard::kBackoffAfter - 1));
+  TEST_ASSERT_EQUAL_UINT32(600000, HeapGuard::restartWaitMs(HeapGuard::kBackoffAfter));
+  TEST_ASSERT_EQUAL_UINT32(600000, HeapGuard::restartWaitMs(2 * HeapGuard::kBackoffAfter - 1));
+  TEST_ASSERT_EQUAL_UINT32(3600000, HeapGuard::restartWaitMs(2 * HeapGuard::kBackoffAfter));
+  TEST_ASSERT_EQUAL_UINT32(3600000, HeapGuard::restartWaitMs(255));
+
+  // Booted after 3 restarts in a row, low from the start: waits 10 min, not 1.
+  HeapGuard g;
+  g.begin(HeapGuard::kBackoffAfter);
+  g.update(20000, 3000, 0);
+  TEST_ASSERT_FALSE(g.restartDue(HeapGuard::kRestartAfterMs, false));
+  TEST_ASSERT_FALSE(g.restartDue(599999, false));
+  TEST_ASSERT_TRUE(g.restartDue(600000, false));
+  TEST_ASSERT_FALSE(g.streakEnded(600000));
+
+  // A healthy stretch ends the streak (once), and the next restart waits 1 min again.
+  HeapGuard h;
+  h.begin(5);
+  h.update(27000, 12000, 1000);
+  TEST_ASSERT_FALSE(h.streakEnded(1000 + HeapGuard::kHealthyMs - 1));
+  h.update(20000, 3000, 2000);   // low for a moment: the stretch starts over
+  h.update(27000, 12000, 4000);  // fine again
+  TEST_ASSERT_FALSE(h.streakEnded(4000 + HeapGuard::kHealthyMs - 1));
+  TEST_ASSERT_TRUE(h.streakEnded(4000 + HeapGuard::kHealthyMs));
+  TEST_ASSERT_FALSE(h.streakEnded(4000 + HeapGuard::kHealthyMs + 1));  // reported once
+  TEST_ASSERT_EQUAL_UINT8(0, h.consecutive());
+  const uint32_t t = 4000 + HeapGuard::kHealthyMs + 10;
+  h.update(20000, 3000, t);
+  TEST_ASSERT_TRUE(h.restartDue(t + HeapGuard::kRestartAfterMs, false));
+  // Nothing to end without a streak.
+  HeapGuard f;
+  f.update(27000, 12000, 0);
+  TEST_ASSERT_FALSE(f.streakEnded(HeapGuard::kHealthyMs * 2));
+}
+
 static void test_classify_disconnect_reasons() {
   TEST_ASSERT_EQUAL(JoinFailure::None, classifyDisconnect(0));
   TEST_ASSERT_EQUAL(JoinFailure::NotFound, classifyDisconnect(201));
@@ -1340,6 +1380,7 @@ int main() {
   RUN_TEST(test_net_policy_ap_waits_for_heap);
   RUN_TEST(test_heap_guard_hysteresis);
   RUN_TEST(test_heap_guard_restart_ceiling);
+  RUN_TEST(test_heap_guard_restart_backoff);
   RUN_TEST(test_screen_selection_order);
   RUN_TEST(test_classify_disconnect_reasons);
   RUN_TEST(test_trial_retries_until_connected);

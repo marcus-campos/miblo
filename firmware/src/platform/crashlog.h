@@ -13,5 +13,9 @@ void report(JsonObject info);
 // Counts a restart by the low-memory guard (miblo::HeapGuard::restartDue), in RTC memory: it
 // survives restarts, not a power cut.
 void noteHeapRestart();
+// Those restarts in a row, with no healthy stretch in between (miblo::HeapGuard's backoff), and
+// the end of such a streak.
+uint8_t heapRestartStreak();
+void endHeapRestartStreak();
 
 }  // namespace crashlog

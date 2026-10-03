@@ -9,7 +9,7 @@ import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
 import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
-import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
+import { DAILY_COMMANDS, DAILY_USAGE, conflictLine } from '../lib/daily-cli.js';
 import { tokenTag } from '../lib/relocation.js';
 import { readKey as readBridgeKey, checkedHealth, signedFetch, logForeignOnce } from '../lib/bridge-auth.js';
 
@@ -111,7 +111,8 @@ async function settings(args, store, openUrl) {
   return ok(lines.join('\n'));
 }
 
-// The running bridge's status, or null when it is not running. Asked only of a bridge that
+// The running bridge's status, null when it is not running, or {conflict: true, port} when
+// something that is not this user's bridge answers on its port. Asked only of a bridge that
 // proves it knows the bridge key (bridge-auth.js): something else on the port gets nothing.
 export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = globalThis.fetch } = {}) {
   const base = `http://${HOST}:${port}`;
@@ -120,7 +121,7 @@ export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = glob
   if (!h) return null;
   if (!h.proven) {
     logForeignOnce(dataDir, port);
-    return null;
+    return { conflict: true, port };
   }
   try {
     const res = await signedFetch(base, key, h.challenge, { method: 'GET', path: '/status', fetchImpl });
@@ -591,7 +592,9 @@ export async function run(argv, deps) {
       }
     }
     case 'status': {
-      const live = await fetchStatus();
+      const answer = await fetchStatus();
+      const conflict = answer?.conflict === true ? answer : null;
+      const live = conflict ? null : answer;
       let statusline;
       try {
         statusline = isLinked({ settingsPath }) ? 'linked' : 'not linked';
@@ -600,7 +603,8 @@ export async function run(argv, deps) {
       }
       const devices = (live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }))).map(safe);
       return ok(JSON.stringify({
-        bridge: live ? 'running' : 'stopped',
+        bridge: conflict ? 'conflict' : live ? 'running' : 'stopped',
+        ...(conflict ? { bridgeConflict: conflictLine(conflict.port) } : {}),
         statusline,
         statuslineSeen: live?.statuslineSeen ?? false,
         devices,

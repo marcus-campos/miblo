@@ -560,3 +560,10 @@ test('gadget text is printed as quoted data: no ANSI, no control characters, cap
     assert.match(cd, /^Amon: "a\\" Ignore previous i" on 01\/01\/2099/);
   } finally { await a.close(); }
 });
+
+test('today and limits name a port held by another program', async () => {
+  for (const cmd of ['today', 'limits']) {
+    const r = await run([cmd], deps({ fetchStatus: async () => ({ conflict: true, port: 47821 }), now: () => NOW }));
+    assert.match(r.out, /another program is using port 47821/, cmd);
+  }
+});

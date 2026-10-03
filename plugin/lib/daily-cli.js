@@ -543,6 +543,10 @@ async function countdown(args, { store, client, now }) {
 
 // ---- today / limits: read from the running bridge (GET /status) ----
 const NO_BRIDGE = "The bridge isn't running (it starts with Claude Code activity): nothing to show yet.";
+// fetchStatus answers {conflict: true, port} when something that is not this user's bridge holds
+// its port (another program, or another user's or config dir's bridge).
+export const conflictLine = (port) => `another program is using port ${Number(port) || 47821}`;
+const conflictText = (st) => `The bridge can't start: ${conflictLine(st.port)}, so nothing is shown. Close that program or restart the computer; nothing was sent to it.`;
 const NO_LIMITS = 'No limits yet: link the status line with /miblo:link-statusline.';
 
 // An epoch (seconds) -> "16:42" when it falls today on this computer, else "Thu 09:00".
@@ -579,6 +583,7 @@ async function today(args, { fetchStatus, now }) {
   if (args.length) return fail(2, 'Usage: today');
   const st = await fetchStatus();
   if (!st) return ok(NO_BRIDGE);
+  if (st.conflict === true) return ok(conflictText(st));
   const t = st.today ?? {};
   const turns = Math.max(0, Math.floor(Number(t.turns) || 0));
   const parts = [`${turns} response${turns === 1 ? '' : 's'}`, `${durationText(Number(t.work) || 0)} with Claude working`];
@@ -594,6 +599,7 @@ async function limits(args, { fetchStatus, now }) {
   if (args.length) return fail(2, 'Usage: limits');
   const st = await fetchStatus();
   if (!st) return ok(NO_BRIDGE);
+  if (st.conflict === true) return ok(conflictText(st));
   return ok(limitsLine(st.usage, now()) ?? NO_LIMITS);
 }
 

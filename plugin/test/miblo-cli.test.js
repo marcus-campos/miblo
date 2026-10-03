@@ -890,7 +890,7 @@ test('status is read only from a bridge that proves it knows the key; another li
         assert.deepEqual(seen.map((q) => q.url), ['/health', '/status']);
         assert.equal(seen[1].signed, true);
       } else {
-        assert.equal(st, null);
+        assert.deepEqual(st, { conflict: true, port: server.address().port });
         assert.deepEqual(seen, [{ url: '/health', signed: undefined }]);
         assert.match(fs.readFileSync(path.join(dataDir, 'bridge.log'), 'utf8'), /answers without the bridge key/);
       }
@@ -898,4 +898,21 @@ test('status is read only from a bridge that proves it knows the key; another li
       await new Promise((r) => server.close(r));
     }
   }
+});
+
+// Something else holds the bridge port: said plainly, not "bridge stopped".
+test('status names a port held by another program instead of saying the bridge stopped', async () => {
+  const r = await run(['status'], deps({ fetchStatus: async () => ({ conflict: true, port: 47821 }) }));
+  const st = JSON.parse(r.out);
+  assert.equal(st.bridge, 'conflict');
+  assert.equal(st.bridgeConflict, 'another program is using port 47821');
+  assert.deepEqual(st.sessions, []);
+  const none = JSON.parse((await run(['status'], deps())).out);
+  assert.equal(none.bridge, 'stopped');
+  assert.equal(none.bridgeConflict, undefined);
+});
+
+test('status.md explains a port conflict', () => {
+  const md = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../commands/status.md'), 'utf8');
+  assert.match(md, /bridgeConflict/);
 });

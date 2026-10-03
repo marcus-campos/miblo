@@ -369,3 +369,29 @@ test('the bridge follows its key file when it is removed or replaced while runni
     await http.stop();
   }
 });
+
+// A request whose x-miblo-auth is malformed or names no open challenge is refused before its body
+// is read: nobody makes the bridge take in 256 KB without having been handed a challenge.
+test('a request without a valid open challenge is refused before its body is read', async () => {
+  const net = await import('node:net');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const bridge = createBridge({ dataDir, discoverFn: async () => [] });
+  const http = await started(bridge);
+  const port = bridge.server.address().port;
+  const ask = (auth) => new Promise((resolve, reject) => {
+    const sock = net.connect(port, '127.0.0.1');
+    let got = '';
+    sock.on('data', (c) => { got += c; if (/\r\n\r\n/.test(got)) { sock.destroy(); resolve(got); } });
+    sock.on('error', reject);
+    // Headers only: the declared 200 KB body never comes.
+    sock.write(`POST /event HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nContent-Type: application/json\r\n${auth ? `X-Miblo-Auth: ${auth}\r\n` : ''}Content-Length: 200000\r\n\r\n`);
+    setTimeout(() => { sock.destroy(); resolve(got || 'no answer'); }, 1500).unref();
+  });
+  try {
+    for (const auth of [null, 'garbage', `${'f'.repeat(32)}:${'a'.repeat(64)}`]) {
+      assert.match(await ask(auth), /^HTTP\/1\.1 401/, String(auth));
+    }
+  } finally {
+    await http.stop();
+  }
+});

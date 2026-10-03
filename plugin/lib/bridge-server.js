@@ -60,6 +60,11 @@ export function createBridgeServer({ onEvent, onStatusline, getStatus, version =
         const proof = key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce), ...(challenge ? { [CHALLENGE_HEADER]: challenge } : {}) } : {};
         return send(200, { ok: true, app: 'miblo-bridge', version }, proof);
       }
+      // No well-formed answer to an open challenge: refused before reading any body.
+      if (!key || !challenges.isOpen(req.headers[AUTH_HEADER])) {
+        res.setHeader('connection', 'close');
+        return send(401, { error: 'not authorised' });
+      }
       const raw = await readRaw(req);
       if (!challenges.verify(key, req.headers[AUTH_HEADER], req.method, req.url, raw)) return send(401, { error: 'not authorised' });
       if (req.method === 'GET' && req.url === '/status') return send(200, await getStatus());

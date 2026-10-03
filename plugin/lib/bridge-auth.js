@@ -21,6 +21,7 @@ export const PROOF_HEADER = 'x-miblo-proof';
 export const CHALLENGE_HEADER = 'x-miblo-challenge';
 export const AUTH_HEADER = 'x-miblo-auth';
 export const CHALLENGE_TTL_MS = 30_000;
+const AUTH_RE = /^([0-9a-f]{32}):([0-9a-f]{64})$/;
 const MAX_CHALLENGES = 256;
 // Well above real use (parallel sessions and subagents fire bursts of hooks, plus status line
 // refreshes), far below a flood.
@@ -79,10 +80,18 @@ export class Challenges {
     return c;
   }
 
+  // Whether `header` (x-miblo-auth) is well formed and names an open, unexpired challenge: checked
+  // before a request's body is read. Spends nothing.
+  isOpen(header) {
+    const m = AUTH_RE.exec(String(header ?? ''));
+    const exp = m ? this.#open.get(m[1]) : undefined;
+    return exp !== undefined && exp > this.now();
+  }
+
   // Whether `header` (x-miblo-auth) answers an open challenge for this request. The challenge is
   // spent whatever the outcome, so no answer can be tried twice.
   verify(key, header, method, urlPath, body = '') {
-    const m = /^([0-9a-f]{32}):([0-9a-f]{64})$/.exec(String(header ?? ''));
+    const m = AUTH_RE.exec(String(header ?? ''));
     if (!key || !m) return false;
     const exp = this.#open.get(m[1]);
     if (exp === undefined) return false;

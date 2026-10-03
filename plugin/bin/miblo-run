@@ -35,7 +35,7 @@
 #
 # Environment for tests: MIBLO_SYSROOT (prefix of the system locations), MIBLO_NODE_PLATFORM
 # (<os>-<arch>), MIBLO_WAIT (seconds to wait for a download another process is making, default
-# 120); with MIBLO_TEST=1 only, MIBLO_NODE_BASE_URL (a mirror; file:// allowed) and
+# 120); with MIBLO_TEST=1 only, MIBLO_UNAME (stands in for `uname -s`), MIBLO_NODE_BASE_URL (a mirror; file:// allowed) and
 # MIBLO_NODE_SHA256 (the expected hash). Downloads are https only: curl with --proto =https
 # --proto-redir =https, wget with --https-only --max-redirect=0 (nodejs.org/dist does not
 # redirect).
@@ -85,32 +85,43 @@ fi
 
 conf=${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}
 
-# One spelling of a folder, to compare data dirs. On Windows (Git Bash) the same folder comes as
-# C:\x (Claude Code's CLAUDE_PLUGIN_DATA), C:/x (the installer) or /c/x (Git Bash's HOME): all
-# become /c/x (cygpath when there is one), with no doubled or trailing slash and the drive letter
-# in lower case.
+# One spelling of a folder, to compare data dirs: no doubled or trailing slash. Under Git Bash
+# (MINGW/MSYS/CYGWIN) also: the same folder comes as C:\x (Claude Code's CLAUDE_PLUGIN_DATA), C:/x
+# (the installer) or /c/x (Git Bash's HOME), and all become /c/x (cygpath when there is one), the
+# drive letter in lower case. Elsewhere a backslash is an ordinary character in a name.
+# Asked only on this path (uname is a process): whether this is Git Bash.
+git_bash() {
+  gb_os=$(uname -s 2> /dev/null)
+  [ "${MIBLO_TEST:-}" = 1 ] && [ -n "${MIBLO_UNAME:-}" ] && gb_os=$MIBLO_UNAME
+  case $gb_os in
+    MINGW* | MSYS* | CYGWIN*) windows=1 ;;
+    *) windows=0 ;;
+  esac
+}
 canon() {
   cn_p=$1
-  case $cn_p in
-    [A-Za-z]:*)
-      # Git Bash's own, by its absolute path: never one found through PATH.
-      if [ -x /usr/bin/cygpath ]; then
-        cn_p=$(/usr/bin/cygpath -u -- "$cn_p" 2> /dev/null) || cn_p=$1
-      fi
-      ;;
-  esac
-  while :; do
+  if [ "$windows" = 1 ]; then
     case $cn_p in
-      *\\*) cn_p="${cn_p%%\\*}/${cn_p#*\\}" ;;
-      *) break ;;
+      [A-Za-z]:*)
+        # Git Bash's own, by its absolute path: never one found through PATH.
+        if [ -x /usr/bin/cygpath ]; then
+          cn_p=$(/usr/bin/cygpath -u -- "$cn_p" 2> /dev/null) || cn_p=$1
+        fi
+        ;;
     esac
-  done
-  case $cn_p in
-    [A-Za-z]:/* | [A-Za-z]:)
-      cn_d=$(printf '%s' "${cn_p%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
-      cn_p="/$cn_d${cn_p#?:}"
-      ;;
-  esac
+    while :; do
+      case $cn_p in
+        *\\*) cn_p="${cn_p%%\\*}/${cn_p#*\\}" ;;
+        *) break ;;
+      esac
+    done
+    case $cn_p in
+      [A-Za-z]:/* | [A-Za-z]:)
+        cn_d=$(printf '%s' "${cn_p%%:*}" | tr 'ABCDEFGHIJKLMNOPQRSTUVWXYZ' 'abcdefghijklmnopqrstuvwxyz')
+        cn_p="/$cn_d${cn_p#?:}"
+        ;;
+    esac
+  fi
   while :; do
     case $cn_p in
       *//*) cn_p="${cn_p%%//*}/${cn_p#*//}" ;;
@@ -135,12 +146,16 @@ if [ "$check" = 1 ] || [ "${script:-}" = statusline-tap.mjs ]; then
     # --check is pre-allowed in the slash commands, where a prompt injection could steer it to a
     # cache planted in a cloned repository: there, only the canonical data dirs count.
     if [ "$check" = 1 ] && [ -n "$data" ]; then
+      # A match takes the canonical dir as spelt there, never the caller's spelling.
+      git_bash
       cd_given=$(canon "$data")
-      cd_ok=
+      data=
       for cd_dir in "${CLAUDE_PLUGIN_DATA:-}" "$conf/plugins/data/miblo-miblo" "${HOME:+$HOME/.miblo}"; do
-        [ -n "$cd_dir" ] && [ "$(canon "$cd_dir")" = "$cd_given" ] && cd_ok=1
+        if [ -n "$cd_dir" ] && [ "$(canon "$cd_dir")" = "$cd_given" ]; then
+          data=$cd_dir
+          break
+        fi
       done
-      [ -n "$cd_ok" ] || data=
     fi
   fi
 fi

@@ -504,30 +504,50 @@ test('--check --data takes only the canonical data dirs; a planted cache elsewhe
 // Windows (Git Bash): the same folder comes as C:\x (Claude Code's CLAUDE_PLUGIN_DATA), C:/x (the
 // installer) or /c/x (Git Bash's HOME). On this test machine a drive path is a relative one, so the
 // folder the launcher picks shows up under the working directory.
-test('--check --data matches the canonical dirs whatever the Windows spelling', () => {
+test('--check --data matches the canonical dirs whatever the Windows spelling, and uses the canonical one', () => {
   const s = sandbox();
   fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const win = { MIBLO_UNAME: 'MINGW64_NT-10.0-19045' };  // Git Bash
   const pluginData = 'C:\\Users\\me\\.claude\\plugins\\data\\miblo-miblo';
   const picked = (dir) => fs.existsSync(path.join(s.root, dir, 'runtime/node-path'));
+  const clean = () => {
+    for (const f of fs.readdirSync(s.root)) if (/^[Cc]:/.test(f) || f.startsWith('D:')) fs.rmSync(path.join(s.root, f), { recursive: true, force: true });
+  };
   for (const given of ['C:/Users/me/.claude/plugins/data/miblo-miblo', 'c:/Users/me/.claude/plugins/data/miblo-miblo/',
     'C:\\Users\\me\\.claude\\plugins\\data\\miblo-miblo\\', 'C:/Users//me/.claude/plugins/data/miblo-miblo//']) {
-    fs.rmSync(path.join(s.root, 'C:'), { recursive: true, force: true });
-    fs.rmSync(path.join(s.root, 'c:'), { recursive: true, force: true });
-    for (const f of fs.readdirSync(s.root)) if (f.startsWith('C:\\')) fs.rmSync(path.join(s.root, f), { recursive: true, force: true });
-    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData }, cwd: s.root }).out, /^ok /, given);
-    assert.ok(picked(given), `${given} was not taken`);
+    clean();
+    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData, ...win }, cwd: s.root }).out, /^ok /, given);
+    // Matched, and then the canonical spelling is used, never the caller's.
+    assert.ok(picked(pluginData), `${given} did not match`);
+    if (given !== pluginData) assert.ok(!picked(given), `${given}: the caller's spelling was used`);
   }
-  // Another folder (another drive, a repo) is not: the canonical one is used instead.
+  // Another folder (another drive, a repo) is not taken.
   for (const given of ['D:/Users/me/.claude/plugins/data/miblo-miblo', 'C:/Users/me/repo/.cache']) {
-    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData }, cwd: s.root }).out, /^ok /, given);
+    clean();
+    assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: pluginData, ...win }, cwd: s.root }).out, /^ok /, given);
     assert.ok(!picked(given), `${given} was taken`);
-    assert.ok(picked(pluginData), given);
   }
   // CLAUDE_CONFIG_DIR in the Windows spelling, as the installer passes the folder under it.
+  clean();
   const conf = 'C:\\Users\\me\\claude-conf';
-  const given = 'C:/Users/me/claude-conf/plugins/data/miblo-miblo';
-  assert.match(run(s, ['--check', '--data', given], { env: { CLAUDE_PLUGIN_DATA: '', CLAUDE_CONFIG_DIR: conf }, cwd: s.root }).out, /^ok /);
-  assert.ok(picked(given));
+  assert.match(run(s, ['--check', '--data', 'C:/Users/me/claude-conf/plugins/data/miblo-miblo'], { env: { CLAUDE_PLUGIN_DATA: '', CLAUDE_CONFIG_DIR: conf, ...win }, cwd: s.root }).out, /^ok /);
+  assert.ok(picked(`${conf}/plugins/data/miblo-miblo`));
+});
+
+// Elsewhere a backslash is an ordinary character in a name: only Git Bash folds the spellings.
+test('outside Windows, --check --data folds only doubled and trailing slashes', () => {
+  const s = sandbox();
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const env = { CLAUDE_PLUGIN_DATA: '' };
+  const odd = `${s.home}/.claude\\plugins\\data\\miblo-miblo`;
+  fs.mkdirSync(path.join(s.home, '.claude/plugins/data/miblo-miblo'), { recursive: true });
+  assert.match(run(s, ['--check', '--data', odd], { env }).out, /^ok /);
+  assert.ok(!fs.existsSync(path.join(odd, 'runtime/node-path')), 'a backslash name was folded');
+  assert.ok(fs.existsSync(path.join(s.home, '.claude/plugins/data/miblo-miblo/runtime/node-path')));
+  const slashy = `${s.home}//.miblo/`;
+  fs.rmSync(path.join(s.home, '.claude'), { recursive: true });
+  assert.match(run(s, ['--check', '--data', slashy], { env }).out, /^ok /);
+  assert.ok(fs.existsSync(path.join(s.home, '.miblo/runtime/node-path')));
 });
 
 test('the slash commands run --check without --data', () => {

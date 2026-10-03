@@ -1,7 +1,8 @@
-// The penguin pet (miblo::Pet::Penguin): an original chubby penguin chick. A tall egg (skin) with a
-// little tuft of feathers on top, the eyes on the dark of its head, a pale bib from the beak down
-// (the accent, white by default), a short pointed beak (nose), flippers for paws and
-// two feet (nose) on the desk. See ui_pet.h for the contract.
+// The penguin pet (miblo::Pet::Penguin): an original chubby, sitting, pear-shaped penguin. A round
+// head on a fat body (the body colour: black on the black preset), a big white belly and a white
+// face patch around the eyes, a wide beak and big flat feet (the accent, yellow-orange by
+// default), small flippers for paws and a content, slightly smug little smile. See ui_pet.h for
+// the contract.
 #include "miblo_rom.h"
 #include "ui_pet.h"
 
@@ -9,44 +10,71 @@ namespace screens {
 
 namespace color = ui::color;
 
-void penguinHead(const PetCtx& c) {
-  MascotPen& d = c.d;
-  const MascotLook& k = c.k;
-  const PetColors& mc = c.mc;
-  const int x = c.x, b = c.b;
-  // The tuft: three short feathers, the middle one tallest.
-  d.tri(-9 + x, -24 + b, -8 + x, -34 + b, -1 + x, -26 + b, mc.skin);
-  d.tri(-4 + x, -26 + b, 1 + x, -39 + b, 5 + x, -26 + b, mc.skin);
-  d.tri(2 + x, -26 + b, 9 + x, -33 + b, 9 + x, -24 + b, mc.skin);
-  if (c.desk) {  // the feet, on the table under the body
-    d.rrect(-21 + x, 34 + b, 15, 6, 3, mc.nose);
-    d.rrect(6 + x, 34 + b, 15, 6, 3, mc.nose);
-  }
-  // The egg: one tall shape, a little wider at the bottom.
-  d.rrect(-32 + x, 4 + b, 64, 33, 18, mc.skin);
-  d.rrect(-29 + x, -29 + b, 58, 58, 28, mc.skin);
-  if (c.desk && (k.extras & kFluffed)) {  // feathers standing up on the sides
-    for (int s = -1; s <= 1; s += 2) {
-      d.tri(s * 27 + x, -18 + b, s * 37 + x, -14 + b, s * 29 + x, -8 + b, mc.skin);
-      d.tri(s * 29 + x, -4 + b, s * 40 + x, 1 + b, s * 31 + x, 6 + b, mc.skin);
-      d.tri(s * 31 + x, 10 + b, s * 42 + x, 16 + b, s * 31 + x, 22 + b, mc.skin);
-    }
-  }
-  // The belly: a tall pale oval from under the beak to the feet.
-  d.rrect(-18 + x, 8 + b, 36, 30, 16, mc.accent);
-  petEyes(c);
-  if (petTired(c)) {
-    petEyeBag(c, -14, 6);
-    petEyeBag(c, 14, 6);
-  }
-  // The beak, between the eyes: a short pointed wedge.
-  d.rrect(-6 + x, 8 + b, 12, 5, 2, mc.nose);
-  d.tri(-6 + x, 11 + b, 6 + x, 11 + b, x, 18 + b, mc.nose);
-  if (c.detail) d.rect(-5 + x, 11 + b, 10, 1, mc.line);
+namespace {
+
+constexpr uint16_t kBeakYellow = 0xF400;  // #f08000: the beak's and feet's Auto colour (dark enough
+                                          // to stay apart from the peach and the black bodies)
+// The eyes' Auto colour: white, the irises one with the face patch (only the pupils show).
+constexpr uint16_t kEyeWhite = color::WHITE;
+constexpr int kLift = -10;                // its eyes sit this much higher than the cat's (y -4)
+// The white of its face and belly: like the whites of an eye, not a part the user paints.
+constexpr uint16_t kFront = color::WHITE;
+
+// What the eyes are drawn with: on the white face patch, their lids cut in white and drawn in the
+// darkest of the face's line colours (the black preset's lid is light).
+PetCtx eyeCtx(const PetCtx& c) {
+  PetCtx e = c;
+  e.b = c.b + kLift;
+  e.mc.skin = kFront;
+  if (luma565(c.mc.lid) >= 110) e.mc.lid = luma565(c.mc.line) < luma565(c.mc.skin) ? c.mc.line : c.mc.skin;
+  return e;
 }
 
-// A flipper: a skin paddle with a darker outline (it reads as a flipper over the body), its outer
-// bottom corner pointed (no further out than the cat's paw).
+}  // namespace
+
+void penguinHead(const PetCtx& c) {
+  MascotPen& d = c.d;
+  const PetColors& mc = c.mc;
+  const int x = c.x, b = c.b;
+  // The pear: a fat body sitting on the table, the round head on it.
+  d.rrect(-37 + x, 6 + b, 74, 35, 20, mc.skin);
+  d.rrect(-33 + x, -8 + b, 66, 40, 26, mc.skin);
+  d.rrect(-28 + x, -33 + b, 56, 50, 26, mc.skin);
+  if (c.desk && (c.k.extras & kFluffed)) {  // feathers standing up on its sides
+    for (int s = -1; s <= 1; s += 2) {
+      d.tri(s * 30 + x, -16 + b, s * 39 + x, -12 + b, s * 31 + x, -6 + b, mc.skin);
+      d.tri(s * 33 + x, 0 + b, s * 43 + x, 5 + b, s * 35 + x, 11 + b, mc.skin);
+      d.tri(s * 36 + x, 16 + b, s * 44 + x, 22 + b, s * 36 + x, 28 + b, mc.skin);
+    }
+  }
+  // The white front: the belly, and the face patch around the eyes running down into it.
+  d.rrect(-26 + x, 4 + b, 52, 37, 22, kFront);
+  d.circle(-12 + x, -4 + b, 13, kFront);
+  d.circle(12 + x, -4 + b, 13, kFront);
+  d.rrect(-17 + x, -6 + b, 34, 16, 6, kFront);
+  const PetCtx e = eyeCtx(c);
+  petEyes(e);
+  if (petTired(c)) {
+    petEyeBag(e, -14, 6);
+    petEyeBag(e, 14, 6);
+  }
+  // The beak: wide and flat, the upper half over the lower, a crease between them; its corners
+  // curl up a little (a content smile) unless the mouth is open.
+  const bool open = c.desk && (c.k.extras & kMouthWide);
+  d.rrect(-11 + x, 10 + b, 22, 7, 3, mc.accent);
+  d.rrect(-14 + x, 6 + b, 28, 7, 3, mc.accent);
+  if (!open) {
+    d.rect(-12 + x, 12 + b, 24, 1, e.mc.lid);
+    if (c.detail) {
+      d.rect(-14 + x, 11 + b, 2, 1, e.mc.lid);
+      d.rect(12 + x, 11 + b, 2, 1, e.mc.lid);
+    }
+  }
+  if (c.detail) d.rect(-3 + x, 8 + b, 2, 1, mc.line);  // a nostril
+}
+
+// A flipper: a body-coloured paddle with a darker outline (it reads as a flipper over the white
+// belly), its outer bottom corner pointed (no further out than the cat's paw).
 static void penguinFlipper(const PetCtx& c, int px, int py, int pw, int ph, int r) {
   const int x = c.x, b = c.b;
   const int tip = px + pw / 2 < 0 ? px - 1 : px + pw + 1;  // the outer side
@@ -62,26 +90,37 @@ void penguinFront(const PetCtx& c) {
   MascotPen& d = c.d;
   const PetColors& mc = c.mc;
   const int x = c.x, b = c.b;
-  // The mouths open under the beak.
-  if (c.k.extras & kMouthO) d.circle(x, 21 + b, 3, mc.lid);
+  const PetCtx e = eyeCtx(c);
+  if (c.k.extras & kMouthO) d.circle(x, 13 + b, 3, e.mc.lid);  // the beak a little open
   if (c.k.extras & kMouthWide) {  // a yawn or a sneeze: the beak wide open
-    d.rrect(-6 + x, 11 + b, 12, 11, 4, mc.lid);
-    d.rect(-3 + x, 17 + b, 6, 4, mc.earIn);
-    d.rrect(-6 + x, 8 + b, 12, 5, 2, mc.nose);
+    d.rrect(-9 + x, 11 + b, 18, 12, 5, e.mc.lid);
+    d.rect(-5 + x, 17 + b, 10, 4, mc.earIn);
+    d.rrect(-11 + x, 20 + b, 22, 5, 2, mc.accent);
+    d.rrect(-14 + x, 6 + b, 28, 7, 3, mc.accent);
+  }
+  // The big flat feet on the table, three toes each, the flippers resting on them.
+  for (int s = -1; s <= 1; s += 2) {
+    const int o = s < 0 ? -26 : 0;  // mirror a 26-unit-wide foot: left edge s * 4 + o
+    d.rrect(s * 4 + o + x, 34 + b, 26, 7, 3, mc.accent);
+    if (c.detail) {
+      d.rect(s * 4 + o + 8 + x, 37 + b, 1, 4, mc.line);
+      d.rect(s * 4 + o + 17 + x, 37 + b, 1, 4, mc.line);
+    }
   }
   petPaws(c, penguinFlipper);
-  if (c.k.extras & kTongue) d.rrect(-3 + x, 16 + b, 6, 5, 2, mc.earIn);
+  if (c.k.extras & kTongue) d.rrect(-3 + x, 13 + b, 6, 5, 2, mc.earIn);
 }
 
-// The Tail antic: a short stubby wedge low behind the feet, waddling up and down.
+// The Tail antic: a short stubby wedge low behind it, waddling up and down.
 static void penguinTail(const PetCtx& c) {
-  const int x = c.x, b = c.b, ty = 33 + 2 * petSwing(c) + b;
-  c.d.tri(24 + x, 26 + b, 24 + x, 39 + b, 42 + x, ty, c.mc.line);
-  c.d.tri(25 + x, 28 + b, 25 + x, 37 + b, 40 + x, ty, c.mc.skin);
+  const int x = c.x, b = c.b, ty = 31 + 2 * petSwing(c) + b;
+  c.d.tri(28 + x, 22 + b, 28 + x, 38 + b, 47 + x, ty, c.mc.line);
+  c.d.tri(29 + x, 24 + b, 29 + x, 36 + b, 45 + x, ty, c.mc.skin);
 }
 
-// Its head is taller than the cat's: the hats a little higher.
-const PetDef kPetPenguin MIBLO_ROM = {penguinHead, penguinFront, {-4, 0, 0, 0, 6, 14}, 0x3171, color::WHITE,
-                                      penguinTail};
+// Its head is taller than the cat's: the hats a little higher; the eyes (glasses) and the neck
+// (tie, under the beak) higher too.
+const PetDef kPetPenguin MIBLO_ROM = {penguinHead, penguinFront, {-4, -6, 0, -10, 6 + kLift, 14}, kEyeWhite,
+                                      kBeakYellow, penguinTail};
 
 }  // namespace screens

@@ -285,6 +285,57 @@ static void test_poll_waits_briefly_for_a_small_body() {
   TEST_ASSERT_EQUAL(0, dup.waits);
 }
 
+
+// Fairness: with another client waiting for the server, a small body still to come is not waited
+// for the full kBodyWaitMs (each stalled client would hold everyone else up that long). One short
+// wait per request covers a body that is just a segment behind; past that the request reports
+// not ready (Waiting) and the server's own non-blocking state decides (it drops a client that has
+// nothing to read after 30 ms while another has data). Alone, the full wait and 408 stay.
+static void test_body_wait_yields_to_other_clients() {
+  BodyWait alone = bodyWaitPlan(false, false);
+  TEST_ASSERT_EQUAL_UINT32(kBodyWaitMs, alone.budgetMs);
+  TEST_ASSERT_TRUE(alone.refuseOnTimeout);
+  TEST_ASSERT_EQUAL_UINT32(kBodyWaitMs, bodyWaitPlan(false, true).budgetMs);  // nobody waits any more
+  BodyWait first = bodyWaitPlan(true, false);
+  TEST_ASSERT_EQUAL_UINT32(kBodyWaitContendedMs, first.budgetMs);
+  TEST_ASSERT_FALSE(first.refuseOnTimeout);
+  TEST_ASSERT_TRUE(kBodyWaitContendedMs < 50);
+  BodyWait again = bodyWaitPlan(true, true);
+  TEST_ASSERT_EQUAL_UINT32(0, again.budgetMs);
+  TEST_ASSERT_FALSE(again.refuseOnTimeout);
+
+  // Only a body timeout changes: everything else passes through.
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, settleBodyWait(RequestReadiness::BodyTimeout, first));
+  TEST_ASSERT_EQUAL(RequestReadiness::BodyTimeout, settleBodyWait(RequestReadiness::BodyTimeout, alone));
+  for (RequestReadiness r : {RequestReadiness::Ready, RequestReadiness::Waiting, RequestReadiness::TooLarge,
+                             RequestReadiness::Closed, RequestReadiness::NoMemory, RequestReadiness::BadLength}) {
+    TEST_ASSERT_EQUAL(r, settleBodyWait(r, first));
+    TEST_ASSERT_EQUAL(r, settleBodyWait(r, alone));
+  }
+
+  // A stalled body with others waiting: a short wait, then not ready (no 408), then no wait at all.
+  FakeSource stalled;
+  stalled.segments = {"POST /api/say HTTP/1.1\r\ncontent-length: 50\r\n\r\n{\"te"};
+  HeaderBuffer b;
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, settleBodyWait(pollRequest(b, stalled, first.budgetMs), first));
+  TEST_ASSERT_EQUAL(kBodyWaitContendedMs, stalled.now);
+  TEST_ASSERT_EQUAL(RequestReadiness::Waiting, settleBodyWait(pollRequest(b, stalled, again.budgetMs), again));
+  TEST_ASSERT_EQUAL(kBodyWaitContendedMs, stalled.now);  // did not block again
+
+  // The legit split body (headers, then the body a few ms later) still makes it with others waiting.
+  FakeSource split;
+  split.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", "{\"text\":\"a\"}"};
+  split.gapMs = 3;
+  HeaderBuffer b2;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, settleBodyWait(pollRequest(b2, split, first.budgetMs), first));
+  // ...and alone, even behind a delayed ACK.
+  FakeSource nagle;
+  nagle.segments = {"POST /api/say HTTP/1.1\r\nContent-Length: 12\r\n\r\n", "{\"text\":\"a\"}"};
+  nagle.gapMs = 250;
+  HeaderBuffer b3;
+  TEST_ASSERT_EQUAL(RequestReadiness::Ready, settleBodyWait(pollRequest(b3, nagle, alone.budgetMs), alone));
+}
+
 static RequestReadiness inPlace(const std::string& first, FakeSource& src);
 
 // H1: a Content-Length the server reads differently from plain digits ("-1" is 0xFFFFFFFF to it,
@@ -509,6 +560,7 @@ int main() {
   RUN_TEST(test_poll_waits_without_blocking_for_the_header_block);
   RUN_TEST(test_poll_a_stalled_request_never_becomes_ready);
   RUN_TEST(test_poll_waits_briefly_for_a_small_body);
+  RUN_TEST(test_body_wait_yields_to_other_clients);
   RUN_TEST(test_poll_does_not_wait_for_headers_after_the_body_rule);
   RUN_TEST(test_poll_a_large_body_is_not_held_back);
   RUN_TEST(test_poll_closed_too_large_and_body_counts_socket_bytes);

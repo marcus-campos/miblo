@@ -83,9 +83,9 @@ static void handleInfo() {
   // 51 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
   // phase, the countdown date): ~880 B on the ESP8266, plus ~480 B for the keys, which are copied
   // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
-  // ~1.70 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
+  // ~1.76 KB at worst (Wi-Fi counters + the three accessories). On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
   // the whole of the 4 KB loop() stack. The reply (~1.2 KB) is built on the heap after it.
-  constexpr size_t kInfoDoc = 1920;
+  constexpr size_t kInfoDoc = 2048;
   if (heapLowForRequest(kInfoDoc + 1280)) {
     json(503, F("{\"error\":\"busy\"}"));
     return;
@@ -150,6 +150,9 @@ static void handleInfo() {
   put(o, F("blueTo"), ctx.cfg.blueTo);
   put(o, F("mascot"), ctx.cfg.mascot);
   put(o, F("pet"), ctx.cfg.pet);  // the pet's eye shape and colours: /settings (configToJson)
+  put(o, F("accHead"), ctx.cfg.accHead);  // what it wears (miblo::Wear ids, 0 = nothing)
+  put(o, F("accFace"), ctx.cfg.accFace);
+  put(o, F("accNeck"), ctx.cfg.accNeck);
   put(o, F("sleepMin"), ctx.cfg.sleepMin);
   put(o, F("petMin"), ctx.cfg.petMin);
   put(o, F("flashBlinks"), ctx.cfg.flashBlinks);
@@ -173,7 +176,7 @@ static void handleInfo() {
   put(o, F("countdownDate"), date);  // char[]: copied
   put(o, F("daily"), 1);
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
-  // ~1.70 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
+  // ~1.76 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
   // dropped silently, so a document that overflowed is an error, never a partial answer.
   if (doc.overflowed()) {
     json(500, "{\"error\":\"info too large\"}");

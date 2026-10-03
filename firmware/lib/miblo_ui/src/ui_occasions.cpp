@@ -71,6 +71,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
   const uint8_t hat = mascotAccessory(), mood = catMood();
   const MascotPaint paint = mascotPaint();
   const bool tie = mascotTie();
+  const MascotOutfit outfit = mascotOutfit();
   auto draw = [&] {
     C().fillRect(0, top, X(240), bh, color::BG);
     C().fillRect(X(6), cy + Sz(27), X(228), Sz(2) > 0 ? Sz(2) : 1, color::DIVIDER);  // the floor it walks on
@@ -79,6 +80,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
   };
   setMascotPaint(strangerPaint(paint));  // a dark one of our own kind
   setMascotAccessory(guestAccessory());
+  setMascotOutfit(MascotOutfit{});  // a stranger: nothing of ours
   setMascotTie(false);
   setCatMood(0);
   const int stripH = (bh + kPassStrips - 1) / kPassStrips;
@@ -94,6 +96,7 @@ void passerby(Lang lang, const miblo::Snapshot& s, const Clock& clk, uint32_t ms
   C().releaseLayer();
   setMascotPaint(paint);
   setMascotAccessory(hat);
+  setMascotOutfit(outfit);
   setMascotTie(tie);
   setCatMood(mood);
 }

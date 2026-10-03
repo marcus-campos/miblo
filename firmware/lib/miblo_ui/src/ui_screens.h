@@ -106,6 +106,16 @@ uint8_t mascotStyle();
 // drawn from then on.
 void setMascotAccessory(uint8_t accessory);
 uint8_t mascotAccessory();
+// What the owner dresses the pet in (config accHead/accFace/accNeck, miblo::Wear ids, 0 = none;
+// an id that does not fit its slot is drawn as nothing), on every mascot drawn from then on, with
+// the special day's accessory above (miblo::outfitFor decides which slots it takes). Focus
+// headphones hide the gamer headset, the meeting tie hides the neck item, and a pet with its own
+// glasses (PetAnchors::ownGlasses) wears no glasses over them.
+struct MascotOutfit {
+  uint8_t head = 0, face = 0, neck = 0;
+};
+void setMascotOutfit(const MascotOutfit& o);
+MascotOutfit mascotOutfit();
 // The current mascot colour's skin (props drawn in the cat's colour, like its tail).
 uint16_t mascotSkin();
 // Which animal the mascot is (config "pet", miblo::Pet; an unknown value is the cat), on every
@@ -130,8 +140,9 @@ void setGuestAccessory(uint8_t accessory);
 uint8_t guestAccessory();
 // Dresses every mascot drawn from now on as a pet from another Miblo looks in its own pet mode:
 // its preset (`style`), `pet` and look (eye shape, custom colours, with its Auto slots derived
-// from them exactly as it derives them), wearing guestAccessory(). The caller saves its own
-// mascotPaint() and mascotAccessory() first and puts them back after.
+// from them exactly as it derives them) and its own accessories, wearing guestAccessory() over
+// them (it takes its slot, miblo::outfitWith). The caller saves its own mascotPaint(),
+// mascotAccessory() and mascotOutfit() first and puts them back after.
 void dressGuest(uint8_t style, uint8_t pet, const miblo::FriendLook& look);
 // Friday the 13th's stranger: a pet of our own kind in the black preset (as that pet draws the
 // black preset), with none of our colours or eye shape: not us, not a friend.
@@ -290,6 +301,10 @@ void meetingBadge(Lang lang);  // overlay, every frame while meeting mode is on
 void note(Lang lang, miblo::NoteKind kind, const char* text, const Clock& clk, uint32_t ms);
 void timer(Lang lang, const Clock& clk, uint32_t leftMs, uint32_t lenMs, uint32_t ms);
 void findMe(Lang lang, const char* settingsUrl, uint32_t ms);
+// The settings page's "Preview on Miblo" (ui_preview.cpp): the big mascot in `paint` and `outfit`
+// (unsaved; the current look comes back after drawing), `ms` into it, a bar running out over
+// `showMs`. No text: nothing to translate on screen.
+void preview(const MascotPaint& paint, const MascotOutfit& outfit, uint32_t ms, uint32_t showMs);
 // Cues (ui_cues.cpp): the full-screen slow pulse; the status frame overlay (None clears nothing:
 // the caller redraws the screen when it goes away).
 void cue(miblo::CueKind kind, uint32_t elapsedMs);

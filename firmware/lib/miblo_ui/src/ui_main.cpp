@@ -2061,6 +2061,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
     const uint8_t myHat = mascotAccessory(), myMood = catMood();
     const MascotPaint myPaint = mascotPaint();
     const bool myTie = mascotTie();
+    const MascotOutfit myOutfit = mascotOutfit();
     auto draw = [&] {
       C().fillRect(0, top, X(240), bh, color::BG);
       if (mine) deskMascot(myX, myY, me, catHalf, false);
@@ -2074,6 +2075,7 @@ void visit(Lang lang, const Snapshot& s, const Clock& clk, const miblo::VisitVie
           deskMascot(exX[e], exY[e], exLook[e], catHalf, false);
         }
         setMascotPaint(myPaint);
+        setMascotOutfit(myOutfit);
         setMascotAccessory(myHat);
         setMascotTie(myTie);
         setCatMood(myMood);

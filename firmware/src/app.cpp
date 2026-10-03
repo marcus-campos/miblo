@@ -152,7 +152,8 @@ static uint32_t nameHash() { return miblo::hashStr(miblo::kHashSeed, deviceName(
 static uint32_t ownerHash() {
   return miblo::hashStr(miblo::hashStr(miblo::kHashSeed, ctx.cfg.owner), ctx.cfg.birthday);
 }
-static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
+static uint8_t accessory = 0;     // today's hat (miblo::Accessory), worn if the outfit lets it
+static uint8_t holidayHat = 0;    // today's hat for visitors (the holiday's, never our birthday's)
 static miblo::Occasion occasion = miblo::Occasion::None;  // today's special day
 static uint32_t occasionAtMs = 0;
 
@@ -170,6 +171,15 @@ static bool today(miblo::Date& d, int& minute, uint8_t* weekday = nullptr) {
 
 // One number per local day (miblo_dayend.h, miblo_desknotes.h); 0 = the time is unknown.
 static uint32_t dayKeyOf(const miblo::Date& d) { return d.year * 400u + d.month * 32u + d.day; }
+
+// What the pet wears: today's special accessory and the owner's items (miblo::outfitFor).
+static void applyOutfit() {
+  const miblo::Outfit o = miblo::outfitFor(ctx.cfg, (miblo::Accessory)accessory);
+  screens::setMascotAccessory((uint8_t)o.occasion);
+  screens::setMascotOutfit(screens::MascotOutfit{o.head, o.face, o.neck});
+  // Guests wear the holiday's hat over their own items only if we let special days dress pets.
+  screens::setGuestAccessory(ctx.cfg.occasionHats ? holidayHat : 0);
+}
 
 // Once a minute: today's hat, and the gadget's own birthday noted on the first day it is used.
 static void updateOccasion(uint32_t now) {
@@ -189,10 +199,10 @@ static void updateOccasion(uint32_t now) {
       ctx.configChanged = true;
     }
   }
-  if (want != accessory || guests != screens::guestAccessory()) {
+  if (want != accessory || guests != holidayHat) {
     accessory = want;
-    screens::setMascotAccessory(want);
-    screens::setGuestAccessory(guests);
+    holidayHat = guests;
+    applyOutfit();
     firstFrame = true;
   }
 }
@@ -282,6 +292,7 @@ static void applyConfig() {
   screens::MascotPaint paint{ctx.cfg.mascot, ctx.cfg.pet, ctx.cfg.petEyes};
   memcpy(paint.slots, ctx.cfg.petColors, sizeof(paint.slots));
   screens::setMascotPaint(paint);
+  applyOutfit();
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 
@@ -547,6 +558,8 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   di.focus = ctx.focus.phase();
   di.timer = ctx.notes.timerRunning();
   di.say = ctx.notes.saying(now) != nullptr;
+  if (alert.phase != miblo::AlertPhase::None) ctx.preview.end();  // an alert ends the settings preview
+  di.preview = ctx.preview.active(now);
   const bool activity = !ordinaryScreen || (!away && (counts.running > 0 || counts.pending > 0)) ||
                         miblo::dailyActivity(di);
   const uint8_t petMin = dayEnd.petMinutes(ctx.cfg, dayKey);  // sooner once the work day ended
@@ -572,9 +585,11 @@ static void __attribute__((noinline)) frame(uint32_t now) {
   const screens::DeskMood limitsMood = screens::deskMoodFor(ctx.snap, nowEpoch ? nowEpoch : ctx.snap.now);
   const bool tired = ctx.usageEverSeen &&
                      (limitsMood == screens::DeskMood::Worried || limitsMood == screens::DeskMood::Scared);
-  // Our look as pet mode draws it (the accessory slots join once the config has them).
+  // Our look as pet mode draws it, with the owner's accessories (never today's special hat: the
+  // host dresses its guests for the holiday itself).
   ctx.friends.setSelf(ctx.ident.id, deviceName(), ctx.cfg.mascot, ctx.cfg.pet,
-                      miblo::friendLook(ctx.cfg.petColors, ctx.cfg.petEyes));
+                      miblo::friendLook(ctx.cfg.petColors, ctx.cfg.petEyes, ctx.cfg.accHead, ctx.cfg.accFace,
+                                        ctx.cfg.accNeck));
   // Not roaming while the panel sleeps (displayOff is still last frame's): nobody visits a dark
   // screen, and a visit in progress ends the way it does when our human comes back.
   ctx.friends.update(now, ctx.cfg.friends && net::connected(),
@@ -760,6 +775,14 @@ static void __attribute__((noinline)) frame(uint32_t now) {
     case ScreenId::Cue:
       screens::cue(di.cue, cue.elapsed(now));
       break;
+    case ScreenId::Preview: {
+      const miblo::PreviewLook& pl = ctx.preview.look();
+      screens::MascotPaint paint{pl.mascot, pl.pet, pl.petEyes};
+      memcpy(paint.slots, pl.petColors, sizeof(paint.slots));
+      screens::preview(paint, screens::MascotOutfit{pl.accHead, pl.accFace, pl.accNeck}, ctx.preview.elapsed(now),
+                       miblo::LookPreview::kShowMs);
+      break;
+    }
     case ScreenId::Find: {
       char url[32];
       snprintf_P(url, sizeof(url), PSTR("http://%s/"), net::ip().c_str());

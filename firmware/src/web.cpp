@@ -706,14 +706,14 @@ static const char kSetJs[] PROGMEM =
     "const b={};for(const k of ['mode','brightness','alerts','heroPermSec','heroDoneSec',"
     "'reminderMin','flashBlinks','discreet','rotate','rotateEverySec','rotateShowSec','night','nightFrom','nightTo',"
     "'nightBrightness','blueFilter','blueFrom','blueTo','blueStrength','mascot','pet','petEyes','petMin','sleepMin','name','friends','friendsSide','tz','lang',"
-    "'insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','breakLenMin','eyesEveryMin','eyesSec','focusQuiet',"
+    "'accHead','accFace','accNeck','occasionHats','insist','fanfareMin','frame','breakAfterMin','waterMin','eyes','breakLenMin','eyesEveryMin','eyesSec','focusQuiet',"
     "'endOfDay','weekly','workFrom','workTo',"
     "'tz2','tz2Label','deskQr']){let v=val(k);if(k==='tz'&&!v||k==='tz2'&&!$('tz2').dataset.f)continue;"
     // A select whose values are numbers (mascot, delays, levels…) sends a number.
     "if($(k).tagName==='SELECT'&&/^\\d+$/.test(v))v=Number(v);b[k]=v;}"
     "{let m=0;for(let i=0;i<7;i++)if($('wd'+i).checked)m|=1<<i;if(m)b.workDays=m;}"
     // The pet's colours: "rrggbb" or "" (Auto) per slot (miblo::PetSlot), comma separated.
-    "b.petColors=[0,1,2,3,4,5,6].map(i=>$('pa'+i).checked?'':$('pc'+i).value.slice(1).toLowerCase()).join(',');"
+    "b.petColors=pcol();"
     "if(SEC){b.owner=val('owner');b.birthday=$('bd').value&&$('bm').value?$('bm').value+'-'+$('bd').value:'';}st('...');"
     "areq('/settings',JSON.stringify(b))"
     ".then(r=>r.json().catch(()=>({})).then(j=>{"
@@ -724,6 +724,11 @@ static const char kSetJs[] PROGMEM =
     "for(let p=e.closest('[hidden]');p;p=p.parentElement.closest('[hidden]'))p.hidden=false;"
     "e.classList.add('bad');e.scrollIntoView({block:'center'});st(T.failed+'. '+T.chk,'no');"
     "})).catch(()=>st(T.failed,'no'));}"
+    "function pcol(){return [0,1,2,3,4,5,6].map(i=>$('pa'+i).checked?'':$('pc'+i).value.slice(1).toLowerCase()).join(',');}"
+    // Preview on Miblo: the pet as the form has it, unsaved, on the gadget for a few seconds.
+    "function pv(){if(!V&&!SEC)return;const b={petColors:pcol()};"
+    "for(const k of ['mascot','pet','petEyes','accHead','accFace','accNeck'])b[k]=Number($(k).value);"
+    "areq('/preview',JSON.stringify(b)).then(r=>st(r.ok?'':T.failed,r.ok?'':'no')).catch(()=>st(T.failed,'no'));}"
     "function post(u){return areq(u,'{}');}"
     "function rst(){post('/reset-code').then(r=>{if(!r.ok)return;const c=prompt(T.hint);if(!c)return;"
     "fetch('/factory-reset?code='+encodeURIComponent(c),{method:'POST',headers:J,body:'{}'})"
@@ -806,6 +811,27 @@ static void option(String& out, Lang lang, const __FlashStringHelper* value, S i
   out += F("\">");
   text(out, lang, id);
   out += F("</option>");
+}
+
+// A select of what the pet wears in `slot` (miblo::Wear ids; 13 is never one): "None" and the
+// slot's items, named in the ids' order (S::WebWearCap onwards, no entry for 13).
+static void wearSelect(String& out, Lang lang, S name, const __FlashStringHelper* key, miblo::WearSlot slot) {
+  static_assert((int)S::WebWearMedal - (int)S::WebWearCap == miblo::kWearMax - 2, "one name per Wear id");
+  label(out, lang, name, key);
+  out += F("<select id=\"");
+  out += key;
+  out += F("\">");
+  option(out, lang, F("0"), S::WebWearNone);
+  for (uint8_t id = 1; id <= miblo::kWearMax; id++) {
+    miblo::WearSlot s;
+    if (!miblo::wearSlotOf(id, s) || s != slot) continue;
+    out += F("<option value=\"");
+    out += id;
+    out += F("\">");
+    text(out, lang, (S)((int)S::WebWearCap + id - (id > 13 ? 2 : 1)));
+    out += F("</option>");
+  }
+  out += F("</select>");
 }
 
 static void settingsPage() {
@@ -899,6 +925,11 @@ static void settingsPage() {
   option(out, lang, F("1"), S::WebEyeBig);
   option(out, lang, F("2"), S::WebEyeSleepy);
   out += F("</select>");
+  // What it wears, then whether special days put their hat on it.
+  wearSelect(out, lang, S::WebWearHead, F("accHead"), miblo::WearSlot::Head);
+  wearSelect(out, lang, S::WebWearFace, F("accFace"), miblo::WearSlot::Face);
+  wearSelect(out, lang, S::WebWearNeck, F("accNeck"), miblo::WearSlot::Neck);
+  toggle(out, lang, S::WebOccasionHats, F("occasionHats"));
   label(out, lang, S::WebMascot, F("mascot"));
   out += F("<select id=\"mascot\" hidden>");
   static const S kStyles[] = {S::WebMascotSphynx, S::WebMascotOrange, S::WebMascotBlack, S::WebMascotGrey};
@@ -934,7 +965,10 @@ static void settingsPage() {
     text(out, lang, S::WebAuto);
     out += F("</label></div>");
   }
-  out += F("</div>");
+  // The form's look on the gadget for a few seconds, nothing saved (POST /preview).
+  out += F("<button type=\"button\" class=\"s\" onclick=\"pv()\">");
+  text(out, lang, S::WebPreview);
+  out += F("</button></div>");
   pageFlush(out);
 
   // Alerts: the switch heads the card; its details only while it is on.
@@ -1418,6 +1452,44 @@ static void handleSettings() {
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 
+// POST /preview {pet, mascot, petEyes, petColors, accHead, accFace, accNeck}: the settings page's
+// "Preview on Miblo". The form's look, unsaved, on the screen for a few seconds (validated as a
+// settings patch; at most one every LookPreview::kEveryMs). Same session as the settings.
+static void handlePreview() {
+  if (!requestAuthorized()) {
+    sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
+    return;
+  }
+  if (!requireJson(*srv)) return;
+  if (bodyTooLarge() || srv->arg(F("plain")).length() > 512) {
+    sendJson(*srv, 413, F("{\"error\":\"too large\"}"));
+    return;
+  }
+  if (heapLowForRequest(1024)) {
+    sendJson(*srv, 503, F("{\"error\":\"busy\"}"));
+    return;
+  }
+  DynamicJsonDocument doc(768);
+  if (deserializeJson(doc, srv->arg(F("plain"))) || !doc.is<JsonObject>()) {
+    sendJson(*srv, 400, F("{\"error\":\"bad json\"}"));
+    return;
+  }
+  miblo::PreviewLook look;
+  const char* bad = nullptr;
+  if (!miblo::previewFromJson(ctx.cfg, doc.as<JsonObjectConst>(), look, &bad)) {
+    String err = String(F("{\"error\":\"invalid\",\"field\":\"")) + bad + F("\"}");
+    sendJson(*srv, 400, err.c_str());
+    return;
+  }
+  const uint32_t now = millis();
+  if (!ctx.preview.start(look, now)) {
+    sendJson(*srv, 429, F("{\"error\":\"slow down\"}"));
+    return;
+  }
+  ctx.lastInteractionMs = now;  // the screen wakes up for it
+  sendJson(*srv, 200, F("{\"ok\":true}"));
+}
+
 // The IANA zone names the device can resolve, one per line. Decoded from flash (the table is
 // front-coded) and sent in small pieces after the headers: no ~7 KB String on a ~30 KB heap.
 static void handleZones() {
@@ -1698,6 +1770,7 @@ static const routes::Route kRoutes[] PROGMEM = {
     {"/wifi", HTTP_POST, handleWifi},
     {"/wifi-code", HTTP_POST, handleWifiCode},
     {"/settings", HTTP_POST, handleSettings},
+    {"/preview", HTTP_POST, handlePreview},
     {"/settings-code", HTTP_POST, handleSettingsCode},
     {"/settings-unlock", HTTP_POST, handleSettingsUnlock},
     {"/settings-secret", HTTP_GET, handleSettingsSecret},

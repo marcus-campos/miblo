@@ -2,6 +2,7 @@
 
 #include <string.h>
 
+#include "miblo_occasions.h"
 #include "miblo_utf8.h"
 
 namespace miblo {
@@ -19,14 +20,12 @@ static bool putStr(uint8_t* out, size_t cap, size_t& n, const char* s) {
   return true;
 }
 
+static_assert((uint8_t)kAccHead == (uint8_t)WearSlot::Head && (uint8_t)kAccFace == (uint8_t)WearSlot::Face &&
+                  (uint8_t)kAccNeck == (uint8_t)WearSlot::Neck,
+              "AccSlot follows miblo::WearSlot");
 uint8_t knownAccessory(AccSlot slot, uint8_t id) {
-  bool ok = false;
-  switch (slot) {
-    case kAccHead: ok = id >= 1 && id <= 10; break;
-    case kAccFace: ok = id == 11 || id == 12 || id == 14 || id == 15 || id == 20; break;
-    case kAccNeck: ok = (id >= 16 && id <= 19) || id == 21; break;
-  }
-  return ok ? id : 0;
+  // The ids and their slots are miblo::Wear's (miblo_occasions.h): one list for the whole firmware.
+  return wearFits((WearSlot)slot, id) ? id : 0;
 }
 
 FriendLook friendLook(const uint32_t (&slots)[kPetSlots], uint8_t eyes, uint8_t head, uint8_t face, uint8_t neck) {

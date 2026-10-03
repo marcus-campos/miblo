@@ -138,6 +138,7 @@ static void devTail(const PetCtx& c) {
 }
 
 // The glasses accessory sits on its own glasses (and covers them): the cat's anchors.
-const PetDef kPetDev MIBLO_ROM = {devHead, devFront, MIBLO_CAT_ANCHORS, kHazel, kDarkHair, devTail};
+// The cat's anchors, plus ownGlasses: the Dev's own frames stand in for the glasses accessories.
+const PetDef kPetDev MIBLO_ROM = {devHead, devFront, {0, 0, 0, 0, 6, 14, 0, 1}, kHazel, kDarkHair, devTail};
 
 }  // namespace screens

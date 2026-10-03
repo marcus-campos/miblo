@@ -1,6 +1,7 @@
 #include <qrcode.h>
 
 #include "miblo_mood.h"
+#include "miblo_occasions.h"
 #include "miblo_rom.h"
 #include "ui_pet.h"
 #include "ui_screens.h"
@@ -105,6 +106,7 @@ const MascotColors kMascotColors[] MIBLO_ROM = {
     {0x9D16, 0xCD15, 0x5B2E, 0xB3D1, color::PUPIL},                         // grey #9aa3b0
 };
 static uint8_t g_accessory = 0;
+static MascotOutfit g_outfit;
 static MascotPaint g_paint;
 
 // One per miblo::Pet, in its order.
@@ -136,12 +138,20 @@ uint32_t mascotPaintHash() {
   uint32_t h = miblo::hashInt(miblo::kHashSeed + 31, (uint32_t)g_paint.style | (uint32_t)g_paint.pet << 8 |
                                            (uint32_t)g_paint.eyeShape << 16);
   for (uint32_t v : g_paint.slots) h = miblo::hashInt(h, v);
-  return h;
+  // What it wears too: every screen that redraws on a paint change redraws on an outfit change.
+  return miblo::hashInt(h, (uint32_t)g_outfit.head | (uint32_t)g_outfit.face << 8 | (uint32_t)g_outfit.neck << 16);
 }
 
 void setMascotAccessory(uint8_t accessory) { g_accessory = accessory; }
 uint8_t mascotAccessory() { return g_accessory; }
 
+void setMascotOutfit(const MascotOutfit& o) {
+  // Only what fits its slot (a stray id, 13 above all, is nothing).
+  g_outfit.head = miblo::wearFits(miblo::WearSlot::Head, o.head) ? o.head : 0;
+  g_outfit.face = miblo::wearFits(miblo::WearSlot::Face, o.face) ? o.face : 0;
+  g_outfit.neck = miblo::wearFits(miblo::WearSlot::Neck, o.neck) ? o.neck : 0;
+}
+MascotOutfit mascotOutfit() { return g_outfit; }
 static uint8_t g_guestAccessory = 0;
 void setGuestAccessory(uint8_t accessory) { g_guestAccessory = accessory; }
 uint8_t guestAccessory() { return g_guestAccessory; }
@@ -153,9 +163,11 @@ void dressGuest(uint8_t style, uint8_t pet, const miblo::FriendLook& look) {
   p.eyeShape = look.eyes;
   miblo::lookSlots(look, p.slots);
   setMascotPaint(p);
-  setMascotAccessory(g_guestAccessory);
-  // look.accHead / accFace / accNeck: the guest's own accessories (config accHead, accFace,
-  // accNeck on its Miblo). Hand them to the accessory drawing here once it exists.
+  // The guest's own accessories, today's holiday hat (if any) taking its slot as on our pet.
+  const miblo::Outfit o = miblo::outfitWith((miblo::Accessory)g_guestAccessory, look.accHead, look.accFace,
+                                            look.accNeck);
+  setMascotAccessory((uint8_t)o.occasion);
+  setMascotOutfit(MascotOutfit{o.head, o.face, o.neck});
 }
 
 MascotPaint strangerPaint(const MascotPaint& own) {
@@ -262,6 +274,33 @@ uint16_t mascotSkin() {
   return petColors(def).skin;
 }
 
+// Nerdy square glasses over the pet's eyes (`g`: their centre y - 6): 2-unit rims, a bridge and
+// the temples; one wide lens on a one-eyed pet. `dark`: light rims on a dark face.
+static void drawGlasses(MascotPen& d, int x, int g, const PetAnchors& at, bool dark) {
+  const uint16_t rim = dark ? color::MUTED : color::PUPIL;
+  if (at.eyeDx == 0) {  // one eye: one wide lens, no bridge
+    d.rect(-14 + x, -5 + g, 28, 2, rim);
+    d.rect(-14 + x, 15 + g, 28, 2, rim);
+    d.rect(-16 + x, -3 + g, 2, 18, rim);
+    d.rect(14 + x, -3 + g, 2, 18, rim);
+    d.rect(-13 + x, -1 + g, 2, 4, color::WHITE);
+    d.rect(-32 + x, 1 + g, 16, 2, rim);
+    d.rect(16 + x, 1 + g, 16, 2, rim);
+    return;
+  }
+  const int ex = at.eyeDx;
+  for (int e = -ex; e <= ex; e += 2 * ex) {
+    d.rect(e - 9 + x, -5 + g, 18, 2, rim);
+    d.rect(e - 9 + x, 15 + g, 18, 2, rim);
+    d.rect(e - 11 + x, -3 + g, 2, 18, rim);
+    d.rect(e + 9 + x, -3 + g, 2, 18, rim);
+    d.rect(e - 8 + x, -1 + g, 2, 4, color::WHITE);  // a glint on the lens
+  }
+  d.rect(-ex + 11 + x, 1 + g, 2 * ex - 22, 2, rim);  // the bridge
+  d.rect(-32 + x, 1 + g, 21 - ex, 2, rim);  // the temples
+  d.rect(ex + 11 + x, 1 + g, 21 - ex, 2, rim);
+}
+
 // Hats for special days (miblo::Accessory), on top of the head. They stay inside the 96-unit box
 // even when the cat hops (dy >= -5): nothing may be drawn outside it (no trail).
 // `phase` moves the Valentine's hearts (it changes with the look).
@@ -296,32 +335,9 @@ static void drawHat(MascotPen& d, int x, int b0, uint8_t phase, const PetAnchors
         d.rrect(e * 9 + o * 6 + x, -28 + b, 6, 8, 3, color::EAR_IN);
       }
       break;
-    case 5: {  // nerdy square glasses over the eyes: 2-unit rims, a bridge and the temples
-      const uint16_t rim = dark ? color::MUTED : color::PUPIL;  // light rims on a dark face
-      const int g = b0 + at.eyeY - 6;  // on the pet's eyes, wherever its hats go
-      if (at.eyeDx == 0) {  // one eye: one wide lens, no bridge
-        d.rect(-14 + x, -5 + g, 28, 2, rim);
-        d.rect(-14 + x, 15 + g, 28, 2, rim);
-        d.rect(-16 + x, -3 + g, 2, 18, rim);
-        d.rect(14 + x, -3 + g, 2, 18, rim);
-        d.rect(-13 + x, -1 + g, 2, 4, color::WHITE);
-        d.rect(-32 + x, 1 + g, 16, 2, rim);
-        d.rect(16 + x, 1 + g, 16, 2, rim);
-        break;
-      }
-      const int ex = at.eyeDx;
-      for (int e = -ex; e <= ex; e += 2 * ex) {
-        d.rect(e - 9 + x, -5 + g, 18, 2, rim);
-        d.rect(e - 9 + x, 15 + g, 18, 2, rim);
-        d.rect(e - 11 + x, -3 + g, 2, 18, rim);
-        d.rect(e + 9 + x, -3 + g, 2, 18, rim);
-        d.rect(e - 8 + x, -1 + g, 2, 4, color::WHITE);  // a glint on the lens
-      }
-      d.rect(-ex + 11 + x, 1 + g, 2 * ex - 22, 2, rim);  // the bridge
-      d.rect(-32 + x, 1 + g, 21 - ex, 2, rim);  // the temples
-      d.rect(ex + 11 + x, 1 + g, 21 - ex, 2, rim);
+    case 5:  // nerdy square glasses over the eyes
+      if (!at.ownGlasses) drawGlasses(d, x, b0 + at.eyeY - 6, at, dark);
       break;
-    }
     case 6: {  // hearts floating around the head; they bob with each change of look
       const int hb = b > 0 ? b : 0;  // they follow the cat down, never up out of the box
       for (int i = 0; i < 3; i++) {  // above the head, by the left cheek, by the right cheek
@@ -332,6 +348,169 @@ static void drawHat(MascotPen& d, int x, int b0, uint8_t phase, const PetAnchors
         d.circle(hx + 3, hy, 4, c);
         d.tri(hx - 6, hy + 2, hx + 6, hy + 2, hx, hy + 9, c);
       }
+      break;
+    }
+    default: break;
+  }
+}
+
+// ---- The owner's accessories (setMascotOutfit, miblo::Wear) ----
+// Fixed colours that read on the four presets, a custom body and the black background.
+constexpr uint16_t kWearRed = 0xB000;    // #b40000: a knot, a darker red
+constexpr uint16_t kWearBrown = 0xA285;  // #a05028: the cowboy hat
+constexpr uint16_t kWearDark = 0x4A69;   // #4c4c4c: the top hat, the beret (light enough on the BG)
+
+// The head item, sitting on the head like the special days' hats (`b`: their baseline, hatDy and
+// the hop clamp applied). Everything between y -43 and -15 (the cat's head top is -20).
+static void drawWearHead(MascotPen& d, int x, int b, uint8_t id) {
+  switch ((miblo::Wear)id) {
+    case miblo::Wear::Cap:  // a baseball cap, its peak to the right
+      d.rrect(-15 + x, -32 + b, 30, 16, 8, color::BLUE);
+      d.rect(-15 + x, -24 + b, 30, 6, color::BLUE);
+      d.rrect(-15 + x, -20 + b, 36, 4, 2, color::FLASH_BLUE);
+      d.circle(x, -32 + b, 2, color::FLASH_BLUE);
+      break;
+    case miblo::Wear::Beanie:  // a knitted beanie: dome, folded cuff, pompom
+      d.rrect(-16 + x, -34 + b, 32, 18, 9, color::CORAL);
+      d.rrect(-18 + x, -22 + b, 36, 7, 3, 0xA9A6);
+      d.circle(x, -36 + b, 4, color::WHITE);
+      break;
+    case miblo::Wear::Beret:  // a puffy beret slouching to the left, with its little stalk
+      d.rrect(-23 + x, -31 + b, 38, 13, 6, color::RED);
+      d.rrect(-14 + x, -21 + b, 28, 4, 2, kWearRed);
+      d.rect(-4 + x, -34 + b, 2, 4, kWearRed);
+      break;
+    case miblo::Wear::TopHat:  // brim, tall crown, red band
+      d.rrect(-20 + x, -22 + b, 40, 5, 2, kWearDark);
+      d.rect(-12 + x, -42 + b, 24, 21, kWearDark);
+      d.rect(-12 + x, -27 + b, 24, 4, color::RED);
+      d.rect(-9 + x, -39 + b, 2, 10, color::DIM);  // a sheen
+      break;
+    case miblo::Wear::Crown:  // gold, three points, a ruby
+      d.rect(-14 + x, -26 + b, 28, 8, color::AMBER);
+      d.tri(-14 + x, -26 + b, -6 + x, -26 + b, -14 + x, -37 + b, color::AMBER);
+      d.tri(-6 + x, -26 + b, 6 + x, -26 + b, x, -39 + b, color::AMBER);
+      d.tri(6 + x, -26 + b, 14 + x, -26 + b, 14 + x, -37 + b, color::AMBER);
+      d.circle(x, -22 + b, 2, color::RED);
+      break;
+    case miblo::Wear::CowboyHat:  // wide brim curling up at the ends, dented crown, band
+      d.rrect(-24 + x, -22 + b, 48, 5, 2, kWearBrown);
+      d.tri(-24 + x, -21 + b, -24 + x, -27 + b, -16 + x, -21 + b, kWearBrown);
+      d.tri(24 + x, -21 + b, 24 + x, -27 + b, 16 + x, -21 + b, kWearBrown);
+      d.rrect(-13 + x, -36 + b, 26, 16, 5, kWearBrown);
+      d.rect(-13 + x, -25 + b, 26, 3, 0x6A20);
+      break;
+    case miblo::Wear::ChefHat:  // three white puffs on a tall band
+      d.circle(-8 + x, -33 + b, 7, color::WHITE);
+      d.circle(8 + x, -33 + b, 7, color::WHITE);
+      d.circle(x, -36 + b, 7, color::WHITE);
+      d.rect(-12 + x, -32 + b, 24, 13, color::WHITE);
+      d.rect(-12 + x, -22 + b, 24, 2, color::MUTED);
+      break;
+    case miblo::Wear::Bandana:  // a red bandana tied over the head, white dots, knot on the right
+      d.rrect(-22 + x, -27 + b, 44, 12, 6, color::RED);
+      d.tri(18 + x, -21 + b, 30 + x, -27 + b, 28 + x, -15 + b, color::RED);
+      for (int i = -1; i <= 1; i += 2) d.rect(i * 8 - 1 + x, -23 + b, 2, 2, color::WHITE);
+      break;
+    case miblo::Wear::FlowerCrown:  // five flowers in a row, a dot in each
+      for (int i = -2; i <= 2; i++) {
+        d.circle(i * 9 + x, -22 + b + (i == 0 ? -1 : 0), 4, i & 1 ? color::AMBER : color::EAR_IN);
+        d.circle(i * 9 + x, -22 + b + (i == 0 ? -1 : 0), 1, color::WHITE);
+      }
+      d.rect(-20 + x, -19 + b, 40, 2, color::GREEN);
+      break;
+    case miblo::Wear::Halo:  // a golden ring floating above the head
+      d.rect(-10 + x, -40 + b, 20, 2, color::AMBER);
+      d.rect(-10 + x, -32 + b, 20, 2, color::AMBER);
+      d.rrect(-14 + x, -39 + b, 5, 8, 2, color::AMBER);
+      d.rrect(9 + x, -39 + b, 5, 8, 2, color::AMBER);
+      break;
+    default: break;
+  }
+}
+
+// The face item, on the pet's eyes (`g`: their centre y - 6, like the special day's glasses).
+// The gamer headset is drawn by drawMascot (it sits where headphones go).
+static void drawWearFace(MascotPen& d, int x, int g, uint8_t id, const PetAnchors& at, bool dark) {
+  const int ex = at.eyeDx;
+  switch ((miblo::Wear)id) {
+    case miblo::Wear::Sunglasses: {  // dark lenses with a glint, a thin frame
+      const uint16_t frame = dark ? color::MUTED : color::PUPIL;
+      const int w = ex ? 22 : 30;
+      for (int e = -ex; e <= ex; e += ex ? 2 * ex : 1) {
+        d.rrect(e - w / 2 + x, -2 + g, w, 15, 5, dark ? color::DIM : 0x10A2);  // grey on a dark face
+        d.rect(e - w / 2 + 3 + x, 1 + g, 5, 2, color::DIM);
+      }
+      if (ex) d.rect(-ex + 11 + x, 2 + g, 2 * ex - 22, 2, frame);
+      d.rect(-32 + x, 2 + g, 32 - ex - w / 2, 2, frame);
+      d.rect(ex + w / 2 + x, 2 + g, 32 - ex - w / 2, 2, frame);
+      break;
+    }
+    case miblo::Wear::NerdGlasses:  // the square glasses, taped at the bridge
+      drawGlasses(d, x, g, at, dark);
+      d.rect(-2 + x, -1 + g, 4, 6, color::WHITE);
+      break;
+    case miblo::Wear::Monocle: {  // a rim round the right eye (wide enough for the big ones), a chain
+      const int e = ex + x;
+      const uint16_t rim = dark ? color::AMBER : color::PUPIL;  // gold on a dark face
+      d.rect(e - 8, -7 + g, 16, 2, rim);
+      d.rect(e - 8, 19 + g, 16, 2, rim);
+      d.rect(e - 12, -3 + g, 2, 18, rim);
+      d.rect(e + 10, -3 + g, 2, 18, rim);
+      for (int c = -1; c <= 1; c += 2) {  // the corners, rounding it off
+        d.rect(e + c * 9 - 1, -5 + g, 2, 2, rim);
+        d.rect(e + c * 9 - 1, 17 + g, 2, 2, rim);
+      }
+      for (int i = 0; i < 4; i++) d.rect(e + 11 + i, 20 + 3 * i + g, 2, 2, color::AMBER);
+      break;
+    }
+    case miblo::Wear::Moustache: {  // a curled moustache under the nose
+      const uint16_t c = dark ? color::MUTED : 0x3186;
+      for (int s = -1; s <= 1; s += 2) {
+        const int o = s < 0 ? -1 : 0;  // mirror a w-unit-wide piece: left edge s * a + o * w
+        d.rrect(s * 1 + o * 13 + x, 19 + g, 13, 7, 3, c);
+        d.tri(s * 11 + x, 20 + g, s * 19 + x, 13 + g, s * 15 + x, 24 + g, c);
+      }
+      break;
+    }
+    default: break;
+  }
+}
+
+// The neck item, under the chin (`n`: the tie's baseline, neckDy applied). Down to y 46 at most;
+// what shows matters most between the front paws (x -10..10), which are drawn over it.
+static void drawWearNeck(MascotPen& d, int x, int n, uint8_t id) {
+  switch ((miblo::Wear)id) {
+    case miblo::Wear::BowTie:
+      d.tri(-2 + x, 33 + n, -13 + x, 27 + n, -13 + x, 39 + n, color::RED);
+      d.tri(2 + x, 33 + n, 13 + x, 27 + n, 13 + x, 39 + n, color::RED);
+      d.rrect(-3 + x, 30 + n, 6, 6, 2, kWearRed);
+      break;
+    case miblo::Wear::Scarf:  // green with white stripes, both ends hanging in front
+      d.rrect(-24 + x, 27 + n, 48, 7, 3, color::GREEN);
+      d.rrect(-8 + x, 30 + n, 8, 16, 2, color::GREEN);
+      d.rrect(1 + x, 30 + n, 8, 13, 2, color::GREEN);
+      d.rect(-8 + x, 40 + n, 8, 2, color::WHITE);
+      d.rect(1 + x, 37 + n, 8, 2, color::WHITE);
+      for (int i = -1; i <= 1; i += 2) d.rect(i * 15 - 1 + x, 27 + n, 3, 7, color::WHITE);
+      break;
+    case miblo::Wear::Neckerchief:  // a triangle of cloth knotted at the front
+      d.rect(-18 + x, 28 + n, 36, 4, color::BLUE);
+      d.tri(-14 + x, 30 + n, 14 + x, 30 + n, x, 45 + n, color::BLUE);
+      d.circle(x, 32 + n, 3, color::FLASH_BLUE);
+      break;
+    case miblo::Wear::Beads:  // a string of beads hanging in an arc
+      for (int i = -4; i <= 4; i++) {
+        const uint16_t c = i % 3 == 0 ? color::WHITE : (i & 1) ? color::CORAL : color::AMBER;
+        d.circle(i * 4 + x, 43 - i * i * 7 / 16 + n, 2, c);
+      }
+      break;
+    case miblo::Wear::Medal: {  // "shipped to prod": a gold medal with a tick, on a ribbon
+      d.tri(-9 + x, 28 + n, -3 + x, 28 + n, 1 + x, 38 + n, color::FLASH_BLUE);
+      d.tri(9 + x, 28 + n, 3 + x, 28 + n, -1 + x, 38 + n, color::RED);
+      d.circle(x, 40 + n, 6, color::AMBER);
+      d.rect(-3 + x, 40 + n, 2, 2, color::WHITE);  // the tick
+      d.tri(-1 + x, 42 + n, 3 + x, 37 + n, 3 + x, 39 + n, color::WHITE);
       break;
     }
     default: break;
@@ -352,20 +531,22 @@ static void drawTie(MascotPen& d, int x, int b) {
 // outside the head's rounded corner) and a cup on each side. Under any hat.
 static const int8_t kBand[][2] MIBLO_ROM = {{8, -22}, {13, -22}, {17, -20}, {21, -19},
                                             {25, -16}, {28, -13}, {31, -9}, {32, -5}};
-// `wide`: the cups (and the band's ends with them) that much further out.
-static void drawHeadphones(MascotPen& d, int x, int b, int wide) {
-  d.rect(-13 + x, -24 + b, 26, 5, color::DIM);
+// `wide`: the cups (and the band's ends with them) that much further out. `body`, `cushion`: their
+// colours (the gamer headset's are its own).
+static void drawHeadphones(MascotPen& d, int x, int b, int wide, uint16_t body = color::DIM,
+                           uint16_t cushion = color::FAINT) {
+  d.rect(-13 + x, -24 + b, 26, 5, body);
   for (size_t i = 0; i < sizeof(kBand) / sizeof(kBand[0]); i++) {
     int8_t p[2];
     mibloRomCopy(p, kBand[i], sizeof(p));
     const int px = p[0] + wide * (int)i / (int)(sizeof(kBand) / sizeof(kBand[0]) - 1);
-    d.circle(-px + x, p[1] + b, 2, color::DIM);
-    d.circle(px + x, p[1] + b, 2, color::DIM);
+    d.circle(-px + x, p[1] + b, 2, body);
+    d.circle(px + x, p[1] + b, 2, body);
   }
   for (int s = -1; s <= 1; s += 2) {
     const int o = s < 0 ? -1 : 0;  // mirror a w-unit-wide piece: left edge s * a + o * w
-    d.rrect(s * (30 + wide) + o * 9 + x, -7 + b, 9, 19, 4, color::DIM);
-    d.rect(s * (30 + wide) + o * 2 + x, -4 + b, 2, 13, color::FAINT);  // the cushion against the head
+    d.rrect(s * (30 + wide) + o * 9 + x, -7 + b, 9, 19, 4, body);
+    d.rect(s * (30 + wide) + o * 2 + x, -4 + b, 2, 13, cushion);  // the cushion against the head
   }
 }
 
@@ -383,10 +564,26 @@ static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk
   if (desk && table) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
   if (wag) def.tail(c);  // behind the pet
   def.head(c);
+  const bool dark = luma565(c.mc.skin) < kDarkSkin || def.at.darkEyes;
   if (k.extras & kHeadphones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
-  if (mascotTie()) drawTie(d, x, b + def.at.neckDy);
-  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64), def.at,
-          luma565(c.mc.skin) < kDarkSkin || def.at.darkEyes);
+  else if (g_outfit.face == (uint8_t)miblo::Wear::Headset) {  // focus headphones take its place
+    const int hb = b + def.at.phonesDy, s = -30 - def.at.phonesDx;  // the left cup's outer edge
+    drawHeadphones(d, x, hb, def.at.phonesDx, color::DIM, color::GREEN);  // lit cushions
+    d.rect(s + 4 + x, 11 + hb, 2, 9, color::DIM);  // the mic boom, round to the mouth
+    d.rect(s + 4 + x, 19 + hb, 14, 2, color::DIM);
+    d.circle(s + 19 + x, 20 + hb, 2, color::GREEN);
+  }
+  if (mascotTie()) drawTie(d, x, b + def.at.neckDy);  // the meeting's tie over the owner's neck item
+  else drawWearNeck(d, x, b + def.at.neckDy, g_outfit.neck);
+  // A pet with glasses of its own wears no others (a moustache still goes).
+  if (!def.at.ownGlasses || g_outfit.face == (uint8_t)miblo::Wear::Moustache)
+    drawWearFace(d, x, b + def.at.eyeY - 6, g_outfit.face, def.at, dark);
+  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64), def.at, dark);
+  if (g_outfit.head) {
+    int hb = b + def.at.hatDy;
+    if (def.at.hatDy < 0 && hb < -5) hb = -5;  // as the special days' hats: never above the box
+    drawWearHead(d, x, hb, g_outfit.head);
+  }
   if (!desk) return;
   def.front(c);
   if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming

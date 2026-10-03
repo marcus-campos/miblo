@@ -168,6 +168,19 @@
 
 Then make it yours, one colour part at a time: body, outline, inner detail, nose or beak, face lines, eyes and accent. Each part is "Auto" (the Miblo colour look, the default) or any RGB colour you pick, and preset palettes fill them all in one click. The eyes can be round, big or sleepy.
 
+Dress it up, too: one accessory per slot, or none, made to fit every pet.
+
+- **Head:** cap, beanie, beret, top hat, crown, cowboy hat, chef's hat, bandana, flower crown or halo.
+- **Face:** sunglasses, nerd glasses, monocle, moustache or a gamer headset with a mic.
+- **Neck:** bow tie, scarf, neckerchief, bead necklace or a "shipped to prod" medal.
+
+On special days the day's hat takes the head slot and the face and neck stay yours (Programmer's Day's glasses take the face instead). Turn "Special days dress the pet" off and your own picks always show. Focus headphones replace the gamer headset while a focus round lasts, and the meeting tie replaces the neck item. **Preview on Miblo** shows the form's pet, colours and accessories on the gadget for 15 seconds before you save. Friends' pets visit in their own accessories.
+
+<p align="center">
+  <img src="docs/media/pets-accessories.png" width="480" alt="Every pet wearing a head, a face and a neck accessory">
+  <br><sub>A head, a face and a neck item on every pet</sub>
+</p>
+
 <p align="center">
   <img src="docs/media/pets-lineup.png" width="600" alt="The 15 pets: cat, duck, bug, daemon, robot, mug, penguin, crab, owl, dog, alien, Riff, Dev, Dino and Dev-chan">
   <br><sub>The 15 pets</sub>

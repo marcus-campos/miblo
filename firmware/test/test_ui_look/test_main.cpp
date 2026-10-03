@@ -21,6 +21,7 @@ void setUp() {
   screens::setMascotPaint(screens::MascotPaint{});
   screens::setMascotStyle(0);
   screens::setMascotAccessory(0);
+  screens::setMascotOutfit(screens::MascotOutfit{});
   screens::setMascotTie(false);
   screens::setCatMood(0);
 }
@@ -115,6 +116,22 @@ static void test_every_pet_stays_in_its_box() {
           screens::mascot(192, 48, 2, false);
           screens::mascot(24, 216, 1, true);
         }
+        // The owner's accessories: every head item, with every face and neck item along, with
+        // and without the tie and the headphones (and a special day's hat or hearts on top).
+        static const uint8_t kFaces[] = {0, 11, 12, 14, 15, 20}, kNecks[] = {0, 16, 17, 18, 19, 21};
+        for (uint8_t i = 0; i <= 10; i++) {
+          screens::setMascotOutfit(screens::MascotOutfit{i, kFaces[i % 6], kNecks[(i + 3) % 6]});
+          screens::setMascotAccessory(i % 4 == 3 ? (uint8_t)Accessory::Hearts : 0);
+          screens::setMascotTie(i % 4 == 1);
+          for (const auto& base : looks) {
+            MascotLook k = base;
+            if (i % 3 == 2) k.extras |= screens::kHeadphones;
+            screens::deskMascot(36, 36, k, 36, false, false);
+            screens::deskMascot(204, 204, k, 36, true, true);
+          }
+          screens::mascot(192, 48, 2, false);
+        }
+        screens::setMascotOutfit(screens::MascotOutfit{});
         char msg[48];
         snprintf(msg, sizeof(msg), "pet %u, eyes %u, custom %d: out of bounds", pet, shape, custom);
         TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, msg);
@@ -191,6 +208,37 @@ static void test_glasses_and_hats_fit_the_pet() {
   screens::setMascotPet((uint8_t)Pet::Penguin);
   screens::deskMascot(120, 120, k, 48, false, true);
   TEST_ASSERT_EQUAL(ui::color::WHITE, fc.colorAt(120, 120 - 25));  // the brim, above the cat's
+}
+
+// The owner's accessories: only an id that fits its slot is worn (13 never); the focus
+// headphones hide the gamer headset; the meeting's tie hides the neck item.
+static void test_owner_accessories() {
+  screens::setMascotOutfit(screens::MascotOutfit{13, 13, 13});
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotOutfit().head + screens::mascotOutfit().face + screens::mascotOutfit().neck);
+  screens::setMascotOutfit(screens::MascotOutfit{11, 5, 1});  // each in the wrong slot
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotOutfit().head + screens::mascotOutfit().face + screens::mascotOutfit().neck);
+  screens::setMascotOutfit(screens::MascotOutfit{(uint8_t)Wear::Crown, (uint8_t)Wear::Headset, (uint8_t)Wear::BowTie});
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Crown, screens::mascotOutfit().head);
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+  screens::deskMascot(120, 120, k, 48, false, true);
+  TEST_ASSERT_EQUAL(ui::color::GREEN, fc.colorAt(120 - 31, 120 + 2));  // the headset's lit cushion
+  TEST_ASSERT_EQUAL(0xB000, fc.colorAt(120, 120 + 32));                // the bow tie's knot
+  TEST_ASSERT_EQUAL(ui::color::AMBER, fc.colorAt(120 + 8, 120 - 24));  // the crown
+  k.extras = screens::kHeadphones;
+  screens::setMascotTie(true);
+  screens::deskMascot(120, 120, k, 48, false, true);
+  TEST_ASSERT_EQUAL(ui::color::FAINT, fc.colorAt(120 - 31, 120 + 2));  // the focus headphones' cushion
+  TEST_ASSERT_EQUAL(ui::color::VIOLET, fc.colorAt(120, 120 + 32));     // the tie's knot
+  // A special day's hat with the owner's other items: both drawn (miblo::outfitFor clears the
+  // head item on such days; here both are set on purpose).
+  screens::setMascotTie(false);
+  screens::setMascotAccessory((uint8_t)Accessory::PartyHat);
+  screens::setMascotOutfit(screens::MascotOutfit{0, (uint8_t)Wear::Moustache, (uint8_t)Wear::Medal});
+  k.extras = 0;
+  screens::deskMascot(120, 120, k, 48, false, true);
+  TEST_ASSERT_EQUAL(ui::color::WHITE, fc.colorAt(120 - 2, 120 + 40));  // the medal's tick
 }
 
 // The pet's colours: Auto slots (every one by default) come from the preset, or from a custom
@@ -382,10 +430,19 @@ static void test_guest_looks_as_on_its_own_miblo() {
   TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dog, screens::mascotPet());
   TEST_ASSERT_EQUAL_UINT8(1, screens::mascotStyle());
   TEST_ASSERT_EQUAL_UINT8((uint8_t)Accessory::SantaHat, screens::mascotAccessory());
+  // Its own items, the holiday hat taking the head: the beret goes, the glasses and medal stay.
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotOutfit().head);
+  TEST_ASSERT_EQUAL_UINT8(12, screens::mascotOutfit().face);
+  TEST_ASSERT_EQUAL_UINT8(21, screens::mascotOutfit().neck);
+  screens::setGuestAccessory(0);
+  screens::dressGuest(own.style, own.pet, friendLook(own.slots, own.eyeShape, 3, 12, 21));
+  TEST_ASSERT_EQUAL_UINT8(3, screens::mascotOutfit().head);
+  screens::setGuestAccessory((uint8_t)Accessory::SantaHat);
   // A guest in its preset (an older firmware's, no look): every slot Auto.
   screens::dressGuest(2, (uint8_t)Pet::Cat, FriendLook());
   for (uint32_t v : screens::mascotPaint().slots) TEST_ASSERT_EQUAL_UINT32(kPetAuto, v);
   TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPaint().eyeShape);
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotOutfit().face);
   screens::setGuestAccessory(0);
 }
 
@@ -417,6 +474,7 @@ int main(int, char**) {
   RUN_TEST(test_every_pet_wags_its_own_tail);
   RUN_TEST(test_only_riff_plays_guitar);
   RUN_TEST(test_glasses_and_hats_fit_the_pet);
+  RUN_TEST(test_owner_accessories);
   RUN_TEST(test_pieces_are_drawn);
   RUN_TEST(test_tie_and_mood_redraw_the_cat);
   RUN_TEST(test_black_cat_crosses_inside_the_screen);

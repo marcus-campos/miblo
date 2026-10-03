@@ -12,6 +12,7 @@
 #include "miblo_meeting.h"
 #include "miblo_occasions.h"
 #include "miblo_policy.h"
+#include "miblo_preview.h"
 #include "miblo_saveretry.h"
 #include "miblo_overview.h"
 #include "miblo_security.h"
@@ -51,6 +52,7 @@ struct Context {
   miblo::FocusTimer focus;      // /miblo:focus
   miblo::MeetingMode meeting;   // /miblo:meeting
   miblo::DeskNotes notes;       // say, reminders, alarms, timer, countdown, find
+  miblo::LookPreview preview;   // the settings page's "Preview on Miblo" (web.cpp)
   miblo::HeapGuard heap;        // low-memory guard, updated by the app loop (app.cpp)
 
   bool hasSnapshot = false;

@@ -9,7 +9,7 @@ namespace miblo {
 // showed "Disconnected" (drawn only while WiFi.status() is WL_CONNECTED) while it answered nothing,
 // not even ARP, until it was power-cycled. LinkKeeper watches the link and acts on its own:
 // - Connected but quiet (nothing heard from the computer lately), and at every link-up: an ARP
-//   probe of the gateway. Once the gateway has answered one this boot, kDeadAfter unanswered in a
+//   probe of the gateway. Once the gateway has answered one (this boot, on this network), kDeadAfter unanswered in a
 //   row mark the link dead (a gateway that never answers ARP proves nothing, so it is never
 //   judged).
 // - Disconnected for kDownMs, or dead: an explicit disconnect + begin of the saved network. The
@@ -42,6 +42,9 @@ class LinkKeeper {
   LinkAction update(uint32_t nowMs, bool linkUp, bool mayAct, bool quiet);
   // After ProbeCheck: whether the gateway answered.
   void probeAnswered(bool answered, uint32_t nowMs);
+  // A newly submitted network was accepted: whether the old gateway answered ARP, and whether the
+  // old network ever worked, say nothing about this one.
+  void networkChanged();
 
   bool dead() const { return dead_; }
   uint32_t reconnects() const { return reconnects_; }  // cycles since boot (/api/info)

@@ -212,6 +212,21 @@ static void test_gateway_without_arp_never_cycles() {
   TEST_ASSERT_EQUAL(0, s.restartsSeen);
 }
 
+// A newly submitted network replaces the one whose gateway answered ARP: what was learnt there
+// proves nothing here, so a new gateway that never answers ARP is not judged dead.
+static void test_new_network_forgets_the_old_gateway() {
+  Sim s;
+  s.run(10 * kMin);  // the old network: its gateway answers the probes
+  TEST_ASSERT_EQUAL(0, s.reconnects);
+  s.w.gatewayArp = false;  // the new network's gateway never does
+  s.keeper.networkChanged();
+  s.run(10 * kMin + 120 * kMin);
+  TEST_ASSERT_TRUE(s.w.up);
+  TEST_ASSERT_EQUAL(0, s.reconnects);
+  TEST_ASSERT_EQUAL(0, s.restartsSeen);
+  TEST_ASSERT_EQUAL_UINT32(0, s.keeper.deadLinks());
+}
+
 // Quiet and healthy (no computer): a probe a minute, never a cycle.
 static void test_quiet_healthy_unit_only_probes() {
   Sim s;
@@ -260,6 +275,7 @@ int main() {
   RUN_TEST(test_zombie_link_is_found_and_cycled);
   RUN_TEST(test_wedged_zombie_ends_in_a_restart);
   RUN_TEST(test_gateway_without_arp_never_cycles);
+  RUN_TEST(test_new_network_forgets_the_old_gateway);
   RUN_TEST(test_quiet_healthy_unit_only_probes);
   RUN_TEST(test_phone_on_the_setup_network_holds_cycles);
   RUN_TEST(test_cycles_do_not_need_the_setup_network);

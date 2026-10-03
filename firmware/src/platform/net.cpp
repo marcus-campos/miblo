@@ -345,6 +345,7 @@ void loop(uint32_t nowMs, bool heapLow) {
       WiFi.persistent(true);
       WiFi.begin(pendingSsid, pendingPass, 0, nullptr, false);
       storage::markConfigured();  // first network joined from the portal: never codeless OTA again
+      keeper.networkChanged();    // what the old gateway did proves nothing about this one
     } else {
       // Wrong password, failure or timeout: drop the attempt and go back to the network that was
       // already saved, still without ever writing the failed attempt to flash. With nothing saved,

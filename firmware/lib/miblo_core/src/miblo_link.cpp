@@ -94,4 +94,11 @@ void LinkKeeper::probeAnswered(bool answered, uint32_t nowMs) {
   }
 }
 
+void LinkKeeper::networkChanged() {
+  arpSeen_ = false;
+  proven_ = false;
+  dead_ = false;
+  fails_ = 0;
+}
+
 }  // namespace miblo

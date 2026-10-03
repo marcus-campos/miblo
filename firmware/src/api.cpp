@@ -51,6 +51,17 @@ static const __FlashStringHelper* focusPhaseName(miblo::FocusPhase p) {
   return F("off");
 }
 
+// One member of handleInfo's reply, set exactly as `o[key] = v` would (same type, same copy of the
+// string or not). Out of line: ArduinoJson inlines that whole assignment at every one of its ~50
+// fields.
+template <typename T>
+static __attribute__((noinline)) void put(JsonObject o, const __FlashStringHelper* key, T v) {
+  o[key] = v;
+}
+static __attribute__((noinline)) void put(JsonObject o, const __FlashStringHelper* key, const String& v) {
+  o[key] = v;
+}
+
 static void handleInfo() {
   // A paired gadget tells someone without its token only who it is (miblo::infoView): its name,
   // version, settings and diagnostics are for the computers paired with it.
@@ -84,78 +95,79 @@ static void handleInfo() {
     json(503, F("{\"error\":\"busy\"}"));
     return;
   }
-  doc[F("id")] = ctx.ident.id;
-  doc[F("name")] = deviceName();
-  doc[F("fw")] = MIBLO_FW_VERSION;
-  doc[F("build")] = MIBLO_BUILD;
-  doc[F("proto")] = MIBLO_PROTO;
-  doc[F("paired")] = ctx.tokens.count() > 0;
-  doc[F("board")] = board::kName;
-  doc[F("lang")] = miblo::langCode(uiLang());  // the language the screen is drawn in
-  doc[F("langSet")] = ctx.cfg.langSet;          // false = automatic (follows the last browser)
-  JsonObject screen = doc.createNestedObject(F("screen"));
-  screen[F("w")] = board::kScreen.w;
-  screen[F("h")] = board::kScreen.h;
-  JsonArray caps = doc.createNestedArray(F("caps"));  // future: "buttons", "touch", "buzzer", "led"
+  const JsonObject o = doc.to<JsonObject>();
+  put(o, F("id"), ctx.ident.id);
+  put(o, F("name"), deviceName());
+  put(o, F("fw"), MIBLO_FW_VERSION);
+  put(o, F("build"), MIBLO_BUILD);
+  put(o, F("proto"), MIBLO_PROTO);
+  put(o, F("paired"), ctx.tokens.count() > 0);
+  put(o, F("board"), board::kName);
+  put(o, F("lang"), miblo::langCode(uiLang()));  // the language the screen is drawn in
+  put(o, F("langSet"), ctx.cfg.langSet);          // false = automatic (follows the last browser)
+  JsonObject screen = o.createNestedObject(F("screen"));
+  put(screen, F("w"), board::kScreen.w);
+  put(screen, F("h"), board::kScreen.h);
+  JsonArray caps = o.createNestedArray(F("caps"));  // future: "buttons", "touch", "buzzer", "led"
   for (uint8_t i = 0; i < board::kCapCount; i++) caps.add(board::cap(i));
   char flash[12];
   snprintf_P(flash, sizeof(flash), PSTR("%06x"), (unsigned)flashChipId());
-  doc[F("flash")] = flash;
+  put(o, F("flash"), flash);
   // Diagnostics (field reports): free heap, largest allocatable block, last reset, uptime (s).
-  doc[F("heap")] = freeHeap();
-  doc[F("maxBlock")] = maxFreeBlock();
-  doc[F("reset")] = resetReason();
-  doc[F("uptime")] = millis() / 1000;
-  doc[F("minHeapParse")] = app::minHeapDuringParse();  // worst-case free heap during a snapshot parse
-  doc[F("maxSessions")] = miblo::kMaxSessions;  // how many sessions this firmware can show/parse
-  doc[F("maxBytes")] = miblo::kSnapshotMaxBytes;
+  put(o, F("heap"), freeHeap());
+  put(o, F("maxBlock"), maxFreeBlock());
+  put(o, F("reset"), resetReason());
+  put(o, F("uptime"), millis() / 1000);
+  put(o, F("minHeapParse"), app::minHeapDuringParse());  // worst-case free heap during a snapshot parse
+  put(o, F("maxSessions"), miblo::kMaxSessions);  // how many sessions this firmware can show/parse
+  put(o, F("maxBytes"), miblo::kSnapshotMaxBytes);
   // The zones the bridge works out live offsets for (snapshot "tz"). Stable memory: not copied.
-  doc[F("tz")] = (const char*)ctx.cfg.tz;
-  doc[F("tz2")] = (const char*)ctx.cfg.tz2;
+  put(o, F("tz"), (const char*)ctx.cfg.tz);
+  put(o, F("tz2"), (const char*)ctx.cfg.tz2);
   // Wi-Fi join diagnostics: last station disconnect reason (WIFI_DISCONNECT_REASON_*, 0 = none)
   // and the current WiFi.status() (wl_status_t).
-  doc[F("wifiReason")] = net::lastDisconnectReason();
-  doc[F("wifiStatus")] = net::wifiStatus();
+  put(o, F("wifiReason"), net::lastDisconnectReason());
+  put(o, F("wifiStatus"), net::wifiStatus());
   // Overview/Limits rotation settings (read back by `/miblo:rotate`).
-  doc[F("rotate")] = ctx.cfg.rotate;
-  doc[F("rotateEverySec")] = ctx.cfg.rotateEverySec;
-  doc[F("rotateShowSec")] = ctx.cfg.rotateShowSec;
+  put(o, F("rotate"), ctx.cfg.rotate);
+  put(o, F("rotateEverySec"), ctx.cfg.rotateEverySec);
+  put(o, F("rotateShowSec"), ctx.cfg.rotateShowSec);
   // Night mode (read back by `/miblo:night`).
-  doc[F("night")] = ctx.cfg.night;
-  doc[F("nightFrom")] = ctx.cfg.nightFrom;
-  doc[F("nightTo")] = ctx.cfg.nightTo;
-  doc[F("nightBrightness")] = ctx.cfg.nightBrightness;
+  put(o, F("night"), ctx.cfg.night);
+  put(o, F("nightFrom"), ctx.cfg.nightFrom);
+  put(o, F("nightTo"), ctx.cfg.nightTo);
+  put(o, F("nightBrightness"), ctx.cfg.nightBrightness);
   // Blue light filter (0 off, 1 always, 2 scheduled; strength 1..100 %; its own window).
   // blueLevel (1..3, the nearest old level) for plugins from before the slider.
-  doc[F("blueFilter")] = ctx.cfg.blueFilter;
-  doc[F("blueStrength")] = ctx.cfg.blueStrength;
-  doc[F("blueLevel")] = miblo::blueLevelForStrength(ctx.cfg.blueStrength);
-  doc[F("blueFrom")] = ctx.cfg.blueFrom;
-  doc[F("blueTo")] = ctx.cfg.blueTo;
-  doc[F("mascot")] = ctx.cfg.mascot;
-  doc[F("pet")] = ctx.cfg.pet;  // the pet's eye shape and colours: /settings (configToJson)
-  doc[F("sleepMin")] = ctx.cfg.sleepMin;
-  doc[F("petMin")] = ctx.cfg.petMin;
-  doc[F("flashBlinks")] = ctx.cfg.flashBlinks;
-  doc[F("friends")] = ctx.cfg.friends;  // (the owner's name and birthday never leave through here)
+  put(o, F("blueFilter"), ctx.cfg.blueFilter);
+  put(o, F("blueStrength"), ctx.cfg.blueStrength);
+  put(o, F("blueLevel"), miblo::blueLevelForStrength(ctx.cfg.blueStrength));
+  put(o, F("blueFrom"), ctx.cfg.blueFrom);
+  put(o, F("blueTo"), ctx.cfg.blueTo);
+  put(o, F("mascot"), ctx.cfg.mascot);
+  put(o, F("pet"), ctx.cfg.pet);  // the pet's eye shape and colours: /settings (configToJson)
+  put(o, F("sleepMin"), ctx.cfg.sleepMin);
+  put(o, F("petMin"), ctx.cfg.petMin);
+  put(o, F("flashBlinks"), ctx.cfg.flashBlinks);
+  put(o, F("friends"), ctx.cfg.friends);  // (the owner's name and birthday never leave through here)
   // Daily life (read back by /miblo:focus, meeting, timer, countdown; "daily" = these routes exist).
   const uint32_t nowMs = millis();
-  JsonObject focus = doc.createNestedObject(F("focus"));
-  focus[F("phase")] = focusPhaseName(ctx.focus.phase());
-  focus[F("round")] = ctx.focus.round();
-  focus[F("rounds")] = ctx.focus.plan().rounds;
-  focus[F("left")] = ctx.focus.leftMs(nowMs) / 1000;  // seconds left in the phase
-  doc[F("meetingLeft")] = ctx.meeting.on() ? ctx.meeting.leftMs(nowMs) / 1000 : 0;
-  doc[F("timerLeft")] = ctx.notes.timerRunning() ? ctx.notes.timerLeftMs(nowMs) / 1000 : 0;
+  JsonObject focus = o.createNestedObject(F("focus"));
+  put(focus, F("phase"), focusPhaseName(ctx.focus.phase()));
+  put(focus, F("round"), ctx.focus.round());
+  put(focus, F("rounds"), ctx.focus.plan().rounds);
+  put(focus, F("left"), ctx.focus.leftMs(nowMs) / 1000);  // seconds left in the phase
+  put(o, F("meetingLeft"), ctx.meeting.on() ? ctx.meeting.leftMs(nowMs) / 1000 : 0);
+  put(o, F("timerLeft"), ctx.notes.timerRunning() ? ctx.notes.timerLeftMs(nowMs) / 1000 : 0);
   const miblo::Countdown& cd = ctx.notes.countdown();
-  doc[F("countdown")] = (const char*)cd.label;  // "" = none (stable memory: not copied)
+  put(o, F("countdown"), (const char*)cd.label);  // "" = none (stable memory: not copied)
   char date[11] = "";
   if (cd.label[0]) {
     snprintf_P(date, sizeof(date), PSTR("%04u-%02u-%02u"), (unsigned)cd.date.year, (unsigned)cd.date.month,
                (unsigned)cd.date.day);
   }
-  doc[F("countdownDate")] = date;  // char[]: copied
-  doc[F("daily")] = 1;
+  put(o, F("countdownDate"), date);  // char[]: copied
+  put(o, F("daily"), 1);
   crashlog::report(doc.as<JsonObject>());  // after a crash: where it happened
   // ~1.61 KB in the worst case (keys copied, a crash record): a field that didn't fit would be
   // dropped silently, so a document that overflowed is an error, never a partial answer.

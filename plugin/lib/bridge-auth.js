@@ -78,6 +78,10 @@ export class Challenges {
 }
 
 // The key in `dataDir`, or null when there is none or it is not plainly ours (another owner).
+// Windows: there is no uid and modes are not enforced, so the owner check and the 0600 mode are
+// skipped (node reports neither meaningfully). The key then relies on the data dir living under
+// %USERPROFILE% (CLAUDE_PLUGIN_DATA, ~/.claude or ~/.miblo), whose ACLs let only the user and
+// administrators read it. The bin/statusline-tap.mjs copy behaves the same.
 export function readKey(dataDir) {
   const file = path.join(dataDir, KEY_FILE);
   try {

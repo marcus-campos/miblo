@@ -567,3 +567,11 @@ test('today and limits name a port held by another program', async () => {
     assert.match(r.out, /another program is using port 47821/, cmd);
   }
 });
+
+test('today and limits say a busy bridge is busy, not stopped', async () => {
+  for (const cmd of ['today', 'limits']) {
+    const r = await run([cmd], deps({ fetchStatus: async () => ({ busy: true }), now: () => NOW }));
+    assert.match(r.out, /busy/, cmd);
+    assert.doesNotMatch(r.out, /isn't running/, cmd);
+  }
+});

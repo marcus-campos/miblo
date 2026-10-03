@@ -916,3 +916,35 @@ test('status.md explains a port conflict', () => {
   const md = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../commands/status.md'), 'utf8');
   assert.match(md, /bridgeConflict/);
 });
+
+// The bridge's challenge cap: proven but no challenge. Asked again briefly, then "busy", never
+// "not running".
+test('status from a throttled bridge is retried, then reported busy', async () => {
+  const { fetchBridgeStatus } = await import('../bin/miblo.js');
+  const { ensureKey, proofFor, Challenges } = await import('../lib/bridge-auth.js');
+  const http = await import('node:http');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-cli-key-'));
+  const key = ensureKey(dataDir);
+  for (const throttledFor of [2, 99]) {
+    let healths = 0;
+    const challenges = new Challenges();
+    const server = http.createServer((req, res) => {
+      if (req.url === '/health') healths += 1;
+      const nonce = req.headers['x-miblo-nonce'];
+      const give = nonce && healths > throttledFor;
+      res.writeHead(200, { 'content-type': 'application/json', ...(nonce ? { 'x-miblo-proof': proofFor(key, nonce) } : {}), ...(give ? { 'x-miblo-challenge': challenges.issue() } : {}) });
+      res.end(req.url === '/status' ? '{"sessions":[]}' : '{"ok":true,"app":"miblo-bridge"}');
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const st = await fetchBridgeStatus(dataDir, { port: server.address().port, sleep: async () => {} });
+      if (throttledFor === 2) assert.deepEqual(st, { sessions: [] });
+      else assert.deepEqual(st, { busy: true });
+      assert.equal(healths, 3);
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  }
+  const r = await run(['status'], deps({ fetchStatus: async () => ({ busy: true }) }));
+  assert.equal(JSON.parse(r.out).bridge, 'busy');
+});

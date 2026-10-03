@@ -546,6 +546,7 @@ const NO_BRIDGE = "The bridge isn't running (it starts with Claude Code activity
 // fetchStatus answers {conflict: true, port} when something that is not this user's bridge holds
 // its port (another program, or another user's or config dir's bridge).
 export const conflictLine = (port) => `another program is using port ${Number(port) || 47821}`;
+const BRIDGE_BUSY = 'The bridge is busy right now — try again in a moment.';
 const conflictText = (st) => `The bridge can't start: ${conflictLine(st.port)}, so nothing is shown. Close that program or restart the computer; nothing was sent to it.`;
 const NO_LIMITS = 'No limits yet: link the status line with /miblo:link-statusline.';
 
@@ -584,6 +585,7 @@ async function today(args, { fetchStatus, now }) {
   const st = await fetchStatus();
   if (!st) return ok(NO_BRIDGE);
   if (st.conflict === true) return ok(conflictText(st));
+  if (st.busy === true) return ok(BRIDGE_BUSY);
   const t = st.today ?? {};
   const turns = Math.max(0, Math.floor(Number(t.turns) || 0));
   const parts = [`${turns} response${turns === 1 ? '' : 's'}`, `${durationText(Number(t.work) || 0)} with Claude working`];
@@ -600,6 +602,7 @@ async function limits(args, { fetchStatus, now }) {
   const st = await fetchStatus();
   if (!st) return ok(NO_BRIDGE);
   if (st.conflict === true) return ok(conflictText(st));
+  if (st.busy === true) return ok(BRIDGE_BUSY);
   return ok(limitsLine(st.usage, now()) ?? NO_LIMITS);
 }
 

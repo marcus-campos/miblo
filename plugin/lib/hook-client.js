@@ -21,6 +21,10 @@ const NOTE_TYPE = /^[A-Za-z0-9_.:-]{1,64}$/;
 export const POLL_EVERY_MS = 100;
 export const POLL_MAX_MS = 1500;
 const DOWN_MAX_MS = 500;
+// A proven bridge that gave no challenge (its challenges-per-second cap): asked again after about
+// this long (jittered), at most THROTTLE_TRIES more times.
+export const THROTTLE_WAIT_MS = 150;
+const THROTTLE_TRIES = 2;
 
 export function pickEvent(raw) {
   const evt = raw && typeof raw === 'object' ? raw : {};
@@ -106,7 +110,15 @@ export async function deliver(body, io, { allowSpawn = true, version = '' } = {}
     return 'foreign';
   };
 
-  const h = await io.health();
+  let h = await io.health();
+  if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
+  // Proven but throttled (no challenge to answer this second): ask again shortly rather than
+  // lose the event. Throttled is never foreign.
+  for (let i = 0; ours(h) && !h.challenge && i < THROTTLE_TRIES; i++) {
+    await io.sleep(THROTTLE_WAIT_MS + Math.floor(Math.random() * 100));
+    h = await io.health();
+  }
+  if (ours(h) && !h.challenge) return 'dropped';
   if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
   if (ours(h)) {
     if (allowSpawn && version && h.version !== version) {

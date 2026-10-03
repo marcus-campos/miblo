@@ -72,11 +72,13 @@ async function forward(input) {
     const nonce = crypto.randomBytes(16).toString('hex');
     const health = await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-miblo-nonce': nonce }, signal: AbortSignal.timeout(150) });
     await health.arrayBuffer().catch(() => {});
-    const challenge = health.headers.get('x-miblo-challenge');
-    if (!proven(key, nonce, health.headers.get('x-miblo-proof')) || !/^[0-9a-f]{32}$/.test(challenge ?? '')) {
+    if (!proven(key, nonce, health.headers.get('x-miblo-proof'))) {
       noteForeign();
       return;
     }
+    // Our bridge, but at its challenges-per-second cap: skip this refresh (the next one comes soon).
+    const challenge = health.headers.get('x-miblo-challenge');
+    if (!/^[0-9a-f]{32}$/.test(challenge ?? '')) return;
     // Signed over the bridge's single-use challenge; the key itself never travels.
     const digest = crypto.createHash('sha256').update(input).digest('hex');
     const mac = crypto.createHmac('sha256', key).update(`miblo-req:${challenge}:POST:/statusline:${digest}`).digest('hex');

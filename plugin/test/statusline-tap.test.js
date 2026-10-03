@@ -16,7 +16,7 @@ process.env.CLAUDE_PLUGIN_DATA = DATA;
 
 // A listener on the bridge port. `own`: proves on /health that it knows the key (bridge-auth.js),
 // as the bridge does. Records every request.
-async function listener({ own = true, claim = false } = {}) {
+async function listener({ own = true, claim = false, throttle = false } = {}) {
   const key = own ? ensureKey(DATA) : null;
   const challenges = new Challenges();
   const requests = [];
@@ -27,7 +27,7 @@ async function listener({ own = true, claim = false } = {}) {
       const signed = own && req.url !== '/health' && challenges.verify(key, req.headers['x-miblo-auth'], req.method, req.url, b);
       requests.push({ method: req.method, url: req.url, headers: req.headers, body: b, signed });
       const nonce = req.headers['x-miblo-nonce'];
-      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce), 'x-miblo-challenge': challenges.issue() } : {}) });
+      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce), ...(throttle ? {} : { 'x-miblo-challenge': challenges.issue() }) } : {}) });
       res.end(own || claim ? '{"ok":true,"app":"miblo-bridge"}' : '{}');
     });
   });
@@ -176,4 +176,17 @@ test('runs through the launcher copied next to it, with no node on PATH', { skip
   assert.equal(r.out, '[orig]');
   assert.equal(r.code, 0);
   assert.equal(fs.readFileSync(path.join(data, 'runtime/node-path'), 'utf8').trim(), path.join(home, '.volta/bin/node'));
+});
+
+test('a throttled bridge (proven, no challenge) is not noted as foreign', async () => {
+  fs.rmSync(path.join(DATA, 'foreign-bridge'), { force: true });
+  fs.rmSync(path.join(DATA, 'bridge.log'), { force: true });
+  const bridge = await listener({ throttle: true });
+  try {
+    await run(installed({}), INPUT, { MIBLO_PORT: bridge.port });
+    assert.deepEqual(bridge.got(), []);
+    assert.ok(!fs.existsSync(path.join(DATA, 'bridge.log')));
+  } finally {
+    await bridge.close();
+  }
 });

@@ -111,18 +111,25 @@ async function settings(args, store, openUrl) {
   return ok(lines.join('\n'));
 }
 
-// The running bridge's status, null when it is not running, or {conflict: true, port} when
-// something that is not this user's bridge answers on its port. Asked only of a bridge that
+// The running bridge's status, null when it is not running, {busy: true} when it is too busy to
+// answer just now, or {conflict: true, port} when something that is not this user's bridge
+// answers on its port. Asked only of a bridge that
 // proves it knows the bridge key (bridge-auth.js): something else on the port gets nothing.
-export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = globalThis.fetch } = {}) {
+export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = globalThis.fetch, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) } = {}) {
   const base = `http://${HOST}:${port}`;
   const key = readBridgeKey(dataDir);
-  const h = await checkedHealth(base, key, { fetchImpl, timeoutMs: 800 });
+  let h = await checkedHealth(base, key, { fetchImpl, timeoutMs: 800 });
+  // Proven but at its challenges-per-second cap: asked again briefly, then "busy".
+  for (let i = 0; h?.proven && !h.challenge && i < 2; i++) {
+    await sleep(150 + Math.floor(Math.random() * 100));
+    h = await checkedHealth(base, key, { fetchImpl, timeoutMs: 800 });
+  }
   if (!h) return null;
   if (!h.proven) {
     logForeignOnce(dataDir, port);
     return { conflict: true, port };
   }
+  if (!h.challenge) return { busy: true };
   try {
     const res = await signedFetch(base, key, h.challenge, { method: 'GET', path: '/status', fetchImpl });
     return res.ok ? await res.json() : null;
@@ -594,7 +601,8 @@ export async function run(argv, deps) {
     case 'status': {
       const answer = await fetchStatus();
       const conflict = answer?.conflict === true ? answer : null;
-      const live = conflict ? null : answer;
+      const busy = answer?.busy === true;
+      const live = conflict || busy ? null : answer;
       let statusline;
       try {
         statusline = isLinked({ settingsPath }) ? 'linked' : 'not linked';
@@ -603,7 +611,7 @@ export async function run(argv, deps) {
       }
       const devices = (live?.devices ?? store.list().map(({ id, name, addr }) => ({ id, name, addr, online: null }))).map(safe);
       return ok(JSON.stringify({
-        bridge: conflict ? 'conflict' : live ? 'running' : 'stopped',
+        bridge: conflict ? 'conflict' : busy ? 'busy' : live ? 'running' : 'stopped',
         ...(conflict ? { bridgeConflict: conflictLine(conflict.port) } : {}),
         statusline,
         statuslineSeen: live?.statuslineSeen ?? false,

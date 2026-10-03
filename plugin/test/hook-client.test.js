@@ -69,7 +69,9 @@ function fakeIo({ postResults = [], healthResults = [], shutdownError = null, re
 }
 const names = (io) => io.calls.map((c) => c[0]);
 // health() answers: our bridge proves it knows the key (bridge-auth.js); anything else does not.
-const ours = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: true });
+const ours = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: true, challenge: 'c'.repeat(32) });
+// Proven, but the bridge's challenge cap was reached this second: no challenge to answer yet.
+const throttled = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: true, challenge: null });
 const unproven = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: false });
 
 test('our bridge proves itself on /health, then gets the event', async () => {
@@ -207,4 +209,20 @@ test('after a recent conflict, a listener that cannot prove itself is skipped wi
   assert.equal(await deliver('B', io, { version: '2' }), 'foreign');
   assert.deepEqual(names(io), ['health', 'foreign']);
   assert.equal(io.slept(), 0);
+});
+
+// The bridge's challenges-per-second cap: proven, but no challenge this time. A Stop or a
+// Notification must not be lost to it: /health is asked again shortly (twice at most).
+test('a proven bridge without a challenge (throttled) is asked again shortly, then gets the event', async () => {
+  const io = fakeIo({ healthResults: [throttled(), throttled(), ours()] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'sent');
+  assert.deepEqual(names(io), ['health', 'health', 'health', 'post']);
+  assert.ok(io.slept() >= 300 && io.slept() <= 600, String(io.slept()));
+  assert.ok(!names(io).includes('foreign'));
+});
+
+test('still throttled after two more tries: dropped, never foreign, never a spawn', async () => {
+  const io = fakeIo({ healthResults: [throttled()] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'dropped');
+  assert.deepEqual(names(io), ['health', 'health', 'health']);
 });

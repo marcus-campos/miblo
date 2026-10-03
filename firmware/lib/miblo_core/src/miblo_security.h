@@ -68,8 +68,9 @@ HeaderVerdict checkRequestHeaders(const char* headers, size_t len, char* boundar
 //   - absent or empty (a browser always sends one);
 //   - an IP literal: dotted-quad IPv4, or a bracketed IPv6;
 //   - the gadget's id (its mDNS name and DHCP host name, "miblo-4f2a"), alone ("miblo-4f2a", from
-//     a router's DNS) or followed by a domain ("miblo-4f2a.local", "miblo-4f2a.fritz.box"): an
-//     attacker would have to know the id, which only goes out on the LAN;
+//     a router's DNS) or as "miblo-4f2a.local". No other domain ("miblo-4f2a.fritz.box",
+//     "miblo-4f2a.lan"): the id is only 16 bits, so "<id>.<any domain>" would let a rebinding
+//     domain guess its way in (F2). The plugin's bearer token skips this check (judgeHost);
 // each with an optional ":port" and trailing dot, case-insensitive. The setup AP (captive portal)
 // is the caller's exception: there any Host is answered (and redirected).
 bool hostAllowed(const char* host, const char* id);
@@ -98,10 +99,11 @@ HostVerdict judgeHost(const char* host, bool hostPresent, const char* origin, bo
 // Whether an Accept header asks for HTML (a browser navigating), case-insensitive.
 bool acceptsHtml(const char* accept);
 // The full refusal for a wrong Host/Origin, written into out: `status` ("421 Misdirected
-// Request"), then for a browser (html) a language-neutral page linking to http://<ip>/ (no link
-// when ip is empty or not a dotted IPv4), else {"error":"wrong host"}. Returns its length, 0 if
-// it does not fit in cap (never cut).
-size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html);
+// Request"), then for a browser (html) a short page: "Open Miblo at http://<ip>/ (a link) or
+// http://<id>.local/" (the ip only when a dotted IPv4, the id only when a plain host label), else
+// {"error":"wrong host"}. Returns its length, 0 if it does not fit in cap (never cut). 448 bytes
+// always fit.
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, const char* id, bool html);
 
 // Escalating brute-force lockout behind PairingGuard and each PresenceGate purpose (M2). The 5th
 // failure in a row locks for 60 s; from then on every 3rd failure locks again, each lockout twice

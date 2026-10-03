@@ -220,26 +220,16 @@ bool ipv6Literal(const char* p, size_t n) {
   return true;
 }
 
-// p[0..n) is `id`, alone or followed by "." and dot-separated non-empty labels.
+// p[0..n) is `id`, alone or followed by ".local" (case-insensitive). No other domain: the id is
+// only 16 bits, so "<id>.<any domain>" would let a rebinding domain guess its way in (F2).
 bool ownName(const char* p, size_t n, const char* id) {
   const size_t idLen = id ? strlen(id) : 0;
   if (!idLen || n < idLen) return false;
   for (size_t k = 0; k < idLen; k++)
     if (lower(p[k]) != lower(id[k])) return false;
   if (n == idLen) return true;
-  if (p[idLen] != '.') return false;
-  size_t label = 0;
-  for (size_t i = idLen + 1; i < n; i++) {
-    if (p[i] == '.') {
-      if (!label) return false;
-      label = 0;
-    } else if (isLabelChar(p[i])) {
-      label++;
-    } else {
-      return false;
-    }
-  }
-  return label > 0;
+  static const char kLocal[] MIBLO_ROM = ".local";
+  return n - idLen == sizeof(kLocal) - 1 && matchesLower(p + idLen, kLocal, sizeof(kLocal) - 1);
 }
 
 bool hostSpan(const char* p, size_t n, const char* id) {
@@ -296,29 +286,45 @@ bool acceptsHtml(const char* accept) {
   return false;
 }
 
-size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, bool html) {
+size_t wrongHostReply(char* out, size_t cap, const char* status, const char* ip, const char* id, bool html) {
   // Formats kept in flash (MIBLO_ROM), copied to the stack only for this call.
-  static const char kLinkPage[] MIBLO_ROM =
+  static const char kPageHead[] MIBLO_ROM =
       "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\">"
-      "<title>Miblo</title><p>Miblo: <a href=\"http://%s/\">http://%s/</a></p>";
-  static const char kPlainPage[] MIBLO_ROM = "<!doctype html><meta charset=\"utf-8\"><title>Miblo</title><p>Miblo</p>";
+      "<title>Miblo</title><p>Open Miblo at ";
+  static const char kIpLink[] MIBLO_ROM = "<a href=\"http://%s/\">http://%s/</a>";
+  static const char kOr[] MIBLO_ROM = " or ";
+  static const char kLocalName[] MIBLO_ROM = "http://%s.local/";
+  static const char kPageTail[] MIBLO_ROM = "</p>";
   static const char kJson[] MIBLO_ROM = "{\"error\":\"wrong host\"}";
   static const char kHead[] MIBLO_ROM =
       "HTTP/1.1 %s\r\nContent-Type: %s\r\nCache-Control: no-store\r\nConnection: close\r\n"
       "Content-Length: %u\r\n\r\n%s";
   static const char kHtmlType[] MIBLO_ROM = "text/html; charset=utf-8";
   static const char kJsonType[] MIBLO_ROM = "application/json";
-  char fmt[sizeof(kLinkPage)];
-  char body[200];
+  char fmt[sizeof(kHead)];
+  char body[256];
   if (html) {
+    // Only the gadget's own names: its IP (a link) and <id>.local, the names a browser may use.
     const size_t ipLen = ip ? strlen(ip) : 0;
     const bool link = ipLen > 0 && ipLen <= 15 && ipv4Literal(ip, ipLen);
+    const size_t idLen = id ? strlen(id) : 0;
+    bool name = idLen > 0 && idLen <= 16;  // "miblo-4f2a": 10; the body fits 256 bytes
+    for (size_t i = 0; name && i < idLen; i++) name = isLabelChar(id[i]);
+    mibloRomCopy(body, kPageHead, sizeof(kPageHead));
+    size_t len = strlen(body);
     if (link) {
-      mibloRomCopy(fmt, kLinkPage, sizeof(kLinkPage));
-      snprintf(body, sizeof(body), fmt, ip, ip);
-    } else {
-      mibloRomCopy(body, kPlainPage, sizeof(kPlainPage));
+      mibloRomCopy(fmt, kIpLink, sizeof(kIpLink));
+      len += snprintf(body + len, sizeof(body) - len, fmt, ip, ip);
     }
+    if (link && name) {
+      mibloRomCopy(body + len, kOr, sizeof(kOr));
+      len += sizeof(kOr) - 1;
+    }
+    if (name) {
+      mibloRomCopy(fmt, kLocalName, sizeof(kLocalName));
+      len += snprintf(body + len, sizeof(body) - len, fmt, id);
+    }
+    mibloRomCopy(body + len, kPageTail, sizeof(kPageTail));
   } else {
     mibloRomCopy(body, kJson, sizeof(kJson));
   }

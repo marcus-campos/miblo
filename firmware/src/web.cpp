@@ -1568,7 +1568,7 @@ static PGM_P largeBodyRefusal(LookaheadClient* client, const String& url) {
 // points at the gadget), or from another site's page (Origin), is refused before anything is read
 // or done: 421 / 403 (miblo::judgeHost). A paired computer's bearer token skips the check (a page
 // cannot know one), so the plugin works through a custom DNS alias; a browser must use the IP or
-// <id>.local, and one that used another name gets a small page linking to the IP. The setup AP
+// <id>.local, and one that used another name gets a small page naming both (F2). The setup AP
 // answers any Host (its captive portal redirects them). The header block is complete here (the
 // read-ahead holds a request until it is, lookahead_client.h). True when refused (and answered).
 static bool refuseForeign(LookaheadClient* client) {
@@ -1597,8 +1597,8 @@ static bool refuseForeign(LookaheadClient* client) {
             sizeof(status) - 1);
   status[sizeof(status) - 1] = 0;
   const String ip = net::connected() ? WiFi.localIP().toString() : String();
-  char out[384];
-  if (miblo::wrongHostReply(out, sizeof(out), status, ip.c_str(), html)) client->print(out);
+  char out[448];
+  if (miblo::wrongHostReply(out, sizeof(out), status, ip.c_str(), ctx.ident.id, html)) client->print(out);
   return true;
 }
 

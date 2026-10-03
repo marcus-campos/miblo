@@ -449,8 +449,17 @@ static void test_host_policy() {
   TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local", id));
   TEST_ASSERT_TRUE(hostAllowed("MIBLO-4F2A.LOCAL.", id));
   TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.local:80", id));
-  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a", id));            // the router's DNS (DHCP host name)
-  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a.fritz.box", id));  // ... with its domain
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a", id));  // the router's DNS (DHCP host name)
+  TEST_ASSERT_TRUE(hostAllowed("Miblo-4F2A.", id));
+  TEST_ASSERT_TRUE(hostAllowed("miblo-4f2a:8080", id));
+  // F2: the id is only 16 bits, so <id>.<any domain> lets a rebinding domain guess its way in:
+  // only <id>.local is the gadget's own name. The plugin (bearer token) is not affected.
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.fritz.box", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.lan", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.local.attacker.example", id));
+  TEST_ASSERT_FALSE(hostAllowed("miblo-4f2a.localx", id));
+  TEST_ASSERT_FALSE(originAllowed("http://miblo-4f2a.lan", id));
   TEST_ASSERT_FALSE(hostAllowed("attacker.example", id));
   TEST_ASSERT_FALSE(hostAllowed("attacker.example:80", id));
   TEST_ASSERT_FALSE(hostAllowed("miblo-4f2b.local", id));     // another unit's name
@@ -571,8 +580,10 @@ static void test_wrong_host_reply() {
   TEST_ASSERT_FALSE(acceptsHtml("*/*"));
   TEST_ASSERT_FALSE(acceptsHtml(nullptr));
   char out[400];
-  size_t n = wrongHostReply(out, sizeof(out), "421 Misdirected Request", "192.168.0.41", true);
+  size_t n = wrongHostReply(out, sizeof(out), "421 Misdirected Request", "192.168.0.41", "miblo-4f2a", true);
   TEST_ASSERT_EQUAL(strlen(out), n);
+  // F2: the page says which names work: the IP (a link) or <id>.local.
+  TEST_ASSERT_NOT_NULL(strstr(out, "http://miblo-4f2a.local/"));
   TEST_ASSERT_NOT_NULL(strstr(out, "HTTP/1.1 421 Misdirected Request\r\n"));
   TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: text/html; charset=utf-8\r\n"));
   TEST_ASSERT_NOT_NULL(strstr(out, "<a href=\"http://192.168.0.41/\">http://192.168.0.41/</a>"));
@@ -580,13 +591,20 @@ static void test_wrong_host_reply() {
   char cl[40];
   snprintf(cl, sizeof(cl), "Content-Length: %u\r\n", (unsigned)strlen(body));
   TEST_ASSERT_NOT_NULL(strstr(out, cl));
-  n = wrongHostReply(out, sizeof(out), "403 Forbidden", "192.168.0.41", false);
+  n = wrongHostReply(out, sizeof(out), "403 Forbidden", "192.168.0.41", "miblo-4f2a", false);
   TEST_ASSERT_NOT_NULL(strstr(out, "Content-Type: application/json\r\n"));
   TEST_ASSERT_NOT_NULL(strstr(out, "\r\n\r\n{\"error\":\"wrong host\"}"));
   // No IP to offer (not connected): the page still says where to go, without a link.
-  wrongHostReply(out, sizeof(out), "421 Misdirected Request", "", true);
+  wrongHostReply(out, sizeof(out), "421 Misdirected Request", "", "miblo-4f2a", true);
   TEST_ASSERT_NULL(strstr(out, "<a "));
-  TEST_ASSERT_EQUAL(0, wrongHostReply(out, 20, "421 Misdirected Request", "192.168.0.41", true));  // never cut
+  TEST_ASSERT_NOT_NULL(strstr(out, "http://miblo-4f2a.local/"));
+  // An id that is not a plain host label never reaches the page.
+  wrongHostReply(out, sizeof(out), "421 Misdirected Request", "192.168.0.41", "<b>", true);
+  TEST_ASSERT_NULL(strstr(out, "<b>"));
+  TEST_ASSERT_NOT_NULL(strstr(out, "http://192.168.0.41/"));
+  // The longest IPv4 and id still fit the buffer refuseForeign uses.
+  TEST_ASSERT_TRUE(wrongHostReply(out, 448, "421 Misdirected Request", "255.255.255.255", "miblo-ffff", true) > 0);
+  TEST_ASSERT_EQUAL(0, wrongHostReply(out, 20, "421 Misdirected Request", "192.168.0.41", "miblo-4f2a", true));  // never cut
 }
 
 static void test_find_content_length() {

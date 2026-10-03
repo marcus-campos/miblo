@@ -71,6 +71,13 @@ jobs:
         working-directory: firmware/dist
         run: sha256sum *.bin > SHA256SUMS.txt
 
+      # The double-clickable Mac installer, zipped so it keeps its executable bit when downloaded.
+      - name: Installers
+        run: |
+          mkdir -p installer-dist
+          zip -X installer-dist/Install-Miblo-macOS.zip "Install Miblo.command"
+          cp install.sh install.ps1 installer-dist/
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -78,3 +85,4 @@ jobs:
           files: |
             firmware/dist/*.bin
             firmware/dist/SHA256SUMS.txt
+            installer-dist/*

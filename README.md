@@ -263,7 +263,24 @@ For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#
 
 **Requirement:** [Node.js](https://nodejs.org) **20 or newer** on your `PATH`. The native Claude Code installer doesn't include Node. macOS, Linux and Windows (including WSL) are supported.
 
-1. **Install the plugin.** In Claude Code, run:
+1. **Install the plugin in one step.**
+   - **macOS or Linux:** open Terminal and paste:
+
+     ```sh
+     curl -fsSL https://raw.githubusercontent.com/marcus-campos/miblo/main/install.sh | sh
+     ```
+
+   - **Windows:** open PowerShell and paste:
+
+     ```powershell
+     irm https://raw.githubusercontent.com/marcus-campos/miblo/main/install.ps1 | iex
+     ```
+
+   - **Mac, without typing anything:** download `Install-Miblo-macOS.zip` from the [latest release](https://github.com/marcus-campos/miblo/releases/latest), unzip it and double-click **Install Miblo.command**. If macOS says it can't be opened, go to **System Settings → Privacy & Security** and click **Open Anyway**.
+
+   The installer finds Claude Code (the `claude` command, or the copy inside the Claude desktop app), adds the Miblo marketplace and installs the plugin. Run it again any time: it updates what is already there. It never asks for an administrator password. The plugin then works everywhere Claude Code runs on that computer: the terminal, the Claude desktop app's **Code** tab and the IDE extensions (VS Code, JetBrains). Restart Claude Code once it's done. No Claude Code yet? Install the [Claude desktop app](https://claude.ai/download) first.
+
+   **Or by hand:** in Claude Code, run:
 
    ```
    /plugin marketplace add marcus-campos/miblo

@@ -351,11 +351,17 @@ static void frame(uint32_t now);
 void loop() {
   const uint32_t now = millis();
   cpuMeter.update(micros());
+  // Low-memory guard: while the heap is low, held and new requests are answered 503 busy at once,
+  // the setup network is not opened, and pet visits and mDNS replies wait (miblo::HeapGuard).
+  const bool heapLow = ctx.heap.update(freeHeap(), maxFreeBlock(), now);
+#if defined(ESP8266)
+  LookaheadClient::shed(heapLow);
+#endif
   server.handleClient();
-  net::loop(now);
+  net::loop(now, heapLow);
   net::syncTimezone(now);
-  mdns::loop(now);
-  friendsnet::loop(now);
+  mdns::loop(now, heapLow);
+  friendsnet::loop(now, heapLow);
 
   if (!bootCountCleared && now - bootMs >= miblo::kPowerCycleWindowMs) {
     storage::writeBootCount(0);

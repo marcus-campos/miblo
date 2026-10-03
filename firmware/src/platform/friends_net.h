@@ -5,6 +5,8 @@
 // feeds it what other Miblos send (UDP port miblo::kFriendPort).
 namespace friendsnet {
 
-void loop(uint32_t nowMs);
+// lean: the heap is low (miblo::HeapGuard): nothing is sent (packets wait in their fixed queue)
+// and what arrives is dropped unread, so the network stack's buffers go back to the heap.
+void loop(uint32_t nowMs, bool lean);
 
 }  // namespace friendsnet

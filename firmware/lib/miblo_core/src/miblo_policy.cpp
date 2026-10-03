@@ -38,6 +38,7 @@ void NetPolicy::credentialsSubmitted(uint32_t nowMs) {
   sinceMs_ = nowMs;
   lastEventMs_ = nowMs;
   trial_ = true;
+  proven_ = false;  // a new network: nothing known about it yet
   lastReason_ = 0;
   sameCount_ = 0;
   failure_ = JoinFailure::None;
@@ -81,6 +82,8 @@ NetState NetPolicy::update(LinkStatus link, uint32_t nowMs) {
       linger_ = trial_;
     }
     trial_ = false;
+    proven_ = true;
+    wrongPass_ = false;
     state_ = NetState::Connected;
     if (linger_ && nowMs - connectedAtMs_ >= kApLingerMs) linger_ = false;
     ap_ = linger_;
@@ -88,11 +91,18 @@ NetState NetPolicy::update(LinkStatus link, uint32_t nowMs) {
     return state_;
   }
   linger_ = false;
+  // On a network that already connected this boot (and with no trial running), "wrong password" is
+  // any failed 4-way handshake, which a working router produces now and then: an outage like any
+  // other, below. Otherwise it opens the setup network at once.
   if (link == LinkStatus::WrongPassword) {
-    trial_ = false;
-    state_ = NetState::WrongPassword;
-    ap_ = true;
-    return state_;
+    if (proven_ && !trial_) {
+      wrongPass_ = true;
+    } else {
+      trial_ = false;
+      state_ = NetState::WrongPassword;
+      ap_ = true;
+      return state_;
+    }
   }
   if (trial_ && sameCount_ >= 2) {
     // Give up early on a failure that keeps repeating: rejections after a few tries, anything
@@ -109,12 +119,12 @@ NetState NetPolicy::update(LinkStatus link, uint32_t nowMs) {
       sinceMs_ = nowMs;
       break;
     case NetState::Connecting:
-      if (nowMs - sinceMs_ >= kFallbackMs) {
+      if (nowMs - sinceMs_ >= (proven_ && !trial_ ? kLostFallbackMs : kFallbackMs)) {
         if (trial_) {
           const JoinFailure why = classifyDisconnect(lastReason_);
           failTrial(why == JoinFailure::None ? JoinFailure::Timeout : why, lastReason_);
         } else {
-          state_ = NetState::Portal;
+          state_ = wrongPass_ ? NetState::WrongPassword : NetState::Portal;
           ap_ = true;
         }
       }

@@ -51,6 +51,7 @@ struct Context {
   miblo::FocusTimer focus;      // /miblo:focus
   miblo::MeetingMode meeting;   // /miblo:meeting
   miblo::DeskNotes notes;       // say, reminders, alarms, timer, countdown, find
+  miblo::HeapGuard heap;        // low-memory guard, updated by the app loop (app.cpp)
 
   bool hasSnapshot = false;
   uint32_t lastSnapshotMs = 0;

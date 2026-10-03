@@ -248,7 +248,7 @@ static void scanStep(uint32_t nowMs) {
   scanStarted = true;
 }
 
-void loop(uint32_t nowMs) {
+void loop(uint32_t nowMs, bool heapLow) {
   const bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
 
   if (pendingCreds && nowMs - pendingAtMs >= 500) {
@@ -303,7 +303,7 @@ void loop(uint32_t nowMs) {
     beginTrial();  // nothing heard from the SDK for a while: kick the attempt again
   }
 
-  if (policy.apWanted() && !apOn) startAp();
+  if (policy.apMayStart(heapLow) && !apOn) startAp();  // deferred while the heap is low
   if (!policy.apWanted() && apOn) stopAp();
   if (apOn) dns.processNextRequest();
   // Networks for the setup page, scanned in the background while the setup network is up. The

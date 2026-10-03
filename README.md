@@ -454,7 +454,7 @@ The boot screen shows the firmware version and build (for example `v1.0.0 (4534f
 - **From Claude Code:** `/miblo:reset <id>`.
 - **Without a computer:** see [Hard reset](#hard-reset) below.
 
-A factory reset erases Wi-Fi, pairings and settings, and brings back the setup QR code. Ordinary power cuts erase nothing. If your router is down for 2 minutes, the gadget opens its setup network and keeps retrying the saved one, so changing routers doesn't need a reset.
+A factory reset erases Wi-Fi, pairings and settings, and brings back the setup QR code. Ordinary power cuts erase nothing. If your router is down for 5 minutes (2 if the gadget hasn't connected since it was switched on), the gadget opens its setup network and keeps retrying the saved one, so changing routers doesn't need a reset.
 
 ### Hard reset
 

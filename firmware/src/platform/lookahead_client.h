@@ -27,6 +27,13 @@
 // WiFiClient can only peek at the first received segment (peekBuffer/peekBytes stop at the first
 // pbuf). ESP8266WebServerTemplate takes the connection type from its ServerType::ClientType, so
 // the server is instantiated with LookaheadServer below; nothing in the core is patched.
+//
+// Why (3): fairness. The short body wait blocks loop(): many clients that send their headers and
+// then stall the body each held everyone else up for kBodyWaitMs, seconds in all. So while another
+// client is waiting for the server (WiFiServer::hasClientData / hasMaxPendingClients) a request
+// gets one short wait (miblo::kBodyWaitContendedMs, enough for a body a segment behind), then
+// reports no data, and the server's non-blocking state decides (its 30 ms rule drops it while the
+// other client has data). See miblo::bodyWaitPlan. Alone, it waits kBodyWaitMs as above.
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
@@ -39,10 +46,18 @@ inline bool heapLowForRequest(uint32_t needBytes);  // platform.h, after this fi
 class LookaheadClient : public WiFiClient {
  public:
   LookaheadClient() = default;
-  explicit LookaheadClient(const WiFiClient& c) : WiFiClient(c) {}
+  // `server`: the listening server, asked whether other clients are waiting (Why (3) above).
+  explicit LookaheadClient(const WiFiClient& c, WiFiServer* server = nullptr) : WiFiClient(c), server_(server) {}
 
   // Holds the next request back until it is ready for the server (see Why (1) above).
-  void rearm() { held_ = true; }
+  void rearm() {
+    held_ = true;
+    contendedWait_ = false;
+  }
+  // Low-memory guard (app.cpp, miblo::HeapGuard): while on, every request still held back is
+  // answered 503 {"error":"busy"} and closed at once (the plugin retries it), and so is an idle
+  // kept-alive connection, so their buffers go back to the heap the Wi-Fi SDK needs.
+  static void shed(bool on) { shedding_ = on; }
   LookaheadClient(const LookaheadClient&) = default;
   LookaheadClient& operator=(const LookaheadClient&) = default;
   ~LookaheadClient() override = default;
@@ -127,14 +142,23 @@ class LookaheadClient : public WiFiClient {
   bool releaseRequest() {
     Source src{*this};
     miblo::RequestReadiness r = miblo::RequestReadiness::Waiting;
-    // Usually the whole header block came in the first segment: judged in place, no heap buffer
-    // (a 2 KB allocation on every request fragmented the heap the TCP sender needs).
-    if (!ahead_.pending()) {
-      r = miblo::requestInPlace(WiFiClient::peekBuffer(), WiFiClient::peekAvailable(), src, miblo::kBodyWaitMs);
-    }
-    if (r == miblo::RequestReadiness::Waiting) {
-      const bool heapLow = !ahead_.allocated() && heapLowForRequest(miblo::HeaderBuffer::kCap);
-      r = miblo::pollRequest(ahead_, src, miblo::kBodyWaitMs, heapLow);
+    // Why (3): a small body still to come is waited for in full only when no other client waits.
+    const bool others = server_ && (server_->hasClientData() || server_->hasMaxPendingClients());
+    const miblo::BodyWait wait = miblo::bodyWaitPlan(others, contendedWait_);
+    if (shedding_) {
+      r = miblo::RequestReadiness::NoMemory;
+    } else {
+      // Usually the whole header block came in the first segment: judged in place, no heap buffer
+      // (a 2 KB allocation on every request fragmented the heap the TCP sender needs).
+      if (!ahead_.pending()) {
+        r = miblo::requestInPlace(WiFiClient::peekBuffer(), WiFiClient::peekAvailable(), src, wait.budgetMs);
+      }
+      if (r == miblo::RequestReadiness::Waiting) {
+        const bool heapLow = !ahead_.allocated() && heapLowForRequest(miblo::HeaderBuffer::kCap);
+        r = miblo::pollRequest(ahead_, src, wait.budgetMs, heapLow);
+      }
+      if (r == miblo::RequestReadiness::BodyTimeout && !wait.refuseOnTimeout) contendedWait_ = true;
+      r = miblo::settleBodyWait(r, wait);
     }
     switch (r) {
       case miblo::RequestReadiness::Ready:
@@ -191,13 +215,16 @@ class LookaheadClient : public WiFiClient {
   }
 
   miblo::HeaderBuffer ahead_;
+  WiFiServer* server_ = nullptr;  // the listening server (outlives its clients); none: never contended
   bool held_ = true;
   bool refused_ = false;  // answered and closed by refuse(): no data, not connected
+  bool contendedWait_ = false;  // this request already had its short wait while others waited
+  static inline bool shedding_ = false;
 };
 
 class LookaheadServer : public WiFiServer {
  public:
   using WiFiServer::WiFiServer;
   using ClientType = LookaheadClient;
-  LookaheadClient accept() { return LookaheadClient(WiFiServer::accept()); }
+  LookaheadClient accept() { return LookaheadClient(WiFiServer::accept(), this); }
 };

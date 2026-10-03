@@ -186,6 +186,15 @@ RequestReadiness waitForBytes(ByteSource& src, size_t want, uint32_t budgetMs) {
   }
 }
 
+BodyWait bodyWaitPlan(bool othersWaiting, bool contendedWaitUsed) {
+  if (!othersWaiting) return {kBodyWaitMs, true};
+  return {contendedWaitUsed ? 0u : kBodyWaitContendedMs, false};
+}
+
+RequestReadiness settleBodyWait(RequestReadiness r, const BodyWait& w) {
+  return r == RequestReadiness::BodyTimeout && !w.refuseOnTimeout ? RequestReadiness::Waiting : r;
+}
+
 RequestReadiness requestInPlace(const char* p, size_t n, ByteSource& src, uint32_t bodyWaitMs) {
   const size_t end = p ? headerBlockEnd(p, n) : 0;
   if (!end) return RequestReadiness::Waiting;

@@ -32,7 +32,8 @@ export function startFakeDevice({
   // GET /api/challenge?n=<32 hex>&t=<tokenTag> (firmware 1.14.0+, no token needed): {id, ip, v: 2,
   // mac: hex HMAC-SHA256(token, n || id || ip)} with the token whose tag is t, where ip is the
   // gadget's own station IPv4 (`ip`). 'hmac' answers it, 'none' is a firmware before it (404),
-  // 'forge' is an impostor that does not know the token (a wrong mac).
+  // 'forge' is an impostor that does not know the token (a wrong mac), 'nonet' a gadget in setup
+  // mode with no station IP (409 {"error":"no network"}). Order: 400 malformed, 409, 403 unknown tag.
   challenge = legacy ? 'none' : 'hmac',
   ip = '127.0.0.1',
   resetUploads = 0,  // the next `resetUploads` POST /update are reset (RST) before the body is read,
@@ -190,6 +191,7 @@ export function startFakeDevice({
       state.challenges += 1;
       const n = url.searchParams.get('n') ?? '';
       if (!/^[0-9a-f]{32}$/.test(n)) return send(400, { error: 'invalid', field: 'n' });
+      if (challenge === 'nonet') return send(409, { error: 'no network' });
       if (challenge === 'forge') return send(200, { id, ip, v: 2, mac: crypto.randomBytes(32).toString('hex') });
       const t = state.tokens.find((k) => tokenTag(k) === url.searchParams.get('t'));
       if (!t) return send(403, { error: 'unknown' });

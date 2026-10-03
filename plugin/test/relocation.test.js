@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import net from 'node:net';
 import { DeviceManager } from '../lib/device-manager.js';
 import { DeviceClient } from '../lib/device-client.js';
-import { tokenTag, challengeMac, isLanAddr, sameSlash24 } from '../lib/relocation.js';
+import { tokenTag, challengeMac, challengeOk, isLanAddr, sameSlash24 } from '../lib/relocation.js';
 import { startFakeDevice, startChallengeRelay } from './fakes/fake-device.js';
 
 // M3: after 3 failed pushes the bridge rediscovers a gadget by mDNS. The new address must prove
@@ -13,6 +13,16 @@ import { startFakeDevice, startChallengeRelay } from './fakes/fake-device.js';
 test('challengeMac is hex HMAC-SHA256(token, nonce || id || ip)', () => {
   const want = crypto.createHmac('sha256', 'tok').update('00ff' + 'miblo-4f2a' + '192.168.1.20').digest('hex');
   assert.equal(challengeMac('tok', '00ff', 'miblo-4f2a', '192.168.1.20'), want);
+});
+
+// The firmware's own vector (miblo_security answerChallenge, v 2): both sides must agree on it.
+test('challenge v2 matches the firmware vector', () => {
+  const token = '00112233445566778899aabbccddeeff';
+  assert.equal(tokenTag(token), 'de18ad43');
+  assert.equal(challengeMac(token, '0123456789abcdef0123456789abcdef', 'miblo-4f2a', '192.168.15.181'),
+    '7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c');
+  assert.ok(challengeOk({ id: 'miblo-4f2a', ip: '192.168.15.181', v: 2, mac: '7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c' },
+    { token, nonce: '0123456789abcdef0123456789abcdef', id: 'miblo-4f2a', host: '192.168.15.181' }));
 });
 
 // A v2 answer as the gadget at `ip` gives it (firmware 1.14.0+).
@@ -174,6 +184,21 @@ test('an address outside the LAN (loopback, public, another port) is never chall
   }
 });
 
+// 409 {"error":"no network"}: the gadget is in setup mode, with no station IP to answer for. It
+// cannot prove itself just now: nothing is sent, nothing moves, and it is asked again later.
+test('a challenge answered 409 (no network yet) is retried later, without asking to pair again', async () => {
+  let infoAsked = false;
+  const { store, mgr, sent } = await relocateWith({
+    hit: { id: 'g1', addr: '192.168.1.77:80' },
+    challenge: () => { const e = new Error('409'); e.status = 409; throw e; },
+    info: () => { infoAsked = true; return { id: 'g1' }; },
+  });
+  assert.equal(infoAsked, false);
+  assert.equal(store.list()[0].addr, '192.168.1.20:80');
+  assert.ok(!sent.some(([a]) => a === '192.168.1.77:80'));
+  assert.equal(mgr.status()[0].needsPair, false);
+});
+
 test('a challenge that times out leaves the gadget where it was, without asking to pair again', async () => {
   const { store, mgr } = await relocateWith({
     hit: { id: 'g1', addr: '192.168.1.77:80' },
@@ -260,5 +285,18 @@ test('a 404 + public id impostor on the same /24 never sees the token of a gadge
     assert.equal(mgr.status()[0].needsPair, true);
   } finally {
     await imp.close();
+  }
+});
+
+test('a gadget in setup mode (409 no network) over HTTP: not followed, not asked to pair again, never sees the token', async () => {
+  const dev = await startFakeDevice({ id: 'miblo-4f2a', tokens: ['tok-1234'], challenge: 'nonet' });
+  try {
+    const { store, mgr } = await relocateTo(dev, 'miblo-4f2a');
+    assert.ok(dev.state.challenges > 0);
+    assert.deepEqual(dev.state.authHeaders, []);
+    assert.notEqual(store.list()[0].addr, dev.addr);
+    assert.equal(mgr.status()[0].needsPair, false);
+  } finally {
+    await dev.close();
   }
 });

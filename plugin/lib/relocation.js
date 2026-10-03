@@ -67,6 +67,8 @@ export async function verifyNewAddr({ client, dev, addr, addrOk = isLanAddr }) {
     const reply = await client.challenge(addr, nonce, tokenTag(dev.token));
     return challengeOk(reply, { token: dev.token, nonce, id: dev.id, host }) ? 'ok' : 'refused';
   } catch (e) {
+    // 409 {"error":"no network"}: in setup mode, with no station IP to answer for: ask later.
+    if (e?.status === 409) return 'retry';
     if (e?.status !== 404) return e?.status >= 400 && e.status < 500 ? 'refused' : 'retry';
   }
   // No challenge here. A gadget last seen on a firmware with it is not this address: anyone can

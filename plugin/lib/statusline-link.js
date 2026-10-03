@@ -23,6 +23,8 @@ function writeJson(file, obj) {
 }
 
 const slashes = (p) => p.replace(/\\/g, '/');
+// One shell word, taken literally: $, `, " and \ need nothing; ' is written as '\''.
+const shq = (p) => `'${p.replace(/'/g, `'\\''`)}'`;
 
 // Stable home of the tap and the saved original: <claudeConfigDir>/miblo/.
 // It lives next to settings.json (not in the plugin data dir) so the user's
@@ -34,8 +36,8 @@ export function tapDir(settingsPath) {
 // --no-wait: the status line never waits for a Node download (the hooks make it). --data: the
 // launcher shares the plugin's cached Node path and downloaded runtime.
 export function tapCommand({ settingsPath, dataDir }) {
-  const data = dataDir ? ` --data "${slashes(dataDir)}"` : '';
-  return `sh "${slashes(path.join(tapDir(settingsPath), LAUNCHER))}" --no-wait ${TAP}${data}`;
+  const data = dataDir ? ` --data ${shq(slashes(dataDir))}` : '';
+  return `sh ${shq(slashes(path.join(tapDir(settingsPath), LAUNCHER)))} --no-wait ${TAP}${data}`;
 }
 
 export function installTap({ pluginRoot, settingsPath }) {
@@ -54,8 +56,10 @@ export function isLinked({ settingsPath }) {
   if (typeof cmd !== 'string') return false;
   const c = slashes(cmd);
   const dir = slashes(tapDir(settingsPath));
-  // Current form (through the launcher) or the older `node "<dir>/statusline-tap.mjs"`.
-  return c.includes(`${dir}/${TAP}`) || (c.includes(`${dir}/${LAUNCHER}"`) && c.includes(` ${TAP}`));
+  // Through the launcher (quoted as now, or double-quoted as briefly before), or the older
+  // `node "<dir>/statusline-tap.mjs"`.
+  const launcher = `${dir}/${LAUNCHER}`;
+  return c.includes(`${dir}/${TAP}`) || ((cmd.includes(shq(launcher)) || c.includes(`"${launcher}"`)) && c.includes(` ${TAP}`));
 }
 
 // Run by every new bridge: refreshes the copied tap and launcher, and moves a status line linked

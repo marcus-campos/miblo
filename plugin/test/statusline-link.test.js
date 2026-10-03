@@ -30,7 +30,7 @@ test('link wraps an existing statusLine and keeps other settings', () => {
   assert.equal(after.statusLine.padding, 2);
   const slash = (p) => p.replace(/\\/g, '/');
   // Through the launcher, which finds Node where the shell's PATH is not inherited (desktop app).
-  assert.equal(after.statusLine.command, `sh "${slash(path.join(s.tapDir, 'miblo-run'))}" --no-wait statusline-tap.mjs --data "${slash(s.dataDir)}"`);
+  assert.equal(after.statusLine.command, `sh '${slash(path.join(s.tapDir, 'miblo-run'))}' --no-wait statusline-tap.mjs --data '${slash(s.dataDir)}'`);
   assert.ok(fs.existsSync(path.join(s.tapDir, 'statusline-tap.mjs')));
   assert.ok(fs.existsSync(path.join(s.tapDir, 'miblo-run')));
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(s.tapDir, 'statusline-original.json'), 'utf8')).command, 'bash ~/sl.sh');
@@ -106,7 +106,7 @@ test('relinking over a foreign tap keeps a previously saved original', () => {
 test('without a data dir the launcher falls back to its own default', () => {
   const s = setup({});
   link({ settingsPath: s.settingsPath, pluginRoot });
-  assert.equal(s.read().statusLine.command, `sh "${path.join(s.tapDir, 'miblo-run').replace(/\\/g, '/')}" --no-wait statusline-tap.mjs`);
+  assert.equal(s.read().statusLine.command, `sh '${path.join(s.tapDir, 'miblo-run').replace(/\\/g, '/')}' --no-wait statusline-tap.mjs`);
 });
 
 test('refreshLink moves a status line linked by an older Miblo (node ...) to the launcher', () => {
@@ -120,7 +120,7 @@ test('refreshLink moves a status line linked by an older Miblo (node ...) to the
   const after = s.read();
   assert.equal(after.theme, 'dark');
   assert.equal(after.statusLine.padding, 1);
-  assert.match(after.statusLine.command, /^sh ".*\/miblo-run" --no-wait statusline-tap\.mjs --data /);
+  assert.match(after.statusLine.command, /^sh '.*\/miblo-run' --no-wait statusline-tap\.mjs --data /);
   assert.ok(fs.existsSync(path.join(s.tapDir, 'miblo-run')));
   assert.ok(fs.existsSync(path.join(s.tapDir, 'statusline-tap.mjs')));
   // Already current: nothing to write. The saved original is untouched and still restored.
@@ -137,4 +137,31 @@ test('refreshLink leaves a status line that is not linked to Miblo alone', () =>
   const b = setup(undefined);
   assert.deepEqual(refreshLink(b.opts), { changed: false });
   assert.ok(!fs.existsSync(b.settingsPath));
+});
+
+// Paths are single-quoted, ' written as '\'': $, `, " and ' in a home or Claude dir stay literal.
+test('the tap command quotes paths so the shell takes them literally', { skip: process.platform === 'win32' }, async () => {
+  const { spawnSync } = await import('node:child_process');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-link-'));
+  const odd = path.join(root, `a $HOME \`id\` "q" it's`);
+  const settingsPath = path.join(odd, 'claude', 'settings.json');
+  const dataDir = path.join(odd, 'data');
+  link({ settingsPath, pluginRoot, dataDir });
+  const cmd = JSON.parse(fs.readFileSync(settingsPath, 'utf8')).statusLine.command;
+  assert.ok(cmd.startsWith('sh '));
+  const r = spawnSync('/bin/sh', ['-c', `set -- ${cmd.slice(3)}; printf '%s\\n' "$@"`], { encoding: 'utf8' });
+  assert.deepEqual(r.stdout.split('\n').slice(0, -1), [path.join(odd, 'claude', 'miblo', 'miblo-run'), '--no-wait', 'statusline-tap.mjs', '--data', dataDir]);
+  assert.equal(isLinked({ settingsPath }), true);
+});
+
+test('refreshLink moves a double-quoted launcher command to the quoted form', () => {
+  const s = setup({});
+  link(s.opts);
+  const settings = s.read();
+  const dq = `sh "${path.join(s.tapDir, 'miblo-run').replace(/\\/g, '/')}" --no-wait statusline-tap.mjs`;
+  settings.statusLine.command = dq;
+  fs.writeFileSync(s.settingsPath, JSON.stringify(settings));
+  assert.equal(isLinked(s), true);
+  assert.deepEqual(refreshLink(s.opts), { changed: true });
+  assert.match(s.read().statusLine.command, /^sh '/);
 });

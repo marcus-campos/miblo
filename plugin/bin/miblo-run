@@ -22,13 +22,19 @@
 # stderr.
 #
 # It never breaks Claude Code: on any failure it exits 0 quietly and writes the reason to
-# <data>/runtime/launcher.log. <data> is the value after --data in the script's arguments,
-# else $CLAUDE_PLUGIN_DATA, else ~/.miblo.
+# <data>/runtime/launcher.log. <data> is $CLAUDE_PLUGIN_DATA, else the plugin's data dir under
+# the Claude config dir when it exists, else ~/.miblo. Only --check and the status line take
+# `--data <absolute dir>` (right after them): the slash commands' arguments carry user text, which
+# must never choose the node that runs.
 #
-# Environment for tests and mirrors: MIBLO_NODE_BASE_URL (default https://nodejs.org/dist; the
-# pinned hash is still checked), MIBLO_NODE_PLATFORM (<os>-<arch>), MIBLO_NODE_SHA256 (the
-# expected hash), MIBLO_SYSROOT (prefix of the system locations), MIBLO_WAIT (seconds to wait
-# for a download another process is making, default 120).
+# Trust: PATH entries that are empty or relative are skipped; a node found inside the working
+# directory runs but is never cached; the cache is used only when it is ours (owned by the user,
+# in a runtime dir nobody else can write, naming an absolute .../node that still runs as >= 20).
+#
+# Environment for tests: MIBLO_SYSROOT (prefix of the system locations), MIBLO_NODE_PLATFORM
+# (<os>-<arch>), MIBLO_WAIT (seconds to wait for a download another process is making, default
+# 120); with MIBLO_TEST=1 only, MIBLO_NODE_BASE_URL (a mirror; file:// allowed) and
+# MIBLO_NODE_SHA256 (the expected hash). Downloads are https only.
 
 MIN_MAJOR=20
 NODE_VERSION=24.21.0
@@ -74,19 +80,29 @@ if [ "$check" = 0 ]; then
 fi
 
 data=
-prev=
-for arg in "$@"; do
-  if [ "$prev" = "--data" ]; then
-    data=$arg
-    break
+if [ "$check" = 1 ] || [ "${script:-}" = statusline-tap.mjs ]; then
+  if [ "${1:-}" = "--data" ]; then
+    case ${2:-} in
+      /* | [A-Za-z]:[\\/]*) data=$2 ;;
+    esac
   fi
-  prev=$arg
-done
+fi
 [ -n "$data" ] || data=${CLAUDE_PLUGIN_DATA:-}
-[ -n "$data" ] || data="${HOME:-.}/.miblo"
+if [ -z "$data" ]; then
+  conf=${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}
+  if [ -d "$conf/plugins/data/miblo-miblo" ]; then
+    data="$conf/plugins/data/miblo-miblo"
+  else
+    data="${HOME:-.}/.miblo"
+  fi
+fi
 rt="$data/runtime"
 cache="$rt/node-path"
 sysroot=${MIBLO_SYSROOT:-}
+nocache=0
+# Git Bash: Windows' FIND.EXE may come first on PATH.
+FIND=find
+[ -x /usr/bin/find ] && FIND=/usr/bin/find
 
 fail_reason="Node.js not found"
 too_old=
@@ -138,7 +154,7 @@ node_ok() {
 found() {
   fd_node=$1
   shift
-  remember "$fd_node"
+  [ "$nocache" = 1 ] || remember "$fd_node"
   if [ "$check" = 1 ]; then
     echo "ok version=$node_version node=$fd_node"
     exit 0
@@ -183,6 +199,65 @@ newest() {
   [ -n "$newest_path" ]
 }
 
+# The known install locations a node may live in even inside the working directory.
+known_place() {
+  case $1 in
+    "$HOME"/.nvm/* | "$HOME"/.volta/* | "$HOME"/.fnm/* | "$HOME"/.local/share/fnm/* | "$HOME"/.asdf/* | \
+      "$HOME"/.local/share/mise/* | "$HOME"/.nodenv/* | "$HOME/Library/Application Support/fnm"/* | \
+      /opt/homebrew/* | /usr/local/* | /usr/bin/*) return 0 ;;
+  esac
+  return 1
+}
+
+# `command -v node`, without its traps: empty, "." and relative PATH entries would run a node
+# planted in whatever repository Claude Code was started in.
+path_node() {
+  pn_cwd=$(pwd -P 2> /dev/null) || pn_cwd=
+  pn_ifs=$IFS
+  IFS=:
+  set -f
+  for pn_d in $PATH; do
+    case $pn_d in
+      /* | [A-Za-z]:[\\/]*) ;;
+      *) continue ;;
+    esac
+    for pn_n in node node.exe; do
+      [ -f "$pn_d/$pn_n" ] || continue
+      IFS=$pn_ifs
+      if try "$pn_d/$pn_n"; then
+        # Inside the working directory (resolved: no ./, .. or symlink tricks): run it, never cache it.
+        pn_real=$(cd "$pn_d" 2> /dev/null && pwd -P) || pn_real=$pn_d
+        case $pn_real/ in
+          "$pn_cwd"/*) [ -n "$pn_cwd" ] && ! known_place "$pn_real/" && nocache=1 ;;
+        esac
+        set +f
+        return 0
+      fi
+      IFS=:
+    done
+  done
+  IFS=$pn_ifs
+  set +f
+  return 1
+}
+
+# The cache, only when it is plainly ours.
+cache_usable() {
+  [ -f "$cache" ] && [ -O "$cache" ] || return 1
+  [ -z "$("$FIND" "$rt" -prune \( -perm -020 -o -perm -002 \) 2> /dev/null)" ] || return 1
+  node=
+  IFS= read -r node < "$cache" || [ -n "$node" ] || return 1
+  case $node in
+    /* | [A-Za-z]:[\\/]*) ;;
+    *) return 1 ;;
+  esac
+  case ${node##*/} in
+    node | node.exe) ;;
+    *) return 1 ;;
+  esac
+  try "$node"
+}
+
 well_known() {
   try "$sysroot/opt/homebrew/bin/node" && return 0
   try "$sysroot/usr/local/bin/node" && return 0
@@ -216,7 +291,7 @@ downloaded() {
 login_shell() {
   [ -n "${SHELL:-}" ] && [ -x "$SHELL" ] || return 1
   miss="$rt/no-login-node"
-  if [ -f "$miss" ] && [ -n "$(find "$miss" -mmin -60 2>/dev/null)" ]; then
+  if [ -f "$miss" ] && [ -n "$("$FIND" "$miss" -mmin -60 2>/dev/null)" ]; then
     return 1
   fi
   mkdir -p "$rt" 2>/dev/null || return 1
@@ -276,7 +351,7 @@ platform() {
     target="$pf_os-$pf_arch"
   fi
   want=$(pinned_sha "$target") || return 1
-  [ -n "${MIBLO_NODE_SHA256:-}" ] && want=$MIBLO_NODE_SHA256
+  [ "${MIBLO_TEST:-}" = 1 ] && [ -n "${MIBLO_NODE_SHA256:-}" ] && want=$MIBLO_NODE_SHA256
   name="node-v$NODE_VERSION-$target"
   case $target in
     win-*) ext=zip exe="$rt/$name/node.exe" ;;
@@ -317,15 +392,21 @@ unpack() {
 
 # Download, verify and unpack. Holds $rt/lock (a directory: mkdir is atomic) meanwhile.
 fetch() {
-  url="${MIBLO_NODE_BASE_URL:-https://nodejs.org/dist}/v$NODE_VERSION/$name.$ext"
+  base=https://nodejs.org/dist
+  protos='=https'
+  if [ "${MIBLO_TEST:-}" = 1 ]; then
+    base=${MIBLO_NODE_BASE_URL:-$base}
+    protos='=https,file'
+  fi
+  url="$base/v$NODE_VERSION/$name.$ext"
   part="$rt/$name.$ext.part.$$"
   stage="$rt/stage.$$"
   log "downloading $url"
   say "Downloading Node.js v$NODE_VERSION (about 50 MB, only this once)..."
   if command -v curl > /dev/null 2>&1; then
-    curl -fsSL --connect-timeout 15 --max-time 300 -o "$part" "$url" 2>> "$rt/launcher.log"
+    curl -fsSL --proto "$protos" --proto-redir "$protos" --connect-timeout 15 --max-time 300 -o "$part" "$url" 2>> "$rt/launcher.log"
   elif command -v wget > /dev/null 2>&1; then
-    wget -q -T 30 -O "$part" "$url" 2>> "$rt/launcher.log"
+    wget --https-only -q -T 30 -O "$part" "$url" 2>> "$rt/launcher.log"
   else
     fail "download failed: neither curl nor wget found"
     return 1
@@ -354,7 +435,7 @@ fetch() {
     rm -rf "$stage"
     return 1
   fi
-  rm -rf "$rt/$name"
+  rm -rf "${rt:?}/${name:?}"
   mv "$stage/$name" "$rt/$name" || {
     fail "cannot move $name into place"
     rm -rf "$stage"
@@ -373,7 +454,7 @@ lock_is_stale() {
   if [ -n "$lk_pid" ] && ! kill -0 "$lk_pid" 2> /dev/null; then
     return 0
   fi
-  [ -n "$(find "$rt/lock" -maxdepth 0 -mmin +10 2> /dev/null)" ]
+  [ -n "$("$FIND" "$rt/lock" -prune -mmin +10 2> /dev/null)" ]
 }
 
 install_runtime() {
@@ -384,7 +465,7 @@ install_runtime() {
   mkdir -p "$rt" 2> /dev/null || return 1
   # Offline: hooks run on every event, so after a failure only --check tries again within 10 min.
   failed="$rt/download-failed"
-  if [ "$check" = 0 ] && [ -f "$failed" ] && [ -n "$(find "$failed" -mmin -10 2> /dev/null)" ]; then
+  if [ "$check" = 0 ] && [ -f "$failed" ] && [ -n "$("$FIND" "$failed" -mmin -10 2> /dev/null)" ]; then
     fail_reason="the Node.js download failed less than 10 minutes ago"
     return 1
   fi
@@ -392,7 +473,10 @@ install_runtime() {
   waited=0
   until mkdir "$rt/lock" 2> /dev/null; do
     if lock_is_stale; then
-      rm -rf "$rt/lock"
+      # Atomic takeover: of several processes seeing the same stale lock, one mv wins.
+      if mv "$rt/lock" "$rt/lock.stale.$$" 2> /dev/null; then
+        rm -rf "$rt/lock.stale.$$"
+      fi
       continue
     fi
     # Another hook is downloading: use its result once it is there.
@@ -427,19 +511,14 @@ install_runtime() {
   return 0
 }
 
-if [ -f "$cache" ]; then
-  IFS= read -r node < "$cache"
-  if [ "$check" = 1 ]; then
-    [ -n "$node" ] && try "$node" && found "$node"
-  elif [ -n "$node" ] && [ -f "$node" ] && [ -x "$node" ]; then
-    exec "$node" "$here/$script" "$@"
-  fi
+if cache_usable; then
+  [ "$check" = 1 ] && found "$node"
+  exec "$node" "$here/$script" "$@"
 fi
 
 node=
-if pathnode=$(command -v node 2> /dev/null) && try "$pathnode"; then
-  found "$node" "$@"
-fi
+path_node && found "$node" "$@"
+nocache=0
 well_known && found "$node" "$@"
 downloaded && found "$node" "$@"
 login_shell && found "$node" "$@"

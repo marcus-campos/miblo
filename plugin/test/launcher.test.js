@@ -56,10 +56,12 @@ function sandbox() {
   return { root, home, sys, data, tools: toolDir(root), runtime: path.join(data, 'runtime') };
 }
 
-function run(s, args, { env = {}, extraPath = [] } = {}) {
+function run(s, args, { env = {}, extraPath = [], cwd } = {}) {
   const r = spawnSync(process.env.MIBLO_TEST_SH || '/bin/sh', [LAUNCHER, ...args], {
     encoding: 'utf8',
+    cwd,
     env: {
+      MIBLO_TEST: '1',
       HOME: s.home,
       PATH: [...extraPath, s.tools].join(':'),
       MIBLO_SYSROOT: s.sys,
@@ -158,17 +160,95 @@ test('the cached node comes first while it exists; a vanished one is found again
   assert.equal(cached(s), path.join(bin, 'node'));
 });
 
-test('the data dir comes from --data in the script arguments, else CLAUDE_PLUGIN_DATA, else ~/.miblo', () => {
+test('the data dir is CLAUDE_PLUGIN_DATA, else the plugin data dir under the Claude config, else ~/.miblo', () => {
   const s = sandbox();
   fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
-  const other = path.join(s.root, 'other');
-  run(s, ['miblo.js', '--data', other, 'status']);
-  assert.ok(fs.existsSync(path.join(other, 'runtime/node-path')));
-  assert.ok(!fs.existsSync(path.join(s.runtime, 'node-path')));
   run(s, ['hook.js']);
   assert.ok(fs.existsSync(path.join(s.runtime, 'node-path')));
   run(s, ['hook.js'], { env: { CLAUDE_PLUGIN_DATA: '' } });
   assert.ok(fs.existsSync(path.join(s.home, '.miblo/runtime/node-path')));
+  // The Bash tool that runs the slash commands has no CLAUDE_PLUGIN_DATA: the plugin's own dir.
+  const plug = path.join(s.home, '.claude/plugins/data/miblo-miblo');
+  fs.mkdirSync(plug, { recursive: true });
+  run(s, ['miblo.js', '--data', plug, 'status'], { env: { CLAUDE_PLUGIN_DATA: '' } });
+  assert.ok(fs.existsSync(path.join(plug, 'runtime/node-path')));
+  const conf = path.join(s.root, 'conf');
+  fs.mkdirSync(path.join(conf, 'plugins/data/miblo-miblo'), { recursive: true });
+  run(s, ['hook.js'], { env: { CLAUDE_PLUGIN_DATA: '', CLAUDE_CONFIG_DIR: conf } });
+  assert.ok(fs.existsSync(path.join(conf, 'plugins/data/miblo-miblo/runtime/node-path')));
+});
+
+// A prompt-injected `/miblo:say ... --data /tmp/x` must not choose which "node" runs.
+test("--data in a script's arguments is ignored, except for the status line, right after it and absolute", () => {
+  const s = sandbox();
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const evil = path.join(s.root, 'evil');
+  fakeNode(path.join(evil, 'bin/node'), 'EVIL');
+  fs.mkdirSync(path.join(evil, 'runtime'), { recursive: true });
+  fs.writeFileSync(path.join(evil, 'runtime/node-path'), path.join(evil, 'bin/node') + '\n');
+  assert.match(run(s, ['miblo.js', 'say', '--data', evil]).out, /^VOLTA /);
+  assert.match(run(s, ['miblo.js', '--data', evil, 'status']).out, /^VOLTA /);
+  assert.match(run(s, ['--no-wait', 'statusline-tap.mjs', 'x', '--data', evil]).out, /^VOLTA /);
+  assert.match(run(s, ['--no-wait', 'statusline-tap.mjs', '--data', 'evil'], { cwd: s.root }).out, /^VOLTA /);
+  assert.match(run(s, ['--check', '--data', 'evil'], { cwd: s.root }).out, /node=.*\.volta/);
+  // As the status line and --check pass it: honoured (the cache there is ours to trust).
+  const mine = path.join(s.root, 'mine');
+  run(s, ['--no-wait', 'statusline-tap.mjs', '--data', mine]);
+  assert.ok(fs.existsSync(path.join(mine, 'runtime/node-path')));
+});
+
+// ---- PATH and cache hardening ----
+
+test("PATH entries that are empty, relative or '.' are skipped (a repo's ./node never runs)", () => {
+  const s = sandbox();
+  const repo = path.join(s.root, 'repo');
+  fakeNode(path.join(repo, 'node'), 'REPO');
+  fakeNode(path.join(repo, 'bin/node'), 'REPOBIN');
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  for (const p of [`.:${s.tools}`, `:${s.tools}`, `${s.tools}:`, `bin:${s.tools}`, `./bin:${s.tools}`]) {
+    const r = spawnSync('/bin/sh', [LAUNCHER, 'hook.js'], { cwd: repo, encoding: 'utf8',
+      env: { MIBLO_TEST: '1', HOME: s.home, PATH: p, MIBLO_SYSROOT: s.sys, SHELL: '/nonexistent', CLAUDE_PLUGIN_DATA: s.data } });
+    assert.match(r.out ?? r.stdout, /^VOLTA /, p);
+    fs.rmSync(path.join(s.runtime, 'node-path'));
+  }
+});
+
+test('a node on PATH inside the working directory runs but is never cached', () => {
+  const s = sandbox();
+  const repo = path.join(s.root, 'repo');
+  fakeNode(path.join(repo, 'tools/node'), 'REPO');
+  const r = run(s, ['hook.js'], { cwd: repo, extraPath: [path.join(repo, '.', 'tools').replace('/tools', '/./tools')] });
+  assert.match(r.out, /^REPO /);
+  assert.ok(!fs.existsSync(path.join(s.runtime, 'node-path')));
+});
+
+test('a cache that is not plainly ours is ignored', () => {
+  for (const bad of ['relative/node', '/bin/sh', '']) {
+    const s = sandbox();
+    fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+    const evil = fakeNode(path.join(s.root, 'evil/sh'), 'EVIL');
+    fs.mkdirSync(s.runtime, { recursive: true });
+    fs.writeFileSync(path.join(s.runtime, 'node-path'), (bad === '/bin/sh' ? evil : bad) + '\n');
+    assert.match(run(s, ['hook.js']).out, /^VOLTA /, bad);
+  }
+  // A runtime dir others can write to.
+  const s = sandbox();
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const evil = fakeNode(path.join(s.root, 'evil/node'), 'EVIL');
+  fs.mkdirSync(s.runtime, { recursive: true });
+  fs.writeFileSync(path.join(s.runtime, 'node-path'), evil + '\n');
+  fs.chmodSync(s.runtime, 0o777);
+  assert.match(run(s, ['hook.js']).out, /^VOLTA /);
+});
+
+test('a cached node that is now too old is replaced', () => {
+  const s = sandbox();
+  const old = fakeNode(path.join(s.root, 'old/node'), 'OLD', 'v18.0.0');
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  fs.mkdirSync(s.runtime, { recursive: true });
+  fs.writeFileSync(path.join(s.runtime, 'node-path'), old + '\n');
+  assert.match(run(s, ['hook.js']).out, /^VOLTA /);
+  assert.equal(cached(s), path.join(s.home, '.volta/bin/node'));
 });
 
 test('asks the login shell as a last resort and caches the answer', () => {
@@ -336,7 +416,7 @@ test('works under dash: discovery, cache and download', { skip: !fs.existsSync('
   const d = dist(s, 'linux-x64');
   const dash = (args, env) => spawnSync('/bin/dash', [LAUNCHER, ...args], {
     encoding: 'utf8',
-    env: { HOME: s.home, PATH: s.tools, MIBLO_SYSROOT: s.sys, SHELL: '/nonexistent', CLAUDE_PLUGIN_DATA: s.data, ...env },
+    env: { MIBLO_TEST: '1', HOME: s.home, PATH: s.tools, MIBLO_SYSROOT: s.sys, SHELL: '/nonexistent', CLAUDE_PLUGIN_DATA: s.data, ...env },
   });
   assert.match(dash(['hook.js'], { MIBLO_NODE_BASE_URL: d.base, MIBLO_NODE_PLATFORM: 'linux-x64', MIBLO_NODE_SHA256: d.sha }).stdout, /^DOWNLOADED /);
   fakeNode(path.join(s.home, '.nvm/versions/node/v22.2.0/bin/node'), 'NVM');
@@ -396,4 +476,19 @@ test('after a failed download, hooks wait 10 minutes before trying again; --chec
   assert.match(run(s, ['hook.js'], { env }).err, /could not be downloaded/);
   assert.equal(run(s, ['--check'], { env }).code, 1);
   assert.equal(tries(), 2);
+});
+
+test('the download mirror and hash overrides work only under MIBLO_TEST=1', { skip: !hasCurl }, () => {
+  const s = sandbox();
+  const d = dist(s, 'linux-x64');
+  const r = run(s, ['--check'], { env: { MIBLO_TEST: '', MIBLO_NODE_BASE_URL: d.base, MIBLO_NODE_PLATFORM: 'linux-x64', MIBLO_NODE_SHA256: d.sha } });
+  assert.doesNotMatch(r.out, /^ok /);
+  assert.doesNotMatch(fs.readFileSync(path.join(s.runtime, 'launcher.log'), 'utf8'), /file:\/\//);
+});
+
+test('downloads only over https (curl --proto =https, wget --https-only)', () => {
+  assert.match(src, /curl [^\n]*--proto "?=?\$?\{?[a-z_]*/);
+  assert.ok(src.includes("--proto-redir"));
+  assert.ok(src.includes('wget --https-only') || src.includes('--https-only'));
+  assert.ok(src.includes('rm -rf "${rt:?}/${name:?}"'));
 });

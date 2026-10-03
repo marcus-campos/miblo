@@ -151,6 +151,33 @@ class HeapGuard {
   uint32_t episodes_ = 0;
 };
 
+// The guard's restarts as kept in one RTC word (crashlog.cpp): the restarts in a row (the
+// backoff's streak) and the total since power-on, both saturating at 255. Top byte kMagic, then a
+// checksum over both counts, then streak, then total. Any word not in this format (firmware 1.12's
+// 0x4D48nnnn, random contents after a power cut, a bad checksum, a streak above the total)
+// decodes as zero.
+struct HeapRestarts {
+  static constexpr uint32_t kMagic = 0xB7;
+  uint8_t streak = 0;
+  uint8_t total = 0;
+  HeapRestarts noted() const {
+    return {(uint8_t)(streak < 255 ? streak + 1 : 255), (uint8_t)(total < 255 ? total + 1 : 255)};
+  }
+  HeapRestarts streakEnded() const { return {0, total}; }
+  static uint8_t check(uint8_t streak, uint8_t total) { return (uint8_t)(streak * 37u + total * 11u + 0x5Cu); }
+};
+inline uint32_t encodeHeapRestarts(HeapRestarts r) {
+  return HeapRestarts::kMagic << 24 | (uint32_t)HeapRestarts::check(r.streak, r.total) << 16 |
+         (uint32_t)r.streak << 8 | r.total;
+}
+inline HeapRestarts decodeHeapRestarts(uint32_t v) {
+  const uint8_t streak = (uint8_t)(v >> 8), total = (uint8_t)v;
+  if (v >> 24 != HeapRestarts::kMagic || (uint8_t)(v >> 16) != HeapRestarts::check(streak, total) || streak > total) {
+    return {};
+  }
+  return {streak, total};
+}
+
 // Value of "state" in GET /api/wifi-status. `busy`: a submission is queued or being tried.
 const char* joinStatusName(NetState state, JoinFailure failure, bool busy);
 

@@ -410,6 +410,47 @@ static void test_heap_guard_restart_backoff() {
   TEST_ASSERT_FALSE(f.streakEnded(HeapGuard::kHealthyMs * 2));
 }
 
+// The guard's restart counts live in one RTC word that survives restarts and an OTA, not a power
+// cut. Anything not written by this format reads as zero: firmware 1.12's word (0x4D48nnnn), the
+// random contents after a power cut, a streak larger than the total, a bad checksum.
+static void test_heap_restart_word() {
+  for (uint8_t streak : {0, 1, 3, 6, 255}) {
+    for (uint8_t total : {0, 1, 7, 200, 255}) {
+      if (streak > total) continue;
+      const HeapRestarts r = decodeHeapRestarts(encodeHeapRestarts({streak, total}));
+      TEST_ASSERT_EQUAL_UINT8(streak, r.streak);
+      TEST_ASSERT_EQUAL_UINT8(total, r.total);
+    }
+  }
+  for (uint32_t n : {0u, 1u, 2u, 0x48u, 0x0303u, 0xFFFFu}) {  // 1.12's layout: "MH" + a 16-bit count
+    const HeapRestarts r = decodeHeapRestarts(0x4D480000u | n);
+    TEST_ASSERT_EQUAL_UINT8(0, r.streak);
+    TEST_ASSERT_EQUAL_UINT8(0, r.total);
+  }
+  // Random words: (almost) never valid; any that is must still have streak <= total.
+  uint32_t x = 0x12345678u, valid = 0;
+  for (int i = 0; i < 100000; i++) {
+    x ^= x << 13, x ^= x >> 17, x ^= x << 5;
+    const HeapRestarts r = decodeHeapRestarts(x);
+    if (r.streak || r.total) valid++;
+    TEST_ASSERT_TRUE(r.streak <= r.total);
+  }
+  TEST_ASSERT_TRUE(valid < 5);
+  // A streak above the total, or a flipped bit, is rejected.
+  TEST_ASSERT_EQUAL_UINT8(0, decodeHeapRestarts(encodeHeapRestarts({5, 2})).streak);
+  TEST_ASSERT_EQUAL_UINT8(0, decodeHeapRestarts(encodeHeapRestarts({1, 2}) ^ 0x100u).total);
+  // Counting a restart saturates; ending a streak keeps the total.
+  HeapRestarts r{254, 254};
+  r = r.noted();
+  TEST_ASSERT_EQUAL_UINT8(255, r.streak);
+  r = r.noted();
+  TEST_ASSERT_EQUAL_UINT8(255, r.streak);
+  TEST_ASSERT_EQUAL_UINT8(255, r.total);
+  r = r.streakEnded();
+  TEST_ASSERT_EQUAL_UINT8(0, r.streak);
+  TEST_ASSERT_EQUAL_UINT8(255, r.total);
+}
+
 static void test_classify_disconnect_reasons() {
   TEST_ASSERT_EQUAL(JoinFailure::None, classifyDisconnect(0));
   TEST_ASSERT_EQUAL(JoinFailure::NotFound, classifyDisconnect(201));
@@ -1381,6 +1422,7 @@ int main() {
   RUN_TEST(test_heap_guard_hysteresis);
   RUN_TEST(test_heap_guard_restart_ceiling);
   RUN_TEST(test_heap_guard_restart_backoff);
+  RUN_TEST(test_heap_restart_word);
   RUN_TEST(test_screen_selection_order);
   RUN_TEST(test_classify_disconnect_reasons);
   RUN_TEST(test_trial_retries_until_connected);

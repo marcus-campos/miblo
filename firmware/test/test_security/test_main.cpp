@@ -816,11 +816,12 @@ static void test_headers_garbage() {
 // Re-opening (a new code) must not grant fresh guesses: 4 bad, re-open, 1 bad → locked.
 static void test_presence_failures_survive_reopen() {
   PresenceGate g;
-  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "1111", 0));
+  // (Reset is asked for by an authorised caller: trusted, no anonymous gap between codes.)
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "1111", 0, true));
   for (int i = 0; i < 4; i++) TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 10));
   TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Reset, 10));
   g.close();  // (closed, e.g. expired): a new code, same failures
-  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "2222", 20));
+  TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Reset, "2222", 20, true));
   TEST_ASSERT_FALSE(g.check(PresenceGate::Purpose::Reset, "0000", 30));
   TEST_ASSERT_TRUE(g.locked(PresenceGate::Purpose::Reset, 30));
   TEST_ASSERT_EQUAL_UINT32(60000, g.lockRemainingMs(PresenceGate::Purpose::Reset, 30));
@@ -854,6 +855,7 @@ static void test_presence_lockout_clock_wrap() {
   TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, expired));
   const uint32_t phantom = t0 + 10;  // same low bits one full wrap (2^32 ms) later
   TEST_ASSERT_FALSE(g.locked(PresenceGate::Purpose::Update, phantom));
+  TEST_ASSERT_EQUAL_UINT32(0, g.waitMs(PresenceGate::Purpose::Update, phantom));  // nor the anonymous gap
   TEST_ASSERT_TRUE(g.open(PresenceGate::Purpose::Update, "1234", phantom));
 }
 
@@ -1079,6 +1081,66 @@ static void test_presence_code_never_replaced_while_active() {
   TEST_ASSERT_EQUAL_STRING("7777", g.code());
 }
 
+// F4: an unauthenticated LAN host re-opening the Settings code must not keep the owner out of
+// OTA, Reset and Wi-Fi. An authorised caller (bearer token, web session, the setup AP) replaces a
+// code opened anonymously; a code opened by an authorised caller is never replaced.
+static void test_presence_trusted_preempts_anonymous() {
+  using P = PresenceGate::Purpose;
+  PresenceGate g;
+  TEST_ASSERT_TRUE(g.open(P::Settings, "1111", 0));            // anonymous (the prankster)
+  TEST_ASSERT_FALSE(g.open(P::Reset, "2222", 1000));           // anonymous: still busy
+  TEST_ASSERT_TRUE(g.open(P::Reset, "2222", 1000, true));      // the owner's plugin: replaces it
+  TEST_ASSERT_TRUE(g.purpose() == P::Reset);
+  TEST_ASSERT_EQUAL_STRING("2222", g.code());
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs, g.remainingMs(1000));  // a fresh timer
+  TEST_ASSERT_FALSE(g.check(P::Settings, "1111", 1100));       // the replaced code is gone
+  TEST_ASSERT_FALSE(g.locked(P::Settings, 1100));
+  TEST_ASSERT_FALSE(g.open(P::Settings, "3333", 1200));        // nor can it come back over it
+  TEST_ASSERT_FALSE(g.open(P::Update, "4444", 1200, true));    // trusted never replaces trusted
+  TEST_ASSERT_EQUAL_STRING("2222", g.code());
+  TEST_ASSERT_TRUE(g.check(P::Reset, "2222", 1300));
+  // A trusted request for the purpose already on the screen keeps the code and adopts it.
+  PresenceGate h;
+  TEST_ASSERT_TRUE(h.open(P::Update, "5555", 0));
+  TEST_ASSERT_TRUE(h.open(P::Update, "6666", 10, true));
+  TEST_ASSERT_EQUAL_STRING("5555", h.code());
+  TEST_ASSERT_FALSE(h.open(P::Reset, "7777", 20, true));       // now held by an authorised caller
+  // A locked purpose stays locked for a trusted caller too.
+  for (int i = 0; i < 5; i++) h.check(P::Update, "0000", 30);
+  TEST_ASSERT_FALSE(h.open(P::Update, "8888", 40, true));
+}
+
+// F4: an anonymous caller arms a new code for one purpose at most once per kAnonGapMs; a pending
+// code is handed back as it is. The owner's flow is unchanged: a correct code lifts the wait.
+static void test_presence_anonymous_rate_limit() {
+  using P = PresenceGate::Purpose;
+  PresenceGate g;
+  TEST_ASSERT_TRUE(g.open(P::Settings, "1111", 0));
+  TEST_ASSERT_TRUE(g.open(P::Settings, "2222", 5000));  // pending: reused, not re-armed
+  TEST_ASSERT_EQUAL_STRING("1111", g.code());
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs - 5000, g.remainingMs(5000));
+  // Closed by a lockout (5 wrong guesses) or by its owner: no new anonymous code for 30 s.
+  g.close();
+  TEST_ASSERT_FALSE(g.open(P::Settings, "3333", 10000));
+  TEST_ASSERT_FALSE(g.locked(P::Settings, 10000));
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kAnonGapMs - 10000, g.waitMs(P::Settings, 10000));
+  TEST_ASSERT_TRUE(g.open(P::Update, "4444", 10000));  // per purpose
+  g.close();
+  TEST_ASSERT_TRUE(g.open(P::Settings, "3333", PresenceGate::kAnonGapMs));
+  TEST_ASSERT_EQUAL_STRING("3333", g.code());
+  // A trusted caller is not rate-limited.
+  g.close();
+  TEST_ASSERT_TRUE(g.open(P::Settings, "5555", PresenceGate::kAnonGapMs + 1, true));
+  // A correct code proves presence: the owner may ask again at once.
+  PresenceGate h;
+  TEST_ASSERT_TRUE(h.open(P::Settings, "1111", 0));
+  TEST_ASSERT_TRUE(h.check(P::Settings, "1111", 100));
+  h.close();
+  TEST_ASSERT_TRUE(h.open(P::Settings, "2222", 200));
+  // waitMs while another purpose's code is up: what is left of it.
+  TEST_ASSERT_EQUAL_UINT32(PresenceGate::kTtlMs - 100, h.waitMs(P::Reset, 300));
+}
+
 // Joining another network from the setup portal: frictionless only on a fresh unit (never
 // configured, nothing saved, not paired). Anything else needs the code on the screen, so whoever
 // is near a configured unit that lost its Wi-Fi cannot move it to their network.
@@ -1100,6 +1162,8 @@ static void test_wifi_code_a_reset_unit_is_frictionless() {
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_presence_code_never_replaced_while_active);
+  RUN_TEST(test_presence_trusted_preempts_anonymous);
+  RUN_TEST(test_presence_anonymous_rate_limit);
   RUN_TEST(test_wifi_code_required);
   RUN_TEST(test_wifi_code_a_reset_unit_is_frictionless);
   RUN_TEST(test_info_view);

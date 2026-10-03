@@ -69,8 +69,9 @@ static void openGate() {
     web::sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":false}"));
     return;
   }
-  // The screen now shows the code (an active update code is kept; another purpose's: busy).
-  if (!web::openPresence(*srv, PresenceGate::Purpose::Update, millis())) return;
+  // The screen now shows the code (an active update code is kept; another purpose's: busy, unless
+  // this caller is authorised and that code was opened anonymously, F4).
+  if (!web::openPresence(*srv, PresenceGate::Purpose::Update, millis(), web::requestAuthorized())) return;
   web::sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":true}"));
 }
 

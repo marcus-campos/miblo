@@ -140,16 +140,16 @@ void sendLocked(WebServerT& server, uint32_t remainingMs) {
   sendJson(server, 429, out);
 }
 
-bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs) {
+bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs, bool trusted) {
   char code[5];
   miblo::formatCode(hwRandom(), code);
-  if (ctx.presence.open(p, code, nowMs)) return true;
+  if (ctx.presence.open(p, code, nowMs, trusted)) return true;
   if (ctx.presence.locked(p, nowMs)) {
     sendLocked(server, ctx.presence.lockRemainingMs(p, nowMs));
-  } else {  // another purpose's code is on the screen: never replaced, retry once it is gone
+  } else {  // another purpose's code is on the screen, or asked again too soon: retry later
     char out[48];
     snprintf_P(out, sizeof(out), PSTR("{\"error\":\"busy\",\"retryAfter\":%u}"),
-             (unsigned)((ctx.presence.remainingMs(nowMs) + 999) / 1000));
+             (unsigned)((ctx.presence.waitMs(p, nowMs) + 999) / 1000));
     sendJson(server, 429, out);
   }
   return false;
@@ -482,7 +482,8 @@ static void handleWifiCode() {
     return;
   }
   const uint32_t now = millis();
-  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Wifi, now)) return;
+  // On the gadget's own setup AP the caller is within radio range, not on the home LAN: trusted.
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Wifi, now, true)) return;
   ctx.lastInteractionMs = now;
   sendJson(*srv, 200, F("{\"ok\":true,\"codeRequired\":true}"));
 }
@@ -1176,7 +1177,7 @@ static void settingsPage() {
 // A state-changing web request is authorized by a paired computer's bearer token (the plugin) or
 // by a web session the browser earned with the on-screen code. Everyone else on the LAN is
 // refused: an unpaired prankster cannot change anything.
-static bool webAuthorized() {
+bool requestAuthorized() {
   char token[40];
   const String auth = requestHeader(*srv, F("Authorization"));  // never the previous request's
   if (miblo::bearerToken(auth.c_str(), token, sizeof(token))) {
@@ -1200,7 +1201,7 @@ static void handleSettingsCode() {
   }
   if (!requireJson(*srv)) return;
   const uint32_t now = millis();
-  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Settings, now)) return;
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Settings, now, false)) return;
   ctx.lastInteractionMs = now;  // keep the screen on so the code is readable
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
@@ -1243,7 +1244,7 @@ static void handleSettingsUnlock() {
 // GET /settings-secret, only for an unlocked session: the private fields (owner, birthday) and,
 // for a paired gadget's locked page, the settings, version, board and number of paired computers.
 static void handleSettingsSecret() {
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1267,7 +1268,7 @@ static void handleSettingsSecret() {
 // processing load, RAM in use, and storage (program and data: miblo::writeSystemInfo). For whoever may see the settings (a web session, a
 // paired computer, or anyone before pairing, as the page itself).
 static void handleSettingsSystem() {
-  if (ctx.tokens.count() > 0 && !webAuthorized()) {
+  if (ctx.tokens.count() > 0 && !requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1299,7 +1300,7 @@ static void handleSettingsSystem() {
 // one's label, how long ago its token last came in (-1: not since the gadget started) and its
 // token's tag (miblo::tokenTag: 32 bits, cannot give the token back) for "(this computer)".
 static void handleSettingsComputers() {
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1325,7 +1326,7 @@ static void handleSettingsComputers() {
 // working at once; it needs /miblo:pair to come back. The others are untouched.
 static void handleSettingsComputerRemove() {
   if (!requireJson(*srv)) return;
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1359,7 +1360,7 @@ static void handleSettingsComputerRemove() {
 // next snapshot names it again.
 static void handleSettingsComputerRename() {
   if (!requireJson(*srv)) return;
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1390,7 +1391,7 @@ static void handleSettingsComputerRename() {
 }
 
 static void handleSettings() {
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1462,7 +1463,7 @@ static void handleRoot() {
 }
 
 static void handlePairCode() {
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
@@ -1473,12 +1474,12 @@ static void handlePairCode() {
 }
 
 static void handleResetCode() {
-  if (!webAuthorized()) {
+  if (!requestAuthorized()) {
     sendJson(*srv, 401, F("{\"error\":\"unauthorized\"}"));
     return;
   }
   if (!requireJson(*srv)) return;
-  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Reset, millis())) return;
+  if (!openPresence(*srv, miblo::PresenceGate::Purpose::Reset, millis(), true)) return;  // authorised above
   sendJson(*srv, 200, F("{\"ok\":true}"));
 }
 

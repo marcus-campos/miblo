@@ -270,28 +270,37 @@ ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, con
 // (EscalatingLockout, L2): a stranger guessing the settings code cannot keep the owner from
 // updating, resetting or moving the unit's Wi-Fi. Failures accumulate across re-opens (a new code
 // does not grant fresh guesses); a lockout closes the gate and its purpose cannot open again until
-// it ends. Only a correct code for that purpose resets its failures and escalation.
+// it ends. Only a correct code for that purpose resets its failures and escalation. Lockouts live
+// in RTC memory: a soft reset keeps them, unplugging and replugging the unit clears them.
+// One code is on the screen at a time. So that an unauthenticated LAN host re-opening a code
+// cannot keep the owner out (F4): a TRUSTED caller (a paired computer's bearer token, a web
+// session, a client of the setup AP) replaces a code opened anonymously, and an anonymous caller
+// arms a new code for a purpose at most once per kAnonGapMs (a pending one is handed back).
 class PresenceGate {
  public:
   enum class Purpose : uint8_t { Update, Reset, Settings, Wifi };
   static constexpr uint8_t kPurposes = 4;
   static constexpr uint32_t kTtlMs = 300000;
+  static constexpr uint32_t kAnonGapMs = 30000;
   static constexpr uint8_t kMaxFailures = EscalatingLockout::kMaxFailures;
   static constexpr uint32_t kLockBaseMs = EscalatingLockout::kBaseMs;
   static constexpr uint32_t kLockMaxMs = EscalatingLockout::kMaxMs;
 
-  // false (and nothing changes) while that purpose is locked out, or while a code for another
-  // purpose is still active (busyFor): nobody can replace a code the owner is reading off the
-  // screen. For the same purpose an active code is kept as it is (same code, same timer). The owner
-  // can always ask again once it expires (kTtlMs) or after it was used (close()).
-  bool open(Purpose p, const char* code4, uint32_t nowMs);
+  // false (and nothing changes) while that purpose is locked out; while a code for another purpose
+  // is still active (busyFor), unless this caller is trusted and that code was opened anonymously;
+  // or, for an anonymous caller, within kAnonGapMs of the last code it armed for this purpose. For
+  // the same purpose an active code is kept as it is (same code, same timer; a trusted caller
+  // adopts it). The owner can always ask again once it expires (kTtlMs) or after it was used.
+  bool open(Purpose p, const char* code4, uint32_t nowMs, bool trusted = false);
   bool busyFor(Purpose p, uint32_t nowMs) const { return active(nowMs) && p != purpose_; }
+  // How long an anonymous open(p) has to wait (0: it would go through, lockouts aside): what is
+  // left of another purpose's code, or of the anonymous gap. The "busy" reply's retryAfter.
+  uint32_t waitMs(Purpose p, uint32_t nowMs) const;
   bool locked(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].locked(nowMs); }
   uint32_t lockRemainingMs(Purpose p, uint32_t nowMs) const { return lock_[idx(p)].remainingMs(nowMs); }
-  // Clears expired lockouts (see EscalatingLockout::update).
-  void update(uint32_t nowMs) {
-    for (auto& l : lock_) l.update(nowMs);
-  }
+  // Clears expired lockouts (see EscalatingLockout::update) and anonymous gaps that have run out,
+  // so neither can look active again when the millisecond clock wraps.
+  void update(uint32_t nowMs);
   bool active(uint32_t nowMs) const;
   Purpose purpose() const { return purpose_; }
   const char* code() const { return code_; }
@@ -303,9 +312,12 @@ class PresenceGate {
  private:
   static uint8_t idx(Purpose p) { return (uint8_t)p < kPurposes ? (uint8_t)p : 0; }
   bool open_ = false;
+  bool trusted_ = false;  // the code on the screen was asked for by a trusted caller
   Purpose purpose_ = Purpose::Update;
   char code_[5] = "";
   uint32_t openedAtMs_ = 0;
+  uint8_t anonArmed_ = 0;  // bit per purpose: anonAtMs_ holds when an anonymous caller armed one
+  uint32_t anonAtMs_[kPurposes] = {};
   EscalatingLockout lock_[kPurposes];
 };
 

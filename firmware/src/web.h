@@ -36,9 +36,13 @@ inline String requestHeader(WebServerT& server, const __FlashStringHelper* name)
 // 429 {"error":"locked","retryAfter":<s>} for a locked presence gate or pairing guard.
 void sendLocked(WebServerT& server, uint32_t remainingMs);
 // Opens the presence gate for `p` with a fresh code on the screen (an active code for the same
-// purpose is kept). On a lockout answers 429 {"error":"locked",retryAfter}; while another
-// purpose's code is still on the screen, 429 {"error":"busy",retryAfter} (it is never replaced).
-// true when the code for `p` is now on the screen.
-bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs);
+// purpose is kept). `trusted`: the caller is authorised (requestAuthorized, or the setup AP) and
+// replaces a code opened anonymously (F4). On a lockout answers 429 {"error":"locked",retryAfter};
+// while another purpose's code is still on the screen, or an anonymous caller asks again too soon
+// (PresenceGate::kAnonGapMs), 429 {"error":"busy",retryAfter}. true when the code for `p` is now on
+// the screen.
+bool openPresence(WebServerT& server, miblo::PresenceGate::Purpose p, uint32_t nowMs, bool trusted);
+// A paired computer's bearer token, or a web session the browser earned with the on-screen code.
+bool requestAuthorized();
 
 }  // namespace web

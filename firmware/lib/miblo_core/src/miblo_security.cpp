@@ -561,18 +561,48 @@ ChallengeResult answerChallenge(const TokenStore& tokens, const char* nonce, con
   return ChallengeResult::Ok;
 }
 
-bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs) {
-  EscalatingLockout& lock = lock_[idx(p)];
+bool PresenceGate::open(Purpose p, const char* code4, uint32_t nowMs, bool trusted) {
+  const uint8_t i = idx(p);
+  EscalatingLockout& lock = lock_[i];
   lock.update(nowMs);
   if (lock.locked(nowMs)) return false;
-  if (active(nowMs)) return p == purpose_;  // never replace a code that is on the screen
+  if (active(nowMs)) {
+    if (p == purpose_) {  // the code on the screen is handed back as it is
+      if (trusted) trusted_ = true;
+      return true;
+    }
+    if (!trusted || trusted_) return false;  // never replace a code the owner may be reading
+    // A trusted caller replaces a code opened anonymously (F4).
+  } else if (!trusted && (anonArmed_ & (1u << i)) && nowMs - anonAtMs_[i] < kAnonGapMs) {
+    return false;
+  }
   open_ = true;
+  trusted_ = trusted;
   purpose_ = p;
   strncpy(code_, code4, sizeof(code_) - 1);
   code_[sizeof(code_) - 1] = 0;
   openedAtMs_ = nowMs;
+  if (!trusted) {
+    anonArmed_ |= (uint8_t)(1u << i);
+    anonAtMs_[i] = nowMs;
+  }
   // The failure count is deliberately kept: re-opening (a new code) must not grant 5 fresh guesses.
   return true;
+}
+
+void PresenceGate::update(uint32_t nowMs) {
+  for (auto& l : lock_) l.update(nowMs);
+  for (uint8_t i = 0; i < kPurposes; i++) {
+    if ((anonArmed_ & (1u << i)) && nowMs - anonAtMs_[i] >= kAnonGapMs) anonArmed_ &= (uint8_t)~(1u << i);
+  }
+}
+
+uint32_t PresenceGate::waitMs(Purpose p, uint32_t nowMs) const {
+  if (active(nowMs)) return p == purpose_ ? 0 : remainingMs(nowMs);
+  const uint8_t i = idx(p);
+  if (!(anonArmed_ & (1u << i))) return 0;
+  const uint32_t since = nowMs - anonAtMs_[i];
+  return since < kAnonGapMs ? kAnonGapMs - since : 0;
 }
 
 bool PresenceGate::active(uint32_t nowMs) const {
@@ -589,6 +619,7 @@ bool PresenceGate::check(Purpose p, const char* code, uint32_t nowMs) {
   if (lock.locked(nowMs) || !active(nowMs) || p != purpose_) return false;
   if (code && constantTimeEquals(code, code_)) {
     lock.success();  // a correct code ends the escalation
+    anonArmed_ &= (uint8_t)~(1u << idx(p));  // and proves presence: no wait for the next one
     return true;
   }
   if (lock.fail(nowMs)) open_ = false;

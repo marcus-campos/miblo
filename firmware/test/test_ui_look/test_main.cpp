@@ -5,6 +5,8 @@
 #include <string.h>
 #include <unity.h>
 
+#include <vector>
+
 #include "../support/fake_canvas.h"
 #include "miblo_mood.h"
 #include "miblo_occasions.h"
@@ -316,7 +318,8 @@ static void test_tie_and_mood_redraw_the_cat() {
 // Friday the 13th: the stranger (a dark one of our own pet's kind) crosses the screen in
 // kPasserbyMs, never outside it, composed in layers, and leaves our own look as it was.
 static void test_black_cat_crosses_inside_the_screen() {
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
   for (const auto& spec : kSpecs) {
     FakeCanvas fc(spec);
     screens::bind(fc);
@@ -391,7 +394,8 @@ static void test_guest_looks_as_on_its_own_miblo() {
 // Friday the 13th's stranger: our own kind of pet in the black preset (none of our colours, eye
 // shape or accessories), readable on the dark background whatever the pet.
 static void test_stranger_is_a_dark_pet_of_our_kind() {
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
     screens::MascotPaint own;
     own.style = 1;
     own.pet = pet;
@@ -404,6 +408,47 @@ static void test_stranger_is_a_dark_pet_of_our_kind() {
     for (uint32_t v : st.slots) TEST_ASSERT_EQUAL_UINT32(kPetAuto, v);
     screens::setMascotPaint(st);
     TEST_ASSERT_TRUE(screens::luma565(screens::mascotSkin()) >= screens::luma565(ui::color::BG) + 40);
+  }
+}
+
+// The brand row's logo (overview header, 22 px at (19, 12)) is the current pet, not always the cat:
+// in the pet's colours, inside the logo's spot on the header row, and the cat's exactly as before.
+static std::vector<int> logoPixels(uint8_t pet, uint32_t body) {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  screens::MascotPaint p;
+  p.pet = pet;
+  p.slots[kSlotBody] = body;
+  screens::setMascotPaint(p);
+  fc.bandArmed = true;
+  fc.bandMinX = 0, fc.bandMaxX = 34, fc.bandTop = 0, fc.bandBottom = 24;
+  screens::logo(19, 12, 22);
+  char msg[40];
+  snprintf(msg, sizeof(msg), "pet %u: logo outside its spot", pet);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.bandOut, msg);
+  TEST_ASSERT_EQUAL_INT_MESSAGE(0, fc.outOfBounds, msg);
+  std::vector<int> px;
+  for (int y = 0; y < 24; y++) {
+    for (int x = 0; x < 34; x++) px.push_back(fc.colorAt(x, y));
+  }
+  return px;
+}
+
+static void test_logo_is_the_current_pet() {
+  const uint32_t body = 0x30A050 + 1;  // a custom body colour (slot values are 0xRRGGBB + 1)
+  const uint16_t skin = (uint16_t)(((0x30A050 >> 8) & 0xF800) | ((0x30A050 >> 5) & 0x07E0) | ((0x30A050 >> 3) & 0x1F));
+  const std::vector<int> cat = logoPixels(0, kPetAuto);
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
+    char msg[48];
+    snprintf(msg, sizeof(msg), "pet %u: logo not in its body colour", pet);
+    const std::vector<int> px = logoPixels(pet, body);
+    bool hasSkin = false;
+    for (int c : px) hasSkin |= c == skin;
+    TEST_ASSERT_TRUE_MESSAGE(hasSkin, msg);
+    if (pet == 0) continue;
+    snprintf(msg, sizeof(msg), "pet %u: logo is still the cat", pet);
+    TEST_ASSERT_TRUE_MESSAGE(logoPixels(pet, kPetAuto) != cat, msg);
   }
 }
 
@@ -420,5 +465,6 @@ int main(int, char**) {
   RUN_TEST(test_black_cat_crosses_inside_the_screen);
   RUN_TEST(test_guest_looks_as_on_its_own_miblo);
   RUN_TEST(test_stranger_is_a_dark_pet_of_our_kind);
+  RUN_TEST(test_logo_is_the_current_pet);
   return UNITY_END();
 }

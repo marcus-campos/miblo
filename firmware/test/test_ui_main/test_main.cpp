@@ -280,6 +280,24 @@ static void test_sessions_pages_and_flash_blinks() {
   TEST_ASSERT_TRUE(fc.calls > first);
 }
 
+// The brand row's logo is the pet: choosing another pet redraws the header on the next frame.
+static void test_overview_logo_follows_the_pet() {
+  FakeCanvas fc({240, 240});
+  screens::bind(fc);
+  working();
+  Pager pager(3, 5000);
+  screens::setMascotPaint(screens::MascotPaint{});
+  screens::reset();
+  screens::overview(Lang::En, snap, pager, 0, testClock(), false);
+  fc.clearLog();
+  screens::MascotPaint p;
+  p.pet = 1;  // the duck
+  screens::setMascotPaint(p);
+  screens::overview(Lang::En, snap, pager, 100, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("miblo"));
+  screens::setMascotPaint(screens::MascotPaint{});
+}
+
 static void test_overview_working_is_sessions_first() {
   const ui::ScreenSpec specs[] = {{240, 240}, {320, 240}, {480, 320}, {170, 320}};
   for (const auto& sp : specs) {
@@ -1987,6 +2005,7 @@ int main() {
   RUN_TEST(test_sessions_pages_and_flash_blinks);
   RUN_TEST(test_unknown_reset_hides_reset_line);
   RUN_TEST(test_overview_working_is_sessions_first);
+  RUN_TEST(test_overview_logo_follows_the_pet);
   RUN_TEST(test_overview_working_pages_and_cost_fallback);
   RUN_TEST(test_overview_pending_first);
   RUN_TEST(test_overview_idle_keeps_big_limits);

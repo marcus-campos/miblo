@@ -431,14 +431,16 @@ static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk
   }
 }
 
-// Miblo's logo: the mascot's head as a 22x20 silhouette (bit 21 = leftmost pixel); the eyes are
-// holes, so they show the background. Drawn in the mascot's colour, one run of pixels at a time.
+// Miblo's logo is the current pet's head, in its colours and eye shape (the owner's own Miblo).
+// The cat's is the brand mark: its head as a 22x20 silhouette (bit 21 = leftmost pixel) whose eyes
+// are holes showing the background, drawn in the cat's colour one run of pixels at a time. Before
+// any config is loaded, and after a factory reset, the pet is the cat: the product's default look.
 static const uint32_t kLogo[20] MIBLO_ROM = {0x0C000C, 0x0E001C, 0x1F003E, 0x1F807E, 0x1FDEFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1FFFFE, 0x1F3F3E, 0x1E3F1E, 0x3E3F1F, 0x3F3F3F, 0x3FFFFF, 0x3FFFFF, 0x3FFFFF, 0x03FFF0, 0x001E00};
 constexpr int kLogoW = 22;
 constexpr int kLogoH = 20;
 
-void logo(int cx, int cy, int size) {
-  const uint16_t c = mascotSkin();  // Miblo's logo is always the cat, in the mascot's colour
+static void catLogo(int cx, int cy, int size) {
+  const uint16_t c = mascotSkin();
   const int px = size / kLogoW < 1 ? 1 : size / kLogoW;  // whole pixels: crisp at any scale
   const int left = cx - kLogoW * px / 2;
   const int top = cy - kLogoH * px / 2;
@@ -455,6 +457,22 @@ void logo(int cx, int cy, int size) {
       g_canvas->fillRect(left + x0 * px, top + y * px, (x - x0) * px, px, c);
     }
   }
+}
+
+void logo(int cx, int cy, int size) {
+  if (g_paint.pet == static_cast<uint8_t>(miblo::Pet::Cat)) return catLogo(cx, cy, size);
+  // Any other pet: its own head() (eyes open, looking ahead), the 96-unit box drawn size * 96 / 90
+  // wide (as big as the cat's mark) with the small mascot's simplifications (detail = false). A
+  // head reaches from y -48 (ears, antennae) to 42 (the Dev's ponytail): centred on (cx, cy).
+  PetDef def;
+  mibloRomCopy(&def, currentPet(), sizeof(def));
+  MascotPen d{*g_canvas, cx, cy, size, 90};
+  d.cy += d.s(6);
+  const MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
+  const PetCtx c{d, k, petColors(def), 0, 0, false, false, 0};
+  def.head(c);
+  // Accessories (config accHead / accFace / accNeck): not on this branch yet. When they land, the
+  // logo shows the head and face ones here, from the same drawing as the mascot's, scaled by d.
 }
 
 void mascot(int cx, int cy, uint8_t frame, bool small) {

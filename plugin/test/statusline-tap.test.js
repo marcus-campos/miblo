@@ -84,7 +84,7 @@ test('exits 1 when the original is killed by a signal', async () => {
 
 // As linked by /miblo:link-statusline: through the launcher copied next to the tap, under the bare
 // environment of an app started from the desktop (no node on PATH; Node found in ~/.volta here).
-test('runs through the launcher copied next to it, with no node on PATH', async () => {
+test('runs through the launcher copied next to it, with no node on PATH', { skip: process.platform === 'win32' }, async () => {
   const tap = installed({ type: 'command', command: 'printf "[%s]" orig' });
   const dir = path.dirname(tap);
   fs.copyFileSync(path.resolve(path.dirname(src), 'miblo-run'), path.join(dir, 'miblo-run'));

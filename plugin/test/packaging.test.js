@@ -43,7 +43,7 @@ test('no hook or command runs a bare node', () => {
   }
 });
 
-test('the launcher is executable and shipped next to the scripts it runs', () => {
+test('the launcher is executable and shipped next to the scripts it runs', { skip: process.platform === 'win32' }, () => {
   const st = fs.statSync(path.join(root, 'bin/miblo-run'));
   assert.ok(st.mode & 0o111);
 });

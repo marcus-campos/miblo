@@ -382,6 +382,12 @@ install_runtime() {
     return 1
   }
   mkdir -p "$rt" 2> /dev/null || return 1
+  # Offline: hooks run on every event, so after a failure only --check tries again within 10 min.
+  failed="$rt/download-failed"
+  if [ "$check" = 0 ] && [ -f "$failed" ] && [ -n "$(find "$failed" -mmin -10 2> /dev/null)" ]; then
+    fail_reason="the Node.js download failed less than 10 minutes ago"
+    return 1
+  fi
   wait_s=${MIBLO_WAIT:-120}
   waited=0
   until mkdir "$rt/lock" 2> /dev/null; do
@@ -403,10 +409,15 @@ install_runtime() {
   echo $$ > "$rt/lock/pid"
   trap 'rm -rf "$rt/lock"' EXIT
   trap 'exit 1' HUP INT TERM
+  in_status=0
   if ! try "$exe"; then
-    fetch && try "$exe"
+    if fetch && try "$exe"; then
+      rm -f "$failed"
+    else
+      : > "$failed"
+      in_status=1
+    fi
   fi
-  in_status=$?
   rm -rf "$rt/lock"
   trap - EXIT HUP INT TERM
   [ "$in_status" -eq 0 ] || {

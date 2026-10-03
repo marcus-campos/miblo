@@ -3,7 +3,7 @@
 // have no Node at all, so it finds a Node >= 20 on its own or downloads a pinned one once.
 // Each test runs it under a bare environment: PATH holds only the tools it needs (no node),
 // HOME and MIBLO_SYSROOT point at temp dirs holding fake `node` scripts that print a marker.
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -12,9 +12,16 @@ import crypto from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
+// The launcher runs under Git Bash on Windows; these tests drive it with /bin/sh and fake node
+// scripts, so they run on macOS and Linux.
+const test = (name, opts, fn) => {
+  if (typeof opts === 'function') return nodeTest(name, { skip: process.platform === 'win32' }, opts);
+  return nodeTest(name, { ...opts, skip: opts.skip || process.platform === 'win32' }, fn);
+};
+
 const BIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin');
 const LAUNCHER = path.join(BIN, 'miblo-run');
-const src = fs.readFileSync(LAUNCHER, 'utf8');
+const src = fs.readFileSync(LAUNCHER, 'utf8').replace(/\r\n/g, '\n');
 const NODE_VERSION = src.match(/^NODE_VERSION=(\S+)$/m)[1];
 
 const TOOLS = ['sh', 'uname', 'mkdir', 'mv', 'rm', 'cat', 'find', 'tar', 'gzip', 'curl', 'shasum', 'sha256sum', 'openssl', 'sleep', 'date', 'wc',
@@ -236,7 +243,7 @@ test('a download whose checksum does not match the pinned one is rejected', { sk
   assert.ok(!fs.existsSync(path.join(s.runtime, 'node-path')));
   assert.ok(!fs.existsSync(path.join(s.runtime, 'lock')));
   assert.match(fs.readFileSync(path.join(s.runtime, 'launcher.log'), 'utf8'), /checksum mismatch/);
-  assert.deepEqual(fs.readdirSync(s.runtime).filter((f) => !['launcher.log', 'no-login-node'].includes(f)), []);
+  assert.deepEqual(fs.readdirSync(s.runtime).filter((f) => !['launcher.log', 'no-login-node', 'download-failed'].includes(f)), []);
 });
 
 test('downloads, verifies and installs the pinned Node once, then runs from it', { skip: !hasCurl }, () => {
@@ -377,4 +384,16 @@ test('--check names a node that is too old', () => {
   const r = run(s, ['--check'], { extraPath: [bin], env: { MIBLO_NODE_PLATFORM: 'sunos-sparc' } });
   assert.equal(r.code, 1);
   assert.equal(r.out, `missing reason=no official Node.js build for this platform; ${old} is v18.20.0, too old (20 or newer needed)\n`);
+});
+
+test('after a failed download, hooks wait 10 minutes before trying again; --check always tries', { skip: !hasCurl }, () => {
+  const s = sandbox();
+  const env = { MIBLO_NODE_BASE_URL: `file://${s.root}/missing`, MIBLO_NODE_PLATFORM: 'linux-x64' };
+  run(s, ['hook.js'], { env });
+  run(s, ['hook.js'], { env });
+  const tries = () => fs.readFileSync(path.join(s.runtime, 'launcher.log'), 'utf8').split('\n').filter((l) => l.includes(' downloading ')).length;
+  assert.equal(tries(), 1);
+  assert.match(run(s, ['hook.js'], { env }).err, /could not be downloaded/);
+  assert.equal(run(s, ['--check'], { env }).code, 1);
+  assert.equal(tries(), 2);
 });

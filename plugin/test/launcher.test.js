@@ -521,3 +521,18 @@ test('a hook releases the download lock only while it is still its own', () => {
   assert.match(src, /release_lock\(\)/);
   assert.match(src, /\[ "\$rl_pid" = "\$\$" \] && rm -rf "\$rt\/lock"/);
 });
+
+// nodejs.org/dist answers 200 directly (no redirect), so wget follows none: --https-only alone
+// would still let a redirect leave nodejs.org.
+test('wget (when there is no curl) fetches https only and follows no redirect', () => {
+  const s = sandbox();
+  fs.rmSync(path.join(s.tools, 'curl'), { force: true });
+  const argsFile = path.join(s.root, 'wget-args');
+  fs.writeFileSync(path.join(s.tools, 'wget'), `#!/bin/sh\nprintf '%s\\n' "$@" > '${argsFile}'\nexit 1\n`, { mode: 0o755 });
+  const r = run(s, ['hook.js'], { env: { MIBLO_NODE_PLATFORM: 'linux-x64' } });
+  assert.equal(r.code, 0);
+  const args = fs.readFileSync(argsFile, 'utf8').trim().split('\n');
+  assert.ok(args.includes('--https-only'), args.join(' '));
+  assert.ok(args.includes('--max-redirect=0'), args.join(' '));
+  assert.equal(args.at(-1), `https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz`);
+});

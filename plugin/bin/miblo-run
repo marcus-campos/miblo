@@ -34,7 +34,9 @@
 # Environment for tests: MIBLO_SYSROOT (prefix of the system locations), MIBLO_NODE_PLATFORM
 # (<os>-<arch>), MIBLO_WAIT (seconds to wait for a download another process is making, default
 # 120); with MIBLO_TEST=1 only, MIBLO_NODE_BASE_URL (a mirror; file:// allowed) and
-# MIBLO_NODE_SHA256 (the expected hash). Downloads are https only.
+# MIBLO_NODE_SHA256 (the expected hash). Downloads are https only: curl with --proto =https
+# --proto-redir =https, wget with --https-only --max-redirect=0 (nodejs.org/dist does not
+# redirect).
 
 MIN_MAJOR=20
 NODE_VERSION=24.21.0
@@ -404,9 +406,10 @@ fetch() {
   log "downloading $url"
   say "Downloading Node.js v$NODE_VERSION (about 50 MB, only this once)..."
   if command -v curl > /dev/null 2>&1; then
+    # nodejs.org/dist answers directly; a redirect may only go to https.
     curl -fsSL --proto "$protos" --proto-redir "$protos" --connect-timeout 15 --max-time 300 -o "$part" "$url" 2>> "$rt/launcher.log"
   elif command -v wget > /dev/null 2>&1; then
-    wget --https-only -q -T 30 -O "$part" "$url" 2>> "$rt/launcher.log"
+    wget --https-only --max-redirect=0 -q -T 30 -O "$part" "$url" 2>> "$rt/launcher.log"
   else
     fail "download failed: neither curl nor wget found"
     return 1

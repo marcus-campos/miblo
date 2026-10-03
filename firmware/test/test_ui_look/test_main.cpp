@@ -316,7 +316,8 @@ static void test_tie_and_mood_redraw_the_cat() {
 // Friday the 13th: the stranger (a dark one of our own pet's kind) crosses the screen in
 // kPasserbyMs, never outside it, composed in layers, and leaves our own look as it was.
 static void test_black_cat_crosses_inside_the_screen() {
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;  // 13 is reserved: never a pet
   for (const auto& spec : kSpecs) {
     FakeCanvas fc(spec);
     screens::bind(fc);
@@ -391,7 +392,8 @@ static void test_guest_looks_as_on_its_own_miblo() {
 // Friday the 13th's stranger: our own kind of pet in the black preset (none of our colours, eye
 // shape or accessories), readable on the dark background whatever the pet.
 static void test_stranger_is_a_dark_pet_of_our_kind() {
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;  // 13 is reserved: never a pet
     screens::MascotPaint own;
     own.style = 1;
     own.pet = pet;

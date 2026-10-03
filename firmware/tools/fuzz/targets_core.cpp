@@ -638,7 +638,7 @@ void checkPacket(const FriendPacket& p) {
   checkStr(p.to, 15, "to");
   checkStr(p.host, 15, "host");
   FUZZ_CHECK((uint8_t)p.gift < (uint8_t)Gift::Count, "gift %u", (unsigned)p.gift);
-  FUZZ_CHECK(p.pet < kPetKinds, "pet %u", (unsigned)p.pet);
+  FUZZ_CHECK(isPet(p.pet), "pet %u", (unsigned)p.pet);
   FUZZ_CHECK(p.look.eyes < kEyeShapes && !(p.look.custom & 0x80), "look eyes %u mask %02x", (unsigned)p.look.eyes,
              (unsigned)p.look.custom);
   FUZZ_CHECK(knownAccessory(kAccHead, p.look.accHead) == p.look.accHead &&
@@ -734,7 +734,7 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
           if (arg & (1u << (i % 8))) slots[i] = (uint32_t)rnd % (kPetColorMax + 2);
           rnd = rnd * 1103515245u + 12345u;
         }
-        selfPet = (uint8_t)(rnd >> 8) % (kPetKinds + 1);
+        selfPet = (uint8_t)(rnd >> 8) % (kPetIds + 1);  // includes the reserved 13 and one past the end
         selfLook = friendLook(slots, (uint8_t)(rnd >> 16) % 4, (uint8_t)(rnd >> 20), (uint8_t)(rnd >> 4), arg);
         f.setSelf(selfId, selfName.c_str(), selfMascot, knownPet(selfPet), selfLook);
         break;
@@ -744,7 +744,7 @@ void fuzzFriendPlay(const uint8_t* d, size_t n) {
     FUZZ_CHECK(f.count() <= kMaxFriends, "friends %u > %u", f.count(), kMaxFriends);
     const VisitView v = f.visit(now);
     checkStr(v.name, 20, "visit name");
-    FUZZ_CHECK(v.pet < kPetKinds && v.look.eyes < kEyeShapes, "visit pet %u eyes %u", (unsigned)v.pet,
+    FUZZ_CHECK(isPet(v.pet) && v.look.eyes < kEyeShapes, "visit pet %u eyes %u", (unsigned)v.pet,
                (unsigned)v.look.eyes);
     FUZZ_CHECK(v.extra < kMaxGuests, "extra guests %u", v.extra);
     if (const char* g = f.greeting(now)) FUZZ_CHECK(utf8Length(g) <= 20 && strlen(g) < 64, "greeting");

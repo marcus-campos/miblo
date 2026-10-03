@@ -51,10 +51,10 @@
 //    cat's tail does: x -64..64, y -48..47, with the antic turning it by k.dx -4..4
 //    (test_ui_look's test_every_pet_wags_its_own_tail). Keep it cheap: a few shapes.
 //
-// To add a pet: the kind in miblo_pet.h (at the end, never renumbered; kPetKinds), its file
-// ui_pet_<name>.cpp, its row in kPets (ui_base.cpp), its name (S::WebPet<Name>, miblo_i18n.h) in
-// all 9 languages (miblo_strings.cpp, then scripts/pack_strings.py) and in web.cpp's kPetNames;
-// the screenshots (tools/screenshots/shots_pets.cpp) render every pet in kPetKinds.
+// To add a pet: the kind in miblo_pet.h (at the end, never renumbered, never 13; kPetIds), its
+// file ui_pet_<name>.cpp, its row in kPets (ui_base.cpp), its name (S::WebPet<Name>, miblo_i18n.h)
+// in all 9 languages (miblo_strings.cpp, then scripts/pack_strings.py) and in petName()'s table
+// (miblo_i18n.cpp); the screenshots (tools/screenshots/shots_pets.cpp) render every isPet() value.
 #include <stdint.h>
 
 #include "ui_canvas.h"
@@ -173,5 +173,8 @@ extern const PetDef kPetOwl;
 extern const PetDef kPetDog;
 extern const PetDef kPetAlien;
 extern const PetDef kPetRiff;
+extern const PetDef kPetDev;
+extern const PetDef kPetDino;
+extern const PetDef kPetDevChan;
 
 }  // namespace screens

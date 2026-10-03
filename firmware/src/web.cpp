@@ -883,15 +883,13 @@ static void settingsPage() {
   out += F("</h2>");
   label(out, lang, S::WebPet, F("pet"));
   out += F("<select id=\"pet\">");
-  static const S kPetNames[] = {S::WebPetCat,     S::WebPetDuck, S::WebPetBug, S::WebPetDaemon,
-                                S::WebPetRobot,   S::WebPetMug,  S::WebPetPenguin, S::WebPetCrab,
-                                S::WebPetOwl,     S::WebPetDog,  S::WebPetAlien, S::WebPetRiff};
-  static_assert(sizeof(kPetNames) / sizeof(kPetNames[0]) == miblo::kPetKinds, "one name per pet");
-  for (uint8_t i = 0; i < miblo::kPetKinds; i++) {
+  for (uint8_t i = 0; i < miblo::kPetIds; i++) {
+    S name;
+    if (!miblo::petName(i, name)) continue;  // 13 is never a pet
     out += F("<option value=\"");
     out += i;
     out += F("\">");
-    text(out, lang, kPetNames[i]);
+    text(out, lang, name);
     out += F("</option>");
   }
   out += F("</select>");

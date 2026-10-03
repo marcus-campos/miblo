@@ -48,7 +48,7 @@ struct Config {
   uint16_t blueFrom = 21 * 60;   // local minute of the day, 0..1439
   uint16_t blueTo = 7 * 60;      // 0..1439, != blueFrom; may be earlier than blueFrom (overnight)
   uint8_t mascot = 0;            // mascot colours: 0 sphynx, 1 orange, 2 black, 3 grey (kMascotStyles)
-  uint8_t pet = 0;               // which animal the mascot is (miblo::Pet, < kPetKinds); 0 the cat.
+  uint8_t pet = 0;               // which animal the mascot is (miblo::Pet: isPet(), never 13); 0 the cat.
                                  // Every pet wears the colour above on its body.
   uint32_t petColors[kPetSlots] = {};  // per part (PetSlot): kPetAuto or 0xRRGGBB + 1
   uint8_t petEyes = 0;           // eye shape (miblo::EyeShape): 0 round, 1 big and shiny, 2 sleepy

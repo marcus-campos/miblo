@@ -91,7 +91,8 @@ static void test_every_pet_stays_in_its_box() {
   };
   FakeCanvas fc({240, 240});
   screens::bind(fc);
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
     for (uint8_t shape = 0; shape < kEyeShapes; shape++) {
       for (int custom = 0; custom < 2; custom++) {
         screens::MascotPaint p;
@@ -134,7 +135,8 @@ static void test_every_pet_wags_its_own_tail() {
   };
   FakeCanvas fc({96, 72});  // half 36: 0.75 px a unit, the reach exactly
   screens::bind(fc);
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
     screens::MascotPaint p;
     p.pet = pet;
     screens::setMascotPaint(p);
@@ -162,7 +164,8 @@ static void test_only_riff_plays_guitar() {
   const MascotLook plain{0, 0, 0, 0, Eyes::Happy, Paws::Down, 0};
   MascotLook rock = plain;
   rock.extras = screens::kGuitar;
-  for (uint8_t pet = 0; pet < kPetKinds; pet++) {
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
     screens::setMascotPet(pet);
     fc.clearLog();
     screens::deskMascot(120, 120, plain, 48, false, true);
@@ -237,7 +240,16 @@ static void test_pet_colours() {
   p.eyeShape = 1;
   screens::setMascotPaint(p);
   TEST_ASSERT_TRUE(screens::mascotPaintHash() != seen);
-  screens::setMascotPet(kPetKinds);
+  screens::setMascotPet(kPetIds);
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPet());
+  screens::setMascotPet(14);
+  TEST_ASSERT_EQUAL_UINT8(14, screens::mascotPet());
+  screens::setMascotPet(13);  // never a pet: the cat
+  TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPet());
+  screens::setMascotPet(12);
+  TEST_ASSERT_EQUAL_UINT8(12, screens::mascotPet());
+  p.pet = 13;
+  screens::setMascotPaint(p);
   TEST_ASSERT_EQUAL_UINT8(0, screens::mascotPet());
   p.slots[kSlotBody] = kPetColorMax + 1;  // never set by the config: Auto
   p.eyeShape = kEyeShapes;

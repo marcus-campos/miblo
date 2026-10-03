@@ -237,7 +237,7 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
     } else if (strcmp(k, "mascot") == 0) {
       ok = intIn(v, 0, kMascotStyles - 1, next.mascot);
     } else if (strcmp(k, "pet") == 0) {
-      ok = intIn(v, 0, kPetKinds - 1, next.pet);
+      ok = intIn(v, 0, kPetIds - 1, next.pet) && isPet(next.pet);  // 13 never is one
     } else if (strcmp(k, "petColors") == 0) {
       ok = petColors(v, next.petColors);
     } else if (strcmp(k, "petEyes") == 0) {

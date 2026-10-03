@@ -123,9 +123,18 @@ static void test_packet_carries_the_pet() {
     TEST_ASSERT_EQUAL_UINT8(1, buf[n - 1]);  // the last byte
     TEST_ASSERT_TRUE(decodeFriendPacket(buf, n - 1, q));  // an older firmware's packet: a cat
     TEST_ASSERT_EQUAL_UINT8(0, q.pet);
-    buf[n - 1] = kPetKinds;  // a newer firmware's pet
+    buf[n - 1] = kPetIds;  // a newer firmware's pet
     TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
     TEST_ASSERT_EQUAL_UINT8(0, q.pet);
+    buf[n - 1] = 13;  // never a pet: the cat
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+    TEST_ASSERT_EQUAL_UINT8(0, q.pet);
+    for (uint8_t v = 12; v <= 15; v++) {
+      if (v == 13) continue;  // the dev, the dino, Dev-chan
+      buf[n - 1] = v;
+      TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+      TEST_ASSERT_EQUAL_UINT8(v, q.pet);
+    }
   }
   // A packet with no room left for the pet still goes out, without it.
   FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", "Tofu", 0);

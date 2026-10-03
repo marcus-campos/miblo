@@ -164,13 +164,13 @@
 
 ### Pets
 
-*New in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **12 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog, an alien or **Riff**, an original rocker with a spiky mohawk, a studded collar and a guitar-pick earring, who plays air guitar when a long task ends.
+*New in 1.14.0.* The desk companion doesn't have to be a cat: pick one of **15 pets** on the settings page: cat, rubber duck, bug, daemon, robot, coffee mug, penguin, crab, owl, dog, an alien, **Riff**, an original rocker with a spiky mohawk, a studded collar and a guitar-pick earring, who plays air guitar when a long task ends, **Dev**, a veteran developer with thin glasses, stubble and a ponytail, a little **Dino** with back plates and tiny teeth, or **Dev-chan**, a chibi dev companion with big sparkly eyes and pigtails.
 
 Then make it yours, one colour part at a time: body, outline, inner detail, nose or beak, face lines, eyes and accent. Each part is "Auto" (the Miblo colour look, the default) or any RGB colour you pick, and preset palettes fill them all in one click. The eyes can be round, big or sleepy.
 
 <p align="center">
-  <img src="docs/media/pets-lineup.png" width="480" alt="The 12 pets: cat, duck, bug, daemon, robot, mug, penguin, crab, owl, dog, alien and Riff">
-  <br><sub>The 12 pets</sub>
+  <img src="docs/media/pets-lineup.png" width="600" alt="The 15 pets: cat, duck, bug, daemon, robot, mug, penguin, crab, owl, dog, alien, Riff, Dev, Dino and Dev-chan">
+  <br><sub>The 15 pets</sub>
 </p>
 
 <table>

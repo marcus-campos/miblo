@@ -5,11 +5,14 @@
 
 // Wi-Fi: uses the credentials saved in the SDK (including ones from a previous firmware); with no
 // credentials, a wrong password, or after 2 min without a connection, opens the "Miblo-Setup-XXXX"
-// setup network with a captive DNS — and keeps retrying the saved network.
+// setup network with a captive DNS — and keeps retrying the saved network. Once the saved network
+// has connected this boot, only an outage of 5 min opens it (a "wrong password" then counts as an
+// outage too), and never while the heap is low (miblo::NetPolicy).
 namespace net {
 
 void begin(uint32_t nowMs);
-void loop(uint32_t nowMs);
+// heapLow: the low-memory guard (miblo::HeapGuard) is on; the setup network is not opened then.
+void loop(uint32_t nowMs, bool heapLow);
 miblo::NetState state();
 bool apActive();
 bool connected();

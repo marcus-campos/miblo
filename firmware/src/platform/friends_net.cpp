@@ -13,7 +13,7 @@ static WiFiUDP udp;
 static bool bound = false;
 static uint32_t boundConn = 0;
 
-void loop(uint32_t nowMs) {
+void loop(uint32_t nowMs, bool lean) {
   if (!net::connected() || !ctx.cfg.friends) {
     if (bound) {
       udp.stop();
@@ -30,6 +30,11 @@ void loop(uint32_t nowMs) {
     boundConn = net::connectionId();
   }
   if (!bound) return;
+  if (lean) {  // low heap: drop what arrived unread (parsePacket() discards the previous one)
+    for (int k = 0; k < 16 && udp.parsePacket() > 0; k++) {
+    }
+    return;
+  }
 
   uint8_t buf[miblo::kFriendPacketMax];
   miblo::FriendPacket p;

@@ -73,7 +73,7 @@ void announce() {
   nextAnnounceMs = millis();
 }
 
-void loop(uint32_t nowMs) {
+void loop(uint32_t nowMs, bool lean) {
   if (!net::connected()) {
     if (bound) {
       udp.stop();
@@ -92,6 +92,11 @@ void loop(uint32_t nowMs) {
     announce();
   }
   if (!bound) return;
+  if (lean) {  // low heap: free the queued packets' buffers, answer nothing, announce later
+    for (int k = 0; k < 8 && udp.parsePacket() > 0; k++) {
+    }
+    return;
+  }
 
   uint8_t out[kPacketMax];
   if (announcesLeft > 0 && (int32_t)(nowMs - nextAnnounceMs) >= 0) {

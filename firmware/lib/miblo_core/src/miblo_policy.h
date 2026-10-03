@@ -25,6 +25,9 @@ JoinFailure classifyDisconnect(uint8_t reason);
 class NetPolicy {
  public:
   static constexpr uint32_t kFallbackMs = 120000;   // 2 min with no connection -> open the setup network
+  // The same once the saved network has connected this boot: an outage of a network known to work
+  // (a router rebooting or updating, a busy channel) waits this long. A brief drop never opens it.
+  static constexpr uint32_t kLostFallbackMs = 300000;
   static constexpr uint32_t kTrialRetryMs = 10000;  // trial: re-issue the join after this long with no Wi-Fi event
   static constexpr uint32_t kSameReasonMs = 20000;  // trial: the same failure for this long -> give up with it
   static constexpr uint8_t kRefusedRepeats = 3;     // trial: this many rejections in a row -> give up at once
@@ -41,6 +44,10 @@ class NetPolicy {
   NetState state() const { return state_; }
   // Should the setup network (AP) be up? Connecting to the saved network keeps being retried.
   bool apWanted() const { return ap_; }
+  // Whether the setup network may be brought up now: wanted, and not while the heap is low (the
+  // SDK's soft AP allocates a probe response per scanning phone and faults on a failed malloc).
+  // An AP already up is left alone: this only defers opening it.
+  bool apMayStart(bool heapLow) const { return ap_ && !heapLow; }
   // A submitted network is being tried (ends on success, wrong password, failure or timeout).
   bool trialActive() const { return trial_; }
   // During a trial: true when WiFi.begin() should be issued again (nothing heard for kTrialRetryMs).
@@ -60,6 +67,8 @@ class NetPolicy {
   bool ap_ = false;
   bool trial_ = false;
   bool linger_ = false;  // connected by a trial: keep the AP up until kApLingerMs
+  bool proven_ = false;  // the saved network connected this boot (until a new one is submitted)
+  bool wrongPass_ = false;  // the link said "wrong password" during the current outage
   uint32_t sinceMs_ = 0;
   uint32_t lastEventMs_ = 0;
   uint32_t connectedAtMs_ = 0;
@@ -68,6 +77,44 @@ class NetPolicy {
   uint32_t sameSinceMs_ = 0;
   JoinFailure failure_ = JoinFailure::None;
   uint8_t failureCode_ = 0;
+};
+
+// ---- Low-memory guard ----
+// The Wi-Fi SDK allocates its packet buffers (and the soft AP its probe responses) from the same
+// heap and faults on a failed allocation. While the heap is low the app sheds work: new HTTP
+// requests are answered 503 at once, held connections are dropped, and optional network chatter
+// (pet visits, mDNS replies) waits. Low below kLowFree free or a kLowBlock largest block (the
+// SDK reserve platform.h already keeps for big requests); fine again only at kOkFree / kOkBlock
+// and no sooner than kHoldMs after going low, so held connections and send buffers drain first.
+class HeapGuard {
+ public:
+  static constexpr uint32_t kLowFree = 12288;
+  static constexpr uint32_t kLowBlock = 4096;
+  static constexpr uint32_t kOkFree = 16384;
+  static constexpr uint32_t kOkBlock = 6144;
+  static constexpr uint32_t kHoldMs = 1000;
+
+  // Call on every loop pass. Returns low(). Safe across millis() wrap.
+  bool update(uint32_t freeBytes, uint32_t maxBlock, uint32_t nowMs) {
+    if (!low_) {
+      if (freeBytes < kLowFree || maxBlock < kLowBlock) {
+        low_ = true;
+        sinceMs_ = nowMs;
+        episodes_++;
+      }
+    } else if (freeBytes >= kOkFree && maxBlock >= kOkBlock && nowMs - sinceMs_ >= kHoldMs) {
+      low_ = false;
+    }
+    return low_;
+  }
+  bool low() const { return low_; }
+  // How many times it went low since boot (diagnostics).
+  uint32_t episodes() const { return episodes_; }
+
+ private:
+  bool low_ = false;
+  uint32_t sinceMs_ = 0;
+  uint32_t episodes_ = 0;
 };
 
 // Value of "state" in GET /api/wifi-status. `busy`: a submission is queued or being tried.

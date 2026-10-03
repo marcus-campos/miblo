@@ -212,11 +212,12 @@ static void test_net_policy_saved_credentials_then_router_down() {
   TEST_ASSERT_FALSE(p.apWanted());
   TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 3000));
   TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 10000));  // router dropped
-  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 129999));
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 10000 + NetPolicy::kLostFallbackMs - 1));
   TEST_ASSERT_FALSE(p.apWanted());
-  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, 130000));  // 2 min -> setup network
+  // A network that worked this boot: 5 min (a router rebooting) before the setup network
+  TEST_ASSERT_EQUAL(NetState::Portal, p.update(LinkStatus::Down, 10000 + NetPolicy::kLostFallbackMs));
   TEST_ASSERT_TRUE(p.apWanted());
-  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 200000));  // came back on its own
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 400000));  // came back on its own
   TEST_ASSERT_FALSE(p.apWanted());
 }
 
@@ -240,6 +241,100 @@ static void test_net_policy_first_boot_and_wrong_password() {
   TEST_ASSERT_TRUE(p.apWanted());
   p.update(LinkStatus::Connected, 34000 + NetPolicy::kApLingerMs);
   TEST_ASSERT_FALSE(p.apWanted());
+}
+
+// A link that drops for seconds (a busy channel, a roaming mesh, a router hiccup) never opens
+// the setup network: the soft AP costs heap and airtime the station link needs to come back.
+static void test_net_policy_brief_drops_never_open_the_ap() {
+  NetPolicy p;
+  p.begin(true, 0);
+  p.update(LinkStatus::Connected, 2000);
+  uint32_t t = 10000;
+  for (int k = 0; k < 50; k++) {  // 50 outages of 20 s each, with disconnect reasons
+    p.disconnected(200, t);
+    for (uint32_t d = 0; d < 20000; d += 500) {
+      TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, t + d));
+      TEST_ASSERT_FALSE(p.apWanted());
+    }
+    t += 20000;
+    TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, t));
+    t += 1000;
+  }
+  // Still waits the whole kLostFallbackMs from the last loss, not counting earlier ones.
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, t));
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, t + NetPolicy::kFallbackMs));
+  TEST_ASSERT_FALSE(p.apWanted());
+}
+
+// The ESP8266 reports WL_WRONG_PASSWORD on any failed 4-way handshake, which a working network
+// produces now and then (a busy router, a lost EAPOL frame). On credentials that already connected
+// this boot it is an outage like any other: no setup network until it lasts kLostFallbackMs, and
+// then the screen says "wrong password" (the password may really have changed).
+static void test_net_policy_wrong_password_on_a_proven_network_is_an_outage() {
+  NetPolicy p;
+  p.begin(true, 0);
+  p.update(LinkStatus::Connected, 2000);
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::WrongPassword, 10000));
+  TEST_ASSERT_FALSE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::Down, 12000));
+  TEST_ASSERT_EQUAL(NetState::Connected, p.update(LinkStatus::Connected, 15000));
+  TEST_ASSERT_FALSE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::WrongPassword, 20000));
+  TEST_ASSERT_EQUAL(NetState::Connecting, p.update(LinkStatus::WrongPassword, 20000 + NetPolicy::kLostFallbackMs - 1));
+  TEST_ASSERT_FALSE(p.apWanted());
+  TEST_ASSERT_EQUAL(NetState::WrongPassword, p.update(LinkStatus::WrongPassword, 20000 + NetPolicy::kLostFallbackMs));
+  TEST_ASSERT_TRUE(p.apWanted());
+
+  // Saved credentials that never connected this boot: a wrong password still opens it at once.
+  NetPolicy q;
+  q.begin(true, 0);
+  TEST_ASSERT_EQUAL(NetState::WrongPassword, q.update(LinkStatus::WrongPassword, 8000));
+  TEST_ASSERT_TRUE(q.apWanted());
+  // ...and a network never reached at boot keeps the 2 min fallback.
+  NetPolicy r;
+  r.begin(true, 0);
+  TEST_ASSERT_EQUAL(NetState::Connecting, r.update(LinkStatus::Down, NetPolicy::kFallbackMs - 1));
+  TEST_ASSERT_EQUAL(NetState::Portal, r.update(LinkStatus::Down, NetPolicy::kFallbackMs));
+}
+
+// The setup network is never brought up while the heap is low: the SDK's soft AP allocates a
+// probe response for every phone that scans nearby and faults on a failed allocation.
+static void test_net_policy_ap_waits_for_heap() {
+  NetPolicy p;
+  p.begin(false, 0);
+  TEST_ASSERT_TRUE(p.apWanted());
+  TEST_ASSERT_TRUE(p.apMayStart(false));
+  TEST_ASSERT_FALSE(p.apMayStart(true));
+  NetPolicy q;
+  q.begin(true, 0);
+  TEST_ASSERT_FALSE(q.apMayStart(false));
+}
+
+// Low-memory guard: below 12 KB free or a 4 KB largest block the app sheds HTTP work and optional
+// network chatter; it resumes only above 16 KB / 6 KB, and no sooner than kHoldMs after going low.
+static void test_heap_guard_hysteresis() {
+  HeapGuard g;
+  TEST_ASSERT_FALSE(g.low());
+  TEST_ASSERT_FALSE(g.update(27000, 12000, 0));  // normal working numbers
+  TEST_ASSERT_FALSE(g.update(HeapGuard::kLowFree, HeapGuard::kLowBlock, 10));  // at the line: fine
+  TEST_ASSERT_TRUE(g.update(HeapGuard::kLowFree - 1, 9000, 20));               // free heap low
+  TEST_ASSERT_TRUE(g.update(15000, 9000, 2000));    // between the lines: stays low
+  TEST_ASSERT_TRUE(g.update(20000, 5000, 2100));    // block not back yet
+  TEST_ASSERT_FALSE(g.update(HeapGuard::kOkFree, HeapGuard::kOkBlock, 2200));  // back
+  TEST_ASSERT_FALSE(g.update(15000, 5000, 2300));   // between the lines: stays fine
+  TEST_ASSERT_TRUE(g.update(20000, HeapGuard::kLowBlock - 1, 3000));  // fragmented
+  // Recovered at once, but held for kHoldMs so held connections and send buffers drain.
+  TEST_ASSERT_TRUE(g.update(27000, 12000, 3000 + HeapGuard::kHoldMs - 1));
+  TEST_ASSERT_FALSE(g.update(27000, 12000, 3000 + HeapGuard::kHoldMs));
+  TEST_ASSERT_EQUAL_UINT32(2, g.episodes());
+  // Safe across millis() wrap.
+  HeapGuard w;
+  TEST_ASSERT_TRUE(w.update(1000, 1000, 0xFFFFFF00u));
+  TEST_ASSERT_TRUE(w.update(27000, 12000, 0xFFFFFF00u + HeapGuard::kHoldMs - 1));
+  TEST_ASSERT_FALSE(w.update(27000, 12000, 0xFFFFFF00u + HeapGuard::kHoldMs));
+  // The thresholds keep the Wi-Fi stack's reserve and leave a real gap between the two lines.
+  TEST_ASSERT_TRUE(HeapGuard::kOkFree >= HeapGuard::kLowFree + 4096);
+  TEST_ASSERT_TRUE(HeapGuard::kOkBlock >= HeapGuard::kLowBlock + 2048);
 }
 
 static void test_classify_disconnect_reasons() {
@@ -1207,6 +1302,10 @@ int main() {
   RUN_TEST(test_erased_flash_counts_as_first_boot);
   RUN_TEST(test_net_policy_saved_credentials_then_router_down);
   RUN_TEST(test_net_policy_first_boot_and_wrong_password);
+  RUN_TEST(test_net_policy_brief_drops_never_open_the_ap);
+  RUN_TEST(test_net_policy_wrong_password_on_a_proven_network_is_an_outage);
+  RUN_TEST(test_net_policy_ap_waits_for_heap);
+  RUN_TEST(test_heap_guard_hysteresis);
   RUN_TEST(test_screen_selection_order);
   RUN_TEST(test_classify_disconnect_reasons);
   RUN_TEST(test_trial_retries_until_connected);

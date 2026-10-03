@@ -73,8 +73,8 @@ notes.
    screen with the correct clock (NTP + timezone) and the pairing code in the footer.
 8. **Wrong password:** factory-reset (item 10) and, on the setup portal, type the wrong Wi-Fi
    password; the device shows a "Wrong password" screen with the QR code; correcting it connects.
-9. **Recovery:** power off the router; after ~2 minutes the `Miblo-Setup-XXXX` network and QR
-   appear; power the router back on; the gadget returns on its own to the saved network and the
+9. **Recovery:** power off the router; after ~5 minutes (~2 if the gadget never connected since it
+   started) the `Miblo-Setup-XXXX` network and QR appear; power the router back on; the gadget returns on its own to the saved network and the
    setup network disappears.
 10. **Power-cycle reset (no 3-cycle reset):** six quick power-on cycles in a row,
     each under 10 s of uptime. From the 3rd through the 5th quick boot, the screen shows an amber

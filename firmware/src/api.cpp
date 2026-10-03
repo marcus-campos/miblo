@@ -80,7 +80,7 @@ static void handleInfo() {
     json(200, out.c_str());
     return;
   }
-  // 45 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
+  // 46 top-level members + screen{2} + focus{4} + caps + copied strings (flash, reset, the
   // phase, the countdown date): ~830 B on the ESP8266, plus ~440 B for the keys, which are copied
   // in from flash (F()) so they never sit in RAM for good, plus "crash" (~300 B) after a crash:
   // ~1.61 KB at worst. On the heap, not the stack: on the stack it took the HTTP path to ~4 KB,
@@ -119,6 +119,7 @@ static void handleInfo() {
   put(o, F("reset"), resetReason());
   put(o, F("uptime"), millis() / 1000);
   put(o, F("minHeapParse"), app::minHeapDuringParse());  // worst-case free heap during a snapshot parse
+  put(o, F("heapLow"), ctx.heap.episodes());  // times the low-memory guard shed work since boot
   put(o, F("maxSessions"), miblo::kMaxSessions);  // how many sessions this firmware can show/parse
   put(o, F("maxBytes"), miblo::kSnapshotMaxBytes);
   // The zones the bridge works out live offsets for (snapshot "tz"). Stable memory: not copied.

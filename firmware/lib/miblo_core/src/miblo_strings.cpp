@@ -161,7 +161,7 @@ static const char kEn[] MIBLO_ROM =
     "Crab\0"  // WebPetCrab
     "Owl\0"  // WebPetOwl
     "Dog\0"  // WebPetDog
-    "Miblo alien\0"  // WebPetAlien
+    "Alien\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Body\0"  // WebSlotBody
     "Outline\0"  // WebSlotLine
@@ -461,7 +461,7 @@ static const char kPtBR[] MIBLO_ROM =
     "Caranguejo\0"  // WebPetCrab
     "Coruja\0"  // WebPetOwl
     "Cachorro\0"  // WebPetDog
-    "Alienígena Miblo\0"  // WebPetAlien
+    "Alienígena\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Corpo\0"  // WebSlotBody
     "Contorno\0"  // WebSlotLine
@@ -761,7 +761,7 @@ static const char kPtPT[] MIBLO_ROM =
     "Caranguejo\0"  // WebPetCrab
     "Mocho\0"  // WebPetOwl
     "Cão\0"  // WebPetDog
-    "Extraterrestre Miblo\0"  // WebPetAlien
+    "Extraterrestre\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Corpo\0"  // WebSlotBody
     "Contorno\0"  // WebSlotLine
@@ -1061,7 +1061,7 @@ static const char kEs[] MIBLO_ROM =
     "Cangrejo\0"  // WebPetCrab
     "Búho\0"  // WebPetOwl
     "Perro\0"  // WebPetDog
-    "Alienígena Miblo\0"  // WebPetAlien
+    "Alienígena\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Cuerpo\0"  // WebSlotBody
     "Contorno\0"  // WebSlotLine
@@ -1361,7 +1361,7 @@ static const char kFr[] MIBLO_ROM =
     "Crabe\0"  // WebPetCrab
     "Hibou\0"  // WebPetOwl
     "Chien\0"  // WebPetDog
-    "Alien Miblo\0"  // WebPetAlien
+    "Alien\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Corps\0"  // WebSlotBody
     "Contour\0"  // WebSlotLine
@@ -1661,7 +1661,7 @@ static const char kIt[] MIBLO_ROM =
     "Granchio\0"  // WebPetCrab
     "Gufo\0"  // WebPetOwl
     "Cane\0"  // WebPetDog
-    "Alieno Miblo\0"  // WebPetAlien
+    "Alieno\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Corpo\0"  // WebSlotBody
     "Contorno\0"  // WebSlotLine
@@ -1961,7 +1961,7 @@ static const char kDe[] MIBLO_ROM =
     "Krabbe\0"  // WebPetCrab
     "Eule\0"  // WebPetOwl
     "Hund\0"  // WebPetDog
-    "Miblo-Alien\0"  // WebPetAlien
+    "Alien\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Körper\0"  // WebSlotBody
     "Umriss\0"  // WebSlotLine
@@ -2261,7 +2261,7 @@ static const char kRu[] MIBLO_ROM =
     "Краб\0"  // WebPetCrab
     "Сова\0"  // WebPetOwl
     "Собака\0"  // WebPetDog
-    "Пришелец Miblo\0"  // WebPetAlien
+    "Пришелец\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "Тело\0"  // WebSlotBody
     "Контур\0"  // WebSlotLine
@@ -2561,7 +2561,7 @@ static const char kZh[] MIBLO_ROM =
     "螃蟹\0"  // WebPetCrab
     "猫头鹰\0"  // WebPetOwl
     "小狗\0"  // WebPetDog
-    "Miblo 外星人\0"  // WebPetAlien
+    "外星人\0"  // WebPetAlien
     "Riff\0"  // WebPetRiff
     "身体\0"  // WebSlotBody
     "轮廓\0"  // WebSlotLine

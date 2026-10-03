@@ -159,7 +159,7 @@ enum class S : uint16_t {
   WebPetCrab,           // settings: pet 7 crab
   WebPetOwl,            // settings: pet 8 owl
   WebPetDog,            // settings: pet 9 dog
-  WebPetAlien,          // settings: pet 10 Miblo alien (one big eye, antennae)
+  WebPetAlien,          // settings: pet 10 alien (one big eye, antennae)
   WebPetRiff,           // settings: pet 11 Riff, an original little rocker (a name: the same in every language)
   WebSlotBody,          // settings: colour slot: the body
   WebSlotLine,          // settings: colour slot: outlines

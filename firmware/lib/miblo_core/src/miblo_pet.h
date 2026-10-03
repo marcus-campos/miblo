@@ -17,7 +17,7 @@ enum class Pet : uint8_t {
   Crab = 7,
   Owl = 8,
   Dog = 9,
-  Alien = 10,   // the Miblo alien: one big eye, antennae
+  Alien = 10,   // an alien: one big eye, antennae
   Riff = 11,    // an original little rocker: spiky mohawk, studded collar, a crooked grin
 };
 constexpr uint8_t kPetKinds = 12;

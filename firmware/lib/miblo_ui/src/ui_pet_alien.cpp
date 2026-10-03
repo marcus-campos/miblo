@@ -1,4 +1,4 @@
-// The alien pet (miblo::Pet::Alien): the Miblo alien, the brand's own character: a soft rounded
+// The alien pet (miblo::Pet::Alien): a soft rounded
 // head, one big eye, two antennae with glowing tips (the accent), a tiny body and three-fingered
 // hands. See ui_pet.h for the contract.
 #include "miblo_mood.h"

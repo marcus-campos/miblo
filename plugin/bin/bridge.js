@@ -14,7 +14,7 @@ import { DeviceManager } from '../lib/device-manager.js';
 import { discover } from '../lib/mdns.js';
 import { createBridgeServer } from '../lib/bridge-server.js';
 import { createReleaseCache } from '../lib/update-notice.js';
-import { isLinked, installTap } from '../lib/statusline-link.js';
+import { refreshLink } from '../lib/statusline-link.js';
 import { createLogger, errText } from '../lib/logger.js';
 
 // `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
@@ -82,8 +82,8 @@ function main() {
     process.exit(2);
   }
   try {
-    const settingsPath = claudeSettingsPath();
-    if (isLinked({ settingsPath })) installTap({ pluginRoot: path.resolve(here, '..'), settingsPath });
+    // Refreshes the copied tap and launcher; a status line linked by an older Miblo moves to the launcher.
+    refreshLink({ settingsPath: claudeSettingsPath(), pluginRoot: path.resolve(here, '..'), dataDir });
   } catch {
     // the status line keeps working with the previous copy of the tap
   }

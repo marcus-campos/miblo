@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const TAP = 'statusline-tap.mjs';
+// The launcher finds Node where the shell's PATH is not inherited (the Claude desktop app, IDEs).
+const LAUNCHER = 'miblo-run';
 const ORIGINAL = 'statusline-original.json';
 
 function readSettings(settingsPath) {
@@ -29,22 +31,47 @@ export function tapDir(settingsPath) {
   return path.join(path.dirname(settingsPath), 'miblo');
 }
 
-export function tapCommand({ settingsPath }) {
-  return `node "${slashes(path.join(tapDir(settingsPath), TAP))}"`;
+// --no-wait: the status line never waits for a Node download (the hooks make it). --data: the
+// launcher shares the plugin's cached Node path and downloaded runtime.
+export function tapCommand({ settingsPath, dataDir }) {
+  const data = dataDir ? ` --data "${slashes(dataDir)}"` : '';
+  return `sh "${slashes(path.join(tapDir(settingsPath), LAUNCHER))}" --no-wait ${TAP}${data}`;
 }
 
 export function installTap({ pluginRoot, settingsPath }) {
   const dir = tapDir(settingsPath);
   fs.mkdirSync(dir, { recursive: true });
-  fs.copyFileSync(path.join(pluginRoot, 'bin', TAP), path.join(dir, TAP));
+  for (const f of [TAP, LAUNCHER]) {
+    const tmp = path.join(dir, `${f}.miblo-tmp`);
+    fs.copyFileSync(path.join(pluginRoot, 'bin', f), tmp);
+    fs.chmodSync(tmp, 0o755);
+    fs.renameSync(tmp, path.join(dir, f));
+  }
 }
 
 export function isLinked({ settingsPath }) {
   const cmd = readSettings(settingsPath).statusLine?.command;
-  return typeof cmd === 'string' && slashes(cmd).includes(slashes(path.join(tapDir(settingsPath), TAP)));
+  if (typeof cmd !== 'string') return false;
+  const c = slashes(cmd);
+  const dir = slashes(tapDir(settingsPath));
+  // Current form (through the launcher) or the older `node "<dir>/statusline-tap.mjs"`.
+  return c.includes(`${dir}/${TAP}`) || (c.includes(`${dir}/${LAUNCHER}"`) && c.includes(` ${TAP}`));
 }
 
-export function link({ settingsPath, pluginRoot }) {
+// Run by every new bridge: refreshes the copied tap and launcher, and moves a status line linked
+// by an older Miblo (`node ".../statusline-tap.mjs"`) to the current command.
+export function refreshLink({ settingsPath, pluginRoot, dataDir }) {
+  if (!isLinked({ settingsPath })) return { changed: false };
+  installTap({ pluginRoot, settingsPath });
+  const settings = readSettings(settingsPath);
+  const command = tapCommand({ settingsPath, dataDir });
+  if (settings.statusLine.command === command) return { changed: false };
+  settings.statusLine = { ...settings.statusLine, command };
+  writeJson(settingsPath, settings);
+  return { changed: true };
+}
+
+export function link({ settingsPath, pluginRoot, dataDir }) {
   const settings = readSettings(settingsPath);
   installTap({ pluginRoot, settingsPath });
   if (isLinked({ settingsPath })) return { changed: false, original: null };
@@ -58,7 +85,7 @@ export function link({ settingsPath, pluginRoot }) {
   const isTap = typeof current?.command === 'string' && current.command.includes(TAP);
   const original = isTap ? null : current;
   if (!isTap || !fs.existsSync(originalFile)) writeJson(originalFile, original ?? {});
-  settings.statusLine = { ...(current ?? {}), type: 'command', command: tapCommand({ settingsPath }) };
+  settings.statusLine = { ...(current ?? {}), type: 'command', command: tapCommand({ settingsPath, dataDir }) };
   writeJson(settingsPath, settings);
   return { changed: true, original };
 }

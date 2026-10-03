@@ -640,7 +640,7 @@ export async function run(argv, deps) {
     case 'update':
       return new FirmwareUpdater({ store, dataDir, pluginVersion: pluginVersion(), ...deps.updater }).run(args);
     case 'link-statusline': {
-      const r = link({ settingsPath, pluginRoot });
+      const r = link({ settingsPath, pluginRoot, dataDir });
       return ok(r.changed ? 'Statusline linked.' : 'Statusline already linked.');
     }
     case 'unlink-statusline': {

@@ -101,7 +101,7 @@ enum class RequestReadiness : uint8_t {
   TooLarge,     // no header block within HeaderBuffer::kCap: refuse (431)
   BodyTimeout,  // a small body did not arrive within the wait: refuse (408)
   Closed,       // the peer closed before sending it all
-  NoMemory,     // no heap for the buffer: refuse (503 busy, which the plugin retries)
+  NoMemory,     // no heap for the buffer: held, nothing written (a reply needs heap too)
   BadLength,    // a Content-Length the server would read differently (miblo::readContentLength): 400
 };
 // A body larger than this is not held back: the TCP window (lwIP low memory: 4 x 536 B) cannot

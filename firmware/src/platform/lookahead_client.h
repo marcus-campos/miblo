@@ -17,9 +17,10 @@
 // and dropped: a request whose body was one segment behind its headers (the bridge's snapshots)
 // fell to the 30 ms rule whenever a page was loading. A header block that spans segments is read
 // into a 2 KB heap buffer; when the heap cannot spare it (platform.h heapLowForRequest, checked
-// before allocating so a fragmented heap is not even tried) the request is answered 503
-// {"error":"busy"} at once, which the plugin retries, rather than left waiting silently until the
-// server drops it. See miblo_headers.h pollRequest. Re-armed
+// before allocating so a fragmented heap is not even tried) the request is held, writing nothing,
+// as in 1.12.0: a reply needs heap for its segment too, and a write that cannot get it waits in the
+// loop while more connections pile up (a 1.14.0 build answered 503 there and fell over under a
+// burst). See miblo_headers.h pollRequest. Re-armed
 // after each request (routes.cpp, the not-found handler), since a connection may carry a second one.
 //
 // Why (2): the server's request hook (web.cpp limitPostBody) must judge the whole header block before
@@ -53,9 +54,8 @@ class LookaheadClient : public WiFiClient {
   // Holds the next request back until it is ready for the server (see Why (1) above).
   void rearm() { held_ = true; }
   // Low-memory guard (app.cpp, miblo::HeapGuard): while on, every request still held back is
-  // answered 503 {"error":"busy"} and closed at once (the plugin retries it); a connection that
-  // sent nothing (an idle kept-alive one) is closed without a reply. Either way it is closed in
-  // this call, never held, so its buffers go back to the heap the Wi-Fi SDK needs.
+  // closed at once without a reply (writing one would need the heap that is missing), so its
+  // buffers go back to the heap the Wi-Fi SDK needs. The plugin retries.
   static void shed(bool on) { shedding_ = on; }
   LookaheadClient(const LookaheadClient&) = default;
   LookaheadClient& operator=(const LookaheadClient&) = default;
@@ -142,11 +142,10 @@ class LookaheadClient : public WiFiClient {
     Source src{*this};
     miblo::RequestReadiness r = miblo::RequestReadiness::Waiting;
     if (shedding_) {
-      if (!ahead_.pending() && !WiFiClient::peekAvailable()) {
-        refuse(nullptr, 0);  // nothing asked, nothing to answer: just close
-        return false;
-      }
-      r = miblo::RequestReadiness::NoMemory;
+      // Closed without a reply: writing one needs heap for its segment, and a write that cannot
+      // get it waits in the loop (up to the client's timeout) while more connections pile up.
+      refuse(nullptr, 0);
+      return false;
     } else {
       // Usually the whole header block came in the first segment: judged in place, no heap buffer
       // (a 2 KB allocation on every request fragmented the heap the TCP sender needs).
@@ -174,14 +173,6 @@ class LookaheadClient : public WiFiClient {
         refuse(kReply, sizeof(kReply) - 1);
         return false;
       }
-      case miblo::RequestReadiness::NoMemory: {  // the plugin retries a 503 busy
-        static const char kReply[] PROGMEM =
-            "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nConnection: close\r\n"
-            "Content-Length: 16\r\n\r\n{\"error\":\"busy\"}";
-        static_assert(sizeof("{\"error\":\"busy\"}") - 1 == 16, "Content-Length");
-        refuse(kReply, sizeof(kReply) - 1);
-        return false;
-      }
       case miblo::RequestReadiness::BadLength: {  // H1: a length the server would read otherwise
         static const char kReply[] PROGMEM =
             "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n";
@@ -194,6 +185,10 @@ class LookaheadClient : public WiFiClient {
         ahead_.clear();
         return false;
       case miblo::RequestReadiness::Waiting:
+      // No heap for the header buffer: held as in 1.12.0, writing nothing (a reply needs heap too,
+      // and a write that cannot get it waits in the loop). The server's 30 ms rule drops it while
+      // other clients wait, or its own timeout does.
+      case miblo::RequestReadiness::NoMemory:
         break;
     }
     return false;

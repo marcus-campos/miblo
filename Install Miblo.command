@@ -199,6 +199,15 @@ pair_failed() {
   say "/miblo:pair (restart Claude Code first if it was open)."
 }
 
+# Ctrl-C while pairing: the plugin is already installed, so say how to finish and end as a
+# success (pairing never changes the exit code); double-clicked, the window still waits for Return.
+pair_interrupted() {
+  trap - INT
+  say ""
+  pair_failed
+  finish 0
+}
+
 # Line <n> of the discovered gadgets ("id<TAB>name<TAB>address") into $name and $addr.
 pick() {
   pk_line=$(printf '%s\n' "$list" | sed -n "$1p")
@@ -412,7 +421,9 @@ main() {
     say "Skipping pairing: there is no terminal to type the pairing code in."
     pair_later
   else
+    trap 'pair_interrupted' INT
     pair_gadget "$claude"
+    trap - INT
   fi
   finish 0
 }

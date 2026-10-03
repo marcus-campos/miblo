@@ -65,7 +65,7 @@ function setup() {
   // The installed plugin is this repository's, at the place Claude Code installs it. `answers`
   // are what the user types in the terminal (one per line); `devices` is what discovery finds.
   // Asynchronous, so the fake gadgets in this process can answer.
-  const runPairing = ({ answers = null, devices = [], args = [], pipe = true } = {}) => {
+  const runPairing = ({ answers = null, devices = [], args = [], pipe = true, tty = null, interruptOn = null } = {}) => {
     const installPath = path.join(home, '.claude/plugins/cache/miblo/miblo/1.14.0');
     fs.mkdirSync(path.dirname(installPath), { recursive: true });
     // A copy of this plugin, as Claude Code installs it.
@@ -75,6 +75,7 @@ function setup() {
     }
     fs.writeFileSync(path.join(state, 'installpath'), installPath);
     const env = { ...baseEnv(), PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: JSON.stringify(devices) };
+    if (tty) env.MIBLO_TTY = tty;
     if (answers !== null) {
       env.MIBLO_TTY = path.join(dir, 'tty');
       fs.writeFileSync(env.MIBLO_TTY, answers.map((a) => `${a}\n`).join(''));
@@ -82,7 +83,15 @@ function setup() {
     const child = pipe ? spawn('sh', ['-s', '--', ...args], { env }) : spawn('sh', [script, ...args], { env });
     let stdout = '';
     let stderr = '';
-    child.stdout.on('data', (c) => { stdout += c; });
+    let interrupted = false;
+    child.stdout.on('data', (c) => {
+      stdout += c;
+      // Ctrl-C at a prompt: the terminal sends SIGINT.
+      if (interruptOn && !interrupted && interruptOn.test(stdout)) {
+        interrupted = true;
+        child.kill('SIGINT');
+      }
+    });
     child.stderr.on('data', (c) => { stderr += c; });
     child.stdin.end(pipe ? fs.readFileSync(script) : '');
     return new Promise((resolve) => child.on('close', (status) => resolve(result({ status, stdout, stderr }))));
@@ -310,4 +319,41 @@ test('install.ps1 installs the same marketplace and plugin', () => {
   assert.match(ps, /Read-Host/);
   assert.match(ps, /miblo-run/);
   assert.match(ps, /plugins[\\/]+data[\\/]+miblo-miblo|'data'[^\n]*'miblo-miblo'/);
+});
+
+// Ctrl-C while pairing: the plugin is installed either way, so the run ends as a success with the
+// hint to finish with /miblo:pair (and, double-clicked, the window still waits for Return).
+test('Ctrl-C while pairing prints how to finish later and exits 0', { skip }, async () => {
+  const t = setup();
+  t.placeFake(path.join(t.bin, 'claude'));
+  const dev = await startFakeDevice();
+  try {
+    // A terminal nobody types in: reads block until the interrupt.
+    const fifo = path.join(t.dir, 'tty-fifo');
+    assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+    const hold = fs.openSync(fifo, 'r+');
+    try {
+      const r = await t.runPairing({ tty: fifo, devices: [{ id: 'miblo-4f2a', name: 'Desk', addr: dev.addr }], pipe: false, interruptOn: /Type the 4-digit code \(or q to skip\): $/ });
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      const after = r.stdout.slice(r.stdout.lastIndexOf('Type the 4-digit code'));
+      assert.match(after, /not paired yet/);
+      assert.match(after, /\/miblo:pair/);
+      assert.equal(t.paired(), null);
+    } finally {
+      fs.closeSync(hold);
+    }
+  } finally {
+    await dev.close();
+  }
+});
+
+test('the installer traps Ctrl-C only around pairing, and the .command still pauses', () => {
+  const src = fs.readFileSync(script, 'utf8');
+  const set = src.indexOf("trap 'pair_interrupted' INT");
+  const pair = src.indexOf('pair_gadget "$claude"');
+  const clear = src.indexOf('trap - INT', pair);
+  assert.ok(set > 0 && set < pair && clear > pair, 'trap set before pairing, cleared after');
+  const handler = src.slice(src.indexOf('pair_interrupted() {'), src.indexOf('}', src.indexOf('pair_interrupted() {')));
+  assert.match(handler, /pair_failed/);
+  assert.match(handler, /finish 0/);
 });

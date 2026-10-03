@@ -269,9 +269,22 @@ For someone who already has a Miblo gadget. To build one, see [Do It Yourself](#
 
 macOS, Linux and Windows (including WSL) are supported. **Not supported:** cloud sessions (claude.ai/code, and cloud sessions started from the desktop or mobile app) and GitHub Copilot's Claude agent. They run away from your computer, so they can't reach the gadget on your network, or they don't run plugin hooks.
 
-**Node.js:** Miblo runs on [Node.js](https://nodejs.org) 20 or newer, and you don't need to set it up. It finds the Node you already have even when the app doesn't see your shell's `PATH` (the desktop app and IDEs don't): Homebrew, Volta, nvm, fnm, asdf, mise, nodenv or your login shell. If there is none, it downloads the official Node.js LTS once (about 50 MB, checked against a SHA-256 pinned in the plugin) into its own data folder. `/miblo:pair` checks this first and, if Node still can't be set up (no internet, an unusual system), offers to install it for you, only after you say yes.
+**Node.js:** Miblo runs on [Node.js](https://nodejs.org) 20 or newer, and you don't need to set it up. It finds the Node you already have even when the app doesn't see your shell's `PATH` (the desktop app and IDEs don't): Homebrew, Volta, nvm, fnm, asdf, mise, nodenv or your login shell. If there is none, it downloads the official Node.js LTS once (about 50 MB, checked against a SHA-256 pinned in the plugin) into its own data folder. The installer gets it ready before pairing, and `/miblo:pair` checks it first and, if Node still can't be set up (no internet, an unusual system), offers to install it for you, only after you say yes.
 
-1. **Install the plugin in one step.**
+1. **Connect the gadget to Wi-Fi.** Plug it in. The screen shows a QR code and the network name `Miblo-Setup-XXXX`. Scan the code with your phone (or join that network), and the setup page opens. Pick your network and type the password.
+   - Miblo works only with **2.4 GHz** Wi-Fi.
+   - Your router needs **WPA2**. WPA3-only routers aren't supported. If a "WPA2/WPA3" mixed-mode router refuses the connection, switch it to WPA2.
+
+   Once it connects, the screen shows "Wi-Fi connected", a 4-digit pairing code and the gadget's IP.
+
+   <table>
+     <tr>
+       <td align="center"><img src="docs/media/setup-qr.png" width="200" alt="The setup screen: a QR code and the Miblo-Setup network name"><br><sub>Scan to set up the Wi-Fi</sub></td>
+       <td align="center"><img src="docs/media/paired.png" width="200" alt="Paired with MacBook-Pro"><br><sub>Paired by the installer or <code>/miblo:pair</code></sub></td>
+     </tr>
+   </table>
+
+2. **Install the plugin and pair, in one step.**
    - **macOS or Linux:** open Terminal and paste:
 
      ```sh
@@ -286,7 +299,11 @@ macOS, Linux and Windows (including WSL) are supported. **Not supported:** cloud
 
    - **Mac, without typing anything:** download `Install-Miblo-macOS.zip` from the [latest release](https://github.com/marcus-campos/miblo/releases/latest), unzip it and double-click **Install Miblo.command**. If macOS says it can't be opened, go to **System Settings → Privacy & Security** and click **Open Anyway**.
 
-   The installer finds Claude Code (the `claude` command, or the copy inside the Claude desktop app), adds the Miblo marketplace and installs the plugin. Run it again any time: it updates what is already there. It never asks for an administrator password. The plugin then works everywhere Claude Code runs on that computer: the terminal, the Claude desktop app's **Code** tab and the IDE extensions (VS Code, JetBrains). Restart Claude Code once it's done. No Claude Code yet? Install the [Claude desktop app](https://claude.ai/download) first.
+   The installer finds Claude Code (the `claude` command, or the copy inside the Claude desktop app), adds the Miblo marketplace and installs the plugin. **Then it pairs your Miblo, so you never need to type a command:** it gets Node.js ready (downloading it once if needed), finds the Miblo on your network (with several, you pick one by number) and asks you to type the 4-digit code from its screen. Nothing found? It tells you what to check (plugged in, same Wi-Fi, showing a pairing code) and searches again, or takes the IP shown at the bottom of the gadget's screen. When it says "Miblo … paired", open Claude (terminal, desktop app → Code, or your IDE) and the sessions start showing; restart Claude Code first if it was open.
+
+   Run it again any time: it updates what is already there. It never asks for an administrator password. The plugin then works everywhere Claude Code runs on that computer: the terminal, the Claude desktop app's **Code** tab and the IDE extensions (VS Code, JetBrains). No Claude Code yet? Install the [Claude desktop app](https://claude.ai/download) first.
+
+   To install without pairing, add `--no-pair` (`curl -fsSL …/install.sh | sh -s -- --no-pair`; on Windows set `$env:MIBLO_NO_PAIR = '1'` first). Pairing is also skipped when there is no terminal to type the code in. Either way, `/miblo:pair` in Claude Code pairs later. On Windows, pairing from the installer needs Git for Windows or Node.js 20 or newer; without them it tells you to run `/miblo:pair`, which offers to install Node.js.
 
    **Or by hand:** in Claude Code, run:
 
@@ -298,21 +315,8 @@ macOS, Linux and Windows (including WSL) are supported. **Not supported:** cloud
 
    In the **desktop app**, open the Code tab and add it from **+ → Plugins** (add the `marcus-campos/miblo` marketplace, then install `miblo`), or run `claude plugin marketplace add marcus-campos/miblo` and `claude plugin install miblo@miblo` in a terminal; the desktop app and the IDE extensions share the plugins installed for Claude Code.
 
-2. **Connect the gadget to Wi-Fi.** Plug it in. The screen shows a QR code and the network name `Miblo-Setup-XXXX`. Scan the code with your phone (or join that network), and the setup page opens. Pick your network and type the password.
-   - Miblo works only with **2.4 GHz** Wi-Fi.
-   - Your router needs **WPA2**. WPA3-only routers aren't supported. If a "WPA2/WPA3" mixed-mode router refuses the connection, switch it to WPA2.
-
-   Once it connects, the screen shows "Wi-Fi connected", a 4-digit pairing code and the gadget's IP.
-
-   <table>
-     <tr>
-       <td align="center"><img src="docs/media/setup-qr.png" width="200" alt="The setup screen: a QR code and the Miblo-Setup network name"><br><sub>Scan to set up the Wi-Fi</sub></td>
-       <td align="center"><img src="docs/media/paired.png" width="200" alt="Paired with MacBook-Pro"><br><sub>Paired after <code>/miblo:pair</code></sub></td>
-     </tr>
-   </table>
-
-3. **Pair.** In Claude Code, run `/miblo:pair` and type the 4-digit code from the screen. It then asks what to call the gadget (up to 20 characters). A name helps when you have several Miblos. Reply `keep` to leave it as `Miblo-XXXX`. It also offers to tell the gadget your first name and birthday, so it can greet you. Reply `skip` if you'd rather not.
-4. **Allow the status line link.** `/miblo:pair` asks before linking your status line. This link is what the limits, context and cost need. Your current status line keeps working exactly the same. If you say no, you still get session states and alerts, but no limits. You can undo it any time with `/miblo:unlink-statusline`.
+3. **Name it (optional).** In Claude Code, `/miblo:pair` pairs by hand (when the installer was run with `--no-pair` or could not pair) and also asks what to call the gadget (up to 20 characters; a name helps when you have several Miblos; reply `keep` to leave it as `Miblo-XXXX`) and offers to tell it your first name and birthday, so it can greet you. Or use `/miblo:rename` and `/miblo:owner` any time.
+4. **Allow the status line link.** `/miblo:pair` asks before linking your status line; after the installer paired, run `/miblo:link-statusline` instead. This link is what the limits, context and cost need. Your current status line keeps working exactly the same. If you skip it, you still get session states and alerts, but no limits. You can undo it any time with `/miblo:unlink-statusline`.
 
 The gadget updates on your next Claude Code activity.
 
@@ -471,7 +475,7 @@ Miblo's own update page (`http://miblo-xxxx.local/update`, with the on-screen co
 
 | Problem | What to do |
 |---|---|
-| `/miblo:pair` finds no gadget | Check that the gadget shows a pairing code and is on the same network as your computer. mDNS is often blocked on WSL2, VPNs and corporate networks. In that case, run `/miblo:pair <ip>` with the IP shown on the gadget's screen. |
+| The installer or `/miblo:pair` finds no gadget | Check that the gadget shows a pairing code and is on the same network as your computer. mDNS is often blocked on WSL2, VPNs and corporate networks. In that case, type the IP shown on the gadget's screen when the installer asks, or run `/miblo:pair <ip>`. |
 | Screen says **Wrong password** | The password was wrong. Scan the QR again and retype it. |
 | Screen says **Network not found / Use a 2.4 GHz network** | The gadget can't see the network. Miblo supports only 2.4 GHz. Enable the 2.4 GHz band or use a separate 2.4 GHz network name, and move closer to the router. |
 | Screen says **Connection refused / Check password or use WPA2** | The router rejected the gadget. Check the password. If the router uses WPA3 or "WPA2/WPA3" mode, switch it to WPA2, because Miblo doesn't support WPA3. |

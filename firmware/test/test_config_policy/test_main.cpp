@@ -337,6 +337,39 @@ static void test_heap_guard_hysteresis() {
   TEST_ASSERT_TRUE(HeapGuard::kOkBlock >= HeapGuard::kLowBlock + 2048);
 }
 
+// The guard can stay low for good (a fragmented heap whose largest block settles between the two
+// lines): then nothing is served, mDNS is silent and the setup network never opens. After
+// kRestartAfterMs low without a break the unit restarts, but only at an idle moment.
+static void test_heap_guard_restart_ceiling() {
+  HeapGuard g;
+  TEST_ASSERT_FALSE(g.restartDue(0, false));
+  TEST_ASSERT_TRUE(g.update(20000, 3000, 1000));  // low, then the block settles between 4 and 6 KB
+  for (uint32_t t = 1000; t < 1000 + HeapGuard::kRestartAfterMs; t += 500) {
+    g.update(20000, 5000, t);
+    TEST_ASSERT_FALSE(g.restartDue(t, false));
+  }
+  const uint32_t due = 1000 + HeapGuard::kRestartAfterMs;
+  g.update(20000, 5000, due);
+  TEST_ASSERT_FALSE(g.restartDue(due, true));  // busy (an update, a Wi-Fi trial): wait
+  TEST_ASSERT_TRUE(g.restartDue(due, false));
+  TEST_ASSERT_TRUE(g.restartDue(due + 10000, false));
+  // A recovery in between restarts the count.
+  HeapGuard h;
+  h.update(20000, 3000, 0);
+  h.update(27000, 12000, HeapGuard::kRestartAfterMs - 1);  // back
+  h.update(20000, 3000, HeapGuard::kRestartAfterMs);       // low again
+  TEST_ASSERT_FALSE(h.restartDue(HeapGuard::kRestartAfterMs + 1000, false));
+  TEST_ASSERT_TRUE(h.restartDue(2 * HeapGuard::kRestartAfterMs, false));
+  // Never while fine; safe across millis() wrap.
+  HeapGuard f;
+  f.update(27000, 12000, 0);
+  TEST_ASSERT_FALSE(f.restartDue(HeapGuard::kRestartAfterMs * 3, false));
+  HeapGuard w;
+  w.update(1000, 1000, 0xFFFFFF00u);
+  TEST_ASSERT_FALSE(w.restartDue(0xFFFFFF00u + HeapGuard::kRestartAfterMs - 1, false));
+  TEST_ASSERT_TRUE(w.restartDue(0xFFFFFF00u + HeapGuard::kRestartAfterMs, false));
+}
+
 static void test_classify_disconnect_reasons() {
   TEST_ASSERT_EQUAL(JoinFailure::None, classifyDisconnect(0));
   TEST_ASSERT_EQUAL(JoinFailure::NotFound, classifyDisconnect(201));
@@ -1306,6 +1339,7 @@ int main() {
   RUN_TEST(test_net_policy_wrong_password_on_a_proven_network_is_an_outage);
   RUN_TEST(test_net_policy_ap_waits_for_heap);
   RUN_TEST(test_heap_guard_hysteresis);
+  RUN_TEST(test_heap_guard_restart_ceiling);
   RUN_TEST(test_screen_selection_order);
   RUN_TEST(test_classify_disconnect_reasons);
   RUN_TEST(test_trial_retries_until_connected);

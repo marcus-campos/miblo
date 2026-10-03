@@ -93,6 +93,9 @@ class HeapGuard {
   static constexpr uint32_t kOkFree = 16384;
   static constexpr uint32_t kOkBlock = 6144;
   static constexpr uint32_t kHoldMs = 1000;
+  // Low without a break for this long: the heap is not coming back (fragmentation can leave the
+  // largest block between kLowBlock and kOkBlock for good), so the unit restarts (app.cpp).
+  static constexpr uint32_t kRestartAfterMs = 60000;
 
   // Call on every loop pass. Returns low(). Safe across millis() wrap.
   bool update(uint32_t freeBytes, uint32_t maxBlock, uint32_t nowMs) {
@@ -108,6 +111,9 @@ class HeapGuard {
     return low_;
   }
   bool low() const { return low_; }
+  // Time to restart: low for kRestartAfterMs without a break, and not `busy` (an update in
+  // progress, a submitted network being tried). Safe across millis() wrap.
+  bool restartDue(uint32_t nowMs, bool busy) const { return low_ && !busy && nowMs - sinceMs_ >= kRestartAfterMs; }
   // How many times it went low since boot (diagnostics).
   uint32_t episodes() const { return episodes_; }
 

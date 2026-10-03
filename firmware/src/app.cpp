@@ -16,6 +16,7 @@
 #include "miblo_occasions.h"
 #include "miblo_wellness.h"
 #include "miblo_zone.h"
+#include "platform/crashlog.h"
 #include "platform/friends_net.h"
 #include "platform/lockouts.h"
 #include "platform/mdns_service.h"
@@ -354,6 +355,14 @@ void loop() {
   // Low-memory guard: while the heap is low, held and new requests are answered 503 busy at once,
   // the setup network is not opened, and pet visits and mDNS replies wait (miblo::HeapGuard).
   const bool heapLow = ctx.heap.update(freeHeap(), maxFreeBlock(), now);
+  // Low for a whole minute: it is not coming back (a fragmented heap). Restart through the
+  // reboot path below, which flushes pending saves first. Here no request is in flight; not during
+  // an update or while a submitted network is tried.
+  if (!ctx.rebootRequested && ctx.heap.restartDue(now, ctx.updating || net::trialBusy())) {
+    crashlog::noteHeapRestart();  // /api/info "heapRestarts"
+    ctx.rebootRequested = true;
+    ctx.rebootAtMs = now;
+  }
 #if defined(ESP8266)
   LookaheadClient::shed(heapLow);
 #endif

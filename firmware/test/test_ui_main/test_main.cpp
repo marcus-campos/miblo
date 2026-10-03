@@ -295,6 +295,12 @@ static void test_overview_logo_follows_the_pet() {
   screens::setMascotPaint(p);
   screens::overview(Lang::En, snap, pager, 100, testClock(), false);
   TEST_ASSERT_TRUE(fc.drew("miblo"));
+  // ... and so does a special day's hat on it
+  fc.clearLog();
+  screens::setMascotAccessory(1);
+  screens::overview(Lang::En, snap, pager, 200, testClock(), false);
+  TEST_ASSERT_TRUE(fc.drew("miblo"));
+  screens::setMascotAccessory(0);
   screens::setMascotPaint(screens::MascotPaint{});
 }
 

@@ -181,6 +181,54 @@ void logoSheet(bool eyes, const std::string& name) {
   plain(0);
 }
 
+// The logo dressed, at the header's 22 px. "dressed": one cell per pet (as logoSheet), 2 x 2: a
+// head item, a face item, a special day's accessory, a head and a face item together. "wear":
+// one cell per head or face item (in id order, then the Santa hat), each on the cat, the robot,
+// the owl and Dev-chan.
+void dressedLogoSheets() {
+  const uint8_t kFace[] = {11, 12, 14, 15, 20};
+  {
+    Shot s;
+    for (uint8_t pet = 0; pet < miblo::kPetIds; pet++) {
+      if (!miblo::isPet(pet)) continue;
+      const int cx = 6 + (pet % 4) * 57 + 28, cy = 6 + (pet / 4) * 57 + 28;
+      plain(pet);
+      for (int i = 0; i < 4; i++) {
+        screens::MascotOutfit o;
+        if (i == 0 || i == 3) o.head = (uint8_t)(1 + (pet + 3 * i) % 10);
+        if (i == 1 || i == 3) o.face = kFace[(pet + i) % 5];
+        screens::setMascotOutfit(o);
+        screens::setMascotAccessory(i == 2 ? (uint8_t)(1 + pet % 6) : 0);
+        screens::logo(cx - 14 + 28 * (i % 2), cy - 14 + 28 * (i / 2), 22);
+      }
+    }
+    save(s, "71-logo-pets-dressed");
+  }
+  {
+    Shot s;
+    const uint8_t kPetsShown[] = {0, 4, 8, 15};
+    int cell = 0;
+    for (uint8_t id = 1; id <= miblo::kWearMax + 1; id++) {
+      miblo::WearSlot slot = miblo::WearSlot::Head;
+      const bool santa = id > miblo::kWearMax;
+      if (!santa && (!miblo::wearSlotOf(id, slot) || slot == miblo::WearSlot::Neck)) continue;
+      const int cx = 6 + (cell % 4) * 57 + 28, cy = 6 + (cell / 4) * 57 + 28;
+      cell++;
+      for (int i = 0; i < 4; i++) {
+        plain(kPetsShown[i]);
+        screens::MascotOutfit o;
+        if (!santa) (slot == miblo::WearSlot::Head ? o.head : o.face) = id;
+        screens::setMascotOutfit(o);
+        screens::setMascotAccessory(santa ? 1 : 0);
+        screens::logo(cx - 14 + 28 * (i % 2), cy - 14 + 28 * (i / 2), 22);
+      }
+    }
+    save(s, "71-logo-wear");
+  }
+  screens::setMascotOutfit(screens::MascotOutfit{});
+  plain(0);
+}
+
 // The first antic of kind `a` from pet mode's start, `into` ms into it (0: none).
 uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
   for (uint32_t c = 1; c <= 2 * (screens::kAnticCount + 1); c++) {
@@ -365,6 +413,7 @@ void renderPets(miblo::Lang L) {
   plain(0);
   logoSheet(false, "71-logo-pets-colors");
   logoSheet(true, "71-logo-pets-eyes");
+  dressedLogoSheets();
 }
 
 }  // namespace shots

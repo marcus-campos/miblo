@@ -96,7 +96,8 @@ struct MascotLook {
   bool operator!=(const MascotLook& o) const { return !(*this == o); }
 };
 // Miblo's logo (the overview's brand row): the current pet's head centred on (cx, cy), about
-// `size` px wide, in its colours and eye shape. The cat's is the brand mark: a 22x20 silhouette
+// `size` px wide, in its colours and eye shape, wearing its head and face items and the special
+// day's accessory (not the neck item). The plain cat's is the brand mark: a 22x20 silhouette
 // (eyes as holes) in its colour, scaled by whole pixels.
 void logo(int cx, int cy, int size);
 // Mascot colours (config "mascot"): 0 sphynx (peach), 1 orange, 2 black, 3 grey. Applies to

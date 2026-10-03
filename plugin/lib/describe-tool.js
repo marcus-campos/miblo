@@ -1,5 +1,7 @@
 const firstLine = (s) => String(s ?? '').split('\n')[0].trim();
 const baseName = (p) => String(p ?? '').split(/[\\/]/).filter(Boolean).pop() ?? '';
+// Claude in Chrome's tools (navigate, computer, read_page...) all drive the browser.
+const BROWSER_TOOL = 'mcp__claude-in-chrome__';
 
 export function describeTool(toolName, toolInput = {}) {
   const name = String(toolName ?? '');
@@ -34,6 +36,8 @@ export function describeTool(toolName, toolInput = {}) {
     case 'Task':
       det = firstLine(input.description);
       break;
+    default:
+      if (name.startsWith(BROWSER_TOOL)) det = 'browsing';
   }
   return { tool, det };
 }

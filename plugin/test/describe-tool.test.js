@@ -16,6 +16,10 @@ const cases = [
   ['Agent', { description: 'Find usages' }, { tool: 'Agent', det: 'Find usages' }],
   ['Task', { description: 'Refactor' }, { tool: 'Task', det: 'Refactor' }],
   ['mcp__github__create_issue', { title: 'x' }, { tool: 'create_issue', det: '' }],
+  // Claude in Chrome: the tool says what it does to the page, the detail that it is browsing.
+  ['mcp__claude-in-chrome__navigate', { url: 'https://example.com/a' }, { tool: 'navigate', det: 'browsing' }],
+  ['mcp__claude-in-chrome__computer', { action: 'left_click' }, { tool: 'computer', det: 'browsing' }],
+  ['mcp__claude-in-chrome__', undefined, { tool: 'mcp__claude-in-chrome__', det: 'browsing' }],
   ['SomethingNew', undefined, { tool: 'SomethingNew', det: '' }],
   [undefined, undefined, { tool: '', det: '' }],
 ];

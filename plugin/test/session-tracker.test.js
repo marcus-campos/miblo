@@ -27,6 +27,14 @@ test('duplicate cwd names are disambiguated', () => {
   assert.deepEqual(tracker.sessions().map((s) => s.name).sort(), ['api-server', 'api-server 2']);
 });
 
+test('a session whose events carry no cwd is named "session", disambiguated like any other', () => {
+  const { tracker } = setup();
+  tracker.handle({ session_id: 's1', hook_event_name: 'UserPromptSubmit' });
+  tracker.handle({ session_id: 's2', hook_event_name: 'PreToolUse', cwd: '', tool_name: 'mcp__claude-in-chrome__navigate', tool_input: {} });
+  assert.deepEqual(tracker.sessions().map((s) => s.name).sort(), ['session', 'session 2']);
+  assert.equal(tracker.sessions().find((s) => s.id === 's2').det, 'browsing');
+});
+
 test('unknown session is created on any event', () => {
   const { tracker, ev } = setup();
   ev('s1', 'UserPromptSubmit');

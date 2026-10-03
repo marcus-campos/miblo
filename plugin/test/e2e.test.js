@@ -259,6 +259,42 @@ test('processes: two Claude Code windows starting at once share one bridge, and 
   }
 });
 
+test('processes: a Desktop agent session (no cwd, no SessionStart, Claude in Chrome) reaches the gadget without its text', async () => {
+  const root = tmpRoot();
+  const dataDir = path.join(root, 'data');
+  const port = await freePort();
+  // Desktop's agent sessions (Cowork) run the CLI with this entrypoint; hooks inherit it.
+  const env = { MIBLO_PORT: String(port), CLAUDE_PLUGIN_DATA: dataDir, CLAUDE_CONFIG_DIR: path.join(root, 'claude'), CLAUDE_CODE_ENTRYPOINT: 'local-agent' };
+  fs.mkdirSync(dataDir, { recursive: true });
+  fs.writeFileSync(path.join(dataDir, 'update-check.json'), JSON.stringify({ checkedAt: Date.now(), latest: null }));
+  const dev = await startFakeDevice();
+  const sid = 'dd5e55e0-2222-4aaa-8bbb-000000000002';
+  const S = 'dd5e55e0';
+  // No cwd at all: the documented fields are required in Claude Code, but nothing guarantees them here.
+  const evt = (name, extra = {}) => {
+    const p = payload(sid, undefined, name, extra);
+    delete p.cwd;
+    return JSON.stringify(p);
+  };
+  const hook = async (input) => assert.equal((await node('hook.js', [], { env, input })).code, 0);
+  const until = (what, pred) => waitFor(what, () => { const s = dev.state.snapshots.at(-1); return s && pred(s) ? s : null; });
+  try {
+    assert.equal((await node('miblo.js', ['--data', dataDir, 'pair', dev.addr, '4827'], { env })).code, 0);
+    await hook(evt('UserPromptSubmit', { prompt: `book a table ${SECRET}` }));
+    let snap = await until('the session', (s) => sessionOf(s, S)?.st === 'running');
+    assert.equal(sessionOf(snap, S).name, 'session');
+    await hook(evt('PreToolUse', { tool_name: 'mcp__claude-in-chrome__navigate', tool_input: { url: `https://example.com/${SECRET}`, text: SECRET } }));
+    snap = await until('browsing', (s) => sessionOf(s, S)?.det === 'browsing');
+    assert.equal(sessionOf(snap, S).tool, 'navigate');
+    await hook(evt('Stop', { last_assistant_message: SECRET }));
+    snap = await until('done', (s) => sessionOf(s, S)?.st === 'done');
+    assert.ok(!JSON.stringify(dev.state.snapshots).includes(SECRET), 'no text reaches the gadget');
+  } finally {
+    await fetch(`http://127.0.0.1:${port}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }).catch(() => {});
+    await dev.close();
+  }
+});
+
 // ---- 2. Daily commands as the slash commands run them ----
 
 test('processes: the daily commands reach the gadget (say, remind, timer, countdown, focus, meeting, find, blue, update)', async () => {

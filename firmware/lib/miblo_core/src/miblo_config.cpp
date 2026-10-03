@@ -8,6 +8,7 @@
 #include "miblo_tz_table.h"
 #include "miblo_utf8.h"
 #include "miblo_rom.h"
+#include "miblo_occasions.h"
 
 namespace miblo {
 
@@ -129,6 +130,14 @@ static bool boolField(JsonVariantConst v, bool& out) {
   return true;
 }
 
+// What the pet wears in `slot` (miblo::Wear, miblo_occasions.h): 0 or one of the slot's ids, 13 never.
+static bool wearField(JsonVariantConst v, WearSlot slot, uint8_t& out) {
+  uint8_t id;
+  if (!intIn(v, 0, kWearMax, id) || !wearFits(slot, id)) return false;
+  out = id;
+  return true;
+}
+
 static bool intIn16(JsonVariantConst v, int lo, int hi, uint16_t& out) {
   if (!v.is<int>()) return false;
   int x = v.as<int>();
@@ -242,6 +251,14 @@ bool applyConfigPatch(Config& cfg, JsonObjectConst patch, const char** badField)
       ok = petColors(v, next.petColors);
     } else if (strcmp(k, "petEyes") == 0) {
       ok = intIn(v, 0, kEyeShapes - 1, next.petEyes);
+    } else if (strcmp(k, "accHead") == 0) {
+      ok = wearField(v, WearSlot::Head, next.accHead);
+    } else if (strcmp(k, "accFace") == 0) {
+      ok = wearField(v, WearSlot::Face, next.accFace);
+    } else if (strcmp(k, "accNeck") == 0) {
+      ok = wearField(v, WearSlot::Neck, next.accNeck);
+    } else if (strcmp(k, "occasionHats") == 0) {
+      ok = boolField(v, next.occasionHats);
     } else if (strcmp(k, "sleepMin") == 0) {
       ok = intIn16(v, 0, 240, next.sleepMin);
     } else if (strcmp(k, "petMin") == 0) {
@@ -345,6 +362,10 @@ void configToJson(const Config& cfg, JsonObject out, bool includePrivate) {
   *w = 0;
   out["petColors"] = colors;  // copied into the document
   out["petEyes"] = cfg.petEyes;
+  out["accHead"] = cfg.accHead;
+  out["accFace"] = cfg.accFace;
+  out["accNeck"] = cfg.accNeck;
+  out["occasionHats"] = cfg.occasionHats;
   out["sleepMin"] = cfg.sleepMin;
   out["petMin"] = cfg.petMin;
   if (includePrivate) {

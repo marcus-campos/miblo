@@ -52,6 +52,12 @@ struct Config {
                                  // Every pet wears the colour above on its body.
   uint32_t petColors[kPetSlots] = {};  // per part (PetSlot): kPetAuto or 0xRRGGBB + 1
   uint8_t petEyes = 0;           // eye shape (miblo::EyeShape): 0 round, 1 big and shiny, 2 sleepy
+  // What the pet wears (miblo::Wear ids, miblo_occasions.h), one per slot, 0 = nothing; each
+  // validated for its slot (13 never). Firmware before 1.14 ignores these keys.
+  uint8_t accHead = 0;
+  uint8_t accFace = 0;
+  uint8_t accNeck = 0;
+  bool occasionHats = true;      // special days dress the pet (their hat takes the head slot)
   uint16_t sleepMin = 60;        // screen off after this many idle minutes, 0..240 (0 = never: pet mode on)
   uint8_t petMin = 15;           // pet mode after this many idle minutes, 1..60 (the page keeps sleepMin later)
   char owner[64] = "";           // the owner's name, <= 20 characters (greetings); empty = unknown
@@ -89,9 +95,11 @@ constexpr uint8_t kMascotStyles = 4;
 // settings POST from the page or the plugin, and the page's copy. Too small and the saved config
 // fails to load, which resets every setting: the worst case (every string at its byte limit)
 // must stay within 2/3 of it (test_stored_config_fits_on_the_gadget). A transient allocation.
-// Older firmware reads this firmware's saved config into its own (2304 before 1.12): the worst
-// case (~1.6 KB) must stay under that too, or a downgrade would lose every setting.
-constexpr size_t kConfigJsonCapacity = 2560;  // 2304 before the wellness timings (1536 before daily life)
+// Older firmware reads this firmware's saved config into its own document (2304 bytes in 1.11,
+// 2560 in 1.12 and 1.13) and ignores the keys it does not know: the worst case (~1.8 KB with the
+// accessories) must stay under 2304 too, or a downgrade would lose every setting.
+constexpr size_t kConfigJsonCapacity = 2816;  // 2560 before the accessories (2304 before the wellness
+                                              // timings, 1536 before daily life)
 
 // Validates all present fields and only then applies them. Unknown fields are ignored.
 // On error, `cfg` is left unchanged and `*badField` (if not null) points to the invalid field's name.

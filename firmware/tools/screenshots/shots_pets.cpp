@@ -31,6 +31,7 @@ void plain(uint8_t pet) {
   p.pet = pet;
   screens::setMascotPaint(p);
   screens::setMascotAccessory(0);
+  screens::setMascotOutfit(screens::MascotOutfit{});
   screens::setMascotTie(false);
   screens::setCatMood(0);
 }
@@ -148,9 +149,71 @@ uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
   }
   return 0;
 }
+
+// The owner's accessories (miblo::Wear): 71-wear-<items>-<pets>, five items down (one per row)
+// on six pets across; 71-wear-all, every pet in a head, face and neck item at once; 71-wear-mix,
+// with a special day's hat, the tie, focus headphones and the presets.
+void wear() {
+  const struct {
+    const char* name;
+    uint8_t ids[5];
+    uint8_t slot;  // 0 head, 1 face, 2 neck
+  } kGroups[] = {{"head-1", {1, 2, 3, 4, 5}, 0},
+                 {"head-2", {6, 7, 8, 9, 10}, 0},
+                 {"face", {11, 12, 14, 15, 20}, 1},
+                 {"neck", {16, 17, 18, 19, 21}, 2}};
+  const Grid g{6, 5};
+  for (const auto& gr : kGroups) {
+    for (uint8_t first = 0; first < miblo::kPetKinds; first += 6) {
+      Shot s;
+      for (int r = 0; r < 5; r++) {
+        for (int c = 0; c < 6 && first + c < miblo::kPetKinds; c++) {
+          plain((uint8_t)(first + c));
+          screens::MascotOutfit o;
+          (gr.slot == 0 ? o.head : gr.slot == 1 ? o.face : o.neck) = gr.ids[r];
+          screens::setMascotOutfit(o);
+          g.draw(c, r, MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0});
+        }
+      }
+      save(s, std::string("71-wear-") + gr.name + "-" + std::to_string(first / 6 + 1));
+    }
+  }
+  {
+    const Grid a{4, 3};
+    Shot s;
+    static const uint8_t kHead[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 5, 4};
+    static const uint8_t kFace[] = {11, 12, 14, 15, 20, 11, 12, 14, 15, 20, 11, 15};
+    static const uint8_t kNeck[] = {16, 17, 18, 19, 21, 16, 17, 18, 19, 21, 21, 16};
+    for (uint8_t pet = 0; pet < miblo::kPetKinds && pet < 12; pet++) {
+      plain(pet);
+      screens::setMascotOutfit(screens::MascotOutfit{kHead[pet], kFace[pet], kNeck[pet]});
+      a.draw(pet % 4, pet / 4, MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, 0});
+    }
+    save(s, "71-wear-all");
+  }
+  {
+    const Grid a{4, 3};
+    Shot s;
+    for (int i = 0; i < 12; i++) {
+      MascotPaint p;
+      p.pet = (uint8_t)(i % miblo::kPetKinds);
+      p.style = (uint8_t)(i % 4);
+      screens::setMascotPaint(p);
+      screens::setMascotOutfit(screens::MascotOutfit{(uint8_t)(i < 4 ? 0 : 1 + i % 10), (uint8_t)(i % 2 ? 20 : 11),
+                                                     (uint8_t)(16 + i % 4)});
+      screens::setMascotAccessory(i < 4 ? (uint8_t)(1 + i) : 0);  // a special day's hat on the head
+      screens::setMascotTie(i % 3 == 2);
+      a.draw(i % 4, i / 4,
+             MascotLook{0, 0, 0, 0, Eyes::Open, Paws::Down, (uint16_t)(i % 4 == 1 ? screens::kHeadphones : 0)});
+    }
+    plain(0);
+    save(s, "71-wear-mix");
+  }
+}
 }  // namespace
 
 void renderPets(miblo::Lang L) {
+  if (L == miblo::Lang::En) wear();
   const screens::Clock clk = shots::clock();
   for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
     const std::string n = std::string("70-pet-") + kPetFiles[pet] + "-";

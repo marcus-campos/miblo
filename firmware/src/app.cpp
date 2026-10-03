@@ -152,7 +152,7 @@ static uint32_t nameHash() { return miblo::hashStr(miblo::kHashSeed, deviceName(
 static uint32_t ownerHash() {
   return miblo::hashStr(miblo::hashStr(miblo::kHashSeed, ctx.cfg.owner), ctx.cfg.birthday);
 }
-static uint8_t accessory = 0;     // today's hat (miblo::Accessory)
+static uint8_t accessory = 0;     // today's hat (miblo::Accessory), worn if the outfit lets it
 static miblo::Occasion occasion = miblo::Occasion::None;  // today's special day
 static uint32_t occasionAtMs = 0;
 
@@ -170,6 +170,13 @@ static bool today(miblo::Date& d, int& minute, uint8_t* weekday = nullptr) {
 
 // One number per local day (miblo_dayend.h, miblo_desknotes.h); 0 = the time is unknown.
 static uint32_t dayKeyOf(const miblo::Date& d) { return d.year * 400u + d.month * 32u + d.day; }
+
+// What the pet wears: today's special accessory and the owner's items (miblo::outfitFor).
+static void applyOutfit() {
+  const miblo::Outfit o = miblo::outfitFor(ctx.cfg, (miblo::Accessory)accessory);
+  screens::setMascotAccessory((uint8_t)o.occasion);
+  screens::setMascotOutfit(screens::MascotOutfit{o.head, o.face, o.neck});
+}
 
 // Once a minute: today's hat, and the gadget's own birthday noted on the first day it is used.
 static void updateOccasion(uint32_t now) {
@@ -190,7 +197,7 @@ static void updateOccasion(uint32_t now) {
   }
   if (want != accessory) {
     accessory = want;
-    screens::setMascotAccessory(want);
+    applyOutfit();
     firstFrame = true;
   }
 }
@@ -280,6 +287,7 @@ static void applyConfig() {
   screens::MascotPaint paint{ctx.cfg.mascot, ctx.cfg.pet, ctx.cfg.petEyes};
   memcpy(paint.slots, ctx.cfg.petColors, sizeof(paint.slots));
   screens::setMascotPaint(paint);
+  applyOutfit();
   ctx.alerts.setTiming(miblo::alertTiming(ctx.cfg));
 }
 

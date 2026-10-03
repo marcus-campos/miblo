@@ -6,8 +6,10 @@
 // draws what all pets share, in this order:
 //   1. the box's background (unless the caller asked for none) and the desk's table edge (y 40)
 //   2. the pet's head()                       <- the pet
-//   3. focus headphones (kHeadphones), the meeting tie, the special day's hat or glasses or hearts
-//      (placed with the pet's PetAnchors)
+//   3. focus headphones (kHeadphones), the owner's neck item or the meeting tie, the owner's face
+//      item, the special day's hat or glasses or hearts, the owner's head item (setMascotOutfit;
+//      all placed with the pet's PetAnchors: hats on hatDy, faces on eyeY / eyeDx, the headset on
+//      phonesDy / phonesDx, neck items on neckDy)
 //   4. (desk mascot only) the pet's front()    <- the pet
 //   5. (desk mascot only) the props held or floating by it: coffee cup (kCoffee), heart (kHeart),
 //      sweat drop (kSweat), alarm marks (kAlarm), zzz (kZ1, kZ2), dizzy stars (kStars)
@@ -125,6 +127,8 @@ struct PetAnchors {
   int8_t eyeY;      // glasses: the eyes' centre y (the cat's 6)
   int8_t eyeDx;     // glasses: the eyes at x +-eyeDx (the cat's 14); 0: one eye in the middle
   int8_t darkEyes;  // 1: the eyes sit on something dark (the robot's screen): light glasses rims
+  int8_t ownGlasses;  // 1: the pet wears glasses of its own: no glasses, sunglasses or monocle
+                      // over them (the owner's face item is skipped; a moustache still shows)
 };
 #define MIBLO_CAT_ANCHORS {0, 0, 0, 0, 6, 14}
 // The cat's PetDef fields after its anchors (for pets not drawn yet): green eyes, no accent.

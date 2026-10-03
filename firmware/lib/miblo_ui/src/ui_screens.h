@@ -106,6 +106,16 @@ uint8_t mascotStyle();
 // drawn from then on.
 void setMascotAccessory(uint8_t accessory);
 uint8_t mascotAccessory();
+// What the owner dresses the pet in (config accHead/accFace/accNeck, miblo::Wear ids, 0 = none;
+// an id that does not fit its slot is drawn as nothing), on every mascot drawn from then on, with
+// the special day's accessory above (miblo::outfitFor decides which slots it takes). Focus
+// headphones hide the gamer headset, the meeting tie hides the neck item, and a pet with its own
+// glasses (PetAnchors::ownGlasses) wears no glasses over them.
+struct MascotOutfit {
+  uint8_t head = 0, face = 0, neck = 0;
+};
+void setMascotOutfit(const MascotOutfit& o);
+MascotOutfit mascotOutfit();
 // The current mascot colour's skin (props drawn in the cat's colour, like its tail).
 uint16_t mascotSkin();
 // Which animal the mascot is (config "pet", miblo::Pet; an unknown value is the cat), on every

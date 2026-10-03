@@ -280,6 +280,124 @@ static void test_black_cat_schedule() {
   TEST_ASSERT_FALSE(passerbyAt(0, nullptr));
 }
 
+// The owner's own accessories: ids by slot, 0 = nothing, 13 never (the owner's rule), unknown
+// ids refused (a newer Miblo's item is "nothing" here, never a wrong drawing).
+static void test_wear_ids_by_slot() {
+  WearSlot s;
+  for (uint8_t id = 1; id <= 10; id++) {
+    TEST_ASSERT_TRUE(wearSlotOf(id, s));
+    TEST_ASSERT_EQUAL(WearSlot::Head, s);
+  }
+  for (uint8_t id : {11, 12, 14, 15, 20}) {
+    TEST_ASSERT_TRUE(wearSlotOf(id, s));
+    TEST_ASSERT_EQUAL(WearSlot::Face, s);
+  }
+  for (uint8_t id : {16, 17, 18, 19, 21}) {
+    TEST_ASSERT_TRUE(wearSlotOf(id, s));
+    TEST_ASSERT_EQUAL(WearSlot::Neck, s);
+  }
+  TEST_ASSERT_FALSE(wearSlotOf(0, s));
+  TEST_ASSERT_FALSE(wearSlotOf(13, s));
+  for (int id = kWearMax + 1; id < 256; id++) TEST_ASSERT_FALSE(wearSlotOf((uint8_t)id, s));
+  for (WearSlot slot : {WearSlot::Head, WearSlot::Face, WearSlot::Neck}) {
+    TEST_ASSERT_TRUE(wearFits(slot, 0));
+    TEST_ASSERT_FALSE(wearFits(slot, 13));
+    TEST_ASSERT_FALSE(wearFits(slot, 22));
+    TEST_ASSERT_FALSE(wearFits(slot, 255));
+  }
+  TEST_ASSERT_TRUE(wearFits(WearSlot::Head, (uint8_t)Wear::Halo));
+  TEST_ASSERT_FALSE(wearFits(WearSlot::Face, (uint8_t)Wear::Halo));
+  TEST_ASSERT_TRUE(wearFits(WearSlot::Face, (uint8_t)Wear::Headset));
+  TEST_ASSERT_FALSE(wearFits(WearSlot::Neck, (uint8_t)Wear::Headset));
+  TEST_ASSERT_TRUE(wearFits(WearSlot::Neck, (uint8_t)Wear::Medal));
+  TEST_ASSERT_FALSE(wearFits(WearSlot::Head, (uint8_t)Wear::Medal));
+}
+
+static bool patchCfg(Config& c, const char* json, const char** bad = nullptr) {
+  StaticJsonDocument<256> doc;
+  deserializeJson(doc, json);
+  return applyConfigPatch(c, doc.as<JsonObjectConst>(), bad);
+}
+
+static void test_config_wear_fields() {
+  Config c;
+  TEST_ASSERT_EQUAL_UINT8(0, c.accHead);  // absent: nothing worn
+  TEST_ASSERT_EQUAL_UINT8(0, c.accFace);
+  TEST_ASSERT_EQUAL_UINT8(0, c.accNeck);
+  TEST_ASSERT_TRUE(c.occasionHats);
+  TEST_ASSERT_TRUE(patchCfg(c, "{\"accHead\":5,\"accFace\":20,\"accNeck\":21,\"occasionHats\":false}"));
+  TEST_ASSERT_EQUAL_UINT8(5, c.accHead);
+  TEST_ASSERT_EQUAL_UINT8(20, c.accFace);
+  TEST_ASSERT_EQUAL_UINT8(21, c.accNeck);
+  TEST_ASSERT_FALSE(c.occasionHats);
+  // Wrong slot, 13, unknown, not a number: refused, nothing changes.
+  const char* const bad[] = {"{\"accHead\":11}", "{\"accFace\":13}", "{\"accNeck\":13}", "{\"accHead\":13}",
+                             "{\"accNeck\":22}", "{\"accFace\":\"x\"}", "{\"accHead\":-1}",
+                             "{\"occasionHats\":2}"};
+  for (const char* j : bad) {
+    Config d = c;
+    const char* field = nullptr;
+    TEST_ASSERT_FALSE_MESSAGE(patchCfg(d, j, &field), j);
+    TEST_ASSERT_NOT_NULL(field);
+    TEST_ASSERT_EQUAL_UINT8(5, d.accHead);
+    TEST_ASSERT_EQUAL_UINT8(20, d.accFace);
+  }
+  TEST_ASSERT_TRUE(patchCfg(c, "{\"accHead\":0,\"accFace\":0,\"accNeck\":0}"));
+  TEST_ASSERT_EQUAL_UINT8(0, c.accHead + c.accFace + c.accNeck);
+  // The page and the API see them; they survive the flash round-trip.
+  c.accHead = 9;
+  c.accNeck = 16;
+  StaticJsonDocument<4096> out;
+  configToStored(c, out.to<JsonObject>());
+  TEST_ASSERT_EQUAL_INT(9, out["accHead"].as<int>());
+  TEST_ASSERT_FALSE(out["occasionHats"].as<bool>());
+  Config e;
+  TEST_ASSERT_TRUE(applyConfigPatch(e, out.as<JsonObjectConst>(), nullptr));
+  TEST_ASSERT_EQUAL_UINT8(9, e.accHead);
+  TEST_ASSERT_EQUAL_UINT8(0, e.accFace);
+  TEST_ASSERT_EQUAL_UINT8(16, e.accNeck);
+  TEST_ASSERT_FALSE(e.occasionHats);
+}
+
+static void test_outfit_for_the_day() {
+  Config c;
+  c.accHead = (uint8_t)Wear::Crown;
+  c.accFace = (uint8_t)Wear::Sunglasses;
+  c.accNeck = (uint8_t)Wear::Scarf;
+  // An ordinary day: the owner's items.
+  Outfit o = outfitFor(c, Accessory::None);
+  TEST_ASSERT_EQUAL(Accessory::None, o.occasion);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Crown, o.head);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Sunglasses, o.face);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Scarf, o.neck);
+  // A special day's hat (or ears, or hearts) takes the head; face and neck stay.
+  for (Accessory a : {Accessory::SantaHat, Accessory::WitchHat, Accessory::PartyHat, Accessory::BunnyEars,
+                      Accessory::Hearts}) {
+    o = outfitFor(c, a);
+    TEST_ASSERT_EQUAL(a, o.occasion);
+    TEST_ASSERT_EQUAL_UINT8(0, o.head);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Sunglasses, o.face);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Scarf, o.neck);
+  }
+  // Programmer's Day's glasses take the face: the crown stays.
+  o = outfitFor(c, Accessory::Glasses);
+  TEST_ASSERT_EQUAL(Accessory::Glasses, o.occasion);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Crown, o.head);
+  TEST_ASSERT_EQUAL_UINT8(0, o.face);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Scarf, o.neck);
+  // Special days off: the owner's items always, no special-day accessory.
+  c.occasionHats = false;
+  o = outfitFor(c, Accessory::SantaHat);
+  TEST_ASSERT_EQUAL(Accessory::None, o.occasion);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Wear::Crown, o.head);
+  // An id that does not fit (a config edited by hand) is worn as nothing.
+  c.accHead = 13;
+  c.accFace = (uint8_t)Wear::Medal;
+  o = outfitFor(c, Accessory::None);
+  TEST_ASSERT_EQUAL_UINT8(0, o.head);
+  TEST_ASSERT_EQUAL_UINT8(0, o.face);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_month_day_and_date_parsing);
@@ -294,5 +412,8 @@ int main(int, char**) {
   RUN_TEST(test_occasion_priority);
   RUN_TEST(test_programmers_day_greeting);
   RUN_TEST(test_black_cat_schedule);
+  RUN_TEST(test_wear_ids_by_slot);
+  RUN_TEST(test_config_wear_fields);
+  RUN_TEST(test_outfit_for_the_day);
   return UNITY_END();
 }

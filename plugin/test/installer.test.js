@@ -27,10 +27,12 @@ case "$*" in
   'plugin marketplace update miblo') ;;
   'plugin list --json')
     if [ -f "$state/plugin" ]; then
-      printf '[\\n  {\\n    "id": "other@x",\\n    "enabled": false,\\n    "installPath": "/elsewhere/other"\\n  },\\n  {\\n    "id": "miblo@miblo",\\n    "enabled": %s,\\n    "installPath": "%s"\\n  }\\n]\\n' "$(cat "$state/plugin")" "$(cat "$state/installpath" 2>/dev/null)"
+      scope=''; [ -f "$state/scope" ] && scope=$(printf '\\n    "scope": "%s",' "$(cat "$state/scope")")
+      printf '[\\n  {\\n    "id": "other@x",\\n    "enabled": false,\\n    "installPath": "/elsewhere/other"\\n  },\\n  {\\n    "id": "miblo@miblo",%s\\n    "enabled": %s,\\n    "installPath": "%s"\\n  }\\n]\\n' "$scope" "$(cat "$state/plugin")" "$(cat "$state/installpath" 2>/dev/null)"
     else echo '[]'; fi ;;
-  'plugin install miblo@miblo') echo true > "$state/plugin" ;;
-  'plugin update miblo@miblo') ;;
+  'plugin install --scope user miblo@miblo') echo true > "$state/plugin"; [ -f "$state/scope" ] && echo user > "$state/scope"; : ;;
+  # As the real CLI: updating at user scope fails when the install is for one project only.
+  'plugin update --scope user miblo@miblo') [ -f "$state/scope" ] && [ "$(cat "$state/scope")" != user ] && exit 1; : ;;
   'plugin enable miblo@miblo') echo true > "$state/plugin" ;;
   *) exit 64 ;;
 esac
@@ -113,7 +115,7 @@ test('a Claude Code CLI on PATH: adds the marketplace over HTTPS, installs the p
     'plugin marketplace list --json',
     'plugin marketplace add https://github.com/marcus-campos/miblo.git',
     'plugin list --json',
-    'plugin install miblo@miblo',
+    'plugin install --scope user miblo@miblo',
   ]);
   assert.ok(r.lines.every((l) => l.startsWith(`${fake}|`)), r.lines.join('\n'));
   // Nothing the CLI ran could read the rest of the piped script.
@@ -132,7 +134,7 @@ test('only the Claude desktop app: uses its newest bundled CLI', { skip }, () =>
   const r = t.run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.ok(r.lines.every((l) => l.startsWith(`${newest}|`)), r.lines.join('\n'));
-  assert.ok(r.calls.includes('plugin install miblo@miblo'));
+  assert.ok(r.calls.includes('plugin install --scope user miblo@miblo'));
   assert.ok(r.stdout.includes(newest));
 });
 
@@ -155,9 +157,32 @@ test('already installed: refreshes the marketplace and updates the plugin', { sk
     'plugin marketplace list --json',
     'plugin marketplace update miblo',
     'plugin list --json',
-    'plugin update miblo@miblo',
+    'plugin update --scope user miblo@miblo',
   ]);
   assert.match(r.stdout, /Already installed; updating it/);
+});
+
+test('installed for one project only: installs it for the user instead of updating', { skip }, () => {
+  const t = setup();
+  t.placeFake(path.join(t.bin, 'claude'));
+  fs.writeFileSync(path.join(t.state, 'market'), '');
+  fs.writeFileSync(path.join(t.state, 'plugin'), 'true');
+  fs.writeFileSync(path.join(t.state, 'scope'), 'project');
+  const r = t.run();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(r.calls.slice(2), ['plugin list --json', 'plugin install --scope user miblo@miblo']);
+  assert.match(r.stdout, /Installed for one project only; installing it for all of them/);
+});
+
+test('installed for the user (scope listed): updates that install', { skip }, () => {
+  const t = setup();
+  t.placeFake(path.join(t.bin, 'claude'));
+  fs.writeFileSync(path.join(t.state, 'market'), '');
+  fs.writeFileSync(path.join(t.state, 'plugin'), 'true');
+  fs.writeFileSync(path.join(t.state, 'scope'), 'user');
+  const r = t.run();
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.deepEqual(r.calls.slice(2), ['plugin list --json', 'plugin update --scope user miblo@miblo']);
 });
 
 test('installed but turned off: updates it and turns it back on', { skip }, () => {
@@ -167,7 +192,7 @@ test('installed but turned off: updates it and turns it back on', { skip }, () =
   fs.writeFileSync(path.join(t.state, 'plugin'), 'false');
   const r = t.run();
   assert.equal(r.status, 0, r.stdout + r.stderr);
-  assert.deepEqual(r.calls.slice(-2), ['plugin update miblo@miblo', 'plugin enable miblo@miblo']);
+  assert.deepEqual(r.calls.slice(-2), ['plugin update --scope user miblo@miblo', 'plugin enable miblo@miblo']);
 });
 
 test('no Claude Code anywhere: explains how to get it and exits 1', { skip }, () => {
@@ -185,7 +210,7 @@ test('the marketplace cannot be added: exits 2 and installs nothing', { skip }, 
   fs.writeFileSync(path.join(t.state, 'fail-add'), '');
   const r = t.run();
   assert.equal(r.status, 2);
-  assert.ok(!r.calls.includes('plugin install miblo@miblo'));
+  assert.ok(!r.calls.includes('plugin install --scope user miblo@miblo'));
 });
 
 // --- Pairing right after the install ---

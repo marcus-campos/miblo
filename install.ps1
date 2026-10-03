@@ -89,6 +89,13 @@ function ConvertFrom-MibloJson($Lines) {
   try { return ((@($Lines) -join "`n") | ConvertFrom-Json) } catch { return $null }
 }
 
+# The plugin installed for the user in `claude plugin list --json` (an entry without "scope" is an
+# older CLI's, which installed for the user), or $null. Installs for one project or folder only
+# (scope project/local) are not it: the gadget must work everywhere.
+function Select-MibloUserPlugin($Plugins) {
+  return @($Plugins | Where-Object { $_.id -eq $MibloPlugin -and (-not $_.scope -or $_.scope -eq 'user') }) | Select-Object -First 1
+}
+
 function Install-Miblo {
   Write-Host 'Miblo installer'
   Write-Host '---------------'
@@ -128,10 +135,10 @@ function Install-Miblo {
 
   Write-Host "`n==> Installing the Miblo plugin"
   $plugins = ConvertFrom-MibloJson (& $claude plugin list --json 2>$null)
-  $mine = @($plugins | Where-Object { $_.id -eq $MibloPlugin }) | Select-Object -First 1
+  $mine = Select-MibloUserPlugin $plugins
   if ($mine) {
     Write-Host 'Already installed; updating it.'
-    & $claude plugin update $MibloPlugin | Out-Host
+    & $claude plugin update --scope user $MibloPlugin | Out-Host
     if ($LASTEXITCODE -ne 0) {
       Write-Host ''
       Write-Host 'Could not update the plugin. Check your internet connection and try again.'
@@ -143,7 +150,10 @@ function Install-Miblo {
       if ($LASTEXITCODE -ne 0) { Write-Warning 'Could not enable it: run /plugin in Claude Code to turn it on.' }
     }
   } else {
-    & $claude plugin install $MibloPlugin | Out-Host
+    if (@($plugins | Where-Object { $_.id -eq $MibloPlugin }).Count -gt 0) {
+      Write-Host 'Installed for one project only; installing it for all of them.'
+    }
+    & $claude plugin install --scope user $MibloPlugin | Out-Host
     if ($LASTEXITCODE -ne 0) {
       Write-Host ''
       Write-Host 'Could not install the plugin. Check your internet connection and try again.'
@@ -192,7 +202,7 @@ function Get-MibloConfigDir {
 # version in Claude Code's plugin cache.
 function Get-MibloPluginDir([string]$Claude) {
   $plugins = ConvertFrom-MibloJson (& $Claude plugin list --json 2>$null)
-  $mine = @($plugins | Where-Object { $_.id -eq $MibloPlugin }) | Select-Object -First 1
+  $mine = Select-MibloUserPlugin $plugins
   if ($mine -and $mine.installPath -and (Test-Path -LiteralPath (Join-Path $mine.installPath 'bin\miblo-run'))) {
     return $mine.installPath
   }
@@ -355,8 +365,12 @@ function Invoke-MibloPair([string]$Claude) {
   Write-MibloPairFailed
 }
 
+# Claude Code writes UTF-8 ("…", "✔"); the console's legacy code page turned them into "ÔÇª".
+# Read native output as UTF-8 for this run only, and put the window's setting back after.
+$mibloEncoding = $null
+try { $mibloEncoding = [Console]::OutputEncoding; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false) } catch { }
 # Native commands write to Out-Host above, so the function returns only its exit code.
-$mibloCode = Install-Miblo
+try { $mibloCode = Install-Miblo } finally { if ($mibloEncoding) { try { [Console]::OutputEncoding = $mibloEncoding } catch { } } }
 # Run as a file: a real exit code. Through `irm | iex`: exiting would close the PowerShell window,
 # so the code is left in $LASTEXITCODE instead.
 if ($MyInvocation.MyCommand.Path) { exit $mibloCode } else { $global:LASTEXITCODE = $mibloCode }

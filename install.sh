@@ -126,12 +126,22 @@ no_claude() {
   say "Then run this installer again."
 }
 
-# Prints the JSON block of one installed plugin (from `claude plugin list --json`), or nothing.
+# Prints the JSON block of the plugin installed for the user (from `claude plugin list --json`;
+# a block without "scope" is an older CLI's, which installed for the user), or nothing. Installs for
+# one project or folder only (scope project/local) are not it: the gadget must work everywhere.
 plugin_block() {
   printf '%s\n' "$1" | awk -v id="\"$MIBLO_PLUGIN\"" '
-    index($0, "\"id\"") && index($0, id) { on = 1 }
-    on { print }
-    on && /}/ { exit }'
+    index($0, "\"id\"") && index($0, id) { on = 1; buf = ""; scoped = 0; user = 0 }
+    on {
+      buf = buf $0 "\n"
+      if (index($0, "\"scope\"")) { scoped = 1; if ($0 ~ /"scope": *"user"/) user = 1 }
+      if (/}/) { if (!scoped || user) { printf "%s", buf; exit } on = 0 }
+    }'
+}
+
+# Whether the plugin is installed at all, for the user or for one project or folder only.
+plugin_anywhere() {
+  printf '%s\n' "$1" | grep -q "\"id\": *\"$MIBLO_PLUGIN\""
 }
 
 # --- Pairing ---------------------------------------------------------------------------------
@@ -395,7 +405,7 @@ main() {
   block=$(plugin_block "$plugins")
   if [ -n "$block" ]; then
     say "Already installed; updating it."
-    if ! "$claude" plugin update "$MIBLO_PLUGIN" </dev/null; then
+    if ! "$claude" plugin update --scope user "$MIBLO_PLUGIN" </dev/null; then
       say ""
       say "Could not update the plugin. Check your internet connection and try again."
       finish 3
@@ -404,7 +414,10 @@ main() {
       say "It was turned off; turning it back on."
       "$claude" plugin enable "$MIBLO_PLUGIN" </dev/null || warn "Could not enable it: run /plugin in Claude Code to turn it on."
     fi
-  elif ! "$claude" plugin install "$MIBLO_PLUGIN" </dev/null; then
+  elif {
+    if plugin_anywhere "$plugins"; then say "Installed for one project only; installing it for all of them."; fi
+    ! "$claude" plugin install --scope user "$MIBLO_PLUGIN" </dev/null
+  }; then
     say ""
     say "Could not install the plugin. Check your internet connection and try again."
     say "To do it by hand, in Claude Code run: /plugin install miblo@miblo"

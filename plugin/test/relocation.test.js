@@ -300,3 +300,9 @@ test('a gadget in setup mode (409 no network) over HTTP: not followed, not asked
     await dev.close();
   }
 });
+
+test('a pre-release counts by its numeric base for the challenge (1.14.0-rc.1 has it)', async () => {
+  const { hasChallenge } = await import('../lib/relocation.js');
+  for (const fw of ['1.14.0', '1.14.0-rc.1', '1.14.0-rc1', '1.14.1-beta', '1.15.0+build', '2.0.0']) assert.ok(hasChallenge(fw), fw);
+  for (const fw of ['1.13.9', '1.13.9-rc.1', '0.0.0-fake', '', undefined, 'x1.14.0', '1.14']) assert.ok(!hasChallenge(fw), String(fw));
+});

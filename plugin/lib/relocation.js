@@ -22,8 +22,12 @@ export const challengeMac = (token, nonce, id, ip) =>
 
 // The first firmware with the challenge: a gadget last seen on it (or later) must answer it.
 export const CHALLENGE_FW = '1.14.0';
-const VERSION_RE = /^\d+\.\d+\.\d+/;
-export const hasChallenge = (fw) => VERSION_RE.test(String(fw ?? '')) && compareVersions(fw, CHALLENGE_FW) >= 0;
+// A pre-release counts by its numeric base: 1.14.0-rc.1 already answers the challenge.
+const VERSION_RE = /^(\d+\.\d+\.\d+)(?:[-+]|$)/;
+export function hasChallenge(fw) {
+  const m = VERSION_RE.exec(String(fw ?? ''));
+  return !!m && compareVersions(m[1], CHALLENGE_FW) >= 0;
+}
 
 // Constant-time check of a challenge answer from `host` (the IPv4 the request went to).
 export function challengeOk(reply, { token, nonce, id, host }) {

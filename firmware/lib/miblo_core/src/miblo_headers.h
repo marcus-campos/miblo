@@ -94,8 +94,7 @@ GatherResult gatherHeaders(HeaderBuffer& buf, ByteSource& src, uint32_t budgetMs
 // milliseconds of its headers, often in the next TCP segment. Holding it back in the server's
 // non-blocking state instead let the 30 ms rule drop a request whose body was a segment behind
 // (the bridge's snapshots while a page loaded). A body that does not come in time is answered 408:
-// the residual cost of a client that stalls mid-body is kBodyWaitMs per connection, not 5 s, and
-// only kBodyWaitContendedMs while other clients wait (bodyWaitPlan).
+// the residual cost of a client that stalls mid-body is kBodyWaitMs per connection, not 5 s.
 enum class RequestReadiness : uint8_t {
   Ready,        // the header block, and a small body all here (or a large one that is not held)
   Waiting,      // the header block is not all here: ask again later
@@ -113,21 +112,6 @@ constexpr size_t kBodyHoldMax = 1536;
 // ACK (up to 250 ms): a client using Nagle writes the body only once its headers are ACKed, and
 // headers judged in place are not ACKed early. Also the residual cost of a stalled body.
 constexpr uint32_t kBodyWaitMs = 350;
-
-// Fairness: while another client waits for the server, a request's small body gets only this one
-// short wait (a body a TCP segment behind its headers comes back to back, within a few ms); past
-// it the request reports Waiting instead of 408 and the server's non-blocking state decides.
-constexpr uint32_t kBodyWaitContendedMs = 20;
-struct BodyWait {
-  uint32_t budgetMs;     // the body wait to pass to requestInPlace / pollRequest
-  bool refuseOnTimeout;  // a body that does not come within it is refused (408); else Waiting
-};
-// othersWaiting: another client has data or the pending queue is full. contendedWaitUsed: this
-// request already had its short wait. Alone: kBodyWaitMs and 408. Contended: kBodyWaitContendedMs
-// once, then no wait at all, never 408.
-BodyWait bodyWaitPlan(bool othersWaiting, bool contendedWaitUsed);
-// The readiness after a body wait under `w`: BodyTimeout becomes Waiting when w does not refuse.
-RequestReadiness settleBodyWait(RequestReadiness r, const BodyWait& w);
 
 // Waits (src.wait()) until `src` has at least `want` unread bytes (never reads them): Ready, or
 // Closed if the peer closes first, or BodyTimeout after budgetMs.

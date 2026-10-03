@@ -57,7 +57,8 @@ void renderDaily(miblo::Lang L);
 void renderFocus(miblo::Lang L);      // focus (Pomodoro)
 void renderAlerts(miblo::Lang L);     // meeting mode, insistence, fanfare
 void renderDayRhythm(miblo::Lang L);  // wellness, end of the day, Monday recap
-void renderNotes(miblo::Lang L);      // say, reminders, timer, countdown, find
+void renderNotes(miblo::Lang L);
+void renderVisits(miblo::Lang L);     // guests' looks, Friday's stranger, holidays in pet mode      // say, reminders, timer, countdown, find
 void renderCues(miblo::Lang L);       // strong cue, status frame
 void renderLook(miblo::Lang L);       // special days, meeting tie, extras
 void renderPets(miblo::Lang L);       // every pet: looks, dress, colours, main screens (70-pet-*)

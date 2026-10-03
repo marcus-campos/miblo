@@ -226,3 +226,18 @@ test('still throttled after two more tries: dropped, never foreign, never a spaw
   assert.equal(await deliver('B', io, { version: '2' }), 'dropped');
   assert.deepEqual(names(io), ['health', 'health', 'health']);
 });
+
+test('a bridge that stops answering during the throttle retries is not replaced by a second spawn', async () => {
+  for (const later of [null, unproven(), { hello: 'world', proven: false }]) {
+    const io = fakeIo({ healthResults: [throttled(), later] });
+    assert.equal(await deliver('B', io, { version: '2' }), 'dropped', JSON.stringify(later));
+    assert.ok(!names(io).includes('spawn'), JSON.stringify(later));
+    assert.ok(!names(io).includes('shutdown'), JSON.stringify(later));
+  }
+});
+
+test('a spawned bridge whose post fails (no challenge to answer) reports dropped, not spawned', async () => {
+  const io = fakeIo({ healthResults: [null, ours()], postResults: [new Error('no proven bridge')] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'dropped');
+  assert.deepEqual(names(io), ['health', 'spawn', 'health', 'post']);
+});

@@ -98,8 +98,7 @@ export async function deliver(body, io, { allowSpawn = true, version = '' } = {}
     io.startBridge();
     const up = await poll(async () => ours(await io.health()), { sleep: io.sleep, maxMs: POLL_MAX_MS });
     if (!up) return 'timeout';
-    await post();
-    return 'spawned';
+    return (await post()) ? 'spawned' : 'dropped';
   };
   const waitDownAndSpawn = async () => {
     await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
@@ -111,15 +110,19 @@ export async function deliver(body, io, { allowSpawn = true, version = '' } = {}
   };
 
   let h = await io.health();
+  // A bridge is spawned at most once per delivery, and only when nothing answers this first probe.
   if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
   // Proven but throttled (no challenge to answer this second): ask again shortly rather than
-  // lose the event. Throttled is never foreign.
-  for (let i = 0; ours(h) && !h.challenge && i < THROTTLE_TRIES; i++) {
-    await io.sleep(THROTTLE_WAIT_MS + Math.floor(Math.random() * 100));
-    h = await io.health();
+  // lose the event. Throttled is never foreign; whatever answers then (nothing, or something
+  // else) gets no spawn and no shutdown from this delivery: only a challenge to answer counts.
+  if (ours(h) && !h.challenge) {
+    for (let i = 0; i < THROTTLE_TRIES; i++) {
+      await io.sleep(THROTTLE_WAIT_MS + Math.floor(Math.random() * 100));
+      h = await io.health();
+      if (!ours(h) || h.challenge) break;
+    }
+    if (!ours(h) || !h.challenge) return 'dropped';
   }
-  if (ours(h) && !h.challenge) return 'dropped';
-  if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
   if (ours(h)) {
     if (allowSpawn && version && h.version !== version) {
       await io.shutdown(true).catch(() => {});

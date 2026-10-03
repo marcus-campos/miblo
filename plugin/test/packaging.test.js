@@ -203,3 +203,8 @@ for (const name of ['pair', 'update', 'link-statusline']) {
     assert.ok(md.indexOf('pkgutil --check-signature') < md.indexOf('open <'), name);
   });
 }
+
+test('status.md says limits appear after the next response only when the bridge is not busy', () => {
+  const md = fs.readFileSync(path.join(root, 'commands/status.md'), 'utf8');
+  assert.match(md, /if linked, the bridge is not `busy` and `statuslineSeen` is false, say limits appear after the next response/);
+});

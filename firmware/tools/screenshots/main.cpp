@@ -771,8 +771,172 @@ void animateDaily(Lang L) {
   }
 }
 
+// The pet on its own, in its default colours, no accessory (as in shots_pets.cpp).
+void plainPet(uint8_t pet) {
+  screens::MascotPaint p;
+  p.pet = pet;
+  screens::setMascotPaint(p);
+  screens::setMascotAccessory(0);
+  screens::setMascotOutfit(screens::MascotOutfit{});
+  screens::setMascotTie(false);
+  screens::setGuestAccessory(0);
+}
+
+// When pet mode (from its start) plays antic `a` for the current pet: its first cycle's start.
+uint32_t firstAntic(screens::RoamAntic a) {
+  for (uint32_t c = 1; c < 128; c++)
+    if (screens::roamAntic(c * screens::kAnticEveryMs, nullptr) == a) return c * screens::kAnticEveryMs;
+  return 0;
+}
+
+// Pets (miblo::Pet), for the README: pets-*.
+void animatePets(Lang L) {
+  const screens::Clock clk = clock();
+  using miblo::Pet;
+  {
+    // The desk with one pet after another, 1.2 s each.
+    const Pet kPets[] = {Pet::Cat, Pet::Duck, Pet::Robot, Pet::Penguin, Pet::Dog, Pet::Owl,
+                         Pet::Riff, Pet::Dev, Pet::Dino, Pet::DevChan};
+    idle();
+    usage(34, 21);
+    Clip c("pets-parade");
+    uint32_t ms = 0;
+    for (const Pet pet : kPets) {
+      plainPet((uint8_t)pet);
+      screens::reset();
+      for (uint32_t t = 0; t < 1200; t += kFrameMs, ms += kFrameMs) {
+        screens::desk(L, snap, clk, ms);
+        c.frame();
+      }
+    }
+  }
+  {
+    // Riff's fanfare: air guitar instead of confetti (6 s of its 8).
+    plainPet((uint8_t)Pet::Riff);
+    Clip c("pets-riff-fanfare");
+    for (uint32_t ms = 0; ms < 6000; ms += kFrameMs) {
+      screens::fanfare(L, "app-mobile", 23 * 60 + 7, ms);
+      c.frame();
+    }
+  }
+  {
+    // Christmas: a dog, an owl and a robot from other Miblos, each in its own colours and
+    // accessories, walk in and raise a toast with our cat; everyone wears the Santa hat.
+    idle();
+    usage(34, 21);
+    plainPet((uint8_t)Pet::Cat);
+    const miblo::Outfit own = miblo::outfitWith(miblo::Accessory::SantaHat, 5, 11, 17);
+    screens::setMascotOutfit(screens::MascotOutfit{own.head, own.face, own.neck});
+    screens::setMascotAccessory((uint8_t)own.occasion);
+    screens::setGuestAccessory((uint8_t)own.occasion);
+    const uint32_t autoSlots[miblo::kPetSlots] = {};
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.role = miblo::VisitRole::Host;
+    v.gift = miblo::Gift::Toast;
+    v.mascot = 3;
+    v.pet = (uint8_t)Pet::Dog;
+    v.look = miblo::friendLook(autoSlots, 0, 1, 20, 21);
+    v.extra = 2;
+    v.extraMascot[0] = 1;
+    v.extraPet[0] = (uint8_t)Pet::Owl;
+    v.extraLook[0] = miblo::friendLook(autoSlots, 1, 10, 14, 19);
+    v.extraMascot[1] = 0;
+    v.extraPet[1] = (uint8_t)Pet::Robot;
+    v.extraLook[1] = miblo::friendLook(autoSlots, 0, 4, 15, 16);
+    screens::reset();
+    Clip c("pets-visit-xmas");
+    for (uint32_t ms = 0; ms < miblo::kVisitArriveMs + 8000; ms += kFrameMs) {
+      v.ms = ms;
+      screens::visit(L, snap, clk, v);
+      c.frame();
+    }
+    plainPet((uint8_t)Pet::Cat);
+  }
+  {
+    // Pet mode: four pets chasing their tails, 3 s of each.
+    const Pet kPets[] = {Pet::Cat, Pet::Dog, Pet::Dino, Pet::Crab};
+    idle();
+    Clip c("pets-tail");
+    for (const Pet pet : kPets) {
+      plainPet((uint8_t)pet);
+      const uint32_t t0 = firstAntic(screens::RoamAntic::Tail) + screens::kAnticPutMs + 1500;
+      screens::reset();
+      for (uint32_t ms = 0; ms < 3000; ms += kFrameMs) {
+        screens::roam(L, snap, clk, t0 + ms, screens::DeskMood::Calm);
+        c.frame();
+      }
+    }
+  }
+  {
+    // "Preview on Miblo" while dressing the dog up: head, face and neck items, 1.2 s each.
+    const screens::MascotOutfit kWear[] = {{1, 11, 16}, {4, 12, 17}, {5, 15, 21}, {7, 14, 18},
+                                           {2, 20, 19}, {9, 0, 16},  {10, 11, 0}, {3, 15, 17}};
+    screens::MascotPaint p;
+    p.pet = (uint8_t)Pet::Dog;
+    const uint32_t len = 1200 * (sizeof(kWear) / sizeof(kWear[0]));
+    Clip c("pets-dress-up");
+    uint32_t ms = 0;
+    for (const auto& o : kWear) {
+      screens::reset();
+      for (uint32_t t = 0; t < 1200; t += kFrameMs, ms += kFrameMs) {
+        screens::preview(p, o, ms, len);
+        c.frame();
+      }
+    }
+  }
+  {
+    // "Preview on Miblo" while painting the Dino: the four presets, then custom colours and eyes.
+    const uint32_t kCustom[4][miblo::kPetSlots] = {
+        {0xFFF4D6 + 1},
+        {0x3FA7F5 + 1, 0x1B4F80 + 1, 0xFFD23F + 1, 0xFF5C8A + 1, 0x0B1E33 + 1, 0xF5F5F5 + 1, 0xFF9F1C + 1},
+        {0x5B2A86 + 1},
+        {0x2E8B57 + 1, 0, 0xF4D35E + 1},
+    };
+    std::vector<screens::MascotPaint> paints;
+    for (uint8_t style = 0; style < 4; style++) {
+      screens::MascotPaint p;
+      p.pet = (uint8_t)Pet::Dino;
+      p.style = style;
+      p.eyeShape = style % miblo::kEyeShapes;
+      paints.push_back(p);
+    }
+    for (int i = 0; i < 4; i++) {
+      screens::MascotPaint p;
+      p.pet = (uint8_t)Pet::Dino;
+      p.eyeShape = (uint8_t)((i + 1) % miblo::kEyeShapes);
+      memcpy(p.slots, kCustom[i], sizeof(p.slots));
+      paints.push_back(p);
+    }
+    const uint32_t len = 1200 * (uint32_t)paints.size();
+    Clip c("pets-colors");
+    uint32_t ms = 0;
+    for (const auto& p : paints) {
+      screens::reset();
+      for (uint32_t t = 0; t < 1200; t += kFrameMs, ms += kFrameMs) {
+        screens::preview(p, screens::MascotOutfit{}, ms, len);
+        c.frame();
+      }
+    }
+  }
+  {
+    // Pet mode with Dev: the sign set down, it types on a laptop until a bug crawls out.
+    idle();
+    plainPet((uint8_t)Pet::Dev);
+    const uint32_t t0 = firstAntic(screens::RoamAntic::Laptop) + screens::kAnticPutMs;
+    screens::reset();
+    Clip c("pets-dev");
+    for (uint32_t ms = 0; ms < screens::kAnticMs; ms += kFrameMs) {
+      screens::roam(L, snap, clk, t0 + ms, screens::DeskMood::Calm);
+      c.frame();
+    }
+  }
+  plainPet((uint8_t)Pet::Cat);
+}
+
 void animateAll(Lang L) {
   animateDaily(L);
+  animatePets(L);
   const screens::Clock clk = clock();
   for (const Mood& m : kMoods) {
     idle();

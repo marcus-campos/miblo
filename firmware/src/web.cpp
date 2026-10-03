@@ -729,9 +729,13 @@ static const char kSetJs[] PROGMEM =
     "})).catch(()=>st(T.failed,'no'));}"
     "function pcol(){return [0,1,2,3,4,5,6].map(i=>$('pa'+i).checked?'':$('pc'+i).value.slice(1).toLowerCase()).join(',');}"
     // Preview on Miblo: the pet as the form has it, unsaved, on the gadget for a few seconds.
-    "function pv(){if(!V&&!SEC)return;const b={petColors:pcol()};"
+    // The device takes one every 2 s (LookPreview::kEveryMs): the button rests that long, and a
+    // 429 (a double click that got through anyway) is no failure, so it shows nothing.
+    "function pv(btn){if(!V&&!SEC)return;const b={petColors:pcol()};"
+    "if(btn){btn.disabled=true;setTimeout(()=>{btn.disabled=false;},2000);}"
     "for(const k of ['mascot','pet','petEyes','accHead','accFace','accNeck'])b[k]=Number($(k).value);"
-    "areq('/preview',JSON.stringify(b)).then(r=>st(r.ok?'':T.failed,r.ok?'':'no')).catch(()=>st(T.failed,'no'));}"
+    "areq('/preview',JSON.stringify(b)).then(r=>{if(r.status===429)return;st(r.ok?'':T.failed,r.ok?'':'no');})"
+    ".catch(()=>st(T.failed,'no'));}"
     "function post(u){return areq(u,'{}');}"
     "function rst(){post('/reset-code').then(r=>{if(!r.ok)return;const c=prompt(T.hint);if(!c)return;"
     "fetch('/factory-reset?code='+encodeURIComponent(c),{method:'POST',headers:J,body:'{}'})"
@@ -969,7 +973,7 @@ static void settingsPage() {
     out += F("</label></div>");
   }
   // The form's look on the gadget for a few seconds, nothing saved (POST /preview).
-  out += F("<button type=\"button\" class=\"s\" onclick=\"pv()\">");
+  out += F("<button type=\"button\" class=\"s\" onclick=\"pv(this)\">");
   text(out, lang, S::WebPreview);
   out += F("</button></div>");
   pageFlush(out);

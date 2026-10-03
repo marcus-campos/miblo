@@ -8,6 +8,11 @@ export const isReducedInfo = (info) => info?.paired === true && info.fw === unde
 export const isBusy = (e) => e?.status === 503;
 export const busyLine = (label) => `${label} is busy right now — try again in a moment.`;
 
+// The connection dropped before any reply (reset, socket closed, broken pipe): the request was
+// most likely never handled. Not a refusal (nothing listening), not a timeout (it may be running).
+const DROPPED = new Set(['ECONNRESET', 'UND_ERR_SOCKET', 'EPIPE']);
+export const isDropped = (e) => DROPPED.has(e?.cause?.code) || DROPPED.has(e?.code);
+
 // Waits before the 2nd and 3rd attempt of a request the gadget refused as busy.
 export const BUSY_RETRY_MS = [400, 800];
 
@@ -79,8 +84,16 @@ export class DeviceClient {
     return data.token;
   }
 
-  pushState(addr, token, snapshot) {
-    return this.#req(addr, '/api/state', { method: 'POST', token, body: snapshot });
+  // A snapshot push is idempotent (the gadget keeps the latest), so one whose connection dropped
+  // before any reply is resent once, at once, rather than lost until the next push.
+  async pushState(addr, token, snapshot) {
+    const opts = { method: 'POST', token, body: snapshot };
+    try {
+      return await this.#req(addr, '/api/state', opts);
+    } catch (e) {
+      if (!isDropped(e)) throw e;
+      return this.#req(addr, '/api/state', opts);
+    }
   }
 
   setConfig(addr, token, cfg) {

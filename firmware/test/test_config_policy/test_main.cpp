@@ -327,6 +327,58 @@ static void test_net_policy_wrong_password_on_a_proven_network_is_an_outage() {
   TEST_ASSERT_EQUAL(NetState::Portal, r.update(LinkStatus::Down, NetPolicy::kFallbackMs));
 }
 
+// The station counts as connected only with a routable address. lwIP's "feat" build falls back to
+// AutoIP (169.254.x.x, no gateway) when DHCP does not answer: the computer cannot reach that
+// address, the gateway probe has nothing to probe, and the screen would say "connected".
+static void test_station_link_needs_a_routable_address() {
+  const uint32_t lan = 192u | 168u << 8 | 1u << 16 | 42u << 24;  // 192.168.1.42 (lwIP byte order)
+  const uint32_t autoip = 169u | 254u << 8 | 7u << 16 | 9u << 24;  // 169.254.7.9
+  TEST_ASSERT_EQUAL(LinkStatus::Connected, stationLink(true, false, lan));
+  TEST_ASSERT_EQUAL(LinkStatus::Down, stationLink(true, false, autoip));
+  TEST_ASSERT_EQUAL(LinkStatus::Down, stationLink(true, false, 0));
+  TEST_ASSERT_EQUAL(LinkStatus::Down, stationLink(false, false, lan));
+  TEST_ASSERT_EQUAL(LinkStatus::WrongPassword, stationLink(false, true, 0));
+  TEST_ASSERT_TRUE(isLinkLocal(autoip));
+  TEST_ASSERT_FALSE(isLinkLocal(lan));
+  TEST_ASSERT_FALSE(isLinkLocal(169u | 253u << 8));  // 169.253.0.0: not link-local
+  TEST_ASSERT_FALSE(isLinkLocal(254u | 169u << 8));  // 254.169.0.0: byte order matters
+}
+
+// The web server's accept callback: a connection lwIP could not allocate (null pcb, a core bug
+// would wrap it in a ClientContext) or one arriving while the low-memory guard is on is refused,
+// and lwIP resets it (the plugin retries a reset connection).
+static void test_accept_refused_without_pcb_or_heap() {
+  TEST_ASSERT_TRUE(admitConnection(true, false));
+  TEST_ASSERT_FALSE(admitConnection(false, false));
+  TEST_ASSERT_FALSE(admitConnection(true, true));
+  TEST_ASSERT_FALSE(admitConnection(false, true));
+  // lwIP's listen backlog (handshakes in progress + accepted, not yet taken by the server).
+  TEST_ASSERT_TRUE(kPendingConnections >= 2 && kPendingConnections <= 5);
+}
+
+// IP reassembly (the "feat" lwIP build) keeps up to 10 received fragments on the heap (~15 KB)
+// for up to 15 ticks of its timer (once a second) while it waits for a lost one, which multicast
+// on Wi-Fi often is (a Mac's large mDNS replies). The firmware ticks it more often, so an
+// incomplete datagram goes within ~3 s, and on every loop pass while the low-memory guard is on.
+static void test_reassembly_ager() {
+  ReassAger a;
+  TEST_ASSERT_TRUE(a.due(0, false));  // the first pass ticks
+  TEST_ASSERT_FALSE(a.due(ReassAger::kEveryMs - 1, false));
+  TEST_ASSERT_TRUE(a.due(ReassAger::kEveryMs, false));
+  TEST_ASSERT_FALSE(a.due(ReassAger::kEveryMs + 1, false));
+  TEST_ASSERT_TRUE(a.due(ReassAger::kEveryMs + 2, true));  // low memory: every pass
+  TEST_ASSERT_TRUE(a.due(ReassAger::kEveryMs + 2, true));
+  TEST_ASSERT_FALSE(a.due(ReassAger::kEveryMs + 3, false));
+  TEST_ASSERT_TRUE(a.due(2 * ReassAger::kEveryMs + 2, false));
+  // Safe across millis() wrap.
+  ReassAger w;
+  TEST_ASSERT_TRUE(w.due(0xFFFFFFF0u, false));
+  TEST_ASSERT_FALSE(w.due(0xFFFFFFF0u + ReassAger::kEveryMs - 1, false));
+  TEST_ASSERT_TRUE(w.due(0xFFFFFFF0u + ReassAger::kEveryMs, false));
+  // 15 ticks (IP_REASS_MAXAGE) with lwIP's own one a second: about 3 s.
+  TEST_ASSERT_TRUE(15u * 1000u * ReassAger::kEveryMs / (1000u + ReassAger::kEveryMs) <= 3000u);
+}
+
 // The setup network is never brought up while the heap is low: the SDK's soft AP allocates a
 // probe response for every phone that scans nearby and faults on a failed allocation.
 static void test_net_policy_ap_waits_for_heap() {
@@ -1469,6 +1521,9 @@ int main() {
   RUN_TEST(test_net_policy_wrong_password_on_a_proven_network_is_an_outage);
   RUN_TEST(test_net_policy_ap_waits_for_heap);
   RUN_TEST(test_heap_guard_hysteresis);
+  RUN_TEST(test_station_link_needs_a_routable_address);
+  RUN_TEST(test_accept_refused_without_pcb_or_heap);
+  RUN_TEST(test_reassembly_ager);
   RUN_TEST(test_heap_guard_restart_ceiling);
   RUN_TEST(test_heap_guard_restart_backoff);
   RUN_TEST(test_heap_restart_word);

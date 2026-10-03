@@ -19,6 +19,18 @@ enum class JoinFailure : uint8_t {
   Timeout    // no connection within kFallbackMs and no disconnect reason ever reported
 };
 
+// An IPv4 address as lwIP keeps it (network byte order in memory: the first octet is the low
+// byte here) is link-local: 169.254.0.0/16, AutoIP's range.
+inline bool isLinkLocal(uint32_t ip) { return (ip & 0xFFFFu) == (169u | 254u << 8); }
+// The station's state for NetPolicy and the LinkKeeper. Connected needs a routable address: the
+// "feat" lwIP build falls back to AutoIP (169.254.x.x, no gateway) when DHCP does not answer, and
+// with it the SDK may report WL_CONNECTED although nothing on the network can reach the unit.
+// Such a link counts as down (the outage timers run, the DHCP client keeps asking).
+inline LinkStatus stationLink(bool wlConnected, bool wrongPassword, uint32_t ip) {
+  if (wlConnected) return ip && !isLinkLocal(ip) ? LinkStatus::Connected : LinkStatus::Down;
+  return wrongPassword ? LinkStatus::WrongPassword : LinkStatus::Down;
+}
+
 // Station disconnect reason (WIFI_DISCONNECT_REASON_*, 802.11 + Espressif 200..204) -> class.
 JoinFailure classifyDisconnect(uint8_t reason);
 
@@ -149,6 +161,37 @@ class HeapGuard {
   uint32_t sinceMs_ = 0;
   uint32_t okSinceMs_ = 0;
   uint32_t episodes_ = 0;
+};
+
+// The web server's listen backlog: TCP handshakes in progress plus connections accepted by lwIP
+// and not yet taken by the server (one at a time). Beyond it lwIP ignores new SYNs and the
+// client retries them, instead of every connection of a burst holding a pcb, a ClientContext and
+// its received bytes on the heap (platform/lookahead_client.h LookaheadServer).
+constexpr uint8_t kPendingConnections = 3;
+// The accept callback's verdict: false when lwIP could not allocate the pcb (it then calls with
+// none) or the low-memory guard is on; lwIP resets the connection and the plugin retries.
+inline bool admitConnection(bool hasPcb, bool heapLow) { return hasPcb && !heapLow; }
+
+// Extra ticks of lwIP's IP reassembly timer (net.cpp calls ip_reass_tmr() when due() is true).
+// The "feat" build reassembles fragmented datagrams, holding up to IP_REASS_MAX_PBUFS (10)
+// received fragments, ~15 KB of heap, for IP_REASS_MAXAGE (15) ticks of a once-a-second timer
+// while it waits for a lost fragment: frequent with multicast on Wi-Fi (a Mac's large mDNS
+// replies). Fragments of one datagram arrive within milliseconds on a LAN, so ticking every
+// kEveryMs as well (an incomplete datagram goes in ~3 s), and on every loop pass while the
+// low-memory guard is on (within ~15 passes), costs nothing real. Safe across millis() wrap.
+class ReassAger {
+ public:
+  static constexpr uint32_t kEveryMs = 250;
+  bool due(uint32_t nowMs, bool heapLow) {
+    if (!heapLow && started_ && nowMs - lastMs_ < kEveryMs) return false;
+    started_ = true;
+    lastMs_ = nowMs;
+    return true;
+  }
+
+ private:
+  bool started_ = false;
+  uint32_t lastMs_ = 0;
 };
 
 // The guard's restarts as kept in one RTC word (crashlog.cpp): the restarts in a row (the

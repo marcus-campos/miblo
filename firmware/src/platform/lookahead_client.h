@@ -30,24 +30,29 @@
 //
 // Why (3): fairness. The short body wait blocks loop(): many clients that send their headers and
 // then stall the body each held everyone else up for kBodyWaitMs, seconds in all. So while another
-// client is waiting for the server (WiFiServer::hasClientData / hasMaxPendingClients) a request
+// client is waiting for the server (WiFiServer::hasClientData / LookaheadServer::hasMaxPendingClients) a request
 // gets one short wait (miblo::kBodyWaitContendedMs, enough for a body a segment behind), then
 // reports no data, and the server's non-blocking state decides (its 30 ms rule drops it while the
 // other client has data). See miblo::bodyWaitPlan. Alone, it waits kBodyWaitMs as above.
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 
+#include <lwip/tcp.h>
+
 #include <memory>
 
 #include "miblo_headers.h"
+#include "miblo_policy.h"
 
 inline bool heapLowForRequest(uint32_t needBytes);  // platform.h, after this file
+class LookaheadServer;
+inline bool othersWaiting(LookaheadServer* server);  // below LookaheadServer
 
 class LookaheadClient : public WiFiClient {
  public:
   LookaheadClient() = default;
   // `server`: the listening server, asked whether other clients are waiting (Why (3) above).
-  explicit LookaheadClient(const WiFiClient& c, WiFiServer* server = nullptr) : WiFiClient(c), server_(server) {}
+  explicit LookaheadClient(const WiFiClient& c, LookaheadServer* server = nullptr) : WiFiClient(c), server_(server) {}
 
   // Holds the next request back until it is ready for the server (see Why (1) above).
   void rearm() {
@@ -143,7 +148,7 @@ class LookaheadClient : public WiFiClient {
     Source src{*this};
     miblo::RequestReadiness r = miblo::RequestReadiness::Waiting;
     // Why (3): a small body still to come is waited for in full only when no other client waits.
-    const bool others = server_ && (server_->hasClientData() || server_->hasMaxPendingClients());
+    const bool others = server_ && othersWaiting(server_);
     const miblo::BodyWait wait = miblo::bodyWaitPlan(others, contendedWait_);
     if (shedding_) {
       r = miblo::RequestReadiness::NoMemory;
@@ -215,16 +220,50 @@ class LookaheadClient : public WiFiClient {
   }
 
   miblo::HeaderBuffer ahead_;
-  WiFiServer* server_ = nullptr;  // the listening server (outlives its clients); none: never contended
+  LookaheadServer* server_ = nullptr;  // the listening server (outlives its clients); none: never contended
   bool held_ = true;
   bool refused_ = false;  // answered and closed by refuse(): no data, not connected
   bool contendedWait_ = false;  // this request already had its short wait while others waited
   static inline bool shedding_ = false;
 };
 
+// The listening side. The firmware is built with lwIP's "feat" variant (platformio.ini) for its
+// listen backlog: without one (the LOW_FLASH variant) lwIP accepted every handshake and WiFiServer
+// queued each with a pcb, a ClientContext and its received bytes, so a burst of idle or half-sent
+// connections took the heap from 28 KB to 17 KB and the Wi-Fi SDK then failed an allocation. Now
+// at most miblo::kPendingConnections wait (handshakes in progress included); lwIP ignores further
+// SYNs and the clients retry them. The accept callback is wrapped (miblo::admitConnection): a
+// connection lwIP could not allocate (it calls with no pcb, which the core would wrap in a
+// ClientContext) or one arriving while the low-memory guard is on is refused, and lwIP resets it.
 class LookaheadServer : public WiFiServer {
  public:
   using WiFiServer::WiFiServer;
   using ClientType = LookaheadClient;
   LookaheadClient accept() { return LookaheadClient(WiFiServer::accept(), this); }
+  // ESP8266WebServer calls these by the server type.
+  void begin() { begin(_port); }
+  void begin(uint16_t port) {
+    WiFiServer::begin(port, miblo::kPendingConnections);
+    if (_listen_pcb) tcp_accept(_listen_pcb, &LookaheadServer::admit);  // its arg stays this server
+  }
+  // The core compares with MAX_PENDING_CLIENTS_PER_PORT (5), never reached with our backlog.
+  bool hasMaxPendingClients() const {
+    return _listen_pcb && reinterpret_cast<const tcp_pcb_listen*>(_listen_pcb)->accepts_pending >= miblo::kPendingConnections;
+  }
+  // Low-memory guard (app.cpp, miblo::HeapGuard), every loop pass.
+  static void shed(bool on) { heapLow_ = on; }
+  static uint32_t refused() { return refused_; }  // connections refused since boot (/api/info)
+
+ private:
+  static err_t admit(void* arg, tcp_pcb* pcb, err_t err) {
+    if (!miblo::admitConnection(pcb != nullptr && err == ERR_OK, heapLow_)) {
+      refused_++;
+      return ERR_MEM;  // lwIP aborts (resets) a pcb whose accept failed
+    }
+    return WiFiServer::_s_accept(arg, pcb, err);
+  }
+  static inline bool heapLow_ = false;
+  static inline uint32_t refused_ = 0;
 };
+
+inline bool othersWaiting(LookaheadServer* server) { return server->hasClientData() || server->hasMaxPendingClients(); }

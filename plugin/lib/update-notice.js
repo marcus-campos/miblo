@@ -10,7 +10,7 @@ import { GITHUB_API, REPO, compareVersions } from './firmware-update.js';
 export const CHECK_EVERY_MS = 6 * 3600_000;
 export const NOTIFY_EVERY_MS = 24 * 3600_000;
 const GITHUB_TIMEOUT_MS = 2000;
-const DEVICE_TIMEOUT_MS = 800;
+const DEVICE_TIMEOUT_MS = 1500;  // covers one SYN retransmit (~1 s) when the gadget delays a connection
 const REREAD_MS = 5 * 60_000;
 const VERSION_RE = /^\d+\.\d+\.\d+$/;
 

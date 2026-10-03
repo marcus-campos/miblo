@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ensureKey, readKey, proofFor, proofOk, keyOk, logForeignOnce } from '../lib/bridge-auth.js';
+import { ensureKey, readKey, proofFor, proofOk, logForeignOnce, Challenges, authHeader, requestMac, CHALLENGE_TTL_MS } from '../lib/bridge-auth.js';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-key-'));
 
@@ -32,7 +32,7 @@ test('a bridge.key that is not a key is replaced; a loose one is tightened', () 
   }
 });
 
-test('proofOk and keyOk accept only the right HMAC / key', () => {
+test('proofOk accepts only the right HMAC', () => {
   const key = crypto.randomBytes(32).toString('hex');
   const nonce = crypto.randomBytes(16).toString('hex');
   assert.equal(proofFor(key, nonce), crypto.createHmac('sha256', key).update(`miblo-bridge:${nonce}`).digest('hex'));
@@ -41,9 +41,6 @@ test('proofOk and keyOk accept only the right HMAC / key', () => {
     assert.ok(!proofOk(key, nonce, bad), String(bad));
   }
   assert.ok(!proofOk(null, nonce, proofFor('null', nonce)));
-  assert.ok(keyOk(key, key));
-  for (const bad of [undefined, '', key.slice(1), '0'.repeat(64)]) assert.ok(!keyOk(key, bad));
-  assert.ok(!keyOk(null, 'null'));
 });
 
 test('a foreign listener is noted in bridge.log once a day', () => {
@@ -53,4 +50,54 @@ test('a foreign listener is noted in bridge.log once a day', () => {
   const log = () => fs.readFileSync(path.join(dir, 'bridge.log'), 'utf8').trim().split('\n');
   assert.equal(log().length, 1);
   assert.match(log()[0], /port 47821 answers without the bridge key/);
+});
+
+// F5 hardening: the key never travels; each request answers a single-use challenge of the bridge.
+test('a request mac binds the challenge, method, path and body', () => {
+  const key = 'ab'.repeat(32);
+  const c = '0123456789abcdef0123456789abcdef';
+  const digest = crypto.createHash('sha256').update('{"a":1}').digest('hex');
+  assert.equal(requestMac(key, c, 'POST', '/event', '{"a":1}'),
+    crypto.createHmac('sha256', key).update(`miblo-req:${c}:POST:/event:${digest}`).digest('hex'));
+  assert.equal(authHeader(key, c, 'GET', '/status'), `${c}:${requestMac(key, c, 'GET', '/status', '')}`);
+  assert.ok(!authHeader(key, c, 'POST', '/event', '{}').includes(key));
+});
+
+test('the bridge accepts each challenge once, for that very request, within its lifetime', () => {
+  let t = 0;
+  const key = 'ab'.repeat(32);
+  const ch = new Challenges({ now: () => t });
+  const c = ch.issue();
+  assert.match(c, /^[0-9a-f]{32}$/);
+  assert.ok(ch.verify(key, authHeader(key, c, 'POST', '/event', 'B'), 'POST', '/event', 'B'));
+  assert.ok(!ch.verify(key, authHeader(key, c, 'POST', '/event', 'B'), 'POST', '/event', 'B'), 'replayed');
+  // A wrong answer spends the challenge too.
+  const d = ch.issue();
+  assert.ok(!ch.verify(key, authHeader(key, d, 'POST', '/event', 'B'), 'POST', '/statusline', 'B'));
+  assert.ok(!ch.verify(key, authHeader(key, d, 'POST', '/event', 'B'), 'POST', '/event', 'B'));
+  for (const [what, hdr] of [
+    ['another body', (x) => authHeader(key, x, 'POST', '/event', 'C')],
+    ['another method', (x) => authHeader(key, x, 'GET', '/event', 'B')],
+    ['another key', (x) => authHeader('cd'.repeat(32), x, 'POST', '/event', 'B')],
+    ['a challenge never issued', () => authHeader(key, 'f'.repeat(32), 'POST', '/event', 'B')],
+    ['garbage', () => 'x:y'],
+    ['the key itself', () => key],
+  ]) {
+    const x = ch.issue();
+    assert.ok(!ch.verify(key, hdr(x), 'POST', '/event', 'B'), what);
+  }
+  const old = ch.issue();
+  t += CHALLENGE_TTL_MS;
+  assert.ok(!ch.verify(key, authHeader(key, old, 'GET', '/status'), 'GET', '/status'), 'expired');
+  assert.ok(!new Challenges().verify(null, 'x', 'GET', '/status'));
+});
+
+test('only the latest 256 challenges stay open', () => {
+  const key = 'ab'.repeat(32);
+  const ch = new Challenges();
+  const first = ch.issue();
+  for (let i = 0; i < 256; i++) ch.issue();
+  assert.ok(!ch.verify(key, authHeader(key, first, 'GET', '/status'), 'GET', '/status'));
+  const last = ch.issue();
+  assert.ok(ch.verify(key, authHeader(key, last, 'GET', '/status'), 'GET', '/status'));
 });

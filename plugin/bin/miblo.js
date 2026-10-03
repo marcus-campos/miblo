@@ -11,7 +11,7 @@ import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
 import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
 import { tokenTag } from '../lib/relocation.js';
-import { KEY_HEADER, readKey as readBridgeKey, checkedHealth, logForeignOnce } from '../lib/bridge-auth.js';
+import { readKey as readBridgeKey, checkedHealth, signedFetch, logForeignOnce } from '../lib/bridge-auth.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -123,7 +123,7 @@ export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = glob
     return null;
   }
   try {
-    const res = await fetchImpl(`${base}/status`, { headers: { [KEY_HEADER]: key }, signal: AbortSignal.timeout(800) });
+    const res = await signedFetch(base, key, h.challenge, { method: 'GET', path: '/status', fetchImpl });
     return res.ok ? await res.json() : null;
   } catch {
     return null;

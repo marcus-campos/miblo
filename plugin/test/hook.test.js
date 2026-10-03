@@ -6,7 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ensureKey, proofFor } from '../lib/bridge-auth.js';
+import { ensureKey, proofFor, Challenges } from '../lib/bridge-auth.js';
 
 const hook = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/hook.js');
 // Never the user's own data dir (the hook makes the bridge key there).
@@ -28,14 +28,17 @@ function runHook(input, env) {
 // (bridge-auth.js); otherwise it is another program, which may even say it is the bridge.
 function listener({ own, dataDir = process.env.CLAUDE_PLUGIN_DATA, claim = false }) {
   const key = own ? ensureKey(dataDir) : null;
+  const challenges = new Challenges();
   const requests = [];
   const server = http.createServer((req, res) => {
     let body = '';
     req.on('data', (c) => { body += c; });
     req.on('end', () => {
-      requests.push({ method: req.method, url: req.url, headers: req.headers, body });
+      // `signed`: the request answered one of this listener's challenges with the key.
+      const signed = own && req.url !== '/health' && challenges.verify(key, req.headers['x-miblo-auth'], req.method, req.url, body);
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body, signed });
       const nonce = req.headers['x-miblo-nonce'];
-      const headers = { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce) } : {}) };
+      const headers = { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce), 'x-miblo-challenge': challenges.issue() } : {}) };
       res.writeHead(200, headers);
       res.end(JSON.stringify(own || claim ? { ok: true, app: 'miblo-bridge', version: '0.0.0' } : {}));
     });
@@ -57,9 +60,10 @@ test('forwards whitelisted fields, adding pid on SessionStart and UserPromptSubm
     const received = () => bridge.received();
     assert.equal(received()[0].session_id, 's1');
     assert.ok('pid' in received()[0]);
-    // With the key, after /health proved the bridge knows it.
+    // Signed over the bridge's challenge, after /health proved it knows the key; never the key.
     const ev = bridge.requests.find((q) => q.url === '/event');
-    assert.equal(ev.headers['x-miblo-key'], bridge.key);
+    assert.equal(ev.signed, true);
+    assert.ok(!JSON.stringify(ev.headers).includes(bridge.key));
     assert.equal(bridge.requests[0].url, '/health');
 
     await runHook(JSON.stringify({ session_id: 's1', hook_event_name: 'UserPromptSubmit', prompt: 'secret', transcript_path: '/t' }), env);
@@ -87,7 +91,7 @@ for (const claim of [false, true]) {
       const key = fs.readFileSync(path.join(dataDir, 'bridge.key'), 'utf8').trim();
       for (const q of squatter.requests) {
         assert.ok(['/health', '/shutdown'].includes(q.url), q.url);
-        assert.equal(q.headers['x-miblo-key'], undefined);
+        assert.equal(q.headers['x-miblo-auth'], undefined);
         assert.ok(!q.body.includes('secret') && !q.body.includes('s1') && !q.body.includes(key), q.body);
         assert.ok(!JSON.stringify(q.headers).includes(key));
       }

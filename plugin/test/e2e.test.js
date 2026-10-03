@@ -18,6 +18,7 @@ import { DeviceStore } from '../lib/device-store.js';
 import { ZoneOffsets, intlOffset } from '../lib/tz-offsets.js';
 import { pluginVersion } from '../lib/constants.js';
 import { createBridge } from '../bin/bridge.js';
+import { bridgeRequest } from '../lib/bridge-auth.js';
 import { run } from '../bin/miblo.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -200,8 +201,8 @@ test('processes: /miblo:pair, hooks start the bridge and every prompt state reac
 
     // The status line reading reaches the gadget and the CLI reads the running bridge.
     const reset = Math.floor(Date.now() / 1000) + 3600;
-    await fetch(`http://127.0.0.1:${port}/statusline`, {
-      method: 'POST', headers: { 'content-type': 'application/json', 'x-miblo-key': bridgeKey(dataDir) },
+    await bridgeRequest(`http://127.0.0.1:${port}`, bridgeKey(dataDir), {
+      method: 'POST', path: '/statusline',
       body: JSON.stringify({ session_id: sid, model: { display_name: 'Opus' }, cost: { total_cost_usd: 1.25 },
         context_window: { used_percentage: 40, total_input_tokens: 9000, total_output_tokens: 1000 },
         rate_limits: { five_hour: { used_percentage: 62, resets_at: reset }, seven_day: { used_percentage: 20, resets_at: reset + 86400 } } }),
@@ -232,7 +233,7 @@ test('processes: /miblo:pair, hooks start the bridge and every prompt state reac
     assert.ok(!all.includes('needs your permission') && !all.includes('needs permission for'));
     for (const s of dev.state.snapshots) assert.ok(Buffer.byteLength(JSON.stringify(s)) <= 3072, 'within the gadget caps');
   } finally {
-    await fetch(`http://127.0.0.1:${port}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-miblo-key': bridgeKey(dataDir) }, body: '{}' }).catch(() => {});
+    await bridgeRequest(`http://127.0.0.1:${port}`, bridgeKey(dataDir), { method: 'POST', path: '/shutdown', body: '{}' }).catch(() => {});
     await dev.close();
   }
 });
@@ -259,7 +260,7 @@ test('processes: two Claude Code windows starting at once share one bridge, and 
     const health = await (await fetch(`http://127.0.0.1:${port}/health`)).json();
     assert.deepEqual([health.app, health.version], ['miblo-bridge', VERSION]);
   } finally {
-    await fetch(`http://127.0.0.1:${port}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-miblo-key': bridgeKey(dataDir) }, body: '{}' }).catch(() => {});
+    await bridgeRequest(`http://127.0.0.1:${port}`, bridgeKey(dataDir), { method: 'POST', path: '/shutdown', body: '{}' }).catch(() => {});
     await dev.close();
   }
 });
@@ -295,7 +296,7 @@ test('processes: a Desktop agent session (no cwd, no SessionStart, Claude in Chr
     snap = await until('done', (s) => sessionOf(s, S)?.st === 'done');
     assert.ok(!JSON.stringify(dev.state.snapshots).includes(SECRET), 'no text reaches the gadget');
   } finally {
-    await fetch(`http://127.0.0.1:${port}/shutdown`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-miblo-key': bridgeKey(dataDir) }, body: '{}' }).catch(() => {});
+    await bridgeRequest(`http://127.0.0.1:${port}`, bridgeKey(dataDir), { method: 'POST', path: '/shutdown', body: '{}' }).catch(() => {});
     await dev.close();
   }
 });
@@ -437,7 +438,7 @@ async function fixedBridge(dev, { tz, tz2, discoverFn = async () => [], extraDev
   };
   return {
     bridge, clock, hook, dataDir, store, settle,
-    statusline: (sl) => fetch(`http://127.0.0.1:${env.MIBLO_PORT}/statusline`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-miblo-key': bridge.key }, body: JSON.stringify(sl) }),
+    statusline: (sl) => bridgeRequest(`http://127.0.0.1:${env.MIBLO_PORT}`, bridge.key, { method: 'POST', path: '/statusline', body: JSON.stringify(sl) }),
     stop: () => new Promise((r) => bridge.server.close(r)),
   };
 }
@@ -586,7 +587,7 @@ test('fixed clock: a gadget that dropped the pairing shows unauthorized until /m
   const dev = await startFakeDevice();
   const b = await fixedBridge(dev);
   const status = async () => JSON.parse((await run(['status'], { dataDir: b.dataDir, settingsPath: path.join(b.dataDir, 'none.json'),
-    fetchStatus: async () => (await fetch(`http://127.0.0.1:${b.bridge.server.address().port}/status`, { headers: { 'x-miblo-key': b.bridge.key } })).json() })).out);
+    fetchStatus: async () => (await bridgeRequest(`http://127.0.0.1:${b.bridge.server.address().port}`, b.bridge.key, { path: '/status' })).json() })).out);
   try {
     await b.hook(payload('aaaaaaaa-0001', '/w/api', 'UserPromptSubmit', { prompt: 'x' }));
     assert.equal(dev.state.snapshots.length, 1);

@@ -7,7 +7,7 @@ import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { ensureKey, proofFor } from '../lib/bridge-auth.js';
+import { ensureKey, proofFor, Challenges } from '../lib/bridge-auth.js';
 
 const src = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../bin/statusline-tap.mjs');
 // The data dir the tap reads the bridge key from (never the user's own).
@@ -18,21 +18,23 @@ process.env.CLAUDE_PLUGIN_DATA = DATA;
 // as the bridge does. Records every request.
 async function listener({ own = true, claim = false } = {}) {
   const key = own ? ensureKey(DATA) : null;
+  const challenges = new Challenges();
   const requests = [];
   const server = http.createServer((req, res) => {
     let b = '';
     req.on('data', (c) => { b += c; });
     req.on('end', () => {
-      requests.push({ method: req.method, url: req.url, headers: req.headers, body: b });
+      const signed = own && req.url !== '/health' && challenges.verify(key, req.headers['x-miblo-auth'], req.method, req.url, b);
+      requests.push({ method: req.method, url: req.url, headers: req.headers, body: b, signed });
       const nonce = req.headers['x-miblo-nonce'];
-      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce) } : {}) });
+      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce), 'x-miblo-challenge': challenges.issue() } : {}) });
       res.end(own || claim ? '{"ok":true,"app":"miblo-bridge"}' : '{}');
     });
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   return {
     requests, key, port: String(server.address().port),
-    got: () => requests.filter((q) => q.url !== '/health').map((q) => ({ url: q.url, type: q.headers['content-type'], key: q.headers['x-miblo-key'], body: JSON.parse(q.body) })),
+    got: () => requests.filter((q) => q.url !== '/health').map((q) => ({ url: q.url, type: q.headers['content-type'], signed: q.signed, keyless: !JSON.stringify(q.headers).includes(key), body: JSON.parse(q.body) })),
     close: () => new Promise((r) => server.close(r)),
   };
 }
@@ -75,7 +77,7 @@ test('forwards the statusline JSON to the bridge, with the key, once it proved i
     await run(installed({}), INPUT, { MIBLO_PORT: bridge.port });
     assert.equal(bridge.requests[0].url, '/health');
     assert.match(bridge.requests[0].headers['x-miblo-nonce'], /^[0-9a-f]{32}$/);
-    assert.deepEqual(bridge.got(), [{ url: '/statusline', type: 'application/json', key: bridge.key, body: JSON.parse(INPUT) }]);
+    assert.deepEqual(bridge.got(), [{ url: '/statusline', type: 'application/json', signed: true, keyless: true, body: JSON.parse(INPUT) }]);
   } finally {
     await bridge.close();
   }
@@ -140,7 +142,7 @@ test('a slow original (500 ms) still lets the forward reach the bridge; output s
     const r = await run(tap, INPUT, { MIBLO_PORT: bridge.port });
     assert.equal(r.out, 'slow\nline');
     assert.equal(r.code, 0);
-    assert.deepEqual(bridge.got(), [{ url: '/statusline', type: 'application/json', key: bridge.key, body: JSON.parse(INPUT) }]);
+    assert.deepEqual(bridge.got(), [{ url: '/statusline', type: 'application/json', signed: true, keyless: true, body: JSON.parse(INPUT) }]);
   } finally {
     await bridge.close();
   }

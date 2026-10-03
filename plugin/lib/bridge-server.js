@@ -1,9 +1,9 @@
 import http from 'node:http';
-import { KEY_HEADER, NONCE_HEADER, PROOF_HEADER, isNonce, keyOk, proofFor } from './bridge-auth.js';
+import { AUTH_HEADER, CHALLENGE_HEADER, NONCE_HEADER, PROOF_HEADER, Challenges, isNonce, proofFor } from './bridge-auth.js';
 
 const MAX_BODY = 256 * 1024;
 
-function readJson(req) {
+function readRaw(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
     let size = 0;
@@ -16,59 +16,59 @@ function readJson(req) {
         chunks.push(c);
       }
     });
-    req.on('end', () => {
-      try {
-        resolve(JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}'));
-      } catch (e) {
-        reject(e);
-      }
-    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
     req.on('error', reject);
   });
 }
 
+const parse = (raw) => JSON.parse(raw.toString('utf8') || '{}');
+
 // Only local, non-browser clients may talk to the bridge: the Host header must
 // name the loopback address (defeats DNS rebinding), browsers always send
 // Origin on cross-site requests, and POST bodies must be declared as JSON
-// (a plain HTML form cannot send application/json). Every request but /health carries the
-// bridge key (bridge-auth.js): another local user's programs get nothing and can send nothing.
-function guard(req, port, key) {
+// (a plain HTML form cannot send application/json).
+function guard(req, port) {
   const host = req.headers.host;
   if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return [403, 'forbidden host'];
   if (req.headers.origin !== undefined) return [403, 'origin not allowed'];
   if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
     return [415, 'content-type must be application/json'];
   }
-  if (!(req.method === 'GET' && req.url === '/health') && !keyOk(key, req.headers[KEY_HEADER])) return [401, 'key required'];
   return null;
 }
 
-// `key`: the bridge key (bridge-auth.js ensureKey); without one every request but /health is refused.
-export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key = null }) {
+// `key`: the bridge key (bridge-auth.js ensureKey). Every request but /health must answer one of
+// the bridge's challenges with it (x-miblo-auth); without a key all of them are refused, so
+// another local user's programs get nothing and can send nothing.
+export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key = null, now }) {
+  const challenges = new Challenges(now ? { now } : {});
   const server = http.createServer(async (req, res) => {
     const send = (code, obj, headers = {}) => {
       res.writeHead(code, { 'content-type': 'application/json', ...headers });
       res.end(JSON.stringify(obj));
     };
     try {
-      const denied = guard(req, server.address()?.port, key);
+      const denied = guard(req, server.address()?.port);
       if (denied) return send(denied[0], { error: denied[1] });
       if (req.method === 'GET' && req.url === '/health') {
-        // Proves this is the user's own bridge: HMAC of the client's nonce with the key.
+        // Proves this is the user's own bridge (HMAC of the client's nonce with the key) and
+        // hands out the single-use challenge its next request answers.
         const nonce = req.headers[NONCE_HEADER];
-        return send(200, { ok: true, app: 'miblo-bridge', version }, key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce) } : {});
+        const proof = key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce), [CHALLENGE_HEADER]: challenges.issue() } : {};
+        return send(200, { ok: true, app: 'miblo-bridge', version }, proof);
       }
+      const raw = await readRaw(req);
+      if (!challenges.verify(key, req.headers[AUTH_HEADER], req.method, req.url, raw)) return send(401, { error: 'not authorised' });
       if (req.method === 'GET' && req.url === '/status') return send(200, await getStatus());
       if (req.method === 'POST' && req.url === '/event') {
-        onEvent(await readJson(req));
+        onEvent(parse(raw));
         return send(200, { ok: true, app: 'miblo-bridge', version });
       }
       if (req.method === 'POST' && req.url === '/statusline') {
-        onStatusline(await readJson(req));
+        onStatusline(parse(raw));
         return send(200, { ok: true });
       }
       if (req.method === 'POST' && req.url === '/shutdown') {
-        await readJson(req).catch(() => null);
         res.on('finish', () => onShutdown());
         return send(200, { ok: true });
       }

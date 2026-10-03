@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { PORT, HOST, defaultDataDir, pluginVersion } from '../lib/constants.js';
 import { findClaudePid } from '../lib/proc.js';
 import { pickEvent, wantsPid, deliver } from '../lib/hook-client.js';
-import { KEY_HEADER, ensureKey, checkedHealth, logForeignOnce } from '../lib/bridge-auth.js';
+import { ensureKey, checkedHealth, signedFetch, logForeignOnce } from '../lib/bridge-auth.js';
 
 // Hard cap: a hook must never hang Claude Code.
 setTimeout(() => process.exit(0), 3000).unref();
@@ -16,8 +16,16 @@ setTimeout(() => process.exit(0), 3000).unref();
 const here = path.dirname(fileURLToPath(import.meta.url));
 const base = `http://${HOST}:${PORT}`;
 const dataDir = defaultDataDir();
-// The bridge key (bridge-auth.js): sent only to a bridge that proved it knows it.
+// The bridge key (bridge-auth.js): never sent; a request goes only to a bridge that proved it
+// knows it, signed over the single-use challenge from that bridge's last /health answer.
 const key = ensureKey(dataDir);
+let challenge = null;
+
+async function health() {
+  const h = await checkedHealth(base, key);
+  challenge = h?.challenge ?? null;
+  return h;
+}
 
 async function readStdin() {
   const chunks = [];
@@ -25,13 +33,18 @@ async function readStdin() {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function postJson(p, body, { timeoutMs = 800, withKey = true } = {}) {
-  const res = await fetch(base + p, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', ...(withKey && key ? { [KEY_HEADER]: key } : {}) },
-    body,
-    signal: AbortSignal.timeout(timeoutMs),
-  });
+// `signed`: answer the bridge's challenge (only to a bridge that proved it knows the key); an
+// older bridge, before the key, is asked to shut down unsigned.
+async function postJson(p, body, { timeoutMs = 800, signed = true } = {}) {
+  const c = challenge;
+  challenge = null;  // single use
+  let res;
+  if (signed) {
+    if (!c) throw new Error('no proven bridge');
+    res = await signedFetch(base, key, c, { method: 'POST', path: p, body, timeoutMs });
+  } else {
+    res = await fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body, signal: AbortSignal.timeout(timeoutMs) });
+  }
   const text = await res.text().catch(() => '');
   if (!res.ok) {
     const err = new Error(`bridge ${res.status}`);
@@ -65,9 +78,9 @@ async function main() {
     JSON.stringify(evt),
     {
       post: (body) => postJson('/event', body),
-      health: () => checkedHealth(base, key),
-      // The key only to our own bridge; an older one (before the key) shuts down without it.
-      shutdown: (withKey) => postJson('/shutdown', '{}', { timeoutMs: 300, withKey }),
+      health,
+      // Signed only to our own bridge; an older one (before the key) shuts down unsigned.
+      shutdown: (signed) => postJson('/shutdown', '{}', { timeoutMs: 300, signed }),
       startBridge,
       foreign: () => logForeignOnce(dataDir, PORT),
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),

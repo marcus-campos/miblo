@@ -4,18 +4,24 @@ import path from 'node:path';
 
 // The bridge listens on a fixed loopback port. On a shared computer another local user could
 // bind it first and receive hook and status line data. So the bridge and its clients share a
-// per-user secret, <data>/bridge.key (0600):
+// per-user secret, <data>/bridge.key (0600), which never travels:
 // - a client asks GET /health with a fresh nonce (x-miblo-nonce) and sends nothing more unless
 //   the answer carries x-miblo-proof = HMAC-SHA256(key, "miblo-bridge:" + nonce);
-// - only then does it send its request, with the key in x-miblo-key, which the bridge requires
-//   on every request but /health.
-// A listener that cannot prove it knows the key is foreign: it never gets data nor the key.
-// (bin/statusline-tap.mjs imports nothing from lib/ and repeats this in a few lines.)
+// - that answer also carries a single-use challenge (x-miblo-challenge) the bridge just made;
+// - the client's request then carries x-miblo-auth = "<challenge>:<mac>", the mac being
+//   HMAC-SHA256(key, "miblo-req:<challenge>:<METHOD>:<path>:<hex sha256 of the body>").
+// The bridge requires it on every request but /health and accepts each challenge once, within
+// CHALLENGE_TTL_MS. A listener that cannot prove it knows the key is foreign and gets nothing; a
+// request seen by anyone is no use again (its challenge is spent, the key is not in it).
+// (bin/statusline-tap.mjs imports nothing from lib/ and repeats the client side in a few lines.)
 
 export const KEY_FILE = 'bridge.key';
 export const NONCE_HEADER = 'x-miblo-nonce';
 export const PROOF_HEADER = 'x-miblo-proof';
-export const KEY_HEADER = 'x-miblo-key';
+export const CHALLENGE_HEADER = 'x-miblo-challenge';
+export const AUTH_HEADER = 'x-miblo-auth';
+export const CHALLENGE_TTL_MS = 30_000;
+const MAX_CHALLENGES = 256;
 const KEY_RE = /^[0-9a-f]{64}$/;
 const NONCE_RE = /^[0-9a-f]{32}$/;
 
@@ -32,8 +38,44 @@ function sameHex(a, b) {
 // Whether `proof` (a /health x-miblo-proof header) shows knowledge of `key` for `nonce`.
 export const proofOk = (key, nonce, proof) => !!key && isNonce(nonce) && sameHex(String(proof ?? '').toLowerCase(), proofFor(key, nonce));
 
-// Whether a request's x-miblo-key is the key (constant time).
-export const keyOk = (key, given) => !!key && sameHex(given, key);
+// The mac of one request: binds the bridge's challenge, the method, the path and the body.
+export function requestMac(key, challenge, method, urlPath, body = '') {
+  const digest = crypto.createHash('sha256').update(body ?? '').digest('hex');
+  return crypto.createHmac('sha256', String(key)).update(`miblo-req:${challenge}:${method}:${urlPath}:${digest}`).digest('hex');
+}
+
+// The x-miblo-auth header of a request answering `challenge`.
+export const authHeader = (key, challenge, method, urlPath, body = '') => `${challenge}:${requestMac(key, challenge, method, urlPath, body)}`;
+
+// The bridge's outstanding challenges: each is made for one /health answer and accepted once,
+// within CHALLENGE_TTL_MS; at most MAX_CHALLENGES wait at a time (the oldest go first).
+export class Challenges {
+  #open = new Map();  // challenge -> expiry (ms)
+  constructor({ now = () => Date.now() } = {}) {
+    this.now = now;
+  }
+
+  issue() {
+    const t = this.now();
+    for (const [c, exp] of this.#open) if (exp <= t) this.#open.delete(c);
+    while (this.#open.size >= MAX_CHALLENGES) this.#open.delete(this.#open.keys().next().value);
+    const c = newNonce();
+    this.#open.set(c, t + CHALLENGE_TTL_MS);
+    return c;
+  }
+
+  // Whether `header` (x-miblo-auth) answers an open challenge for this request. The challenge is
+  // spent whatever the outcome, so no answer can be tried twice.
+  verify(key, header, method, urlPath, body = '') {
+    const m = /^([0-9a-f]{32}):([0-9a-f]{64})$/.exec(String(header ?? ''));
+    if (!key || !m) return false;
+    const exp = this.#open.get(m[1]);
+    if (exp === undefined) return false;
+    this.#open.delete(m[1]);
+    if (exp <= this.now()) return false;
+    return sameHex(m[2], requestMac(key, m[1], method, urlPath, body));
+  }
+}
 
 // The key in `dataDir`, or null when there is none or it is not plainly ours (another owner).
 export function readKey(dataDir) {
@@ -92,7 +134,8 @@ export function logForeignOnce(dataDir, port, now = Date.now()) {
 }
 
 // Asks GET /health at `base` with a fresh nonce. -> null when nothing answers, else the health
-// object with `proven`: whether it proved it knows `key`.
+// object with `proven` (whether it proved it knows `key`) and, when proven, `challenge` (the
+// single-use challenge to answer in the next request, signedFetch).
 export async function checkedHealth(base, key, { fetchImpl = globalThis.fetch, timeoutMs = 300 } = {}) {
   const nonce = newNonce();
   let res;
@@ -102,11 +145,29 @@ export async function checkedHealth(base, key, { fetchImpl = globalThis.fetch, t
     return null;
   }
   const proven = proofOk(key, nonce, res.headers.get(PROOF_HEADER));
+  const challenge = res.headers.get(CHALLENGE_HEADER);
   let body = {};
   try {
     body = (await res.json()) ?? {};
   } catch {
     // not JSON: not the bridge
   }
-  return { ...(body && typeof body === 'object' ? body : {}), proven };
+  return { ...(body && typeof body === 'object' ? body : {}), proven, challenge: proven && isNonce(challenge) ? challenge : null };
+}
+
+// A request to the bridge answering `challenge` (from a proven checkedHealth). `body`: a string
+// or Buffer (JSON), or undefined for none.
+export function signedFetch(base, key, challenge, { method = 'GET', path: urlPath, body, timeoutMs = 800, fetchImpl = globalThis.fetch }) {
+  const headers = { [AUTH_HEADER]: authHeader(key, challenge, method, urlPath, body ?? '') };
+  if (body !== undefined) headers['content-type'] = 'application/json';
+  return fetchImpl(base + urlPath, { method, headers, body, signal: AbortSignal.timeout(timeoutMs) });
+}
+
+// One request to the bridge at `base`: /health first, then the request signed over its
+// challenge. -> the Response, or null when nothing answers or the listener did not prove it
+// knows `key` (it then got nothing).
+export async function bridgeRequest(base, key, { method = 'GET', path: urlPath, body, timeoutMs = 800, fetchImpl = globalThis.fetch }) {
+  const h = await checkedHealth(base, key, { fetchImpl, timeoutMs });
+  if (!h?.proven || !h.challenge) return null;
+  return signedFetch(base, key, h.challenge, { method, path: urlPath, body, timeoutMs, fetchImpl });
 }

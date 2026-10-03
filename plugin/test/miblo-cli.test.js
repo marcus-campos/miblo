@@ -869,16 +869,17 @@ test('MIBLO_DISCOVER_JSON replaces mDNS discovery (tests only); unset or invalid
 // F5: the CLI asks /status only of a bridge that proves it knows the bridge key.
 test('status is read only from a bridge that proves it knows the key; another listener gets nothing', async () => {
   const { fetchBridgeStatus } = await import('../bin/miblo.js');
-  const { ensureKey, proofFor } = await import('../lib/bridge-auth.js');
+  const { ensureKey, proofFor, Challenges } = await import('../lib/bridge-auth.js');
   const http = await import('node:http');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-cli-key-'));
   const key = ensureKey(dataDir);
   for (const own of [true, false]) {
     const seen = [];
+    const challenges = new Challenges();
     const server = http.createServer((req, res) => {
-      seen.push({ url: req.url, key: req.headers['x-miblo-key'] });
+      seen.push({ url: req.url, signed: req.url === '/status' ? challenges.verify(key, req.headers['x-miblo-auth'], 'GET', '/status', '') : undefined });
       const nonce = req.headers['x-miblo-nonce'];
-      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce) } : {}) });
+      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce), 'x-miblo-challenge': challenges.issue() } : {}) });
       res.end(req.url === '/status' ? '{"sessions":[]}' : '{"ok":true,"app":"miblo-bridge"}');
     });
     await new Promise((r) => server.listen(0, '127.0.0.1', r));
@@ -887,10 +888,10 @@ test('status is read only from a bridge that proves it knows the key; another li
       if (own) {
         assert.deepEqual(st, { sessions: [] });
         assert.deepEqual(seen.map((q) => q.url), ['/health', '/status']);
-        assert.equal(seen[1].key, key);
+        assert.equal(seen[1].signed, true);
       } else {
         assert.equal(st, null);
-        assert.deepEqual(seen, [{ url: '/health', key: undefined }]);
+        assert.deepEqual(seen, [{ url: '/health', signed: undefined }]);
         assert.match(fs.readFileSync(path.join(dataDir, 'bridge.log'), 'utf8'), /answers without the bridge key/);
       }
     } finally {

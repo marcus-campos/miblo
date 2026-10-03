@@ -8,14 +8,14 @@ import { startFakeDevice } from './fakes/fake-device.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { createBridge } from '../bin/bridge.js';
+import { bridgeRequest, authHeader, checkedHealth } from '../lib/bridge-auth.js';
 
 async function started(bridge) {
   await new Promise((r) => bridge.server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${bridge.server.address().port}`;
-  // As the hooks, the status line and the CLI do: with the bridge key (bridge-auth.js).
-  const auth = { 'x-miblo-key': bridge.key };
-  const post = (p, body) => fetch(base + p, { method: 'POST', headers: { 'content-type': 'application/json', ...auth }, body: typeof body === 'string' ? body : JSON.stringify(body) });
-  const get = (p) => fetch(base + p, { headers: auth });
+  // As the hooks, the status line and the CLI do: signed over a challenge from /health (bridge-auth.js).
+  const post = (p, body) => bridgeRequest(base, bridge.key, { method: 'POST', path: p, body: typeof body === 'string' ? body : JSON.stringify(body) });
+  const get = (p) => bridgeRequest(base, bridge.key, { path: p });
   return { base, post, get, stop: () => new Promise((r) => bridge.server.close(r)) };
 }
 
@@ -156,7 +156,8 @@ test('rejects foreign Host, any Origin, and non-JSON POST bodies', async () => {
   const bridge = createBridge({ dataDir, discoverFn: async () => [] });
   const http = await started(bridge);
   const port = bridge.server.address().port;
-  const json = { 'content-type': 'application/json', 'x-miblo-key': bridge.key };
+  const json = { 'content-type': 'application/json' };
+  const signed = async (p, body) => ({ 'x-miblo-auth': authHeader(bridge.key, (await checkedHealth(http.base, bridge.key)).challenge, 'POST', p, body) });
   try {
     assert.equal(await rawRequest(port, { headers: { host: `127.0.0.1:${port}` } }), 200);
     assert.equal(await rawRequest(port, { headers: { host: `localhost:${port}` } }), 200);
@@ -165,10 +166,10 @@ test('rejects foreign Host, any Origin, and non-JSON POST bodies', async () => {
     assert.equal(await rawRequest(port, { headers: {} }), 400); // node rejects HTTP/1.1 without Host
     assert.equal(await rawRequest(port, { headers: { host: `127.0.0.1:${port}`, origin: 'https://evil.example' } }), 403);
     const ev = JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' });
-    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, 'x-miblo-key': bridge.key, 'content-type': 'text/plain' }, body: ev }), 415);
-    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, 'x-miblo-key': bridge.key }, body: ev }), 415);
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, ...(await signed('/event', ev)), 'content-type': 'text/plain' }, body: ev }), 415);
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, ...(await signed('/event', ev)) }, body: ev }), 415);
     assert.equal(bridge.tracker.sessions().length, 0);
-    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, ...json, 'content-type': 'application/json; charset=utf-8' }, body: ev }), 200);
+    assert.equal(await rawRequest(port, { method: 'POST', path: '/event', headers: { host: `127.0.0.1:${port}`, ...json, ...(await signed('/event', ev)), 'content-type': 'application/json; charset=utf-8' }, body: ev }), 200);
     assert.equal(bridge.tracker.sessions().length, 1);
   } finally {
     await http.stop();
@@ -184,7 +185,7 @@ test('/health and every /event reply report the version; POST /shutdown invokes 
     assert.deepEqual(await (await fetch(http.base + '/health')).json(), { ok: true, app: 'miblo-bridge', version: '9.9.9' });
     const ev = await http.post('/event', { session_id: 's1', hook_event_name: 'SessionStart' });
     assert.deepEqual(await ev.json(), { ok: true, app: 'miblo-bridge', version: '9.9.9' });
-    assert.equal((await fetch(http.base + '/shutdown', { method: 'POST', headers: { 'x-miblo-key': bridge.key } })).status, 415);
+    assert.equal((await fetch(http.base + '/shutdown', { method: 'POST' })).status, 415);
     assert.equal(shutdowns, 0);
     const r = await http.post('/shutdown', {});
     assert.equal(r.status, 200);
@@ -280,7 +281,7 @@ test('last week goes out on Mondays only; a running command carries when it star
 
 // F5: on a shared computer another local user can reach 127.0.0.1 too. The bridge answers them
 // only /health; it proves itself to its own clients with the key in <data>/bridge.key.
-test('every request but /health needs the bridge key; /health proves the bridge knows it', async () => {
+test('every request but /health answers a single-use challenge with the key; /health proves the bridge knows it', async () => {
   const { proofFor } = await import('../lib/bridge-auth.js');
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
   let shutdowns = 0;
@@ -293,24 +294,42 @@ test('every request but /health needs the bridge key; /health proves the bridge 
     assert.equal(bridge.key, key);
     if (process.platform !== 'win32') assert.equal(fs.statSync(path.join(dataDir, 'bridge.key')).mode & 0o777, 0o600);
     const ev = JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' });
-    for (const k of [undefined, '', '0'.repeat(64), key.toUpperCase(), key.slice(0, 63)]) {
-      const headers = { ...json, ...(k === undefined ? {} : { 'x-miblo-key': k }) };
-      for (const [p, method] of [['/event', 'POST'], ['/statusline', 'POST'], ['/shutdown', 'POST'], ['/status', 'GET']]) {
-        const r = await fetch(http.base + p, { method, headers: method === 'POST' ? headers : { 'x-miblo-key': k ?? '' }, body: method === 'POST' ? ev : undefined });
-        assert.equal(r.status, 401, `${p} ${k}`);
+    const challenge = async () => (await checkedHealth(http.base, key)).challenge;
+    for (const p of ['/event', '/statusline', '/shutdown', '/status']) {
+      const method = p === '/status' ? 'GET' : 'POST';
+      const body = method === 'POST' ? ev : undefined;
+      const variants = [
+        {},
+        { 'x-miblo-key': key },  // the key itself is not a credential
+        { 'x-miblo-auth': key },
+        { 'x-miblo-auth': `${await challenge()}:${'0'.repeat(64)}` },
+        { 'x-miblo-auth': authHeader(key, await challenge(), method, p === '/event' ? '/statusline' : '/event', body ?? '') },
+        { 'x-miblo-auth': authHeader(key, await challenge(), method, p, '{"other":1}') },
+        { 'x-miblo-auth': authHeader('cd'.repeat(32), await challenge(), method, p, body ?? '') },
+        { 'x-miblo-auth': authHeader(key, 'f'.repeat(32), method, p, body ?? '') },
+      ];
+      for (const [i, auth] of variants.entries()) {
+        const r = await fetch(http.base + p, { method, headers: { ...(body ? json : {}), ...auth }, body });
+        assert.equal(r.status, 401, `${p} variant ${i}`);
         await r.text();
       }
     }
+    // A request seen once is no use again: its challenge is spent.
+    const once = { 'x-miblo-auth': authHeader(key, await challenge(), 'POST', '/statusline', '{}') };
+    assert.equal((await fetch(http.base + '/statusline', { method: 'POST', headers: { ...json, ...once }, body: '{}' })).status, 200);
+    assert.equal((await fetch(http.base + '/statusline', { method: 'POST', headers: { ...json, ...once }, body: '{}' })).status, 401);
     assert.equal(bridge.tracker.sessions().length, 0);
     assert.equal(shutdowns, 0);
     const nonce = '0123456789abcdef0123456789abcdef';
     const h = await fetch(http.base + '/health', { headers: { 'x-miblo-nonce': nonce } });
     assert.equal(h.headers.get('x-miblo-proof'), proofFor(key, nonce));
+    assert.match(h.headers.get('x-miblo-challenge'), /^[0-9a-f]{32}$/);
     assert.equal((await h.json()).app, 'miblo-bridge');
     // No nonce, or a malformed one: no proof.
     for (const n of [undefined, 'xyz', nonce + '0']) {
       const r = await fetch(http.base + '/health', { headers: n ? { 'x-miblo-nonce': n } : {} });
       assert.equal(r.headers.get('x-miblo-proof'), null, String(n));
+      assert.equal(r.headers.get('x-miblo-challenge'), null, String(n));
       await r.text();
     }
     assert.equal((await http.post('/event', ev)).status, 200);

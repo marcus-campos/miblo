@@ -12,6 +12,7 @@ import { DayStats } from '../lib/day-stats.js';
 import { buildSnapshot, alertOnlySnapshot, trimSnapshot } from '../lib/snapshot-builder.js';
 import { pickEvent } from '../lib/hook-client.js';
 import { createBridgeServer } from '../lib/bridge-server.js';
+import { authHeader } from '../lib/bridge-auth.js';
 import { MAX_SESSIONS, SNAPSHOT_MAX_BYTES, NAME_LEN, DET_LEN, MODEL_LEN, SESSION_TTL_MS } from '../lib/constants.js';
 
 const SCALE = Math.max(1, Number(process.env.MIBLO_FUZZ_SCALE) || 1);
@@ -302,7 +303,11 @@ test('bridge server: random requests never crash it and the guard always holds',
       // A valid request (POST /event, a loopback Host, JSON, no Origin) with 0..3 parts changed.
       let method = 'POST', path = r.pick(['/event', '/statusline']), host = r.pick(goodHosts), type = 'application/json';
       let origin = null;
-      let key = KEY;
+      // Signed over a fresh challenge, as the plugin's clients do (bridge-auth.js).
+      const h = await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-miblo-nonce': '0'.repeat(32) } });
+      const challenge = h.headers.get('x-miblo-challenge');
+      await h.text();
+      let auth = 'sign';
       let body = r.pick(['{"session_id":"s1","hook_event_name":"Stop"}',
         JSON.stringify({ session_id: 's2', hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: 'x' } })]);
       for (let k = r.int(4); k > 0; k--) {
@@ -312,7 +317,7 @@ test('bridge server: random requests never crash it and the guard always holds',
           case 2: host = r.pick(hosts); break;
           case 3: type = r.pick(types); origin = r.chance(0.5) ? r.pick(['null', 'https://evil.example', `http://127.0.0.1:${port}`]) : origin; break;
           case 4: body = bodies(); break;
-          case 5: key = r.pick([null, '', KEY.toUpperCase(), KEY.slice(1), 'cd'.repeat(32), `${KEY} `]); break;
+          case 5: auth = r.pick([null, '', KEY, `${challenge}:${'0'.repeat(64)}`, 'wrong-key', 'f'.repeat(32) + ':' + 'a'.repeat(64)]); break;
         }
       }
       const chunked = r.chance(0.15);
@@ -321,8 +326,10 @@ test('bridge server: random requests never crash it and the guard always holds',
       if (r.chance(0.05)) lines.push(`Host: evil.example`);  // a second Host header
       if (type !== null) lines.push(`Content-Type: ${type}`);
       if (origin !== null) lines.push(`Origin: ${origin}`);
-      if (key !== null) lines.push(`X-Miblo-Key: ${key}`);
       const bytes = Buffer.from(body, 'utf8');
+      const authValue = auth === 'sign' ? authHeader(KEY, challenge, method, path, bytes)
+        : auth === 'wrong-key' ? authHeader('cd'.repeat(32), challenge, method, path, bytes) : auth;
+      if (authValue !== null) lines.push(`X-Miblo-Auth: ${authValue}`);
       if (chunked) lines.push('Transfer-Encoding: chunked');
       else lines.push(`Content-Length: ${r.chance(0.1) ? bytes.length + r.int(20) - 10 : bytes.length}`);
       lines.push('Connection: close');
@@ -332,14 +339,13 @@ test('bridge server: random requests never crash it and the guard always holds',
       const before = seen.length;
       const reply = await rawRequest(port, payload);
       const status = Number((reply.match(/^HTTP\/1\.1 (\d{3})/) || [])[1] || 0);
-      const ctx = `request ${i}: ${method} ${path} host=${host} type=${type} origin=${origin} key=${key}`;
+      const ctx = `request ${i}: ${method} ${path} host=${host} type=${type} origin=${origin} auth=${auth}`;
       const hostOk = goodHosts.includes(host);
       // Node itself answers 400 to a request it cannot parse (no Host, a bad length), else the guard 403s.
       if (status && !hostOk) assert.ok(status === 403 || status === 400, `${ctx}: status ${status}`);
       if (!hostOk || origin !== null) assert.equal(seen.length, before, `${ctx}: a refused request reached the handler`);
       if (method === 'POST' && !String(type ?? '').startsWith('application/json')) assert.equal(seen.length, before, `${ctx}: non-JSON body accepted`);
-      // Node trims header values, so a trailing space still names the key.
-      if (key?.trim() !== KEY) assert.equal(seen.length, before, `${ctx}: a request without the key reached the handler`);
+      if (auth !== 'sign') assert.equal(seen.length, before, `${ctx}: a request not signed over a challenge reached the handler`);
       if (seen.length > before) {
         const [, e] = seen.at(-1);
         assert.ok(e !== undefined, ctx);

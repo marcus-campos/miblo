@@ -31,7 +31,8 @@ function loadOriginal() {
 
 // The bridge key (lib/bridge-auth.js, repeated here: this file imports nothing from lib/): the
 // status line goes only to a bridge that proves it knows it, so another user holding the port on
-// a shared computer gets nothing. Null when there is none or it is not plainly ours.
+// a shared computer gets nothing; the key itself is never sent. Null when there is none or it is
+// not plainly ours.
 function readKey() {
   try {
     const file = path.join(dataDir, 'bridge.key');
@@ -71,13 +72,17 @@ async function forward(input) {
     const nonce = crypto.randomBytes(16).toString('hex');
     const health = await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-miblo-nonce': nonce }, signal: AbortSignal.timeout(150) });
     await health.arrayBuffer().catch(() => {});
-    if (!proven(key, nonce, health.headers.get('x-miblo-proof'))) {
+    const challenge = health.headers.get('x-miblo-challenge');
+    if (!proven(key, nonce, health.headers.get('x-miblo-proof')) || !/^[0-9a-f]{32}$/.test(challenge ?? '')) {
       noteForeign();
       return;
     }
+    // Signed over the bridge's single-use challenge; the key itself never travels.
+    const digest = crypto.createHash('sha256').update(input).digest('hex');
+    const mac = crypto.createHmac('sha256', key).update(`miblo-req:${challenge}:POST:/statusline:${digest}`).digest('hex');
     const res = await fetch(`http://127.0.0.1:${port}/statusline`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-miblo-key': key },
+      headers: { 'content-type': 'application/json', 'x-miblo-auth': `${challenge}:${mac}` },
       body: input,
       signal: AbortSignal.timeout(150),
     });

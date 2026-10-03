@@ -189,3 +189,17 @@ test('the macOS installer the commands offer is the Node.js version the launcher
     assert.deepEqual([...new Set(md.match(/node-v[\d.]+\.pkg/g))], [`node-v${v}.pkg`], name);
   }
 });
+
+// The macOS installer goes into a fresh private folder (never a fixed name in world-writable
+// /tmp) and is opened only when its SHA-256 matches and it is signed by the Node.js Foundation.
+for (const name of ['pair', 'update', 'link-statusline']) {
+  test(`the /miblo:${name} command verifies the Node.js installer before opening it`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    assert.doesNotMatch(md, /\/tmp\/miblo-node\.pkg/);
+    assert.ok(md.includes('`mktemp -d`'), name);
+    assert.ok(md.includes('pkgutil --check-signature'), name);
+    assert.ok(md.includes('Developer ID Installer: Node.js Foundation (HX7739G8FX)'), name);
+    assert.ok(md.includes('9831a74b04c270a429bd5a240e37712c4fe229b02b032e18ff2e0702c17c20fd'), name);
+    assert.ok(md.indexOf('pkgutil --check-signature') < md.indexOf('open <'), name);
+  });
+}

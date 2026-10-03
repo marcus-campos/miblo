@@ -3,9 +3,8 @@
 // newer Miblo release is out (see lib/update-notice.js).
 import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 import { DeviceStore } from '../lib/device-store.js';
-import { pluginVersion } from '../lib/constants.js';
+import { pluginVersion, isMain } from '../lib/constants.js';
 import { updateNotice } from '../lib/update-notice.js';
 
 const DAY_MS = 24 * 3600_000;
@@ -24,7 +23,7 @@ export function onboardMessage({ store, stampFile, now = () => Date.now() }) {
   return JSON.stringify({ systemMessage: 'Miblo: no desk gadget paired yet. Run /miblo:pair to connect it.' });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   try {
     const dataDir = process.env.CLAUDE_PLUGIN_DATA;
     if (dataDir) {

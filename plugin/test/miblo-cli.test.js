@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { startFakeDevice } from './fakes/fake-device.js';
 import { DeviceClient } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
-import { run, tokenTag } from '../bin/miblo.js';
+import { run, tokenTag, fixedDiscovery } from '../bin/miblo.js';
 
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -842,4 +842,12 @@ test('pair with no answer to the pairing request itself says the code may be use
   const r = await run(['pair', '10.0.0.7', '4827'], d);
   assert.equal(r.code, 1);
   assert.match(r.out, /No answer from the Miblo gadget at 10\.0\.0\.7:80 while pairing/);
+});
+
+test('MIBLO_DISCOVER_JSON replaces mDNS discovery (tests only); unset or invalid, mDNS is used', async () => {
+  const list = [{ id: 'miblo-4f2a', name: 'Desk', addr: '127.0.0.1:8080' }];
+  assert.deepEqual(await fixedDiscovery({ MIBLO_DISCOVER_JSON: JSON.stringify(list) })(), list);
+  assert.equal(fixedDiscovery({}), null);
+  assert.equal(fixedDiscovery({ MIBLO_DISCOVER_JSON: 'not json' }), null);
+  assert.equal(fixedDiscovery({ MIBLO_DISCOVER_JSON: '{"id":"x"}' }), null);
 });

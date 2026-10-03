@@ -37,10 +37,10 @@ function guard(req, port) {
   return null;
 }
 
-// `key`: the bridge key (bridge-auth.js ensureKey). Every request but /health must answer one of
+// `key`: the bridge key (bridge-auth.js ensureKey), or a function giving the current one. Every request but /health must answer one of
 // the bridge's challenges with it (x-miblo-auth); without a key all of them are refused, so
 // another local user's programs get nothing and can send nothing.
-export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key = null, now }) {
+export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key: keyOf = null, now }) {
   const challenges = new Challenges(now ? { now } : {});
   const server = http.createServer(async (req, res) => {
     const send = (code, obj, headers = {}) => {
@@ -48,6 +48,7 @@ export function createBridgeServer({ onEvent, onStatusline, getStatus, version =
       res.end(JSON.stringify(obj));
     };
     try {
+      const key = typeof keyOf === 'function' ? keyOf() : keyOf;
       const denied = guard(req, server.address()?.port);
       if (denied) return send(denied[0], { error: denied[1] });
       if (req.method === 'GET' && req.url === '/health') {

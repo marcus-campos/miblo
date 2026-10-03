@@ -2,6 +2,7 @@
 // Entry point of every hook. It must never delay or break Claude Code:
 // runs with "async": true, catches everything, always exits 0 and never writes to stdout.
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,6 +59,17 @@ async function postJson(p, body, { timeoutMs = 800, signed = true } = {}) {
   }
 }
 
+// Something that is not this user's bridge holds the port: remembered for a few minutes, so the
+// next hooks skip it at once instead of trying to take the port over again.
+const conflictMark = path.join(dataDir, 'bridge-conflict');
+const CONFLICT_MS = 5 * 60_000;
+function markConflict() {
+  try { fs.writeFileSync(conflictMark, ''); } catch { /* best-effort */ }
+}
+function recentConflict() {
+  try { return Date.now() - fs.statSync(conflictMark).mtimeMs < CONFLICT_MS; } catch { return false; }
+}
+
 function startBridge() {
   try {
     const child = spawn(process.execPath, [path.join(here, 'bridge.js'), '--data', dataDir], {
@@ -82,7 +94,11 @@ async function main() {
       // Signed only to our own bridge; an older one (before the key) shuts down unsigned.
       shutdown: (signed) => postJson('/shutdown', '{}', { timeoutMs: 300, signed }),
       startBridge,
-      foreign: () => logForeignOnce(dataDir, PORT),
+      foreign: () => {
+        logForeignOnce(dataDir, PORT);
+        markConflict();
+      },
+      recentConflict,
       sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
     },
     {

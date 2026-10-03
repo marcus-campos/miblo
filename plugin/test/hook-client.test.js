@@ -43,7 +43,7 @@ test('isConnError distinguishes connection errors from HTTP errors and timeouts'
   assert.equal(isConnError(new DOMException('timeout', 'TimeoutError')), false);
 });
 
-function fakeIo({ postResults = [], healthResults = [] } = {}) {
+function fakeIo({ postResults = [], healthResults = [], shutdownError = null, recentConflict = false } = {}) {
   const calls = [];
   let slept = 0;
   const io = {
@@ -59,7 +59,8 @@ function fakeIo({ postResults = [], healthResults = [] } = {}) {
       calls.push(['health']);
       return healthResults.length > 1 ? healthResults.shift() : healthResults[0] ?? null;
     },
-    async shutdown(withKey) { calls.push(['shutdown', withKey]); },
+    async shutdown(withKey) { calls.push(['shutdown', withKey]); if (shutdownError) throw shutdownError; },
+    recentConflict() { return recentConflict; },
     startBridge() { calls.push(['spawn']); },
     foreign() { calls.push(['foreign']); },
     async sleep(ms) { slept += ms; },
@@ -188,4 +189,22 @@ test('pickEvent forwards an unknown notification_type but never its message', ()
   for (const bad of ['x'.repeat(65), 'has spaces in it', 'a\nb', '']) {
     assert.deepEqual(pickEvent({ ...base, notification_type: bad }), { session_id: 's', hook_event_name: 'Notification' }, bad);
   }
+});
+
+// A keyless shutdown refused (401/403): a bridge of another config dir, or a foreign process that
+// speaks HTTP. It is left alone at once: no spawn, no waiting.
+for (const status of [401, 403]) {
+  test(`a listener that refuses the keyless shutdown (${status}) is foreign at once: no spawn, no wait`, async () => {
+    const io = fakeIo({ healthResults: [unproven('1')], shutdownError: Object.assign(new Error('x'), { status }) });
+    assert.equal(await deliver('B', io, { version: '2' }), 'foreign');
+    assert.deepEqual(names(io), ['health', 'shutdown', 'foreign']);
+    assert.equal(io.slept(), 0);
+  });
+}
+
+test('after a recent conflict, a listener that cannot prove itself is skipped without a shutdown or a spawn', async () => {
+  const io = fakeIo({ healthResults: [unproven('1')], recentConflict: true });
+  assert.equal(await deliver('B', io, { version: '2' }), 'foreign');
+  assert.deepEqual(names(io), ['health', 'foreign']);
+  assert.equal(io.slept(), 0);
 });

@@ -68,15 +68,16 @@ async function poll(check, { sleep, maxMs, everyMs = POLL_EVERY_MS }) {
 }
 
 /**
- * io: { post(body) -> reply object, health() -> object|null, shutdown(withKey), startBridge(),
- *       foreign(), sleep(ms) }
+ * io: { post(body) -> reply object, health() -> object|null, shutdown(signed), startBridge(),
+ *       foreign(), recentConflict() -> bool, sleep(ms) }
  * health() resolves null when nothing answers, and otherwise an object with `proven`: whether the
  * answer proved knowledge of the bridge key (bridge-auth.js). Nothing is posted to a listener that
  * did not prove it: on a shared computer another user may hold the port.
  * A bridge of another version (after /reload-plugins the hooks are new, the running bridge is not)
  * is shut down and replaced by this plugin's. So is one that says it is the bridge but cannot
- * prove it (an older bridge, before the key): it is asked without the key, and if it stays it is
- * foreign.
+ * prove it (an older bridge, before the key), asked unsigned, once: if it refuses (a bridge of
+ * another config dir, or another program) or stays, it is foreign, and foreign() remembers that
+ * for a few minutes (recentConflict) so later events skip it at once instead of retrying.
  */
 export async function deliver(body, io, { allowSpawn = true, version = '' } = {}) {
   const ours = (h) => h?.app === 'miblo-bridge' && h.proven === true;
@@ -96,22 +97,31 @@ export async function deliver(body, io, { allowSpawn = true, version = '' } = {}
     await post();
     return 'spawned';
   };
-  const replace = async (withKey) => {
-    await io.shutdown(withKey).catch(() => {});
+  const waitDownAndSpawn = async () => {
     await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
     return spawnAndPost();
+  };
+  const foreign = () => {
+    io.foreign();
+    return 'foreign';
   };
 
   const h = await io.health();
   if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
   if (ours(h)) {
-    if (allowSpawn && version && h.version !== version) return replace(true);
+    if (allowSpawn && version && h.version !== version) {
+      await io.shutdown(true).catch(() => {});
+      return waitDownAndSpawn();
+    }
     return (await post()) ? 'sent' : 'dropped';
   }
-  if (allowSpawn && claims(h)) {
-    const r = await replace(false);
-    if (r !== 'timeout') return r;
+  if (!allowSpawn || !claims(h) || io.recentConflict?.()) return foreign();
+  try {
+    await io.shutdown(false);
+  } catch (e) {
+    // Refused (401, 403...): not a bridge that takes an unsigned shutdown. Leave it alone.
+    if (e?.status) return foreign();
   }
-  io.foreign();
-  return 'foreign';
+  const r = await waitDownAndSpawn();
+  return r === 'timeout' ? foreign() : r;
 }

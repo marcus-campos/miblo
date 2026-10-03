@@ -21,7 +21,15 @@ import { ensureKey } from '../lib/bridge-auth.js';
 // `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
 // DeviceManager's default when omitted.
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {}, addrOk = null,
-  release = createReleaseCache({ dataDir, now }), zones, key = ensureKey(dataDir) }) {
+  release = createReleaseCache({ dataDir, now }), zones }) {
+  // The bridge key follows <data>/bridge.key: removed or replaced while the bridge runs (a cleanup,
+  // another install), the clients' new key is taken up at once (re-made from here if missing).
+  let lastKey = ensureKey(dataDir);
+  const currentKey = () => {
+    const k = ensureKey(dataDir);
+    if (k) lastKey = k;
+    return lastKey;
+  };
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
@@ -47,7 +55,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
 
   const server = createBridgeServer({
     version,
-    key,
+    key: currentKey,
     onShutdown,
     onEvent(evt) {
       if (evt?.hook_event_name === 'SessionEnd') metrics.forget(evt.session_id);
@@ -72,7 +80,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     },
   });
 
-  return { tracker, metrics, day, forecast, devices, release, server, key, push, schedule, idleFor: () => now() - lastActive };
+  return { tracker, metrics, day, forecast, devices, release, server, get key() { return currentKey(); }, push, schedule, idleFor: () => now() - lastActive };
 }
 
 function main() {

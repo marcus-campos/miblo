@@ -95,7 +95,8 @@ for (const claim of [false, true]) {
         assert.ok(!q.body.includes('secret') && !q.body.includes('s1') && !q.body.includes(key), q.body);
         assert.ok(!JSON.stringify(q.headers).includes(key));
       }
-      assert.equal(squatter.requests.some((q) => q.url === '/shutdown'), claim);
+      // Asked to make way once at most; the next event skips it at once (remembered for minutes).
+      assert.equal(squatter.requests.filter((q) => q.url === '/shutdown').length, claim ? 1 : 0);
       const log = fs.readFileSync(path.join(dataDir, 'bridge.log'), 'utf8').trim().split('\n');
       assert.equal(log.length, 1);
       assert.match(log[0], /answers without the bridge key/);
@@ -141,4 +142,34 @@ test('the bridge is spawned from the home dir with the shared data-dir fallback'
   assert.match(src, /cwd: os\.homedir\(\)/);
   assert.match(src, /const dataDir = defaultDataDir\(\)/);
   assert.match(src, /'--data', dataDir\]/);
+});
+
+test('a bridge of another config dir refusing the unsigned shutdown is left alone at once', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-hook-'));
+  const { createBridge } = await import('../bin/bridge.js');
+  const other = createBridge({ dataDir: fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-hook-other-')), discoverFn: async () => [] });
+  await new Promise((r) => other.server.listen(0, '127.0.0.1', r));
+  try {
+    const t0 = Date.now();
+    await runHook(JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' }), { MIBLO_PORT: String(other.server.address().port), CLAUDE_PLUGIN_DATA: dataDir });
+    assert.ok(Date.now() - t0 < 1500, 'no spawn-and-wait');
+    assert.equal(other.tracker.sessions().length, 0);
+    assert.ok(fs.existsSync(path.join(dataDir, 'bridge-conflict')));
+  } finally {
+    await new Promise((r) => other.server.close(r));
+  }
+});
+
+test('the key file replaced while the bridge runs: the next hook still reaches it', async () => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-hook-'));
+  const { createBridge } = await import('../bin/bridge.js');
+  const bridge = createBridge({ dataDir, discoverFn: async () => [] });
+  await new Promise((r) => bridge.server.listen(0, '127.0.0.1', r));
+  try {
+    fs.rmSync(path.join(dataDir, 'bridge.key'));
+    await runHook(JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' }), { MIBLO_PORT: String(bridge.server.address().port), CLAUDE_PLUGIN_DATA: dataDir, MIBLO_NO_SPAWN: '1' });
+    assert.equal(bridge.tracker.sessions().length, 1);
+  } finally {
+    await new Promise((r) => bridge.server.close(r));
+  }
 });

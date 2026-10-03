@@ -340,3 +340,29 @@ test('every request but /health answers a single-use challenge with the key; /he
     await http.stop();
   }
 });
+
+// The key file removed or replaced while the bridge runs (a cleanup, another install): the bridge
+// follows the file, so its clients keep reaching it without a restart.
+test('the bridge follows its key file when it is removed or replaced while running', async () => {
+  const { ensureKey, checkedHealth: health } = await import('../lib/bridge-auth.js');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-bridge-'));
+  const bridge = createBridge({ dataDir, discoverFn: async () => [] });
+  const http = await started(bridge);
+  const file = path.join(dataDir, 'bridge.key');
+  try {
+    fs.rmSync(file);
+    const fresh = ensureKey(dataDir);  // as the next hook does
+    assert.equal((await health(http.base, fresh)).proven, true);
+    assert.equal((await bridgeRequest(http.base, fresh, { method: 'POST', path: '/event', body: JSON.stringify({ session_id: 's1', hook_event_name: 'SessionStart' }) })).status, 200);
+    fs.writeFileSync(file, 'cd'.repeat(32) + '\n', { mode: 0o600 });
+    assert.equal((await health(http.base, 'cd'.repeat(32))).proven, true);
+    assert.equal((await health(http.base, fresh)).proven, false);
+    // Removed and not re-made by a client: the bridge puts a key back, the one clients then read.
+    fs.rmSync(file);
+    await (await fetch(http.base + '/health', { headers: { 'x-miblo-nonce': '1'.repeat(32) } })).text();
+    const back = fs.readFileSync(file, 'utf8').trim();
+    assert.equal((await health(http.base, back)).proven, true);
+  } finally {
+    await http.stop();
+  }
+});

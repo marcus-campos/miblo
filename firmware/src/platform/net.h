@@ -36,6 +36,10 @@ uint8_t joinFailureCode();
 // current WiFi.status() (wl_status_t).
 uint8_t lastDisconnectReason();
 int wifiStatus();
+// The safety net (miblo::LinkKeeper) since boot: disconnect+begin cycles it issued, and links it
+// found dead (WL_CONNECTED, but the gateway stopped answering ARP).
+uint32_t reconnectCycles();
+uint32_t deadLinks();
 // Reapplies the timezone (ctx.cfg.tz: its live offset from the bridge while fresh, else the IANA
 // name resolved to POSIX via miblo_tz) and NTP.
 void applyTimezone();

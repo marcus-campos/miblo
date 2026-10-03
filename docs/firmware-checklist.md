@@ -75,7 +75,9 @@ notes.
    password; the device shows a "Wrong password" screen with the QR code; correcting it connects.
 9. **Recovery:** power off the router; after ~5 minutes (~2 if the gadget never connected since it
    started) the `Miblo-Setup-XXXX` network and QR appear; power the router back on; the gadget returns on its own to the saved network and the
-   setup network disappears.
+   setup network disappears. With the router off for over 3 minutes, `/api/info` then shows
+   `wifiReconnects` of 1 or more (the safety net's disconnect+begin cycles: 3, 9, 21 min... after
+   the drop, at most 15 min apart; one clean restart after 30 min without a working link).
 10. **Power-cycle reset (no 3-cycle reset):** six quick power-on cycles in a row,
     each under 10 s of uptime. From the 3rd through the 5th quick boot, the screen shows an amber
     countdown ("N more quick restarts to reset" / "leave it on to cancel"); leaving the device

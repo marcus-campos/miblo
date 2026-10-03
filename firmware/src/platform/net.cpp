@@ -3,8 +3,13 @@
 #include <DNSServer.h>
 #include <new>
 #include <time.h>
+#if defined(ESP8266)
+#include <lwip/etharp.h>
+#include <lwip/netif.h>
+#endif
 
 #include "../context.h"
+#include "miblo_link.h"
 #include "miblo_livetz.h"
 #include "miblo_tz.h"
 #include "platform.h"
@@ -13,6 +18,7 @@
 namespace net {
 
 static miblo::NetPolicy policy;
+static miblo::LinkKeeper keeper;  // the safety net: probes, disconnect+begin cycles, a last restart
 static DNSServer dns;
 static bool apOn = false;
 static bool scanStarted = false;  // a background scan for the setup page was started
@@ -196,6 +202,7 @@ void begin(uint32_t nowMs) {
   strlcpy(savedPass, WiFi.psk().c_str(), sizeof(savedPass));
   if (hasCreds) WiFi.begin();
   policy.begin(hasCreds, nowMs);
+  keeper.begin(nowMs);
   lastRetryMs = nowMs;
   applyTimezone();
 }
@@ -247,6 +254,62 @@ static void scanStep(uint32_t nowMs) {
   WiFi.scanNetworks(true, false, sweepChannel);
   scanStarted = true;
 }
+
+// What miblo::runLinkKeeper does, on the ESP8266.
+struct Station {
+  uint32_t nowMs;
+#if defined(ESP8266)
+  // The station's interface and the gateway, or false when there is nothing to probe.
+  static bool target(netif*& n, ip4_addr_t& gw) {
+    const uint32_t ip = (uint32_t)WiFi.localIP();
+    ip4_addr_set_u32(&gw, (uint32_t)WiFi.gatewayIP());
+    if (!ip || ip4_addr_isany_val(gw)) return false;
+    for (n = netif_list; n; n = n->next) {
+      if (netif_is_up(n) && ip4_addr_get_u32(netif_ip4_addr(n)) == ip) return true;
+    }
+    return false;
+  }
+  // The ARP table is flushed first, so only a fresh reply puts the gateway back in it. Probes run
+  // while nothing is heard from the computer (and at link-up), so flushing costs nobody a packet.
+  void sendProbe() {
+    netif* n;
+    ip4_addr_t gw;
+    if (!target(n, gw)) return;
+    etharp_cleanup_netif(n);
+    etharp_request(n, &gw);
+  }
+  // Nothing to probe (no gateway): counted as answered, never as a dead link.
+  bool probeAnswered() {
+    netif* n;
+    ip4_addr_t gw;
+    if (!target(n, gw)) return true;
+    struct eth_addr* mac;
+    const ip4_addr_t* found;
+    return etharp_find_addr(n, &gw, &mac, &found) >= 0;
+  }
+#else
+  void sendProbe() {}
+  bool probeAnswered() { return true; }
+#endif
+  void dropStation() {
+#if defined(ESP8266)
+    WiFi.disconnect(false, false);  // keeps the credentials (in RAM and flash)
+#else
+    WiFi.disconnect();
+#endif
+  }
+  void joinSaved() {
+    WiFi.persistent(false);
+    WiFi.begin(savedSsid, savedPass);
+    WiFi.persistent(true);
+    lastRetryMs = nowMs;
+  }
+  void restart() {
+    if (ctx.rebootRequested) return;
+    ctx.rebootRequested = true;  // app.cpp's reboot path flushes pending saves first
+    ctx.rebootAtMs = nowMs;
+  }
+};
 
 void loop(uint32_t nowMs, bool heapLow) {
   const bool apHasStations = apOn && WiFi.softAPgetStationNum() > 0;
@@ -329,6 +392,14 @@ void loop(uint32_t nowMs, bool heapLow) {
     lastRetryMs = nowMs;
     WiFi.begin();
   }
+
+  // The safety net (miblo::LinkKeeper): the SDK's auto-reconnect and the policy above only react to
+  // what WiFi.status() says. Held while a phone is on the setup network, a submitted network is
+  // tried or an update runs.
+  Station station{nowMs};
+  const bool mayAct = savedSsid[0] && !trialBusy() && !apHasStations && !ctx.updating;
+  const bool quiet = !ctx.hasSnapshot || nowMs - ctx.lastSnapshotMs >= miblo::LinkKeeper::kProbeEveryMs;
+  miblo::runLinkKeeper(keeper, station, nowMs, curLink == miblo::LinkStatus::Connected, mayAct, quiet);
 }
 
 miblo::NetState state() { return policy.state(); }
@@ -342,6 +413,8 @@ const char* scannedNetwork(uint8_t i) { return i < netCount ? nets[i].ssid : "";
 miblo::JoinFailure joinFailure() { return policy.failure(); }
 uint8_t joinFailureCode() { return policy.failureCode(); }
 uint8_t lastDisconnectReason() { return lastReason; }
+uint32_t reconnectCycles() { return keeper.reconnects(); }
+uint32_t deadLinks() { return keeper.deadLinks(); }
 int wifiStatus() { return (int)WiFi.status(); }
 uint32_t connectionId() { return connId; }
 

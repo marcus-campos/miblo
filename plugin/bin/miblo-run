@@ -25,11 +25,13 @@
 # <data>/runtime/launcher.log. <data> is $CLAUDE_PLUGIN_DATA, else the plugin's data dir under
 # the Claude config dir when it exists, else ~/.miblo. Only --check and the status line take
 # `--data <absolute dir>` (right after them): the slash commands' arguments carry user text, which
-# must never choose the node that runs.
+# must never choose the node that runs. For --check it must be one of those canonical dirs (or
+# ~/.miblo); any other is ignored.
 #
 # Trust: PATH entries that are empty or relative are skipped; a node found inside the working
 # directory runs but is never cached; the cache is used only when it is ours (owned by the user,
-# in a runtime dir nobody else can write, naming an absolute .../node that still runs as >= 20).
+# in a runtime dir nobody else can write, naming an absolute .../node that still runs as >= 20);
+# a downloaded runtime likewise (a regular file, it and its dirs owned by the user and private).
 #
 # Environment for tests: MIBLO_SYSROOT (prefix of the system locations), MIBLO_NODE_PLATFORM
 # (<os>-<arch>), MIBLO_WAIT (seconds to wait for a download another process is making, default
@@ -81,17 +83,25 @@ if [ "$check" = 0 ]; then
   [ -f "$here/$script" ] || exit 0
 fi
 
+conf=${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}
 data=
 if [ "$check" = 1 ] || [ "${script:-}" = statusline-tap.mjs ]; then
   if [ "${1:-}" = "--data" ]; then
     case ${2:-} in
       /* | [A-Za-z]:[\\/]*) data=$2 ;;
     esac
+    # --check is pre-allowed in the slash commands, where a prompt injection could steer it to a
+    # cache planted in a cloned repository: there, only the canonical data dirs count.
+    if [ "$check" = 1 ] && [ -n "$data" ]; then
+      case ${data%/} in
+        "${CLAUDE_PLUGIN_DATA:-/nonexistent/}" | "$conf/plugins/data/miblo-miblo" | "${HOME:-/nonexistent/}/.miblo") ;;
+        *) data= ;;
+      esac
+    fi
   fi
 fi
 [ -n "$data" ] || data=${CLAUDE_PLUGIN_DATA:-}
 if [ -z "$data" ]; then
-  conf=${CLAUDE_CONFIG_DIR:-${HOME:-.}/.claude}
   if [ -d "$conf/plugins/data/miblo-miblo" ]; then
     data="$conf/plugins/data/miblo-miblo"
   else
@@ -280,8 +290,21 @@ well_known() {
   return 1
 }
 
+# Owned by the user and not writable by group or others.
+private() {
+  [ -O "$1" ] && [ -z "$("$FIND" "$1" -prune \( -perm -020 -o -perm -002 \) 2> /dev/null)" ]
+}
+
+# A runtime downloaded earlier, only when it is plainly ours, as the cache: a regular file, and
+# it and every directory up to the runtime dir private.
 downloaded() {
   for dl in "$rt"/node-v*/bin/node "$rt"/node-v*/node.exe; do
+    [ -f "$dl" ] && [ ! -L "$dl" ] || continue
+    dl_p=$dl
+    while [ "$dl_p" != "$rt" ] && private "$dl_p"; do
+      dl_p=${dl_p%/*}
+    done
+    [ "$dl_p" = "$rt" ] && private "$rt" || continue
     try "$dl" && return 0
   done
   return 1

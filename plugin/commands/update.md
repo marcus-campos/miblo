@@ -1,7 +1,7 @@
 ---
 description: Update the Miblo plugin and a paired gadget's firmware
 argument-hint: "[id] [--file path]"
-allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
 ---
 
 You manage Miblo desk gadgets with this CLI (call it `MIBLO` below):
@@ -22,7 +22,7 @@ A path goes as ONE single-quoted argument with each `'` inside written as `'\''`
 
 ## 0. Node.js check (always first)
 
-Miblo runs on Node.js 20 or newer. Before anything else run `sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check --data "${CLAUDE_PLUGIN_DATA}"` (the first time it may download Node.js once, which can take a minute). It prints one line:
+Miblo runs on Node.js 20 or newer. Before anything else run `sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check` (the first time it may download Node.js once, which can take a minute). It prints one line:
 
 - `ok version=<v> node=<path>`: say nothing about it and go on.
 - `missing reason=<why>`: tell the user in one or two sentences that Miblo needs Node.js 20 or newer and could not find or download it (give the reason in plain words). Then ask with AskUserQuestion: "Install Node.js now?" Yes/No.

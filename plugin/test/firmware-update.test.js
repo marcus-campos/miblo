@@ -333,6 +333,25 @@ test('open while another code is on the gadget screen says so (busy), not "wrong
   } finally { await t.close(); }
 });
 
+// Firmware F4 follow-up: an anonymous LAN host could keep the owner out of OTA by re-opening a
+// code before each expires. /update/open now carries the pairing token, and an authorised request
+// replaces a code opened anonymously (never one an authorised session opened).
+test('open sends the pairing token, so it replaces a code a stranger opened anonymously', async () => {
+  const t = await setup({ device: { otherCodeSec: 240, tokens: ['t'] } });
+  try {
+    const o = await t.cli('open', 'miblo-0000');
+    assert.equal(o.code, 0, o.out);
+    assert.ok(t.dev.state.gateOpen);
+    assert.ok(t.dev.state.authHeaders.includes('Bearer t'));
+  } finally { await t.close(); }
+  const u = await setup({ device: { otherCodeSec: 240, otherCodeAnon: false, tokens: ['t'] } });
+  try {
+    const o = await u.cli('open', 'miblo-0000');
+    assert.equal(o.code, 2);
+    assert.match(o.out, /Another code is on the gadget screen/);
+  } finally { await u.close(); }
+});
+
 test('a busy gadget (503) is reported busy by update and check, not unreachable', async () => {
   const t = await setup({ device: { busy: Infinity } });
   try {

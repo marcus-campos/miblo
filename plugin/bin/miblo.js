@@ -11,6 +11,7 @@ import { link, unlink, isLinked } from '../lib/statusline-link.js';
 import { FirmwareUpdater } from '../lib/firmware-update.js';
 import { DAILY_COMMANDS, DAILY_USAGE } from '../lib/daily-cli.js';
 import { tokenTag } from '../lib/relocation.js';
+import { KEY_HEADER, readKey as readBridgeKey, checkedHealth, logForeignOnce } from '../lib/bridge-auth.js';
 
 const MODES = ['overview', 'limits', 'sessions'];
 const USAGE = [
@@ -110,9 +111,19 @@ async function settings(args, store, openUrl) {
   return ok(lines.join('\n'));
 }
 
-async function defaultFetchStatus() {
+// The running bridge's status, or null when it is not running. Asked only of a bridge that
+// proves it knows the bridge key (bridge-auth.js): something else on the port gets nothing.
+export async function fetchBridgeStatus(dataDir, { port = PORT, fetchImpl = globalThis.fetch } = {}) {
+  const base = `http://${HOST}:${port}`;
+  const key = readBridgeKey(dataDir);
+  const h = await checkedHealth(base, key, { fetchImpl, timeoutMs: 800 });
+  if (!h) return null;
+  if (!h.proven) {
+    logForeignOnce(dataDir, port);
+    return null;
+  }
   try {
-    const res = await fetch(`http://${HOST}:${PORT}/status`, { signal: AbortSignal.timeout(800) });
+    const res = await fetchImpl(`${base}/status`, { headers: { [KEY_HEADER]: key }, signal: AbortSignal.timeout(800) });
     return res.ok ? await res.json() : null;
   } catch {
     return null;
@@ -555,7 +566,9 @@ export async function run(argv, deps) {
           try { full = { ...((await client.info(addr, token)) ?? {}), id: first.id }; } catch { /* best-effort */ }
         }
         const info = safe({ ...full, name: cleanName(full.name) || defaultNameFor(first.id) });
-        store.upsert({ id: info.id, name: info.name, addr, token });
+        // fw: the firmware it runs (relocation.js: one with the challenge must always answer it).
+        const fw = !isReducedInfo(full) && typeof full.fw === 'string' && /^\d+\.\d+\.\d+[0-9A-Za-z.+-]{0,40}$/.test(full.fw) ? full.fw : null;
+        store.upsert({ id: info.id, name: info.name, addr, token, ...(fw ? { fw } : {}) });
         if (!isReducedInfo(full) && full.langSet !== true) {
           // Best-effort: the language was never chosen explicitly (automatic mode, or a
           // firmware before 0.2.3 that does not report it), so seed it from the host's
@@ -688,7 +701,7 @@ async function main() {
     client: new DeviceClient(),
     discoverFn: fixedDiscovery(process.env) ?? (() => discover()),
     hostname: os.hostname(),
-    fetchStatus: defaultFetchStatus,
+    fetchStatus: () => fetchBridgeStatus(dataDir),
     locale: Intl.DateTimeFormat().resolvedOptions().locale,
     openUrl: (url) => openInBrowser(url),
   });

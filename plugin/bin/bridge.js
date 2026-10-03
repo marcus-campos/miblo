@@ -16,11 +16,12 @@ import { createBridgeServer } from '../lib/bridge-server.js';
 import { createReleaseCache } from '../lib/update-notice.js';
 import { refreshLink } from '../lib/statusline-link.js';
 import { createLogger, errText } from '../lib/logger.js';
+import { ensureKey } from '../lib/bridge-auth.js';
 
 // `zones`: where the gadgets' live time zone offsets come from (tz-offsets.js ZoneOffsets);
 // DeviceManager's default when omitted.
 export function createBridge({ dataDir, now = () => Date.now(), client = new DeviceClient(), discoverFn = discover, host = os.hostname(), version = '', onShutdown = () => {}, log = () => {}, addrOk = null,
-  release = createReleaseCache({ dataDir, now }), zones }) {
+  release = createReleaseCache({ dataDir, now }), zones, key = ensureKey(dataDir) }) {
   const tracker = new SessionTracker({ now });
   const metrics = new MetricsStore({ now, dataDir });
   const day = new DayStats({ dataDir, now });
@@ -46,6 +47,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
 
   const server = createBridgeServer({
     version,
+    key,
     onShutdown,
     onEvent(evt) {
       if (evt?.hook_event_name === 'SessionEnd') metrics.forget(evt.session_id);
@@ -70,7 +72,7 @@ export function createBridge({ dataDir, now = () => Date.now(), client = new Dev
     },
   });
 
-  return { tracker, metrics, day, forecast, devices, release, server, push, schedule, idleFor: () => now() - lastActive };
+  return { tracker, metrics, day, forecast, devices, release, server, key, push, schedule, idleFor: () => now() - lastActive };
 }
 
 function main() {

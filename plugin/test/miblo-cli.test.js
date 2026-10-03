@@ -51,6 +51,17 @@ test('pair stores the device; wrong code returns 2', async () => {
   }
 });
 
+test('pair keeps the firmware version the gadget reports (relocation needs it)', async () => {
+  const dev = await startFakeDevice({ fw: '1.14.0' });
+  const d = deps();
+  try {
+    assert.equal((await run(['pair', dev.addr, '4827'], d)).code, 0);
+    assert.equal(new DeviceStore(d.dataDir).list()[0].fw, '1.14.0');
+  } finally {
+    await dev.close();
+  }
+});
+
 test('pair after 5 wrong codes reports the lockout with seconds remaining', async () => {
   let t = 0;
   const dev = await startFakeDevice({ now: () => t });
@@ -853,4 +864,37 @@ test('MIBLO_DISCOVER_JSON replaces mDNS discovery (tests only); unset or invalid
   assert.equal(fixedDiscovery({ MIBLO_TEST: '1' }), null);
   assert.equal(fixedDiscovery({ MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: 'not json' }), null);
   assert.equal(fixedDiscovery({ MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: '{"id":"x"}' }), null);
+});
+
+// F5: the CLI asks /status only of a bridge that proves it knows the bridge key.
+test('status is read only from a bridge that proves it knows the key; another listener gets nothing', async () => {
+  const { fetchBridgeStatus } = await import('../bin/miblo.js');
+  const { ensureKey, proofFor } = await import('../lib/bridge-auth.js');
+  const http = await import('node:http');
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-cli-key-'));
+  const key = ensureKey(dataDir);
+  for (const own of [true, false]) {
+    const seen = [];
+    const server = http.createServer((req, res) => {
+      seen.push({ url: req.url, key: req.headers['x-miblo-key'] });
+      const nonce = req.headers['x-miblo-nonce'];
+      res.writeHead(200, { 'content-type': 'application/json', ...(own && nonce ? { 'x-miblo-proof': proofFor(key, nonce) } : {}) });
+      res.end(req.url === '/status' ? '{"sessions":[]}' : '{"ok":true,"app":"miblo-bridge"}');
+    });
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const st = await fetchBridgeStatus(dataDir, { port: server.address().port });
+      if (own) {
+        assert.deepEqual(st, { sessions: [] });
+        assert.deepEqual(seen.map((q) => q.url), ['/health', '/status']);
+        assert.equal(seen[1].key, key);
+      } else {
+        assert.equal(st, null);
+        assert.deepEqual(seen, [{ url: '/health', key: undefined }]);
+        assert.match(fs.readFileSync(path.join(dataDir, 'bridge.log'), 'utf8'), /answers without the bridge key/);
+      }
+    } finally {
+      await new Promise((r) => server.close(r));
+    }
+  }
 });

@@ -43,7 +43,7 @@ test('isConnError distinguishes connection errors from HTTP errors and timeouts'
   assert.equal(isConnError(new DOMException('timeout', 'TimeoutError')), false);
 });
 
-function fakeIo({ postResults = [], healthResults = [], reply = { ok: true, app: 'miblo-bridge', version: '2' } } = {}) {
+function fakeIo({ postResults = [], healthResults = [] } = {}) {
   const calls = [];
   let slept = 0;
   const io = {
@@ -53,109 +53,99 @@ function fakeIo({ postResults = [], healthResults = [], reply = { ok: true, app:
       calls.push(['post', body]);
       const r = postResults.shift();
       if (r instanceof Error) throw r;
-      return r ?? reply;
+      return r ?? { ok: true };
     },
     async health() {
       calls.push(['health']);
       return healthResults.length > 1 ? healthResults.shift() : healthResults[0] ?? null;
     },
-    async shutdown() { calls.push(['shutdown']); },
+    async shutdown(withKey) { calls.push(['shutdown', withKey]); },
     startBridge() { calls.push(['spawn']); },
+    foreign() { calls.push(['foreign']); },
     async sleep(ms) { slept += ms; },
   };
   return io;
 }
-const refused = () => new TypeError('fetch failed');
 const names = (io) => io.calls.map((c) => c[0]);
+// health() answers: our bridge proves it knows the key (bridge-auth.js); anything else does not.
+const ours = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: true });
+const unproven = (version = '2') => ({ ok: true, app: 'miblo-bridge', version, proven: false });
 
-test('delivered on the first try: no spawn', async () => {
-  const io = fakeIo();
-  assert.equal(await deliver('{}', io), 'sent');
-  assert.deepEqual(names(io), ['post']);
-});
-
-test('HTTP error status never spawns a bridge', async () => {
-  const io = fakeIo({ postResults: [Object.assign(new Error('bridge 403'), { status: 403 })] });
-  assert.equal(await deliver('{}', io), 'dropped');
-  assert.deepEqual(names(io), ['post']);
-});
-
-test('connection refused: spawn, poll /health every 100 ms, then post once', async () => {
-  const bridge = { ok: true, app: 'miblo-bridge', version: '1' };
-  const io = fakeIo({ postResults: [refused()], healthResults: [null, null, null, bridge] });
-  assert.equal(await deliver('B', io), 'spawned');
-  assert.deepEqual(names(io), ['post', 'health', 'spawn', 'health', 'health', 'health', 'post']);
-  assert.equal(io.slept(), 300);
-});
-
-test('gives up after 1500 ms of polling without posting again', async () => {
-  const io = fakeIo({ postResults: [refused()], healthResults: [null] });
-  assert.equal(await deliver('B', io), 'timeout');
-  assert.equal(io.slept(), 1500);
-  assert.equal(names(io).filter((n) => n === 'post').length, 1);
-});
-
-test('does not spawn when another app owns the port', async () => {
-  const io = fakeIo({ postResults: [refused()], healthResults: [{ hello: 'world' }] });
-  assert.equal(await deliver('B', io), 'foreign');
-  assert.ok(!names(io).includes('spawn'));
-});
-
-test('MIBLO_NO_SPAWN: never spawns', async () => {
-  const io = fakeIo({ postResults: [refused()] });
-  assert.equal(await deliver('B', io, { allowSpawn: false, checkVersion: true, version: '2' }), 'dropped');
-  assert.deepEqual(names(io), ['post']);
-});
-
-test('version mismatch on SessionStart: shutdown old bridge, spawn new one, post', async () => {
-  const old = { ok: true, app: 'miblo-bridge', version: '1' };
-  const fresh = { ok: true, app: 'miblo-bridge', version: '2' };
-  const io = fakeIo({ healthResults: [old, null, fresh] });
-  assert.equal(await deliver('B', io, { checkVersion: true, version: '2' }), 'spawned');
-  assert.deepEqual(names(io), ['health', 'shutdown', 'health', 'spawn', 'health', 'post']);
-});
-
-test('matching version: plain delivery', async () => {
-  const io = fakeIo({ healthResults: [{ ok: true, app: 'miblo-bridge', version: '2' }] });
-  assert.equal(await deliver('B', io, { checkVersion: true, version: '2' }), 'sent');
+test('our bridge proves itself on /health, then gets the event', async () => {
+  const io = fakeIo({ healthResults: [ours()] });
+  assert.equal(await deliver('{}', io, { version: '2' }), 'sent');
   assert.deepEqual(names(io), ['health', 'post']);
 });
 
-// After /reload-plugins the hooks run the new plugin while the bridge started by the old one keeps
-// running: any event, not only SessionStart, hands the bridge over to the hook's version.
-test('a bridge of another version answering any event is replaced by the hook\'s version', () => {
-  const fresh = { ok: true, app: 'miblo-bridge', version: '2' };
-  const old = { ok: true, app: 'miblo-bridge', version: '1' };
-  const table = [
-    ['older bridge', old],
-    ['bridge from before replies carried a version', { ok: true }],
-  ];
-  return Promise.all(table.map(async ([label, reply]) => {
-    const io = fakeIo({ postResults: [reply], healthResults: [old, null, fresh] });
-    assert.equal(await deliver('B', io, { version: '2' }), 'spawned', label);
-    assert.deepEqual(names(io), ['post', 'health', 'shutdown', 'health', 'spawn', 'health', 'post'], label);
-  }));
+test('an HTTP error on the post never spawns a bridge', async () => {
+  const io = fakeIo({ healthResults: [ours()], postResults: [Object.assign(new Error('bridge 401'), { status: 401 })] });
+  assert.equal(await deliver('{}', io), 'dropped');
+  assert.deepEqual(names(io), ['health', 'post']);
 });
 
-test('a reply without a version from another app on the port never shuts it down', async () => {
-  const io = fakeIo({ reply: { ok: true }, healthResults: [{ hello: 'world' }] });
-  assert.equal(await deliver('B', io, { version: '2' }), 'sent');
-  assert.deepEqual(names(io), ['post', 'health']);
+test('nothing on the port: spawn, poll /health every 100 ms until it proves itself, then post once', async () => {
+  const io = fakeIo({ healthResults: [null, null, null, ours('1')] });
+  assert.equal(await deliver('B', io), 'spawned');
+  assert.deepEqual(names(io), ['health', 'spawn', 'health', 'health', 'health', 'post']);
+  assert.equal(io.slept(), 300);
 });
 
-test('same version in the reply: no restart; no version known: never restarts', async () => {
-  let io = fakeIo();
-  assert.equal(await deliver('B', io, { version: '2' }), 'sent');
-  assert.deepEqual(names(io), ['post']);
-  io = fakeIo({ reply: { ok: true } });
-  assert.equal(await deliver('B', io), 'sent');
-  assert.deepEqual(names(io), ['post']);
+test('gives up after 1500 ms of polling without posting', async () => {
+  const io = fakeIo({ healthResults: [null] });
+  assert.equal(await deliver('B', io), 'timeout');
+  assert.equal(io.slept(), 1500);
+  assert.ok(!names(io).includes('post'));
 });
 
-test('MIBLO_NO_SPAWN: an older bridge is left alone', async () => {
-  const io = fakeIo({ reply: { ok: true, version: '1' } });
+// F5: another program (or another user) holds the port.
+test('another app on the port gets nothing: no post, no spawn, noted once', async () => {
+  const io = fakeIo({ healthResults: [{ hello: 'world', proven: false }] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'foreign');
+  assert.deepEqual(names(io), ['health', 'foreign']);
+});
+
+test('a listener that says it is the bridge but cannot prove it never gets the event nor the key', async () => {
+  // Asked to shut down without the key (an older bridge, before the key, does so); it stays.
+  const io = fakeIo({ healthResults: [unproven()] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'foreign');
+  assert.ok(!names(io).includes('post'));
+  assert.deepEqual(io.calls.filter((c) => c[0] === 'shutdown'), [['shutdown', false]]);
+  assert.equal(names(io).at(-1), 'foreign');
+});
+
+test('an older bridge (before the key) is shut down without the key and replaced; the new one gets the event', async () => {
+  const io = fakeIo({ healthResults: [unproven('1'), null, ours('2')] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'spawned');
+  assert.deepEqual(io.calls.map((c) => c.join(':')), ['health', 'shutdown:false', 'health', 'spawn', 'health', 'post:B']);
+});
+
+test('MIBLO_NO_SPAWN: never spawns, never shuts anything down', async () => {
+  let io = fakeIo({ healthResults: [null] });
+  assert.equal(await deliver('B', io, { allowSpawn: false, version: '2' }), 'dropped');
+  assert.deepEqual(names(io), ['health']);
+  io = fakeIo({ healthResults: [ours('1')] });
   assert.equal(await deliver('B', io, { allowSpawn: false, version: '2' }), 'sent');
-  assert.deepEqual(names(io), ['post']);
+  assert.deepEqual(names(io), ['health', 'post']);
+  io = fakeIo({ healthResults: [unproven('1')] });
+  assert.equal(await deliver('B', io, { allowSpawn: false, version: '2' }), 'foreign');
+  assert.deepEqual(names(io), ['health', 'foreign']);
+});
+
+// After /reload-plugins the hooks run the new plugin while the bridge started by the old one keeps
+// running: any event hands the bridge over to the hook's version (asked with the key: it is ours).
+test('our bridge of another version is shut down with the key and replaced by the hook\'s version', async () => {
+  const io = fakeIo({ healthResults: [ours('1'), null, ours('2')] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'spawned');
+  assert.deepEqual(io.calls.map((c) => c.join(':')), ['health', 'shutdown:true', 'health', 'spawn', 'health', 'post:B']);
+});
+
+test('same version: no restart; no version known: never restarts', async () => {
+  let io = fakeIo({ healthResults: [ours('2')] });
+  assert.equal(await deliver('B', io, { version: '2' }), 'sent');
+  assert.deepEqual(names(io), ['health', 'post']);
+  io = fakeIo({ healthResults: [ours('1')] });
+  assert.equal(await deliver('B', io), 'sent');
+  assert.deepEqual(names(io), ['health', 'post']);
 });
 
 test('pickEvent forwards the compaction trigger and the SessionStart source', () => {

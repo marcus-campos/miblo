@@ -68,49 +68,50 @@ async function poll(check, { sleep, maxMs, everyMs = POLL_EVERY_MS }) {
 }
 
 /**
- * io: { post(body) -> reply object, health() -> object|null, shutdown(), startBridge(), sleep(ms) }
- * health() resolves null when nothing answers, and an object otherwise.
- * A bridge of another version (after /reload-plugins the hooks are new, the running bridge is not;
- * a bridge from before replies carried a version counts too) is shut down and replaced by this
- * plugin's: checked on SessionStart before posting, and on every event from the reply.
+ * io: { post(body) -> reply object, health() -> object|null, shutdown(withKey), startBridge(),
+ *       foreign(), sleep(ms) }
+ * health() resolves null when nothing answers, and otherwise an object with `proven`: whether the
+ * answer proved knowledge of the bridge key (bridge-auth.js). Nothing is posted to a listener that
+ * did not prove it: on a shared computer another user may hold the port.
+ * A bridge of another version (after /reload-plugins the hooks are new, the running bridge is not)
+ * is shut down and replaced by this plugin's. So is one that says it is the bridge but cannot
+ * prove it (an older bridge, before the key): it is asked without the key, and if it stays it is
+ * foreign.
  */
-export async function deliver(body, io, { allowSpawn = true, checkVersion = false, version = '' } = {}) {
-  const ours = (h) => h?.app === 'miblo-bridge';
-  const replace = async () => {
-    await io.shutdown().catch(() => {});
-    await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
-    return spawnAndPost();
+export async function deliver(body, io, { allowSpawn = true, version = '' } = {}) {
+  const ours = (h) => h?.app === 'miblo-bridge' && h.proven === true;
+  const claims = (h) => h?.app === 'miblo-bridge' && h.proven !== true;
+  const post = async () => {
+    try {
+      await io.post(body);
+      return true;
+    } catch {
+      return false;
+    }
   };
   const spawnAndPost = async () => {
     io.startBridge();
     const up = await poll(async () => ours(await io.health()), { sleep: io.sleep, maxMs: POLL_MAX_MS });
     if (!up) return 'timeout';
-    await io.post(body).catch(() => {});
+    await post();
     return 'spawned';
   };
-
-  if (allowSpawn && checkVersion && version) {
-    const h = await io.health();
-    if (ours(h) && h.version !== version) return replace();
-  }
-
-  let reply;
-  try {
-    reply = await io.post(body);
-  } catch (e) {
-    if (!allowSpawn || !isConnError(e)) return 'dropped';
-    const h = await io.health();
-    if (h && !ours(h)) return 'foreign';
-    if (ours(h)) {
-      await io.post(body).catch(() => {});
-      return 'sent';
-    }
+  const replace = async (withKey) => {
+    await io.shutdown(withKey).catch(() => {});
+    await poll(async () => (await io.health()) === null, { sleep: io.sleep, maxMs: DOWN_MAX_MS });
     return spawnAndPost();
+  };
+
+  const h = await io.health();
+  if (h === null) return allowSpawn ? spawnAndPost() : 'dropped';
+  if (ours(h)) {
+    if (allowSpawn && version && h.version !== version) return replace(true);
+    return (await post()) ? 'sent' : 'dropped';
   }
-  if (allowSpawn && version && reply?.version !== version) {
-    // Confirm on /health before asking anything to shut down: the port could be another app's.
-    const h = await io.health();
-    if (ours(h) && h.version !== version) return replace();
+  if (allowSpawn && claims(h)) {
+    const r = await replace(false);
+    if (r !== 'timeout') return r;
   }
-  return 'sent';
+  io.foreign();
+  return 'foreign';
 }

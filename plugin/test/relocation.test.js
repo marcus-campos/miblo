@@ -4,16 +4,29 @@ import crypto from 'node:crypto';
 import net from 'node:net';
 import { DeviceManager } from '../lib/device-manager.js';
 import { DeviceClient } from '../lib/device-client.js';
-import { tokenTag, challengeMac, isLanAddr, sameSlash24 } from '../lib/relocation.js';
-import { startFakeDevice } from './fakes/fake-device.js';
+import { tokenTag, challengeMac, challengeOk, isLanAddr, sameSlash24 } from '../lib/relocation.js';
+import { startFakeDevice, startChallengeRelay } from './fakes/fake-device.js';
 
 // M3: after 3 failed pushes the bridge rediscovers a gadget by mDNS. The new address must prove
 // it holds this computer's token (GET /api/challenge, HMAC of a nonce) before any token goes to it.
 
-test('challengeMac is hex HMAC-SHA256(token, nonce || id)', () => {
-  const want = crypto.createHmac('sha256', 'tok').update('00ff' + 'miblo-4f2a').digest('hex');
-  assert.equal(challengeMac('tok', '00ff', 'miblo-4f2a'), want);
+test('challengeMac is hex HMAC-SHA256(token, nonce || id || ip)', () => {
+  const want = crypto.createHmac('sha256', 'tok').update('00ff' + 'miblo-4f2a' + '192.168.1.20').digest('hex');
+  assert.equal(challengeMac('tok', '00ff', 'miblo-4f2a', '192.168.1.20'), want);
 });
+
+// The firmware's own vector (miblo_security answerChallenge, v 2): both sides must agree on it.
+test('challenge v2 matches the firmware vector', () => {
+  const token = '00112233445566778899aabbccddeeff';
+  assert.equal(tokenTag(token), 'de18ad43');
+  assert.equal(challengeMac(token, '0123456789abcdef0123456789abcdef', 'miblo-4f2a', '192.168.15.181'),
+    '7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c');
+  assert.ok(challengeOk({ id: 'miblo-4f2a', ip: '192.168.15.181', v: 2, mac: '7a444960fa4cc8ad333a0aad73f69b699fdc65ec984a2cfa56e1207dd2d6bf4c' },
+    { token, nonce: '0123456789abcdef0123456789abcdef', id: 'miblo-4f2a', host: '192.168.15.181' }));
+});
+
+// A v2 answer as the gadget at `ip` gives it (firmware 1.14.0+).
+const v2 = (n, { id = 'g1', ip, token = 'tok' }) => ({ id, ip, v: 2, mac: challengeMac(token, n, id, ip) });
 
 test('only private, link-local or CGNAT IPv4 on port 80 is a gadget address', () => {
   for (const a of ['10.1.2.3:80', '172.16.0.9:80', '172.31.255.1:80', '192.168.1.20:80', '169.254.3.4:80', '100.64.0.1:80', '100.127.9.9:80']) {
@@ -37,7 +50,7 @@ function memStore(devices) {
 }
 
 // The old address is down; discovery answers `hit`; `answers` says how the new address responds.
-async function relocateWith({ hit, challenge, info, oldAddr = '192.168.1.20:80' }) {
+async function relocateWith({ hit, challenge, info, oldAddr = '192.168.1.20:80', fw }) {
   let t = 0;
   const sent = [];  // [addr, token] of every request that carried a token
   const client = {
@@ -45,7 +58,7 @@ async function relocateWith({ hit, challenge, info, oldAddr = '192.168.1.20:80' 
     async pushState(addr, token) { sent.push([addr, token]); if (addr === oldAddr) throw new Error('down'); },
     async challenge(addr, nonce, tag) { return challenge(addr, nonce, tag); },
   };
-  const store = memStore([{ id: 'g1', name: 'G1', addr: oldAddr, token: 'tok' }]);
+  const store = memStore([{ id: 'g1', name: 'G1', addr: oldAddr, token: 'tok', ...(fw ? { fw } : {}) }]);
   const mgr = new DeviceManager({ client, store, now: () => t, discover: async () => [hit] });
   for (const wait of [0, 1000, 2000]) { t += wait; await mgr.pushAll({}); }
   await mgr.pushAll({});
@@ -57,7 +70,7 @@ test('a new address that answers the challenge right gets the gadget', async () 
   let asked;
   const { store, mgr, sent } = await relocateWith({
     hit: { id: 'g1', addr: '192.168.7.9:80' },
-    challenge: (addr, n, tg) => { asked = { n, tg }; return { id: 'g1', mac: challengeMac('tok', n, 'g1') }; },
+    challenge: (addr, n, tg) => { asked = { n, tg }; return v2(n, { ip: '192.168.7.9' }); },
     info: () => ({ id: 'g1' }),
   });
   assert.match(asked.n, /^[0-9a-f]{32}$/);
@@ -69,10 +82,17 @@ test('a new address that answers the challenge right gets the gadget', async () 
 });
 
 for (const [what, reply] of [
-  ['a wrong mac', (n) => ({ id: 'g1', mac: '0'.repeat(64) })],
-  ['another id', (n) => ({ id: 'g2', mac: challengeMac('tok', n, 'g2') })],
-  ['a non-hex mac', (n) => ({ id: 'g1', mac: 'zz' })],
+  ['a wrong mac', (n) => ({ ...v2(n, { ip: '192.168.1.66' }), mac: '0'.repeat(64) })],
+  ['another id', (n) => v2(n, { id: 'g2', ip: '192.168.1.66' })],
+  ['a non-hex mac', (n) => ({ ...v2(n, { ip: '192.168.1.66' }), mac: 'zz' })],
   ['no body', () => null],
+  // A relay: the real gadget (at .20) answered for its own address, not the one connected to.
+  ['the real gadget\'s answer relayed (its own ip)', (n) => v2(n, { ip: '192.168.1.20' })],
+  ['an ip that is not the one connected to, mac over it', (n) => v2(n, { ip: '192.168.1.67' })],
+  ['the connected ip with a mac over another ip', (n) => ({ ...v2(n, { ip: '192.168.1.20' }), ip: '192.168.1.66' })],
+  ['no ip', (n) => ({ id: 'g1', v: 2, mac: challengeMac('tok', n, 'g1', '') })],
+  ['a version 1 answer (mac over n || id)', (n) => ({ id: 'g1', mac: crypto.createHmac('sha256', 'tok').update(n + 'g1').digest('hex') })],
+  ['v 3', (n) => ({ ...v2(n, { ip: '192.168.1.66' }), v: 3 })],
 ]) {
   test(`a new address answering the challenge with ${what} never gets the token`, async () => {
     const { store, mgr, sent } = await relocateWith({
@@ -87,14 +107,45 @@ for (const [what, reply] of [
   });
 }
 
-test('an old firmware (no /api/challenge) on the same /24 with the same id is still followed', async () => {
-  const { store, mgr } = await relocateWith({
-    hit: { id: 'g1', addr: '192.168.1.77:80' },
-    challenge: notFound,
-    info: () => ({ id: 'g1', paired: true, proto: 1 }),
+for (const fw of [undefined, '1.13.2', '0.9.0']) {
+  test(`a gadget last seen on an old firmware (${fw ?? 'unknown'}, no /api/challenge) on the same /24 with the same id is still followed, and asked to update`, async () => {
+    const { store, mgr } = await relocateWith({
+      hit: { id: 'g1', addr: '192.168.1.77:80' },
+      challenge: notFound,
+      info: () => ({ id: 'g1', paired: true, proto: 1 }),
+      fw,
+    });
+    assert.equal(store.list()[0].addr, '192.168.1.77:80');
+    assert.equal(mgr.status()[0].needsPair, false);
+    assert.equal(mgr.status()[0].oldFirmware, true);
   });
-  assert.equal(store.list()[0].addr, '192.168.1.77:80');
-  assert.equal(mgr.status()[0].needsPair, false);
+}
+
+// F1: a spoofer on the same /24 answers 404 and echoes the public id: a gadget known to run
+// 1.14.0+ has the challenge, so a 404 is not it.
+for (const fw of ['1.14.0', '1.14.1', '2.0.0']) {
+  test(`a gadget last seen on ${fw} is never followed to an address without the challenge (404 + its id, same /24)`, async () => {
+    let infoAsked = false;
+    const { store, mgr, sent } = await relocateWith({
+      hit: { id: 'g1', addr: '192.168.1.77:80' },
+      challenge: notFound,
+      info: () => { infoAsked = true; return { id: 'g1', paired: true, proto: 1 }; },
+      fw,
+    });
+    assert.equal(infoAsked, false);
+    assert.equal(store.list()[0].addr, '192.168.1.20:80');
+    assert.ok(!sent.some(([a]) => a === '192.168.1.77:80'));
+    assert.equal(mgr.status()[0].needsPair, true);
+  });
+}
+
+test('the firmware version of an authenticated /api/info is kept in the device record', async () => {
+  const store = memStore([{ id: 'g1', name: 'G1', addr: '192.168.1.20:80', token: 'tok' }]);
+  const client = { async info(addr, token) { return token === 'tok' ? { id: 'g1', fw: '1.14.0' } : { id: 'g1', paired: true, proto: 1 }; }, async pushState() {} };
+  const mgr = new DeviceManager({ client, store, now: () => 0 });
+  await mgr.pushAll({});
+  assert.equal(store.list()[0].fw, '1.14.0');
+  assert.equal(mgr.status()[0].oldFirmware, false);
 });
 
 test('an old firmware on another /24 is not followed: run /miblo:pair', async () => {
@@ -133,6 +184,21 @@ test('an address outside the LAN (loopback, public, another port) is never chall
   }
 });
 
+// 409 {"error":"no network"}: the gadget is in setup mode, with no station IP to answer for. It
+// cannot prove itself just now: nothing is sent, nothing moves, and it is asked again later.
+test('a challenge answered 409 (no network yet) is retried later, without asking to pair again', async () => {
+  let infoAsked = false;
+  const { store, mgr, sent } = await relocateWith({
+    hit: { id: 'g1', addr: '192.168.1.77:80' },
+    challenge: () => { const e = new Error('409'); e.status = 409; throw e; },
+    info: () => { infoAsked = true; return { id: 'g1' }; },
+  });
+  assert.equal(infoAsked, false);
+  assert.equal(store.list()[0].addr, '192.168.1.20:80');
+  assert.ok(!sent.some(([a]) => a === '192.168.1.77:80'));
+  assert.equal(mgr.status()[0].needsPair, false);
+});
+
 test('a challenge that times out leaves the gadget where it was, without asking to pair again', async () => {
   const { store, mgr } = await relocateWith({
     hit: { id: 'g1', addr: '192.168.1.77:80' },
@@ -153,9 +219,9 @@ async function closedAddr() {
   return addr;
 }
 
-async function relocateTo(dev, id) {
+async function relocateTo(dev, id, { fw = '1.14.0' } = {}) {
   let t = 0;
-  const store = memStore([{ id, name: 'G', addr: await closedAddr(), token: 'tok-1234' }]);
+  const store = memStore([{ id, name: 'G', addr: await closedAddr(), token: 'tok-1234', fw }]);
   const mgr = new DeviceManager({
     client: new DeviceClient({ timeoutMs: 1000 }), store, now: () => t,
     discover: async () => [{ id, addr: dev.addr }], addrOk: () => true,
@@ -187,5 +253,50 @@ test('an impostor that answers mDNS with the right id but a wrong mac never sees
     assert.equal(mgr.status()[0].needsPair, true);
   } finally {
     await imp.close();
+  }
+});
+
+// F1: a relay forwards the plugin's nonce to the real gadget's open /api/challenge. The real one
+// (here at 127.0.0.2 as far as it knows) answers for its own address, not the relay's.
+for (const rewriteIp of [false, true]) {
+  test(`a relay to the real gadget${rewriteIp ? ' that rewrites the ip to its own' : ''} never sees the token`, async () => {
+    const real = await startFakeDevice({ id: 'miblo-4f2a', tokens: ['tok-1234'], ip: '127.0.0.2' });
+    const relay = await startChallengeRelay(real.addr, { rewriteIp: rewriteIp ? '127.0.0.1' : null });
+    try {
+      const { store, mgr } = await relocateTo(relay, 'miblo-4f2a');
+      assert.ok(real.state.challenges > 0);
+      assert.deepEqual(relay.state.authHeaders, []);
+      assert.deepEqual(real.state.authHeaders, []);
+      assert.notEqual(store.list()[0].addr, relay.addr);
+      assert.equal(mgr.status()[0].needsPair, true);
+    } finally {
+      await relay.close();
+      await real.close();
+    }
+  });
+}
+
+test('a 404 + public id impostor on the same /24 never sees the token of a gadget last seen on 1.14.0', async () => {
+  const imp = await startFakeDevice({ id: 'miblo-4f2a', tokens: ['someone-else'], challenge: 'none' });
+  try {
+    const { store, mgr } = await relocateTo(imp, 'miblo-4f2a');
+    assert.deepEqual(imp.state.authHeaders, []);
+    assert.notEqual(store.list()[0].addr, imp.addr);
+    assert.equal(mgr.status()[0].needsPair, true);
+  } finally {
+    await imp.close();
+  }
+});
+
+test('a gadget in setup mode (409 no network) over HTTP: not followed, not asked to pair again, never sees the token', async () => {
+  const dev = await startFakeDevice({ id: 'miblo-4f2a', tokens: ['tok-1234'], challenge: 'nonet' });
+  try {
+    const { store, mgr } = await relocateTo(dev, 'miblo-4f2a');
+    assert.ok(dev.state.challenges > 0);
+    assert.deepEqual(dev.state.authHeaders, []);
+    assert.notEqual(store.list()[0].addr, dev.addr);
+    assert.equal(mgr.status()[0].needsPair, false);
+  } finally {
+    await dev.close();
   }
 });

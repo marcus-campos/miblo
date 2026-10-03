@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { KEY_HEADER, NONCE_HEADER, PROOF_HEADER, isNonce, keyOk, proofFor } from './bridge-auth.js';
 
 const MAX_BODY = 256 * 1024;
 
@@ -29,27 +30,34 @@ function readJson(req) {
 // Only local, non-browser clients may talk to the bridge: the Host header must
 // name the loopback address (defeats DNS rebinding), browsers always send
 // Origin on cross-site requests, and POST bodies must be declared as JSON
-// (a plain HTML form cannot send application/json).
-function guard(req, port) {
+// (a plain HTML form cannot send application/json). Every request but /health carries the
+// bridge key (bridge-auth.js): another local user's programs get nothing and can send nothing.
+function guard(req, port, key) {
   const host = req.headers.host;
   if (host !== `127.0.0.1:${port}` && host !== `localhost:${port}`) return [403, 'forbidden host'];
   if (req.headers.origin !== undefined) return [403, 'origin not allowed'];
   if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').startsWith('application/json')) {
     return [415, 'content-type must be application/json'];
   }
+  if (!(req.method === 'GET' && req.url === '/health') && !keyOk(key, req.headers[KEY_HEADER])) return [401, 'key required'];
   return null;
 }
 
-export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {} }) {
+// `key`: the bridge key (bridge-auth.js ensureKey); without one every request but /health is refused.
+export function createBridgeServer({ onEvent, onStatusline, getStatus, version = '', onShutdown = () => {}, key = null }) {
   const server = http.createServer(async (req, res) => {
-    const send = (code, obj) => {
-      res.writeHead(code, { 'content-type': 'application/json' });
+    const send = (code, obj, headers = {}) => {
+      res.writeHead(code, { 'content-type': 'application/json', ...headers });
       res.end(JSON.stringify(obj));
     };
     try {
-      const denied = guard(req, server.address()?.port);
+      const denied = guard(req, server.address()?.port, key);
       if (denied) return send(denied[0], { error: denied[1] });
-      if (req.method === 'GET' && req.url === '/health') return send(200, { ok: true, app: 'miblo-bridge', version });
+      if (req.method === 'GET' && req.url === '/health') {
+        // Proves this is the user's own bridge: HMAC of the client's nonce with the key.
+        const nonce = req.headers[NONCE_HEADER];
+        return send(200, { ok: true, app: 'miblo-bridge', version }, key && isNonce(nonce) ? { [PROOF_HEADER]: proofFor(key, nonce) } : {});
+      }
       if (req.method === 'GET' && req.url === '/status') return send(200, await getStatus());
       if (req.method === 'POST' && req.url === '/event') {
         onEvent(await readJson(req));

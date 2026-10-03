@@ -191,6 +191,7 @@ test("--data in a script's arguments is ignored, except for the status line, rig
   assert.match(run(s, ['--no-wait', 'statusline-tap.mjs', 'x', '--data', evil]).out, /^VOLTA /);
   assert.match(run(s, ['--no-wait', 'statusline-tap.mjs', '--data', 'evil'], { cwd: s.root }).out, /^VOLTA /);
   assert.match(run(s, ['--check', '--data', 'evil'], { cwd: s.root }).out, /node=.*\.volta/);
+  assert.match(run(s, ['--check', '--data', evil]).out, /node=.*\.volta/);
   // As the status line and --check pass it: honoured (the cache there is ours to trust).
   const mine = path.join(s.root, 'mine');
   run(s, ['--no-wait', 'statusline-tap.mjs', '--data', mine]);
@@ -239,6 +240,35 @@ test('a cache that is not plainly ours is ignored', () => {
   fs.writeFileSync(path.join(s.runtime, 'node-path'), evil + '\n');
   fs.chmodSync(s.runtime, 0o777);
   assert.match(run(s, ['hook.js']).out, /^VOLTA /);
+});
+
+// F3: a downloaded runtime runs only when it is plainly ours, like the cache: owned by the user,
+// a regular file, and nothing on the way from the runtime dir writable by others.
+test('a downloaded runtime that others could have written is not run', () => {
+  for (const loose of ['node-v24.21.0', 'node-v24.21.0/bin', 'node-v24.21.0/bin/node', '']) {
+    const s = sandbox();
+    fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+    const dl = fakeNode(path.join(s.runtime, 'node-v24.21.0/bin/node'), 'DL');
+    assert.match(run(s, ['hook.js']).out, /^VOLTA /);  // well-known places come first
+    fs.rmSync(path.join(s.home, '.volta'), { recursive: true });
+    fs.rmSync(path.join(s.runtime, 'node-path'), { force: true });
+    if (loose) fs.chmodSync(path.join(s.runtime, loose), loose.endsWith('node') ? 0o777 : 0o777);
+    else fs.chmodSync(s.runtime, 0o777);
+    const r = run(s, ['--no-wait', 'hook.js']);
+    assert.doesNotMatch(r.out, /^DL /, loose || 'runtime');
+    assert.ok(fs.existsSync(dl));
+  }
+  // A symlink in its place is not ours either.
+  const s = sandbox();
+  const other = fakeNode(path.join(s.root, 'other/node'), 'OTHER');
+  fs.mkdirSync(path.join(s.runtime, 'node-v24.21.0/bin'), { recursive: true });
+  fs.symlinkSync(other, path.join(s.runtime, 'node-v24.21.0/bin/node'));
+  assert.doesNotMatch(run(s, ['--no-wait', 'hook.js']).out, /^OTHER /);
+  // Tidy: the same runtime, kept as downloaded, runs.
+  const t = sandbox();
+  fakeNode(path.join(t.runtime, 'node-v24.21.0/bin/node'), 'DL');
+  fs.chmodSync(t.runtime, 0o755);
+  assert.match(run(t, ['--no-wait', 'hook.js']).out, /^DL /);
 });
 
 test('a cached node that is now too old is replaced', () => {
@@ -429,12 +459,53 @@ test('works under dash: discovery, cache and download', { skip: !fs.existsSync('
 test('--check prints the node it will use and exits 0', () => {
   const s = sandbox();
   const nvm = fakeNode(path.join(s.home, '.nvm/versions/node/v22.2.0/bin/node'), 'NVM', 'v22.2.0');
-  const r = run(s, ['--check', '--data', path.join(s.root, 'd')], { env: { CLAUDE_PLUGIN_DATA: '' } });
+  const r = run(s, ['--check'], { env: { CLAUDE_PLUGIN_DATA: '' } });
   assert.equal(r.code, 0);
   assert.equal(r.out, `ok version=v22.2.0 node=${nvm}\n`);
-  assert.equal(fs.readFileSync(path.join(s.root, 'd/runtime/node-path'), 'utf8').trim(), nvm);
+  assert.equal(fs.readFileSync(path.join(s.home, '.miblo/runtime/node-path'), 'utf8').trim(), nvm);
   // From the cache, still checked.
-  assert.equal(run(s, ['--check', '--data', path.join(s.root, 'd')]).out, `ok version=v22.2.0 node=${nvm}\n`);
+  assert.equal(run(s, ['--check'], { env: { CLAUDE_PLUGIN_DATA: '' } }).out, `ok version=v22.2.0 node=${nvm}\n`);
+});
+
+// F3: /miblo:pair and /miblo:update pre-allow `miblo-run --check`. A prompt injection must not
+// point --data at a cache planted in a cloned repository: only the canonical data dirs count.
+test('--check --data takes only the canonical data dirs; a planted cache elsewhere never runs', () => {
+  const s = sandbox();
+  fakeNode(path.join(s.home, '.volta/bin/node'), 'VOLTA');
+  const ran = path.join(s.root, 'evil-ran');
+  const repo = path.join(s.root, 'repo');
+  const evil = path.join(repo, 'bin/node');
+  fs.mkdirSync(path.dirname(evil), { recursive: true });
+  fs.writeFileSync(evil, `#!/bin/sh\ntouch '${ran}'\necho v22.0.0\n`);
+  fs.chmodSync(evil, 0o755);
+  const planted = path.join(repo, '.cache');
+  fs.mkdirSync(path.join(planted, 'runtime'), { recursive: true });
+  fs.writeFileSync(path.join(planted, 'runtime/node-path'), evil + '\n');
+  fakeNode(path.join(planted, 'runtime/node-v24.21.0/bin/node'), 'EVILDL');
+  for (const env of [{}, { CLAUDE_PLUGIN_DATA: '' }]) {
+    const r = run(s, ['--check', '--data', planted], { env, cwd: s.root });
+    assert.match(r.out, /^ok .*node=.*\.volta/, JSON.stringify(env));
+    assert.ok(!fs.existsSync(ran), 'the planted node ran');
+    assert.ok(!fs.existsSync(path.join(planted, 'runtime/launcher.log')));
+  }
+  // The canonical ones are honoured: CLAUDE_PLUGIN_DATA, the plugin's data dir, ~/.miblo.
+  const conf = path.join(s.root, 'conf');
+  for (const [dir, env] of [
+    [s.data, {}],
+    [path.join(s.home, '.claude/plugins/data/miblo-miblo'), { CLAUDE_PLUGIN_DATA: '' }],
+    [path.join(conf, 'plugins/data/miblo-miblo'), { CLAUDE_PLUGIN_DATA: '', CLAUDE_CONFIG_DIR: conf }],
+    [path.join(s.home, '.miblo'), {}],
+  ]) {
+    assert.match(run(s, ['--check', '--data', dir], { env }).out, /^ok /, dir);
+    assert.ok(fs.existsSync(path.join(dir, 'runtime/node-path')), dir);
+  }
+});
+
+test('the slash commands run --check without --data', () => {
+  for (const f of fs.readdirSync(path.join(BIN, '../commands'))) {
+    const md = fs.readFileSync(path.join(BIN, '../commands', f), 'utf8');
+    assert.ok(!/--check --data/.test(md), f);
+  }
 });
 
 test('--check downloads the pinned Node when there is none, with progress on stderr', { skip: !hasCurl }, () => {

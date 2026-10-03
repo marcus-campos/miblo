@@ -183,8 +183,10 @@ export class FirmwareUpdater {
 
     let res;
     try {
+      // With the pairing token: an authorised open replaces a code a stranger opened anonymously
+      // (else anyone on the LAN could keep the owner out of updates by re-opening codes).
       res = await this.fetch(`http://${d.addr}/update/open`, {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+        method: 'POST', headers: { 'content-type': 'application/json', ...(d.token ? { authorization: `Bearer ${d.token}` } : {}) }, body: '{}',
         signal: AbortSignal.timeout(this.deviceTimeoutMs),
       });
     } catch {

@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { compareVersions } from './firmware-update.js';
 
 // Checks that a gadget found at a new address (mDNS, after failed pushes) is really ours before
 // any token goes there. Anyone on the LAN can announce a gadget's id with their own address.
@@ -12,15 +13,23 @@ export function tokenTag(token) {
   return h.toString(16).padStart(16, '0').slice(0, 8);
 }
 
-// The gadget's answer to GET /api/challenge?n=<nonce>&t=<tag>: hex HMAC-SHA256 keyed with the
-// token over the nonce (the 32 hex characters as sent) followed by the gadget's id.
-export const challengeMac = (token, nonce, id) =>
-  crypto.createHmac('sha256', String(token)).update(String(nonce) + String(id)).digest('hex');
+// The gadget's answer to GET /api/challenge?n=<nonce>&t=<tag> (v 2): {id, ip, v: 2, mac}, mac =
+// hex HMAC-SHA256 keyed with the token over the nonce (the 32 hex characters as sent), the
+// gadget's id and its own station IPv4 (dotted). The ip binds the answer to the gadget's address:
+// a relay to the real gadget gets back the real gadget's ip, not its own.
+export const challengeMac = (token, nonce, id, ip) =>
+  crypto.createHmac('sha256', String(token)).update(String(nonce) + String(id) + String(ip)).digest('hex');
 
-// Constant-time check of a challenge answer.
-export function challengeOk(reply, { token, nonce, id }) {
-  if (reply?.id !== id || typeof reply.mac !== 'string' || !/^[0-9a-f]{64}$/i.test(reply.mac)) return false;
-  return crypto.timingSafeEqual(Buffer.from(reply.mac.toLowerCase(), 'hex'), Buffer.from(challengeMac(token, nonce, id), 'hex'));
+// The first firmware with the challenge: a gadget last seen on it (or later) must answer it.
+export const CHALLENGE_FW = '1.14.0';
+const VERSION_RE = /^\d+\.\d+\.\d+/;
+export const hasChallenge = (fw) => VERSION_RE.test(String(fw ?? '')) && compareVersions(fw, CHALLENGE_FW) >= 0;
+
+// Constant-time check of a challenge answer from `host` (the IPv4 the request went to).
+export function challengeOk(reply, { token, nonce, id, host }) {
+  if (reply?.v !== 2 || reply.id !== id || typeof reply.ip !== 'string' || reply.ip !== host) return false;
+  if (typeof reply.mac !== 'string' || !/^[0-9a-f]{64}$/i.test(reply.mac)) return false;
+  return crypto.timingSafeEqual(Buffer.from(reply.mac.toLowerCase(), 'hex'), Buffer.from(challengeMac(token, nonce, id, reply.ip), 'hex'));
 }
 
 const IPV4_PORT = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}):(\d{1,5})$/;
@@ -47,23 +56,29 @@ export function sameSlash24(x, y) {
   return !!p && !!q && p.o[0] === q.o[0] && p.o[1] === q.o[1] && p.o[2] === q.o[2];
 }
 
-// -> 'ok' (the new address is the gadget), 'refused' (it is not, or cannot prove it: the user
-// must pair again) or 'retry' (no answer just now: try again later). Never sends the token.
+// -> 'ok' (the new address is the gadget), 'legacy' (followed with the weaker check of a firmware
+// before the challenge: it should be updated), 'refused' (it is not, or cannot prove it: the
+// user must pair again) or 'retry' (no answer just now: try again later). Never sends the token.
 export async function verifyNewAddr({ client, dev, addr, addrOk = isLanAddr }) {
   if (!addrOk(addr)) return 'refused';
   const nonce = crypto.randomBytes(16).toString('hex');
+  const host = String(addr).replace(/:\d+$/, '');
   try {
     const reply = await client.challenge(addr, nonce, tokenTag(dev.token));
-    return challengeOk(reply, { token: dev.token, nonce, id: dev.id }) ? 'ok' : 'refused';
+    return challengeOk(reply, { token: dev.token, nonce, id: dev.id, host }) ? 'ok' : 'refused';
   } catch (e) {
+    // 409 {"error":"no network"}: in setup mode, with no station IP to answer for: ask later.
+    if (e?.status === 409) return 'retry';
     if (e?.status !== 404) return e?.status >= 400 && e.status < 500 ? 'refused' : 'retry';
   }
-  // A firmware before the challenge: follow it only nearby (same /24) and only if its reduced
-  // /api/info, asked without a token, gives the same id.
-  if (!sameSlash24(addr, dev.addr)) return 'refused';
+  // No challenge here. A gadget last seen on a firmware with it is not this address: anyone can
+  // answer 404 and echo the public id. Only one last seen on an older (or unknown) firmware is
+  // followed, and only nearby (same /24) if its reduced /api/info, asked without a token, gives
+  // the same id.
+  if (hasChallenge(dev.fw) || !sameSlash24(addr, dev.addr)) return 'refused';
   try {
     const info = await client.info(addr);
-    return info?.id === dev.id ? 'ok' : 'refused';
+    return info?.id === dev.id ? 'legacy' : 'refused';
   } catch (e) {
     return e?.status >= 400 && e.status < 500 ? 'refused' : 'retry';
   }

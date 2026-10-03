@@ -3,12 +3,17 @@
 // settings.json, so it keeps working after the plugin is uninstalled.
 // Imports nothing from lib/.
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.MIBLO_PORT || 47821);
+// The plugin's data dir: `--data <dir>` (as the launcher passes it), else as the plugin finds it.
+const dataArg = process.argv.indexOf('--data');
+const dataDir = (dataArg > 1 && process.argv[dataArg + 1]) || process.env.CLAUDE_PLUGIN_DATA || path.join(os.homedir(), '.miblo');
 
 async function readStdin() {
   const chunks = [];
@@ -24,11 +29,55 @@ function loadOriginal() {
   }
 }
 
-async function forward(input) {
+// The bridge key (lib/bridge-auth.js, repeated here: this file imports nothing from lib/): the
+// status line goes only to a bridge that proves it knows it, so another user holding the port on
+// a shared computer gets nothing. Null when there is none or it is not plainly ours.
+function readKey() {
   try {
+    const file = path.join(dataDir, 'bridge.key');
+    const st = fs.statSync(file);
+    if (!st.isFile() || (typeof process.getuid === 'function' && st.uid !== process.getuid())) return null;
+    const key = fs.readFileSync(file, 'utf8').trim();
+    return /^[0-9a-f]{64}$/.test(key) ? key : null;
+  } catch {
+    return null;
+  }
+}
+
+function proven(key, nonce, proof) {
+  const want = crypto.createHmac('sha256', key).update(`miblo-bridge:${nonce}`).digest('hex');
+  return typeof proof === 'string' && /^[0-9a-f]{64}$/.test(proof) && crypto.timingSafeEqual(Buffer.from(proof, 'hex'), Buffer.from(want, 'hex'));
+}
+
+// Notes once a day, in <data>/bridge.log, that something else answers on the port.
+function noteForeign() {
+  try {
+    const mark = path.join(dataDir, 'foreign-bridge');
+    let last = 0;
+    try { last = fs.statSync(mark).mtimeMs; } catch { /* never noted */ }
+    if (Date.now() - last < 24 * 3600_000) return;
+    fs.writeFileSync(mark, '');
+    fs.appendFileSync(path.join(dataDir, 'bridge.log'),
+      `${new Date().toISOString()} port ${port} answers without the bridge key: another program or user holds it; nothing was sent to it\n`);
+  } catch {
+    // best-effort
+  }
+}
+
+async function forward(input) {
+  const key = readKey();
+  if (!key) return;
+  try {
+    const nonce = crypto.randomBytes(16).toString('hex');
+    const health = await fetch(`http://127.0.0.1:${port}/health`, { headers: { 'x-miblo-nonce': nonce }, signal: AbortSignal.timeout(150) });
+    await health.arrayBuffer().catch(() => {});
+    if (!proven(key, nonce, health.headers.get('x-miblo-proof'))) {
+      noteForeign();
+      return;
+    }
     const res = await fetch(`http://127.0.0.1:${port}/statusline`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', 'x-miblo-key': key },
       body: input,
       signal: AbortSignal.timeout(150),
     });

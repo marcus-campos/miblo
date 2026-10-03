@@ -408,6 +408,14 @@ static void test_black_cat_crosses_inside_the_screen() {
   }
 }
 
+// Field by field: the struct's padding byte holds whatever the stack had.
+static void assertSameColors(const screens::PetColors& a, const screens::PetColors& b) {
+  const uint16_t av[] = {a.skin, a.earIn, a.line, a.nose, a.lid, a.eye, a.pupil, a.accent, a.bag};
+  const uint16_t bv[] = {b.skin, b.earIn, b.line, b.nose, b.lid, b.eye, b.pupil, b.accent, b.bag};
+  TEST_ASSERT_EQUAL_HEX16_ARRAY(av, bv, 9);
+  TEST_ASSERT_EQUAL_UINT8(a.eyeShape, b.eyeShape);
+}
+
 // A guest from another Miblo is drawn in exactly the colours it draws itself with: its preset,
 // pet, eye shape and custom slots (through the wire's RGB565), the Auto ones derived from them as
 // on its own screen; it wears our holiday hat.
@@ -428,7 +436,7 @@ static void test_guest_looks_as_on_its_own_miblo() {
   screens::setGuestAccessory((uint8_t)Accessory::SantaHat);
   screens::dressGuest(own.style, own.pet, friendLook(own.slots, own.eyeShape, 3, 12, 21));
   const screens::PetColors here = screens::petColors(screens::kPetDog);
-  TEST_ASSERT_EQUAL_MEMORY(&theirs, &here, sizeof(here));
+  assertSameColors(theirs, here);
   TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dog, screens::mascotPet());
   TEST_ASSERT_EQUAL_UINT8(1, screens::mascotStyle());
   TEST_ASSERT_EQUAL_UINT8((uint8_t)Accessory::SantaHat, screens::mascotAccessory());

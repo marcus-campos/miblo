@@ -602,8 +602,11 @@ test('the download mirror and hash overrides work only under MIBLO_TEST=1', { sk
   const s = sandbox();
   const d = dist(s, 'linux-x64');
   const r = run(s, ['--check'], { env: { MIBLO_TEST: '', MIBLO_NODE_BASE_URL: d.base, MIBLO_NODE_PLATFORM: 'linux-x64', MIBLO_NODE_SHA256: d.sha } });
-  assert.doesNotMatch(r.out, /^ok /);
+  // Ignored overrides mean the official download: with internet it may succeed (CI), so what must
+  // never show is the test mirror or the fake node it serves.
   assert.doesNotMatch(fs.readFileSync(path.join(s.runtime, 'launcher.log'), 'utf8'), /file:\/\//);
+  const node = /^ok .* node=(\S+)/.exec(r.out)?.[1];
+  if (node) assert.doesNotMatch(fs.readFileSync(node, 'latin1').slice(0, 200), /DOWNLOADED/);
 });
 
 test('downloads only over https (curl --proto =https, wget --https-only)', () => {

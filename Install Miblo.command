@@ -162,7 +162,7 @@ plugin_dir() {
   fi
   pd_base="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/plugins/cache/miblo/miblo"
   [ -d "$pd_base" ] || return 0
-  ls "$pd_base" | sort -t. -k1,1nr -k2,2nr -k3,3nr | while IFS= read -r pd_ver; do
+  for pd_entry in "$pd_base"/*; do printf '%s\n' "${pd_entry##*/}"; done | sort -t. -k1,1nr -k2,2nr -k3,3nr | while IFS= read -r pd_ver; do
     if [ -f "$pd_base/$pd_ver/bin/miblo-run" ]; then
       printf '%s\n' "$pd_base/$pd_ver"
       break
@@ -199,6 +199,7 @@ pair_failed() {
 
 # Ctrl-C while pairing: the plugin is already installed, so say how to finish and end as a
 # success (pairing never changes the exit code); double-clicked, the window still waits for Return.
+# shellcheck disable=SC2329,SC2317  # run by the INT trap below
 pair_interrupted() {
   trap - INT
   say ""

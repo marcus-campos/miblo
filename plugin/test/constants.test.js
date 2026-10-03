@@ -45,7 +45,7 @@ test('the CLIs run when started through a symlinked folder (a ~/.claude kept in 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-link-'));
   const linked = path.join(dir, 'plugin');
   fs.symlinkSync(path.resolve(bin, '..'), linked, 'dir');
-  const env = { ...process.env, MIBLO_DISCOVER_JSON: '[{"id":"miblo-4f2a","name":"Desk","addr":"127.0.0.1:1"}]' };
+  const env = { ...process.env, MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: '[{"id":"miblo-4f2a","name":"Desk","addr":"127.0.0.1:1"}]' };
   const r = spawnSync(process.execPath, [path.join(linked, 'bin/miblo.js'), '--data', path.join(dir, 'data'), 'discover'], { env, encoding: 'utf8' });
   assert.equal(r.stdout, 'miblo-4f2a\tDesk\t127.0.0.1:1\n', r.stderr);
   assert.equal(isMain(pathToFileURL(fs.realpathSync(path.join(bin, 'miblo.js'))).href, path.join(linked, 'bin/miblo.js')), true);

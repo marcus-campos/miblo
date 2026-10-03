@@ -846,8 +846,11 @@ test('pair with no answer to the pairing request itself says the code may be use
 
 test('MIBLO_DISCOVER_JSON replaces mDNS discovery (tests only); unset or invalid, mDNS is used', async () => {
   const list = [{ id: 'miblo-4f2a', name: 'Desk', addr: '127.0.0.1:8080' }];
-  assert.deepEqual(await fixedDiscovery({ MIBLO_DISCOVER_JSON: JSON.stringify(list) })(), list);
-  assert.equal(fixedDiscovery({}), null);
-  assert.equal(fixedDiscovery({ MIBLO_DISCOVER_JSON: 'not json' }), null);
-  assert.equal(fixedDiscovery({ MIBLO_DISCOVER_JSON: '{"id":"x"}' }), null);
+  assert.deepEqual(await fixedDiscovery({ MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: JSON.stringify(list) })(), list);
+  // Outside tests (MIBLO_TEST=1) it is ignored: a stray variable never redirects pairing.
+  assert.equal(fixedDiscovery({ MIBLO_DISCOVER_JSON: JSON.stringify(list) }), null);
+  assert.equal(fixedDiscovery({ MIBLO_TEST: '0', MIBLO_DISCOVER_JSON: JSON.stringify(list) }), null);
+  assert.equal(fixedDiscovery({ MIBLO_TEST: '1' }), null);
+  assert.equal(fixedDiscovery({ MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: 'not json' }), null);
+  assert.equal(fixedDiscovery({ MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: '{"id":"x"}' }), null);
 });

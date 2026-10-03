@@ -74,7 +74,7 @@ function setup() {
       fs.cpSync(src, installPath, { recursive: true, filter: (f) => !/^(test|node_modules)(\/|$)/.test(path.relative(src, f)) });
     }
     fs.writeFileSync(path.join(state, 'installpath'), installPath);
-    const env = { ...baseEnv(), PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, MIBLO_DISCOVER_JSON: JSON.stringify(devices) };
+    const env = { ...baseEnv(), PATH: `${bin}:${path.dirname(process.execPath)}:/usr/bin:/bin`, MIBLO_TEST: '1', MIBLO_DISCOVER_JSON: JSON.stringify(devices) };
     if (answers !== null) {
       env.MIBLO_TTY = path.join(dir, 'tty');
       fs.writeFileSync(env.MIBLO_TTY, answers.map((a) => `${a}\n`).join(''));

@@ -655,11 +655,12 @@ export async function run(argv, deps) {
   }
 }
 
-// For tests that run the CLI as a separate process (the installer's): MIBLO_DISCOVER_JSON holds
-// the list `discover` reports instead of asking the network. Unset or not a JSON array, mDNS is
-// used. It only changes what is listed: pairing still needs the code shown on the gadget.
+// For tests that run the CLI as a separate process (the installer's): with MIBLO_TEST=1,
+// MIBLO_DISCOVER_JSON holds the list `discover` reports instead of asking the network. Otherwise,
+// unset or not a JSON array, mDNS is used. It only changes what is listed: pairing still needs
+// the code shown on the gadget.
 export function fixedDiscovery(env) {
-  if (!env.MIBLO_DISCOVER_JSON) return null;
+  if (env.MIBLO_TEST !== '1' || !env.MIBLO_DISCOVER_JSON) return null;
   let list;
   try {
     list = JSON.parse(env.MIBLO_DISCOVER_JSON);

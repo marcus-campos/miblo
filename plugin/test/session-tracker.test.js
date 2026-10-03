@@ -500,7 +500,7 @@ test('a failed shell command ends its timer (PostToolUseFailure), and the hook i
   assert.equal(row().st, 'running');
   assert.ok(!('ts' in row()));
   const hooks = JSON.parse(fs.readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8')).hooks;
-  const h = hooks.PostToolUseFailure?.flatMap((m) => m.hooks).find((c) => c.command.includes('bin/hook.js'));
+  const h = hooks.PostToolUseFailure?.flatMap((m) => m.hooks).find((c) => / hook\.js$/.test(c.command));
   assert.ok(h, 'PostToolUseFailure runs hook.js');
   assert.equal(h.async, true);
 });

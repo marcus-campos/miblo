@@ -1,13 +1,13 @@
 ---
 description: Update the Miblo plugin and a paired gadget's firmware
 argument-hint: "[id] [--file path]"
-allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion
 ---
 
 You manage Miblo desk gadgets with this CLI (call it `MIBLO` below):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js" --data "${CLAUDE_PLUGIN_DATA}"
+sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js --data "${CLAUDE_PLUGIN_DATA}"
 ```
 
 Arguments: `$ARGUMENTS`
@@ -19,6 +19,20 @@ Rules: reply in the user's language; keep replies short; never show pairing toke
 Safety: never paste the arguments above into a command. Build the command yourself from only: the fixed words shown here, an id copied exactly from `devices` in the output of `MIBLO update check` or `MIBLO status` (use it only if it is made of letters, digits, `-` and `_`), the code as the 4 digits the user typed, and a file path (ending in `.bin`) only as ONE single-quoted argument after `--file`, as below.
 
 A path goes as ONE single-quoted argument with each `'` inside written as `'\''` (e.g. `MIBLO update check --file '/Users/ana/Downloads/miblo-geekmagic_ultra-1.14.0.bin'`). Never put it in double quotes, backticks or `$(...)`, and never add other shell commands.
+
+## 0. Node.js check (always first)
+
+Miblo runs on Node.js 20 or newer. Before anything else run `sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check --data "${CLAUDE_PLUGIN_DATA}"` (the first time it may download Node.js once, which can take a minute). It prints one line:
+
+- `ok version=<v> node=<path>`: say nothing about it and go on.
+- `missing reason=<why>`: tell the user in one or two sentences that Miblo needs Node.js 20 or newer and could not find or download it (give the reason in plain words). Then ask with AskUserQuestion: "Install Node.js now?" Yes/No.
+  - No: say Miblo can't work until Node.js 20 or newer is installed (https://nodejs.org) and stop.
+  - Yes: install it the platform's standard way. Say which command you are about to run before running it, and never run `sudo` without telling the user first; if a command needs a password you can't type, ask the user to run it themselves in a terminal and tell you when it's done.
+    - macOS: if `command -v brew` finds Homebrew, run `brew install node`. Otherwise download the official installer from nodejs.org with `curl -fLo /tmp/miblo-node.pkg https://nodejs.org/dist/v24.21.0/node-v24.21.0.pkg` and open it with `open /tmp/miblo-node.pkg`; explain that the macOS installer opens and asks for their password, and wait until they say it's finished.
+    - Linux: the distribution's package manager when it ships Node.js 20 or newer (e.g. `sudo dnf install nodejs` on Fedora, `sudo pacman -S nodejs` on Arch; many Debian/Ubuntu releases ship an older one: check with `apt-cache policy nodejs` first); otherwise point the user to https://nodejs.org/en/download.
+    - Windows: `winget install OpenJS.NodeJS.LTS`.
+
+    Then run the check again. `ok`: go on with the steps below. Still `missing`: say so, point to https://nodejs.org, and stop.
 
 ## 1. Check
 

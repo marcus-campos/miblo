@@ -81,3 +81,27 @@ test('exits 1 when the original is killed by a signal', async () => {
   const r = await run(tap, INPUT, { MIBLO_PORT: '1' });
   assert.equal(r.code, 1);
 });
+
+// As linked by /miblo:link-statusline: through the launcher copied next to the tap, under the bare
+// environment of an app started from the desktop (no node on PATH; Node found in ~/.volta here).
+test('runs through the launcher copied next to it, with no node on PATH', { skip: process.platform === 'win32' }, async () => {
+  const tap = installed({ type: 'command', command: 'printf "[%s]" orig' });
+  const dir = path.dirname(tap);
+  fs.copyFileSync(path.resolve(path.dirname(src), 'miblo-run'), path.join(dir, 'miblo-run'));
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'miblo-tap-home-'));
+  fs.mkdirSync(path.join(home, '.volta/bin'), { recursive: true });
+  fs.symlinkSync(process.execPath, path.join(home, '.volta/bin/node'));
+  const data = path.join(home, 'data');
+  const r = await new Promise((resolve) => {
+    const child = spawn('/bin/sh', [path.join(dir, 'miblo-run'), '--no-wait', 'statusline-tap.mjs', '--data', data], {
+      env: { HOME: home, PATH: '/usr/bin:/bin', SHELL: '/bin/sh', MIBLO_PORT: '1', MIBLO_SYSROOT: home },
+    });
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.on('close', (code) => resolve({ code, out }));
+    child.stdin.end(INPUT);
+  });
+  assert.equal(r.out, '[orig]');
+  assert.equal(r.code, 0);
+  assert.equal(fs.readFileSync(path.join(data, 'runtime/node-path'), 'utf8').trim(), path.join(home, '.volta/bin/node'));
+});

@@ -1,13 +1,13 @@
 ---
 description: Show a message on Miblo for people passing by your desk
 argument-hint: "<text> [--min N] | off"
-allowed-tools: Bash(node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js":*), AskUserQuestion
+allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), AskUserQuestion
 ---
 
 You manage Miblo desk gadgets with this CLI (call it `MIBLO` below):
 
 ```
-node "${CLAUDE_PLUGIN_ROOT}/bin/miblo.js" --data "${CLAUDE_PLUGIN_DATA}"
+sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js --data "${CLAUDE_PLUGIN_DATA}"
 ```
 
 Arguments: `$ARGUMENTS`

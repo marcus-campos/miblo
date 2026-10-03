@@ -1,7 +1,7 @@
 import { trimSnapshot, alertOnlySnapshot } from './snapshot-builder.js';
 import { LEGACY_MAX_SESSIONS, LEGACY_SNAPSHOT_MAX_BYTES } from './constants.js';
 import { ZoneOffsets } from './tz-offsets.js';
-import { verifyNewAddr, isLanAddr } from './relocation.js';
+import { verifyNewAddr, isLanAddr, hasChallenge } from './relocation.js';
 
 export class DeviceManager {
   #health = new Map();
@@ -25,8 +25,10 @@ export class DeviceManager {
     return this.store.list().map((d) => {
       const h = this.#health.get(d.id) ?? {};
       // needsPair: it answered at a new address that could not prove it is this gadget: the user
-      // must run /miblo:pair again (nothing was sent there).
-      return { id: d.id, name: d.name, addr: d.addr, online: !!h.online, unauthorized: !!h.unauthorized, needsPair: !!h.needsPair, lastOk: h.lastOk ?? null };
+      // must run /miblo:pair again (nothing was sent there). oldFirmware: last seen on a firmware
+      // before the relocation challenge (or never read): it should be updated (/miblo:update).
+      return { id: d.id, name: d.name, addr: d.addr, online: !!h.online, unauthorized: !!h.unauthorized, needsPair: !!h.needsPair,
+        oldFirmware: !hasChallenge(d.fw), lastOk: h.lastOk ?? null };
     });
   }
 
@@ -42,6 +44,11 @@ export class DeviceManager {
     if (h.caps && this.now() - h.capsAt < 3600_000) return h.caps;
     try {
       const info = await this.client.info(dev.addr, dev.token);
+      // The firmware it runs, kept for relocation (relocation.js): only an authenticated answer
+      // carries fw (a reduced one has none), so a stranger cannot lower it.
+      if (typeof info?.fw === 'string' && /^\d+\.\d+\.\d+[0-9A-Za-z.+-]{0,40}$/.test(info.fw) && info.fw !== dev.fw) {
+        try { this.store.update(dev.id, { fw: info.fw }); } catch { /* best-effort */ }
+      }
       const n = Number(info?.maxSessions);
       const b = Number(info?.maxBytes);
       h.caps = { maxSessions: Number.isInteger(n) && n > 0 ? n : LEGACY_MAX_SESSIONS,
@@ -91,7 +98,7 @@ export class DeviceManager {
       const hit = (await this.discover()).find((f) => f.id === dev.id);
       if (!hit || hit.addr === dev.addr) return;
       const verdict = await verifyNewAddr({ client: this.client, dev, addr: hit.addr, addrOk: this.addrOk });
-      if (verdict === 'ok') {
+      if (verdict === 'ok' || verdict === 'legacy') {
         this.store.update(dev.id, { addr: hit.addr });
         h.caps = null;  // another address may be another firmware
         h.needsPair = false;

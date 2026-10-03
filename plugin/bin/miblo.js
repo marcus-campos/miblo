@@ -555,7 +555,9 @@ export async function run(argv, deps) {
           try { full = { ...((await client.info(addr, token)) ?? {}), id: first.id }; } catch { /* best-effort */ }
         }
         const info = safe({ ...full, name: cleanName(full.name) || defaultNameFor(first.id) });
-        store.upsert({ id: info.id, name: info.name, addr, token });
+        // fw: the firmware it runs (relocation.js: one with the challenge must always answer it).
+        const fw = !isReducedInfo(full) && typeof full.fw === 'string' && /^\d+\.\d+\.\d+[0-9A-Za-z.+-]{0,40}$/.test(full.fw) ? full.fw : null;
+        store.upsert({ id: info.id, name: info.name, addr, token, ...(fw ? { fw } : {}) });
         if (!isReducedInfo(full) && full.langSet !== true) {
           // Best-effort: the language was never chosen explicitly (automatic mode, or a
           // firmware before 0.2.3 that does not report it), so seed it from the host's

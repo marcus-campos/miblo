@@ -29,10 +29,12 @@ export function startFakeDevice({
   clockKnown = true,  // false: the gadget has no time yet (no NTP, no snapshot): HH:MM and DD/MM answer 409 clock
   busy = 0,  // the next `busy` requests (to `busyPath` only, if set) answer 503 {"error":"busy"} (heapLowForRequest)
   busyPath = null,
-  // GET /api/challenge?n=<32 hex>&t=<tokenTag> (firmware 1.14.0+, no token needed): {id, mac:
-  // hex HMAC-SHA256(token, n || id)} with the token whose tag is t. 'hmac' answers it, 'none' is a
-  // firmware before it (404), 'forge' is an impostor that does not know the token (a wrong mac).
+  // GET /api/challenge?n=<32 hex>&t=<tokenTag> (firmware 1.14.0+, no token needed): {id, ip, v: 2,
+  // mac: hex HMAC-SHA256(token, n || id || ip)} with the token whose tag is t, where ip is the
+  // gadget's own station IPv4 (`ip`). 'hmac' answers it, 'none' is a firmware before it (404),
+  // 'forge' is an impostor that does not know the token (a wrong mac).
   challenge = legacy ? 'none' : 'hmac',
+  ip = '127.0.0.1',
   resetUploads = 0,  // the next `resetUploads` POST /update are reset (RST) before the body is read,
   // as the firmware's hook does when it refuses an upload it cannot answer in time
 } = {}) {
@@ -188,10 +190,10 @@ export function startFakeDevice({
       state.challenges += 1;
       const n = url.searchParams.get('n') ?? '';
       if (!/^[0-9a-f]{32}$/.test(n)) return send(400, { error: 'invalid', field: 'n' });
-      if (challenge === 'forge') return send(200, { id, mac: crypto.randomBytes(32).toString('hex') });
+      if (challenge === 'forge') return send(200, { id, ip, v: 2, mac: crypto.randomBytes(32).toString('hex') });
       const t = state.tokens.find((k) => tokenTag(k) === url.searchParams.get('t'));
       if (!t) return send(403, { error: 'unknown' });
-      return send(200, { id, mac: crypto.createHmac('sha256', t).update(n + id).digest('hex') });
+      return send(200, { id, ip, v: 2, mac: crypto.createHmac('sha256', t).update(n + id + ip).digest('hex') });
     }
     if (req.method === 'POST' && req.url === '/api/pair') {
       if (now() < state.lockedUntil) {
@@ -468,4 +470,30 @@ export function startFakeDevice({
         state,
         close: () => new Promise((c) => server.close(c)),
       })));
+}
+
+// A LAN impostor that relays GET /api/challenge (and /api/info) to the real gadget at `target` and
+// returns its answer, with the ip replaced by `rewriteIp` if set. Records every Authorization
+// header it receives (state.authHeaders); it never answers anything else.
+export async function startChallengeRelay(target, { rewriteIp = null } = {}) {
+  const state = { authHeaders: [], relayed: 0 };
+  const server = http.createServer(async (req, res) => {
+    if (req.headers.authorization !== undefined) state.authHeaders.push(req.headers.authorization);
+    const url = new URL(req.url, 'http://x');
+    if (req.method !== 'GET' || !['/api/challenge', '/api/info'].includes(url.pathname)) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      return res.end('{"error":"not found"}');
+    }
+    state.relayed += 1;
+    const r = await fetch(`http://${target}${req.url}`);
+    let body = await r.text();
+    if (rewriteIp && r.ok) body = JSON.stringify({ ...JSON.parse(body), ip: rewriteIp });
+    res.writeHead(r.status, { 'content-type': 'application/json' });
+    res.end(body);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return {
+    state, addr: `127.0.0.1:${server.address().port}`,
+    close: () => new Promise((r) => { server.closeAllConnections?.(); server.close(() => r()); }),
+  };
 }

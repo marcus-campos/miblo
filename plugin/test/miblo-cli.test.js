@@ -51,6 +51,17 @@ test('pair stores the device; wrong code returns 2', async () => {
   }
 });
 
+test('pair keeps the firmware version the gadget reports (relocation needs it)', async () => {
+  const dev = await startFakeDevice({ fw: '1.14.0' });
+  const d = deps();
+  try {
+    assert.equal((await run(['pair', dev.addr, '4827'], d)).code, 0);
+    assert.equal(new DeviceStore(d.dataDir).list()[0].fw, '1.14.0');
+  } finally {
+    await dev.close();
+  }
+});
+
 test('pair after 5 wrong codes reports the lockout with seconds remaining', async () => {
   let t = 0;
   const dev = await startFakeDevice({ now: () => t });

@@ -13,7 +13,7 @@ function setup({ failAddrs = new Set(), found = [] } = {}) {
   const pushes = [];
   const client = {
     // the gadget at its new address proves it holds the token (relocation.js)
-    async challenge(addr, nonce) { return { id: 'g1', mac: challengeMac('t', nonce, 'g1') }; },
+    async challenge(addr, nonce) { const ip = addr.split(':')[0]; return { id: 'g1', ip, v: 2, mac: challengeMac('t', nonce, 'g1', ip) }; },
     async pushState(addr, token, snap) {
       pushes.push(addr);
       if (failAddrs.has(addr)) { const e = new Error('down'); e.status = addr.endsWith(':401') ? 401 : undefined; throw e; }

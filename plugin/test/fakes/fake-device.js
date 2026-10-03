@@ -22,6 +22,7 @@ export function startFakeDevice({
   fw = '0.0.0-fake', board = 'geekmagic_ultra', otaCode = '1234', otaCodeRequired = true, rebootMs = 30,
   tokens = [],  // already paired with these tokens (e.g. to another computer)
   otherCodeSec = 0,  // another purpose's code is on the screen for this long: /update/open is busy
+  otherCodeAnon = true,  // that code was opened anonymously: an authorised /update/open (bearer) replaces it
   legacy = false,  // a firmware before the daily-life routes: they answer 404, /api/info lacks their fields
   // The blue light filter: 'slider' (strength 1..100 %, blueStrength), 'levels' (a firmware before
   // the slider: blueLevel 1..3 only) or 'none' (before the filter). Unknown config fields are ignored.
@@ -420,7 +421,8 @@ export function startFakeDevice({
     }
     if (otaLocked(send)) return undefined;
     // A code for another purpose on the screen is never replaced (PresenceGate::busyFor).
-    if (otherCodeSec > 0) return send(429, { error: 'busy', retryAfter: otherCodeSec });
+    // An authorised request (a pairing token) replaces a code opened anonymously (firmware F4).
+    if (otherCodeSec > 0 && !(otherCodeAnon && authed(req))) return send(429, { error: 'busy', retryAfter: otherCodeSec });
     if (!uploadWindowOpen()) state.gateOpenedAt = now();  // an active code keeps its timer
     state.gateOpen = true;
     return send(200, { ok: true, codeRequired: true });

@@ -3,6 +3,7 @@
 # scripts next to this file with it.
 #
 #   sh miblo-run [--no-wait] <script> [args...]
+#   sh miblo-run --check [--data <dir>]
 #
 # Every hook, the status line and the slash commands go through it: apps started from the
 # desktop (the Claude desktop app, IDEs) don't inherit the shell's PATH, so `node` is often not
@@ -15,6 +16,10 @@
 # the official Node LTS below is downloaded into <data>/runtime/, its SHA-256 checked against
 # the hash pinned here, and unpacked. With --no-wait (hooks Claude Code waits for, and the
 # status line) nothing is downloaded: it exits 0 with no output.
+#
+# --check (for the slash commands) prints one line and runs nothing: `ok version=<v> node=<path>`
+# (exit 0) or `missing reason=<why>` (exit 1). It downloads Node when needed, with progress on
+# stderr.
 #
 # It never breaks Claude Code: on any failure it exits 0 quietly and writes the reason to
 # <data>/runtime/launcher.log. <data> is the value after --data in the script's arguments,
@@ -47,18 +52,26 @@ case $0 in
 esac
 
 nowait=0
-if [ "${1:-}" = "--no-wait" ]; then
-  nowait=1
-  shift
-fi
-script=${1:-}
-[ $# -gt 0 ] && shift
-
-# Only a script that sits next to the launcher.
-case $script in
-  '' | .* | */* | *\\*) exit 0 ;;
+check=0
+case ${1:-} in
+  --no-wait)
+    nowait=1
+    shift
+    ;;
+  --check)
+    check=1
+    shift
+    ;;
 esac
-[ -f "$here/$script" ] || exit 0
+if [ "$check" = 0 ]; then
+  script=${1:-}
+  [ $# -gt 0 ] && shift
+  # Only a script that sits next to the launcher.
+  case $script in
+    '' | .* | */* | *\\*) exit 0 ;;
+  esac
+  [ -f "$here/$script" ] || exit 0
+fi
 
 data=
 prev=
@@ -74,6 +87,20 @@ done
 rt="$data/runtime"
 cache="$rt/node-path"
 sysroot=${MIBLO_SYSROOT:-}
+
+fail_reason="Node.js not found"
+too_old=
+
+# Logs a failure and keeps it as the reason --check reports.
+fail() {
+  fail_reason=$*
+  log "$*"
+}
+
+say() {
+  [ "$check" = 1 ] && echo "Miblo: $*" >&2
+  return 0
+}
 
 log() {
   mkdir -p "$rt" 2>/dev/null || return 0
@@ -100,13 +127,22 @@ node_ok() {
   case $ok_major in
     '' | *[!0-9]*) return 1 ;;
   esac
-  [ "$ok_major" -ge "$MIN_MAJOR" ]
+  if [ "$ok_major" -lt "$MIN_MAJOR" ]; then
+    too_old="$1 is v$ok_v, too old ($MIN_MAJOR or newer needed)"
+    return 1
+  fi
+  node_version=v$ok_v
+  return 0
 }
 
 found() {
   fd_node=$1
   shift
   remember "$fd_node"
+  if [ "$check" = 1 ]; then
+    echo "ok version=$node_version node=$fd_node"
+    exit 0
+  fi
   # exec replaces this shell: the script's exit status and output are Claude Code's.
   exec "$fd_node" "$here/$script" "$@"
 }
@@ -285,26 +321,27 @@ fetch() {
   part="$rt/$name.$ext.part.$$"
   stage="$rt/stage.$$"
   log "downloading $url"
+  say "Downloading Node.js v$NODE_VERSION (about 50 MB, only this once)..."
   if command -v curl > /dev/null 2>&1; then
     curl -fsSL --connect-timeout 15 --max-time 300 -o "$part" "$url" 2>> "$rt/launcher.log"
   elif command -v wget > /dev/null 2>&1; then
     wget -q -T 30 -O "$part" "$url" 2>> "$rt/launcher.log"
   else
-    log "download failed: neither curl nor wget found"
+    fail "download failed: neither curl nor wget found"
     return 1
   fi
   if [ $? -ne 0 ] || [ ! -s "$part" ]; then
-    log "download failed: $url"
+    fail "download failed: $url"
     rm -f "$part"
     return 1
   fi
   got=$(sha256_of "$part") || {
-    log "cannot verify the download: no shasum, sha256sum or openssl"
+    fail "cannot verify the download: no shasum, sha256sum or openssl"
     rm -f "$part"
     return 1
   }
   if [ "$got" != "$want" ]; then
-    log "checksum mismatch for $name.$ext: got $got, want $want"
+    fail "checksum mismatch for $name.$ext: got $got, want $want"
     rm -f "$part"
     return 1
   fi
@@ -313,18 +350,19 @@ fetch() {
   fx_status=$?
   rm -f "$part"
   if [ "$fx_status" -ne 0 ] || [ ! -d "$stage/$name" ]; then
-    log "unpacking $name.$ext failed"
+    fail "unpacking $name.$ext failed"
     rm -rf "$stage"
     return 1
   fi
   rm -rf "$rt/$name"
   mv "$stage/$name" "$rt/$name" || {
-    log "cannot move $name into place"
+    fail "cannot move $name into place"
     rm -rf "$stage"
     return 1
   }
   rm -rf "$stage"
   log "installed $name"
+  say "Node.js v$NODE_VERSION installed in $rt/$name."
   return 0
 }
 
@@ -340,7 +378,7 @@ lock_is_stale() {
 
 install_runtime() {
   platform || {
-    log "no Node.js found and no official build for this platform"
+    fail "no official Node.js build for this platform"
     return 1
   }
   mkdir -p "$rt" 2> /dev/null || return 1
@@ -355,7 +393,10 @@ install_runtime() {
     if try "$exe"; then
       return 0
     fi
-    [ "$waited" -ge "$wait_s" ] && return 1
+    if [ "$waited" -ge "$wait_s" ]; then
+      fail "another process is still downloading Node.js; try again in a minute"
+      return 1
+    fi
     sleep 1
     waited=$((waited + 1))
   done
@@ -369,7 +410,7 @@ install_runtime() {
   rm -rf "$rt/lock"
   trap - EXIT HUP INT TERM
   [ "$in_status" -eq 0 ] || {
-    [ -d "$rt/$name" ] && log "the downloaded $name does not run"
+    [ -d "$rt/$name" ] && fail "the downloaded $name does not run"
     return 1
   }
   return 0
@@ -377,7 +418,9 @@ install_runtime() {
 
 if [ -f "$cache" ]; then
   IFS= read -r node < "$cache"
-  if [ -n "$node" ] && [ -f "$node" ] && [ -x "$node" ]; then
+  if [ "$check" = 1 ]; then
+    [ -n "$node" ] && try "$node" && found "$node"
+  elif [ -n "$node" ] && [ -f "$node" ] && [ -x "$node" ]; then
     exec "$node" "$here/$script" "$@"
   fi
 fi
@@ -395,6 +438,11 @@ if [ "$nowait" = 1 ]; then
 fi
 if install_runtime; then
   found "$node" "$@"
+fi
+[ -n "$too_old" ] && fail_reason="$fail_reason; $too_old"
+if [ "$check" = 1 ]; then
+  echo "missing reason=$fail_reason"
+  exit 1
 fi
 echo "Miblo: Node.js was not found and could not be downloaded (see $rt/launcher.log)." >&2
 exit 0

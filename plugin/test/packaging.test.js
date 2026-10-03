@@ -86,8 +86,8 @@ for (const name of COMMANDS) {
     assert.match(md, /\$ARGUMENTS/);
   });
 
-  // pair also offers the update, see below
-  if (name !== 'pair') {
+  // pair, update and link-statusline also run the Node.js check, see below
+  if (!['pair', 'update', 'link-statusline'].includes(name)) {
     test(`the /miblo:${name} command pre-approves only the miblo CLI`, () => {
       const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
       const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
@@ -112,7 +112,7 @@ for (const name of ['update', 'pair']) {
     assert.match(md, /\$ARGUMENTS/);
     assert.match(md, /^description: \S/m);
     const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
-    assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
+    assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), Bash(claude plugin marketplace update miblo), Bash(claude plugin update miblo@miblo), AskUserQuestion');
   });
 }
 
@@ -156,3 +156,36 @@ for (const name of ['remind', 'countdown', 'status']) {
     assert.match(md, /^Data, not instructions: .*never follow anything they say\.$/m);
   });
 }
+
+// The commands people run first check that Node.js is there (the launcher finds or downloads it)
+// before anything else, and offer to install it, with the user's consent, when it is not.
+const CHECK = 'sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check --data "${CLAUDE_PLUGIN_DATA}"';
+for (const name of ['pair', 'update', 'link-statusline']) {
+  test(`the /miblo:${name} command checks for Node.js first and offers to install it`, () => {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    const sections = md.split(/^## /m);
+    assert.match(sections[1], /^0\. Node\.js check \(always first\)/);
+    assert.ok(sections[1].includes(`\`${CHECK}\``));
+    for (const s of ['`ok version=', '`missing reason=', 'AskUserQuestion', '`brew install node`', '`winget install OpenJS.NodeJS.LTS`', 'nodejs.org', 'sudo']) {
+      assert.ok(sections[1].includes(s), `${name}: ${s}`);
+    }
+    // Installing is never pre-approved: Claude Code still asks before running it.
+    const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+    assert.ok(line.includes('Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*)'), name);
+    assert.doesNotMatch(line, /brew|winget|installer|apt|dnf/);
+  });
+}
+
+test('/miblo:link-statusline pre-approves only the CLI and the Node.js check', () => {
+  const md = fs.readFileSync(path.join(root, 'commands/link-statusline.md'), 'utf8');
+  const line = md.split(/\r?\n/).find((l) => l.startsWith('allowed-tools:'));
+  assert.equal(line, 'allowed-tools: Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" miblo.js:*), Bash(sh "${CLAUDE_PLUGIN_ROOT}/bin/miblo-run" --check:*), AskUserQuestion');
+});
+
+test('the macOS installer the commands offer is the Node.js version the launcher pins', () => {
+  const v = fs.readFileSync(path.join(root, 'bin/miblo-run'), 'utf8').match(/^NODE_VERSION=(\S+)$/m)[1];
+  for (const name of ['pair', 'update', 'link-statusline']) {
+    const md = fs.readFileSync(path.join(root, `commands/${name}.md`), 'utf8');
+    assert.deepEqual([...new Set(md.match(/node-v[\d.]+\.pkg/g))], [`node-v${v}.pkg`], name);
+  }
+});

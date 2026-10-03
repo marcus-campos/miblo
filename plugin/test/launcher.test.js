@@ -336,3 +336,45 @@ test('works under dash: discovery, cache and download', { skip: !fs.existsSync('
   fs.rmSync(path.join(s.runtime, 'node-path'));
   assert.match(dash(['hook.js', 'x']).stdout, /^NVM .*hook\.js x\n$/);
 });
+
+// ---- --check: one machine-readable line for the slash commands (pair, update, link-statusline) ----
+
+test('--check prints the node it will use and exits 0', () => {
+  const s = sandbox();
+  const nvm = fakeNode(path.join(s.home, '.nvm/versions/node/v22.2.0/bin/node'), 'NVM', 'v22.2.0');
+  const r = run(s, ['--check', '--data', path.join(s.root, 'd')], { env: { CLAUDE_PLUGIN_DATA: '' } });
+  assert.equal(r.code, 0);
+  assert.equal(r.out, `ok version=v22.2.0 node=${nvm}\n`);
+  assert.equal(fs.readFileSync(path.join(s.root, 'd/runtime/node-path'), 'utf8').trim(), nvm);
+  // From the cache, still checked.
+  assert.equal(run(s, ['--check', '--data', path.join(s.root, 'd')]).out, `ok version=v22.2.0 node=${nvm}\n`);
+});
+
+test('--check downloads the pinned Node when there is none, with progress on stderr', { skip: !hasCurl }, () => {
+  const s = sandbox();
+  const d = dist(s, 'linux-x64');
+  const r = run(s, ['--check'], { env: { MIBLO_NODE_BASE_URL: d.base, MIBLO_NODE_PLATFORM: 'linux-x64', MIBLO_NODE_SHA256: d.sha } });
+  assert.equal(r.code, 0);
+  assert.equal(r.out, `ok version=v${NODE_VERSION} node=${path.join(s.runtime, d.name, 'bin/node')}\n`);
+  assert.match(r.err, /Downloading Node\.js/);
+});
+
+test('--check says why there is no node and exits non-zero', { skip: !hasCurl }, () => {
+  const s = sandbox();
+  const r = run(s, ['--check'], { env: { MIBLO_NODE_BASE_URL: `file://${s.root}/missing`, MIBLO_NODE_PLATFORM: 'linux-x64' } });
+  assert.equal(r.code, 1);
+  assert.match(r.out, /^missing reason=download failed: file:\/\/.*\n$/);
+  const bad = dist(s, 'linux-x64');
+  const r2 = run(s, ['--check'], { env: { MIBLO_NODE_BASE_URL: bad.base, MIBLO_NODE_PLATFORM: 'linux-x64' } });
+  assert.equal(r2.code, 1);
+  assert.match(r2.out, /^missing reason=checksum mismatch.*\n$/);
+});
+
+test('--check names a node that is too old', () => {
+  const s = sandbox();
+  const bin = path.join(s.root, 'pathbin');
+  const old = fakeNode(path.join(bin, 'node'), 'OLD', 'v18.20.0');
+  const r = run(s, ['--check'], { extraPath: [bin], env: { MIBLO_NODE_PLATFORM: 'sunos-sparc' } });
+  assert.equal(r.code, 1);
+  assert.equal(r.out, `missing reason=no official Node.js build for this platform; ${old} is v18.20.0, too old (20 or newer needed)\n`);
+});

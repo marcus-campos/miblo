@@ -420,6 +420,27 @@ static void restoreExact(JsonVariantConst exact, uint8_t& field, uint8_t (*legac
   if (intIn(exact, 15, 240, m) && legacy(m) == field) field = m;
 }
 
+bool configFromStored(Config& cfg, JsonObject stored) {
+  static const char* const kDroppable[] = {"tz",      "tz2",     "pet",     "petColors",   "petEyes",
+                                           "accHead", "accFace", "accNeck", "occasionHats"};
+  Config loaded;
+  for (size_t attempt = 0;; attempt++) {
+    const char* bad = nullptr;
+    if (applyConfigPatch(loaded, stored, &bad)) break;
+    if (attempt == sizeof(kDroppable) / sizeof(kDroppable[0]) || !bad) return false;
+    const char* drop = nullptr;
+    for (const char* k : kDroppable) {
+      if (strcmp(bad, k) == 0) drop = k;
+    }
+    if (!drop) return false;
+    stored.remove(drop);
+    loaded = Config();
+  }
+  restoreStored(loaded, stored);
+  cfg = loaded;
+  return true;
+}
+
 void restoreStored(Config& cfg, JsonObjectConst stored) {
   restoreExact(stored["breakAfterExact"], cfg.breakAfterMin, legacyBreakAfterMin);
   restoreExact(stored["waterExact"], cfg.waterMin, legacyWaterMin);

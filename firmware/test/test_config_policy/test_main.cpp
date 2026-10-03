@@ -137,6 +137,36 @@ static void test_language_survives_reboot() {
   TEST_ASSERT_EQUAL(Lang::En, d.lang);
 }
 
+// A config saved by a later firmware (a new accessory, pet or time zone this one does not know)
+// loses only that field on a downgrade, never every setting.
+static void test_stored_config_drops_only_unknown_fields() {
+  StaticJsonDocument<1024> in;
+  deserializeJson(in,
+                  "{\"mode\":\"sessions\",\"name\":\"X\",\"accHead\":200,\"accFace\":201,"
+                  "\"accNeck\":202,\"occasionHats\":2,\"pet\":250}");
+  Config c;
+  TEST_ASSERT_TRUE(configFromStored(c, in.as<JsonObject>()));
+  TEST_ASSERT_EQUAL(Mode::Sessions, c.mode);
+  TEST_ASSERT_EQUAL_STRING("X", c.name);
+  TEST_ASSERT_EQUAL_UINT8(0, c.accHead);
+  TEST_ASSERT_EQUAL_UINT8(0, c.accFace);
+  TEST_ASSERT_EQUAL_UINT8(0, c.accNeck);
+  TEST_ASSERT_TRUE(c.occasionHats);
+
+  // A known accessory is kept.
+  deserializeJson(in, "{\"accHead\":1,\"accFace\":250}");
+  Config d;
+  TEST_ASSERT_TRUE(configFromStored(d, in.as<JsonObject>()));
+  TEST_ASSERT_EQUAL_UINT8(1, d.accHead);
+  TEST_ASSERT_EQUAL_UINT8(0, d.accFace);
+
+  // Anything else invalid is not ours to guess: the load fails and `cfg` is untouched.
+  deserializeJson(in, "{\"mode\":\"nope\",\"name\":\"Y\"}");
+  Config e;
+  TEST_ASSERT_FALSE(configFromStored(e, in.as<JsonObject>()));
+  TEST_ASSERT_EQUAL_STRING("", e.name);
+}
+
 static void test_power_cycle_reset_counter() {
   // Five quick power-on boots: no reset; countdown 3, 2, 1 on boots 3, 4 and 5.
   const uint8_t expectedRemaining[] = {0, 0, 3, 2, 1};
@@ -1427,6 +1457,7 @@ int main() {
   RUN_TEST(test_invalid_patch_changes_nothing);
   RUN_TEST(test_config_json_roundtrip);
   RUN_TEST(test_language_survives_reboot);
+  RUN_TEST(test_stored_config_drops_only_unknown_fields);
   RUN_TEST(test_power_cycle_reset_counter);
   RUN_TEST(test_non_power_on_boot_keeps_sequence);
   RUN_TEST(test_crash_between_quick_power_ons_does_not_break_sequence);

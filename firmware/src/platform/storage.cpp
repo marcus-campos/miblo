@@ -84,27 +84,9 @@ bool loadConfig(miblo::Config& cfg) {
   DeserializationError err = deserializeJson(doc, f);
   f.close();
   if (err) return false;
-  miblo::Config loaded;
-  // A time zone saved by an older firmware that today's rules reject must not cost the user
-  // every other setting: drop just that field (back to UTC; the settings page re-detects it), and
-  // the same for the second clock's zone (back to off) and for a pet, its colours or eye shape
-  // saved by a newer firmware that this one does not draw (back to the cat, Auto, round).
-  static const char* const kDroppable[] = {"tz", "tz2", "pet", "petColors", "petEyes"};
-  for (size_t attempt = 0;; attempt++) {
-    const char* bad = nullptr;
-    if (miblo::applyConfigPatch(loaded, doc.as<JsonObjectConst>(), &bad)) break;
-    if (attempt == sizeof(kDroppable) / sizeof(kDroppable[0]) || !bad) return false;
-    const char* drop = nullptr;
-    for (const char* k : kDroppable) {
-      if (strcmp(bad, k) == 0) drop = k;
-    }
-    if (!drop) return false;
-    doc.remove(drop);
-    loaded = miblo::Config();
-  }
-  miblo::restoreStored(loaded, doc.as<JsonObjectConst>());
-  cfg = loaded;
-  return true;
+  // A field another firmware saved in a form this one rejects (a time zone, a pet, an accessory)
+  // drops just that field, not every setting (miblo::configFromStored).
+  return miblo::configFromStored(cfg, doc.as<JsonObject>());
 }
 
 // A missing, damaged or oversized file leaves the notes empty (DeskNotes::fromJson skips any

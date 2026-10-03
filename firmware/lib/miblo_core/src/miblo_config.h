@@ -117,6 +117,12 @@ void configToStored(const Config& cfg, JsonObject out);
 // After applyConfigPatch on a stored config: restores the automatic-mode language from
 // "langAuto" and the exact break and water intervals (when they still match the stored choice).
 void restoreStored(Config& cfg, JsonObjectConst stored);
+// The saved config (src/platform/storage.cpp loadConfig): applyConfigPatch + restoreStored, except
+// that a field a newer or older firmware may have saved in a form this one rejects (a time zone,
+// a pet, its colours or eyes, an accessory, occasionHats) is removed from `stored` and left at its
+// default instead of costing every other setting. Any other invalid field fails the load and
+// leaves `cfg` unchanged.
+bool configFromStored(Config& cfg, JsonObject stored);
 // The nearest interval firmware before 1.12 accepts (0 stays 0).
 uint8_t legacyBreakAfterMin(uint8_t minutes);
 uint8_t legacyWaterMin(uint8_t minutes);

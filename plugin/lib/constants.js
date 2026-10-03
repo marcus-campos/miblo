@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 export const PORT = Number(process.env.MIBLO_PORT || 47821);
 export const HOST = '127.0.0.1';
@@ -51,4 +51,18 @@ export function pluginVersion() {
   } catch {
     return '';
   }
+}
+
+// Whether the module at `moduleUrl` (its import.meta.url) is the script node was started with.
+// Node gives a module its real path, so argv[1] is resolved too: through a symlinked folder (a
+// ~/.claude kept in a dotfiles repo) a plain comparison never matches and the script does nothing.
+export function isMain(moduleUrl, argv1 = process.argv[1]) {
+  if (!argv1) return false;
+  let real;
+  try {
+    real = fs.realpathSync(argv1);
+  } catch {
+    return false;
+  }
+  return moduleUrl === pathToFileURL(real).href;
 }

@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion, parseDataArg } from '../lib/constants.js';
+import { fileURLToPath } from 'node:url';
+import { PORT, HOST, DEBOUNCE_MS, HEARTBEAT_MS, PID_CHECK_MS, IDLE_EXIT_MS, claudeSettingsPath, pluginVersion, parseDataArg, isMain } from '../lib/constants.js';
 import { SessionTracker } from '../lib/session-tracker.js';
 import { MetricsStore } from '../lib/metrics-store.js';
 import { DayStats } from '../lib/day-stats.js';
@@ -117,4 +117,4 @@ function main() {
   }, PID_CHECK_MS);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();
+if (isMain(import.meta.url)) main();

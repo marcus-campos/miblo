@@ -2,8 +2,8 @@
 import os from 'node:os';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion } from '../lib/constants.js';
+import { fileURLToPath } from 'node:url';
+import { PORT, HOST, claudeSettingsPath, parseDataArg, pluginVersion, isMain } from '../lib/constants.js';
 import { DeviceClient, busyLine, isBusy, isReducedInfo } from '../lib/device-client.js';
 import { DeviceStore } from '../lib/device-store.js';
 import { discover, cleanId, cleanName } from '../lib/mdns.js';
@@ -655,6 +655,20 @@ export async function run(argv, deps) {
   }
 }
 
+// For tests that run the CLI as a separate process (the installer's): MIBLO_DISCOVER_JSON holds
+// the list `discover` reports instead of asking the network. Unset or not a JSON array, mDNS is
+// used. It only changes what is listed: pairing still needs the code shown on the gadget.
+export function fixedDiscovery(env) {
+  if (!env.MIBLO_DISCOVER_JSON) return null;
+  let list;
+  try {
+    list = JSON.parse(env.MIBLO_DISCOVER_JSON);
+  } catch {
+    return null;
+  }
+  return Array.isArray(list) ? async () => list : null;
+}
+
 async function main() {
   let parsed;
   try {
@@ -671,7 +685,7 @@ async function main() {
     pluginRoot: path.resolve(here, '..'),
     settingsPath: claudeSettingsPath(),
     client: new DeviceClient(),
-    discoverFn: () => discover(),
+    discoverFn: fixedDiscovery(process.env) ?? (() => discover()),
     hostname: os.hostname(),
     fetchStatus: defaultFetchStatus,
     locale: Intl.DateTimeFormat().resolvedOptions().locale,
@@ -681,7 +695,7 @@ async function main() {
   process.exitCode = r.code;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMain(import.meta.url)) {
   main().catch((e) => {
     process.stdout.write(`Error: ${e.message}\n`);
     process.exitCode = 1;

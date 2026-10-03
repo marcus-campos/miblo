@@ -550,6 +550,36 @@ static void drawHeadphones(MascotPen& d, int x, int b, int wide, uint16_t body =
   }
 }
 
+// What the pet wears over its head(), with it moved by (x, b): focus headphones (`phones`) or the
+// gamer headset, with `neck` the meeting's tie or the owner's neck item, the owner's face item,
+// the special day's accessory (`phase` moves its hearts) and the owner's head item. Every mascot
+// and the logo (no neck: too small there).
+static void drawWorn(MascotPen& d, const PetDef& def, uint16_t skin, int x, int b, uint8_t phase, bool phones,
+                     bool neck) {
+  const bool dark = luma565(skin) < kDarkSkin || def.at.darkEyes;
+  if (phones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
+  else if (g_outfit.face == (uint8_t)miblo::Wear::Headset) {  // focus headphones take its place
+    const int hb = b + def.at.phonesDy, s = -30 - def.at.phonesDx;  // the left cup's outer edge
+    drawHeadphones(d, x, hb, def.at.phonesDx, color::DIM, color::GREEN);  // lit cushions
+    d.rect(s + 4 + x, 11 + hb, 2, 9, color::DIM);  // the mic boom, round to the mouth
+    d.rect(s + 4 + x, 19 + hb, 14, 2, color::DIM);
+    d.circle(s + 19 + x, 20 + hb, 2, color::GREEN);
+  }
+  if (neck) {
+    if (mascotTie()) drawTie(d, x, b + def.at.neckDy);  // the meeting's tie over the owner's neck item
+    else drawWearNeck(d, x, b + def.at.neckDy, g_outfit.neck);
+  }
+  // A pet with glasses of its own wears no others (a moustache still goes).
+  if (!def.at.ownGlasses || g_outfit.face == (uint8_t)miblo::Wear::Moustache)
+    drawWearFace(d, x, b + def.at.eyeY - 6, g_outfit.face, def.at, dark);
+  drawHat(d, x, b, phase, def.at, dark);
+  if (g_outfit.head) {
+    int hb = b + def.at.hatDy;
+    if (def.at.hatDy < 0 && hb < -5) hb = -5;  // as the special days' hats: never above the box
+    drawWearHead(d, x, hb, g_outfit.head);
+  }
+}
+
 // Every mascot: the pet (ui_pet.h) and what all pets share around it. `desk` adds what only the
 // big Desk mascot has: a table edge, front paws and the extras (sweat, alarm, zzz, open mouth).
 static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk, bool table = true,
@@ -564,26 +594,8 @@ static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk
   if (desk && table) d.rect(-48, 40, 96, 2, color::DIVIDER);  // table edge (stays put when it hops)
   if (wag) def.tail(c);  // behind the pet
   def.head(c);
-  const bool dark = luma565(c.mc.skin) < kDarkSkin || def.at.darkEyes;
-  if (k.extras & kHeadphones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
-  else if (g_outfit.face == (uint8_t)miblo::Wear::Headset) {  // focus headphones take its place
-    const int hb = b + def.at.phonesDy, s = -30 - def.at.phonesDx;  // the left cup's outer edge
-    drawHeadphones(d, x, hb, def.at.phonesDx, color::DIM, color::GREEN);  // lit cushions
-    d.rect(s + 4 + x, 11 + hb, 2, 9, color::DIM);  // the mic boom, round to the mouth
-    d.rect(s + 4 + x, 19 + hb, 14, 2, color::DIM);
-    d.circle(s + 19 + x, 20 + hb, 2, color::GREEN);
-  }
-  if (mascotTie()) drawTie(d, x, b + def.at.neckDy);  // the meeting's tie over the owner's neck item
-  else drawWearNeck(d, x, b + def.at.neckDy, g_outfit.neck);
-  // A pet with glasses of its own wears no others (a moustache still goes).
-  if (!def.at.ownGlasses || g_outfit.face == (uint8_t)miblo::Wear::Moustache)
-    drawWearFace(d, x, b + def.at.eyeY - 6, g_outfit.face, def.at, dark);
-  drawHat(d, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64), def.at, dark);
-  if (g_outfit.head) {
-    int hb = b + def.at.hatDy;
-    if (def.at.hatDy < 0 && hb < -5) hb = -5;  // as the special days' hats: never above the box
-    drawWearHead(d, x, hb, g_outfit.head);
-  }
+  drawWorn(d, def, c.mc.skin, x, b, (uint8_t)(k.gx + 2 * k.gy + 3 * (int)k.eyes + 4 * (int)k.paws + 64),
+           (k.extras & kHeadphones) != 0, true);
   if (!desk) return;
   def.front(c);
   if (k.extras & kCoffee) {  // a cup held up next to the right paw, steaming
@@ -657,10 +669,11 @@ static void catLogo(int cx, int cy, int size) {
 }
 
 void logo(int cx, int cy, int size) {
-  if (g_paint.pet == static_cast<uint8_t>(miblo::Pet::Cat)) return catLogo(cx, cy, size);
-  // Any other pet: its own head() (eyes open, looking ahead), the 96-unit box drawn size * 96 / 90
-  // wide (as big as the cat's mark) with the small mascot's simplifications (detail = false). A
-  // head reaches from y -48 (ears, antennae) to 42 (the Dev's ponytail): centred on (cx, cy).
+  const bool dressed = g_outfit.head || g_outfit.face || g_accessory;
+  if (g_paint.pet == static_cast<uint8_t>(miblo::Pet::Cat) && !dressed) return catLogo(cx, cy, size);
+  // Any other pet, or a dressed cat: its own head() (eyes open, looking ahead), the 96-unit box
+  // drawn size * 96 / 90 wide with the small mascot's simplifications (detail = false). A head
+  // reaches from y -48 (ears, antennae, hats) to 42 (the Dev's ponytail): centred on (cx, cy).
   PetDef def;
   mibloRomCopy(&def, currentPet(), sizeof(def));
   MascotPen d{*g_canvas, cx, cy, size, 90};
@@ -668,8 +681,9 @@ void logo(int cx, int cy, int size) {
   const MascotLook k{0, 0, 0, 0, Eyes::Open, Paws::Down, 0};
   const PetCtx c{d, k, petColors(def), 0, 0, false, false, 0};
   def.head(c);
-  // Accessories (config accHead / accFace / accNeck): not on this branch yet. When they land, the
-  // logo shows the head and face ones here, from the same drawing as the mascot's, scaled by d.
+  // What it wears, as on the full-size pet (same anchors): the head item, the face item and the
+  // special day's accessory. Not the neck item or the meeting's tie: a few pixels under the chin.
+  drawWorn(d, def, c.mc.skin, 0, 0, 64, false, false);
 }
 
 void mascot(int cx, int cy, uint8_t frame, bool small) {

@@ -509,6 +509,43 @@ static void test_logo_is_the_current_pet() {
   }
 }
 
+// The logo wears what the pet wears (head and face items, the special day's accessory), never
+// outside its spot on the header row; the neck item and the tie are left out; the plain cat
+// stays the brand mark.
+static void test_logo_wears_the_outfit() {
+  const std::vector<int> plainCat = logoPixels(0, kPetAuto);
+  screens::setMascotOutfit(screens::MascotOutfit{0, 0, (uint8_t)Wear::Scarf});
+  screens::setMascotTie(true);
+  TEST_ASSERT_TRUE(logoPixels(0, kPetAuto) == plainCat);  // nothing under the chin
+  screens::setMascotTie(false);
+  screens::setMascotOutfit(screens::MascotOutfit{(uint8_t)Wear::Crown, 0, 0});
+  TEST_ASSERT_TRUE(logoPixels(0, kPetAuto) != plainCat);  // the cat in its crown
+  for (uint8_t pet = 0; pet < kPetIds; pet++) {
+    if (!isPet(pet)) continue;
+    screens::setMascotOutfit(screens::MascotOutfit{});
+    screens::setMascotAccessory(0);
+    const std::vector<int> bare = logoPixels(pet, kPetAuto);
+    for (uint8_t id = 1; id <= kWearMax; id++) {
+      WearSlot slot;
+      if (!wearSlotOf(id, slot) || slot == WearSlot::Neck) continue;
+      screens::MascotOutfit o;
+      (slot == WearSlot::Head ? o.head : o.face) = id;
+      screens::setMascotOutfit(o);
+      logoPixels(pet, kPetAuto);  // inside its spot (checked there)
+    }
+    screens::setMascotOutfit(screens::MascotOutfit{(uint8_t)Wear::TopHat, 0, 0});
+    char msg[40];
+    snprintf(msg, sizeof(msg), "pet %u: no hat on the logo", pet);
+    TEST_ASSERT_TRUE_MESSAGE(logoPixels(pet, kPetAuto) != bare, msg);
+    screens::setMascotOutfit(screens::MascotOutfit{});
+    for (uint8_t a = 1; a <= (uint8_t)Accessory::Hearts; a++) {
+      screens::setMascotAccessory(a);
+      logoPixels(pet, kPetAuto);
+    }
+  }
+  screens::setMascotAccessory(0);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_every_look_stays_in_its_box);
@@ -524,5 +561,6 @@ int main(int, char**) {
   RUN_TEST(test_guest_looks_as_on_its_own_miblo);
   RUN_TEST(test_stranger_is_a_dark_pet_of_our_kind);
   RUN_TEST(test_logo_is_the_current_pet);
+  RUN_TEST(test_logo_wears_the_outfit);
   return UNITY_END();
 }

@@ -943,6 +943,17 @@ void fuzzHttp(const uint8_t* d, size_t n) {
   const uint8_t rnd[16] = {1, 2, 3};
   ws.issue(rnd, 1000);
   ws.valid(s.s, 2000);
+  // Host/Origin checks and the refusal page (F2): whatever the Host, ip or id, the page fits the
+  // 448 bytes refuseForeign gives it, and a malformed id never reaches it.
+  hostAllowed(s.s, "miblo-4f2a");
+  originAllowed(s.s, "miblo-4f2a");
+  char page[448];
+  FUZZ_CHECK(wrongHostReply(page, sizeof(page), "421 Misdirected Request", s.s, s.s, true) > 0, "page fits");
+  FUZZ_CHECK(wrongHostReply(page, sizeof(page), "421 Misdirected Request", "192.168.0.41", s.s, true) > 0, "id");
+  // The address challenge (F1) with the request's own n, t and an ip from the input.
+  char mac[65];
+  answerChallenge(tokens, s.s, s.s, "miblo-4f2a", s.s, mac);
+  FUZZ_CHECK(strlen(mac) == 0 || strlen(mac) == 64, "mac");
 }
 FUZZ_REGISTER(http, fuzzHttp, kHttpSeeds, kHttpDict, 1200);
 

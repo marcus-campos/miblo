@@ -97,6 +97,30 @@ enum class Gift : uint8_t {
   Count
 };
 
+// How a pet looks besides its kind and preset, as its own Miblo draws it in pet mode: the user's
+// accessories (config accHead/accFace/accNeck), eye shape (petEyes) and custom colours (petColors).
+// The day's holiday hat is not in it: each host dresses everyone by its own date.
+enum AccSlot : uint8_t { kAccHead, kAccFace, kAccNeck };
+// `id` if it is an accessory for `slot` (head 1-10; face 11, 12, 14, 15, 20; neck 16-19, 21; 13 is
+// never used), else 0 (none): what a newer firmware or a bad packet sends is dropped.
+uint8_t knownAccessory(AccSlot slot, uint8_t id);
+struct FriendLook {
+  uint8_t accHead = 0, accFace = 0, accNeck = 0;  // 0: none
+  uint8_t eyes = 0;                               // miblo::EyeShape
+  uint8_t custom = 0;                             // bit i: slot i (miblo::PetSlot) is rgb[i]; else Auto
+  uint16_t rgb[kPetSlots] = {};                   // RGB565, where custom (0 elsewhere)
+  bool operator==(const FriendLook& o) const { return memcmp(this, &o, sizeof(*this)) == 0; }
+  bool operator!=(const FriendLook& o) const { return !(*this == o); }
+};
+static_assert(sizeof(FriendLook) == 6 + 2 * kPetSlots, "no padding: compared with memcmp");
+// Our look from the config's form (petColors slots: kPetAuto or 0xRRGGBB + 1); anything out of
+// range is left out.
+FriendLook friendLook(const uint32_t (&slots)[kPetSlots], uint8_t eyes, uint8_t head = 0, uint8_t face = 0,
+                      uint8_t neck = 0);
+// A look's colours in the config's form, for drawing (each RGB565 widened so that it narrows back
+// to itself: the guest is drawn in exactly the colours it draws itself with).
+void lookSlots(const FriendLook& look, uint32_t (&slots)[kPetSlots]);
+
 struct FriendPacket {
   // Who: "who is free for a visit?" (broadcast; `chance` says how likely each one should answer, so
   // a network of any size sends back only a handful). Here: "I am" (to the one who asked).
@@ -119,11 +143,17 @@ struct FriendPacket {
   uint8_t offset = 0;    // Invite/Host: time into the visit, in 100 ms steps
   char host[16] = "";    // Invite: the host (empty: the sender itself)
   uint8_t pet = 0;       // sender's pet (miblo::Pet; absent or unknown: the cat)
+  FriendLook look;       // sender's look (absent: none, the preset's colours, round eyes)
 };
 
 // "MBLO", version, type, mascot, flags, gift, then id, name and to as length-prefixed strings,
-// (Invite, Host) the offset (and Invite's host), and last the pet: one byte that older firmware
-// ignores (anything after the known fields), left out when the packet has no room for it.
+// (Invite, Host) the offset (and Invite's host), then the pet: one byte that older firmware
+// ignores (1.9-1.14 skip anything after the known fields), left out when the packet has no room
+// for it. Then, only when the look is not the default one, and each part only when it fits whole
+// after what comes before it: the accessories (head, face, neck: 3 bytes), then the colours: a
+// byte with one bit per custom slot (bit 7 always 0), the eye shape (0..2), and each custom slot's
+// RGB565 (high byte first), in slot order. decode keeps whatever part of the look is valid and
+// whole and drops the rest (the packet itself still counts).
 // encode returns the length (0 if it does not fit); decode rejects anything malformed.
 size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap);
 bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out);
@@ -136,17 +166,19 @@ struct VisitView {
   char name[64] = "";  // the other gadget (for a host: the first guest)
   uint8_t mascot = 0;
   uint8_t pet = 0;     // its pet (miblo::Pet)
+  FriendLook look;     // and look
   Gift gift = Gift::None;
   bool turnedAway = false;                  // visitor: the host got busy, coming back early
   uint8_t extra = 0;                        // host: more guests besides the first (0..kMaxGuests-1)
   uint8_t extraMascot[kMaxGuests - 1] = {};  // their colours
   uint8_t extraPet[kMaxGuests - 1] = {};     // and pets
+  FriendLook extraLook[kMaxGuests - 1];      // and looks
 };
 
 class FriendPlay {
  public:
   // Our own identity (cheap to call every frame; a change is announced).
-  void setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet = 0);
+  void setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet = 0, const FriendLook& look = {});
   // Every frame. `enabled`: the setting is on and the network is up (off: everything is
   // forgotten and nothing is sent). `flags`: kFriendRoaming | kFriendNapping | kFriendTired.
   // `rnd`: any random number (timing and choice of friend).
@@ -184,6 +216,7 @@ class FriendPlay {
     char name[64] = "";
     uint8_t mascot = 0;
     uint8_t pet = 0;
+    FriendLook look;
     uint8_t flags = 0;
     uint32_t seenMs = 0;
     bool greeted = false;
@@ -242,6 +275,7 @@ class FriendPlay {
   char name_[64] = "";
   uint8_t mascot_ = 0;
   uint8_t pet_ = 0;
+  FriendLook look_;
   uint8_t flags_ = 0;
   bool enabled_ = false;
   uint32_t rnd_ = 0;

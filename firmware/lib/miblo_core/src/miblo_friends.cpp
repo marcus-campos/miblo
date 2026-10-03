@@ -19,6 +19,86 @@ static bool putStr(uint8_t* out, size_t cap, size_t& n, const char* s) {
   return true;
 }
 
+uint8_t knownAccessory(AccSlot slot, uint8_t id) {
+  bool ok = false;
+  switch (slot) {
+    case kAccHead: ok = id >= 1 && id <= 10; break;
+    case kAccFace: ok = id == 11 || id == 12 || id == 14 || id == 15 || id == 20; break;
+    case kAccNeck: ok = (id >= 16 && id <= 19) || id == 21; break;
+  }
+  return ok ? id : 0;
+}
+
+FriendLook friendLook(const uint32_t (&slots)[kPetSlots], uint8_t eyes, uint8_t head, uint8_t face, uint8_t neck) {
+  FriendLook l;
+  l.accHead = knownAccessory(kAccHead, head);
+  l.accFace = knownAccessory(kAccFace, face);
+  l.accNeck = knownAccessory(kAccNeck, neck);
+  l.eyes = eyes < kEyeShapes ? eyes : 0;
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    if (slots[i] == kPetAuto || slots[i] > kPetColorMax) continue;
+    const uint32_t rgb = slots[i] - 1;
+    l.custom |= (uint8_t)(1u << i);
+    l.rgb[i] = (uint16_t)(((rgb >> 8) & 0xF800) | ((rgb >> 5) & 0x07E0) | ((rgb >> 3) & 0x001F));
+  }
+  return l;
+}
+
+void lookSlots(const FriendLook& look, uint32_t (&slots)[kPetSlots]) {
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    slots[i] = kPetAuto;
+    if (!(look.custom & (1u << i))) continue;
+    const uint32_t c = look.rgb[i];
+    const uint32_t r = c >> 11, g = (c >> 5) & 63, b = c & 31;
+    slots[i] = ((r << 3 | r >> 2) << 16 | (g << 2 | g >> 4) << 8 | (b << 3 | b >> 2)) + 1;
+  }
+}
+
+// The look after the pet byte, each part only if it fits whole (the accessories first).
+static void putLook(const FriendLook& l, uint8_t* out, size_t cap, size_t& n) {
+  const bool colours = l.custom || l.eyes;
+  if (!colours && !l.accHead && !l.accFace && !l.accNeck) return;  // the default look: nothing
+  if (n + 3 > cap) return;
+  out[n++] = l.accHead;
+  out[n++] = l.accFace;
+  out[n++] = l.accNeck;
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < kPetSlots; i++) count += (l.custom >> i) & 1;
+  if (!colours || n + 2 + 2 * (size_t)count > cap) return;
+  out[n++] = l.custom;
+  out[n++] = l.eyes;
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    if (!(l.custom & (1u << i))) continue;
+    out[n++] = (uint8_t)(l.rgb[i] >> 8);
+    out[n++] = (uint8_t)l.rgb[i];
+  }
+}
+
+// The look from what follows the pet byte: the parts that are whole and valid.
+static FriendLook getLook(const uint8_t* in, size_t len, size_t n) {
+  FriendLook l;
+  if (n + 3 > len) return l;
+  l.accHead = knownAccessory(kAccHead, in[n]);
+  l.accFace = knownAccessory(kAccFace, in[n + 1]);
+  l.accNeck = knownAccessory(kAccNeck, in[n + 2]);
+  n += 3;
+  if (n + 2 > len) return l;
+  const uint8_t custom = in[n], eyes = in[n + 1];
+  n += 2;
+  if ((custom & 0x80) || eyes >= kEyeShapes) return l;
+  uint8_t count = 0;
+  for (uint8_t i = 0; i < kPetSlots; i++) count += (custom >> i) & 1;
+  if (n + 2 * (size_t)count > len) return l;
+  l.custom = custom;
+  l.eyes = eyes;
+  for (uint8_t i = 0; i < kPetSlots; i++) {
+    if (!(custom & (1u << i))) continue;
+    l.rgb[i] = (uint16_t)(in[n] << 8 | in[n + 1]);
+    n += 2;
+  }
+  return l;
+}
+
 size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap) {
   if (cap < 8) return 0;
   size_t n = 0;
@@ -36,7 +116,10 @@ size_t encodeFriendPacket(const FriendPacket& p, uint8_t* out, size_t cap) {
     out[n++] = p.offset;
     if (p.type == FriendPacket::Invite && !putStr(out, cap, n, p.host)) return 0;
   }
-  if (n < cap) out[n++] = p.pet;  // optional: a full packet goes out without it (a cat)
+  if (n < cap) {  // optional: a full packet goes out without it (a cat), and without the look
+    out[n++] = p.pet;
+    putLook(p.look, out, cap, n);
+  }
   return n;
 }
 
@@ -134,7 +217,10 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
     if (p.type == FriendPacket::Invite && n < len && !getStr(in, len, n, p.host, sizeof(p.host))) return false;
     if (!validId(p.host, true)) return false;
   }
-  if (n < len) p.pet = knownPet(in[n++]);  // absent (an older firmware): the cat
+  if (n < len) {  // absent (an older firmware): the cat, in its preset
+    p.pet = knownPet(in[n++]);
+    p.look = getLook(in, len, n);
+  }
   if (!validId(p.id, false) || !validId(p.to, true) || !validName(p.name)) return false;
   cleanName(p.name, sizeof(p.name), p.id);
   // Addressed to itself, or an invitation to visit its own addressee: nothing sends these.
@@ -149,7 +235,7 @@ bool decodeFriendPacket(const uint8_t* in, size_t len, FriendPacket& out) {
 
 // ---- FriendPlay ----
 
-void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet) {
+void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot, uint8_t pet, const FriendLook& look) {
   // The name as the other Miblos will read it: one they would refuse (the settings accept any
   // printable bytes; decodeFriendPacket wants valid UTF-8 without C1 controls) goes out as the
   // default name, or every packet of ours would be dropped.
@@ -157,11 +243,13 @@ void FriendPlay::setSelf(const char* id, const char* name, uint8_t mascot, uint8
   utf8Copy(clean, sizeof(clean), name, 20);
   if (!validName(clean)) clean[0] = 0;
   cleanName(clean, sizeof(clean), id);
-  if (strcmp(id, id_) != 0 || strcmp(clean, name_) != 0 || mascot != mascot_ || pet != pet_) {
+  if (strcmp(id, id_) != 0 || strcmp(clean, name_) != 0 || mascot != mascot_ || pet != pet_ ||
+      look != look_) {
     strncpy(id_, id, sizeof(id_) - 1);
     strcpy(name_, clean);
     mascot_ = mascot;
     pet_ = pet;
+    look_ = look;
     announce_ = true;
   }
 }
@@ -270,6 +358,7 @@ bool FriendPlay::nextPacket(FriendPacket& out) {
   strcpy(out.name, name_);
   out.mascot = mascot_;
   out.pet = pet_;
+  out.look = look_;
   out.flags = o.flags;
   strcpy(out.to, o.to);
   out.gift = o.gift;
@@ -379,6 +468,7 @@ void FriendPlay::startVisit(VisitRole role, Friend& f, Gift gift, uint32_t nowMs
   strcpy(visit_.name, f.name);
   visit_.mascot = f.mascot;
   visit_.pet = f.pet;
+  visit_.look = f.look;
   visit_.gift = gift;
   visitMs_ = nowMs;
   strcpy(visitWith_, f.id);
@@ -538,6 +628,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
   strcpy(f->name, p.name[0] ? p.name : p.id);
   f->mascot = p.mascot;
   f->pet = p.pet;
+  f->look = p.look;
   f->flags = p.flags;
   f->seenMs = nowMs;
   if (p.type == FriendPacket::Beacon) return;
@@ -616,6 +707,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
                  visit_.extra < kMaxGuests - 1) {
         strcpy(extraIds_[visit_.extra], p.id);
         visit_.extraPet[visit_.extra] = p.pet;
+        visit_.extraLook[visit_.extra] = p.look;
         visit_.extraMascot[visit_.extra++] = p.mascot;
       } else {
         // Too late, too many, or not invited: do not wait. Once per sender per rate window, and
@@ -653,10 +745,12 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
         if (Friend* nf = find(visitWith_)) strcpy(visit_.name, nf->name);
         visit_.mascot = visit_.extraMascot[0];
         visit_.pet = visit_.extraPet[0];
+        visit_.look = visit_.extraLook[0];
         for (uint8_t j = 1; j < visit_.extra; j++) {
           strcpy(extraIds_[j - 1], extraIds_[j]);
           visit_.extraMascot[j - 1] = visit_.extraMascot[j];
           visit_.extraPet[j - 1] = visit_.extraPet[j];
+          visit_.extraLook[j - 1] = visit_.extraLook[j];
         }
         visit_.extra--;
         break;
@@ -667,6 +761,7 @@ void FriendPlay::receive(const FriendPacket& p, uint32_t nowMs, uint32_t fromIp)
           strcpy(extraIds_[j - 1], extraIds_[j]);
           visit_.extraMascot[j - 1] = visit_.extraMascot[j];
           visit_.extraPet[j - 1] = visit_.extraPet[j];
+          visit_.extraLook[j - 1] = visit_.extraLook[j];
         }
         visit_.extra--;
         break;

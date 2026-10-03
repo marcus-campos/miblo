@@ -1016,11 +1016,293 @@ static void test_own_name_others_would_refuse_goes_out_as_the_default() {
   TEST_ASSERT_FALSE(f.nextPacket(p));
 }
 
+// ---- The look: accessories, eye shape and custom colours, after the pet byte ----
+
+// A look with a custom body (#ff4510, as RGB565 0xFA22) and eyes (#00ff00), big eyes, and one
+// accessory per slot (head 3, face 12, neck 21).
+static FriendLook sampleLook() {
+  uint32_t slots[kPetSlots] = {};
+  slots[kSlotBody] = 0xFF4510 + 1;
+  slots[kSlotEye] = 0x00FF00 + 1;
+  return friendLook(slots, (uint8_t)EyeShape::Big, 3, 12, 21);
+}
+
+static void assertSameLook(const FriendLook& a, const FriendLook& b) {
+  TEST_ASSERT_EQUAL_UINT8(a.accHead, b.accHead);
+  TEST_ASSERT_EQUAL_UINT8(a.accFace, b.accFace);
+  TEST_ASSERT_EQUAL_UINT8(a.accNeck, b.accNeck);
+  TEST_ASSERT_EQUAL_UINT8(a.eyes, b.eyes);
+  TEST_ASSERT_EQUAL_UINT8(a.custom, b.custom);
+  TEST_ASSERT_EQUAL_HEX16_ARRAY(a.rgb, b.rgb, kPetSlots);
+}
+
+// The config's slots become RGB565 for the wire and come back as colours the guest's own
+// petColors() turns into the very same RGB565; Auto stays Auto.
+static void test_look_from_and_to_config_slots() {
+  const FriendLook l = sampleLook();
+  TEST_ASSERT_EQUAL_UINT8(1u << kSlotBody | 1u << kSlotEye, l.custom);
+  TEST_ASSERT_EQUAL_HEX16(0xFA22, l.rgb[kSlotBody]);
+  TEST_ASSERT_EQUAL_HEX16(0x07E0, l.rgb[kSlotEye]);
+  TEST_ASSERT_EQUAL_HEX16(0, l.rgb[kSlotLine]);
+  TEST_ASSERT_EQUAL_UINT8(3, l.accHead);
+  TEST_ASSERT_EQUAL_UINT8(12, l.accFace);
+  TEST_ASSERT_EQUAL_UINT8(21, l.accNeck);
+  uint32_t back[kPetSlots];
+  lookSlots(l, back);
+  TEST_ASSERT_EQUAL_HEX32(0xFF4510 + 1, back[kSlotBody]);  // 0xFA22 widened back
+  TEST_ASSERT_EQUAL_HEX32(0x00FF00 + 1, back[kSlotEye]);
+  TEST_ASSERT_EQUAL_HEX32(kPetAuto, back[kSlotLine]);
+  // Round trip through the config form: the same RGB565 (no drift on a resend).
+  assertSameLook(l, friendLook(back, l.eyes, l.accHead, l.accFace, l.accNeck));
+  // Black and white survive (black is 0x000000 + 1, never Auto).
+  uint32_t bw[kPetSlots] = {};
+  bw[kSlotLid] = 1;
+  bw[kSlotNose] = kPetColorMax;
+  lookSlots(friendLook(bw, 0), back);
+  TEST_ASSERT_EQUAL_HEX32(1, back[kSlotLid]);
+  TEST_ASSERT_EQUAL_HEX32(kPetColorMax, back[kSlotNose]);
+  // Out of range values never reach the wire.
+  uint32_t bad[kPetSlots] = {kPetColorMax + 5};
+  const FriendLook k = friendLook(bad, 7, 13, 13, 13);
+  TEST_ASSERT_EQUAL_UINT8(0, k.custom);
+  TEST_ASSERT_EQUAL_UINT8(0, k.eyes);
+  TEST_ASSERT_EQUAL_UINT8(0, k.accHead);
+  TEST_ASSERT_EQUAL_UINT8(0, k.accFace);
+  TEST_ASSERT_EQUAL_UINT8(0, k.accNeck);
+}
+
+// Each accessory only in its own slot: head 1-10, face 11, 12, 14, 15, 20, neck 16-19, 21; 13
+// never (anything else, from a newer firmware or a bad packet, is none).
+static void test_accessory_ids_fit_their_slot() {
+  for (unsigned id = 0; id < 256; id++) {
+    const bool head = id >= 1 && id <= 10;
+    const bool face = id == 11 || id == 12 || id == 14 || id == 15 || id == 20;
+    const bool neck = (id >= 16 && id <= 19) || id == 21;
+    TEST_ASSERT_EQUAL_UINT8(head ? id : 0, knownAccessory(kAccHead, (uint8_t)id));
+    TEST_ASSERT_EQUAL_UINT8(face ? id : 0, knownAccessory(kAccFace, (uint8_t)id));
+    TEST_ASSERT_EQUAL_UINT8(neck ? id : 0, knownAccessory(kAccNeck, (uint8_t)id));
+  }
+}
+
+// Every packet carries it (Beacon, VisitOk, Invite, Host, Who...): it decodes as it was sent, and
+// everything before it is byte for byte a look-less packet (what 1.9-1.14 parse; they ignore
+// the rest). A default look adds nothing at all.
+static void test_packet_carries_the_look() {
+  const FriendPacket::Type kTypes[] = {FriendPacket::Beacon, FriendPacket::VisitOk, FriendPacket::Invite,
+                                       FriendPacket::Host,   FriendPacket::Who,     FriendPacket::Here,
+                                       FriendPacket::Home,   FriendPacket::VisitAsk};
+  for (FriendPacket::Type type : kTypes) {
+    FriendPacket p = packet(type, "miblo-4f2a", "Tofu", kFriendRoaming, type == FriendPacket::Who ? "" : "miblo-b452");
+    p.pet = (uint8_t)Pet::Owl;
+    p.offset = 12;
+    strcpy(p.host, type == FriendPacket::Invite ? "miblo-cccc" : "");
+    uint8_t plain[kFriendPacketMax], buf[kFriendPacketMax + 1];
+    const size_t n0 = encodeFriendPacket(p, plain, sizeof(plain));
+    p.look = sampleLook();
+    const size_t n = encodeFriendPacket(p, buf, kFriendPacketMax);
+    TEST_ASSERT_EQUAL_size_t(n0 + 3 + 2 + 2 * 2, n);  // 3 accessories, mask, eyes, two colours
+    TEST_ASSERT_EQUAL_MEMORY(plain, buf, n0);
+    FriendPacket q;
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Owl, q.pet);
+    assertSameLook(p.look, q.look);
+    if (type == FriendPacket::Invite) TEST_ASSERT_EQUAL_STRING("miblo-cccc", q.host);
+    if (type == FriendPacket::Invite || type == FriendPacket::Host) TEST_ASSERT_EQUAL_UINT8(12, q.offset);
+    // A future version's bytes after the look are ignored.
+    buf[n] = 0x5A;
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n + 1, q));
+    assertSameLook(p.look, q.look);
+    // A packet with a default look is exactly the old one.
+    p.look = FriendLook();
+    TEST_ASSERT_EQUAL_size_t(n0, encodeFriendPacket(p, buf, sizeof(buf)));
+    TEST_ASSERT_EQUAL_MEMORY(plain, buf, n0);
+  }
+  // Only an accessory (no custom colours, round eyes): the three accessory bytes.
+  FriendPacket p = packet(FriendPacket::Beacon, "miblo-4f2a", "Tofu", 0);
+  uint8_t buf[kFriendPacketMax];
+  const size_t n0 = encodeFriendPacket(p, buf, sizeof(buf));
+  p.look.accNeck = 16;
+  TEST_ASSERT_EQUAL_size_t(n0 + 3, encodeFriendPacket(p, buf, sizeof(buf)));
+  FriendPacket q;
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n0 + 3, q));
+  TEST_ASSERT_EQUAL_UINT8(16, q.look.accNeck);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+  // Only the eye shape: the colour block with no colours in it.
+  p.look = FriendLook();
+  p.look.eyes = (uint8_t)EyeShape::Sleepy;
+  TEST_ASSERT_EQUAL_size_t(n0 + 5, encodeFriendPacket(p, buf, sizeof(buf)));
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n0 + 5, q));
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)EyeShape::Sleepy, q.look.eyes);
+}
+
+// Whatever is wrong with the look (cut short, a mask claiming more colours than there are, an eye
+// shape or mask bit no firmware sends, an accessory in the wrong slot) only loses that part: the
+// packet still counts, with the pet and whatever came whole before the bad part.
+static void test_bad_looks_are_dropped_safely() {
+  FriendPacket p = packet(FriendPacket::Invite, "miblo-4f2a", "Tofu", kFriendRoaming, "miblo-b452");
+  strcpy(p.host, "miblo-cccc");
+  p.pet = (uint8_t)Pet::Crab;
+  uint8_t buf[kFriendPacketMax + 4];
+  const size_t n0 = encodeFriendPacket(p, buf, kFriendPacketMax);  // ends with the pet
+  p.look = sampleLook();
+  const size_t n = encodeFriendPacket(p, buf, kFriendPacketMax);
+  FriendPacket q;
+  for (size_t cut = n0; cut < n; cut++) {
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, cut, q));
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Crab, q.pet);
+    const bool acc = cut >= n0 + 3;  // the accessories came whole
+    TEST_ASSERT_EQUAL_UINT8(acc ? 3 : 0, q.look.accHead);
+    TEST_ASSERT_EQUAL_UINT8(acc ? 21 : 0, q.look.accNeck);
+    TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);  // the colours did not
+    TEST_ASSERT_EQUAL_UINT8(0, q.look.eyes);
+  }
+  uint8_t bad[sizeof(buf)];
+  const size_t mask = n0 + 3, eyes = n0 + 4;
+  memcpy(bad, buf, n);
+  bad[mask] |= 0x80;  // no 8th slot
+  TEST_ASSERT_TRUE(decodeFriendPacket(bad, n, q));
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.eyes);
+  TEST_ASSERT_EQUAL_UINT8(12, q.look.accFace);
+  memcpy(bad, buf, n);
+  bad[mask] = 0x7F;  // seven colours claimed, two there
+  TEST_ASSERT_TRUE(decodeFriendPacket(bad, n, q));
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+  memcpy(bad, buf, n);
+  bad[eyes] = kEyeShapes;
+  TEST_ASSERT_TRUE(decodeFriendPacket(bad, n, q));
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.eyes);
+  // Accessories this firmware does not know, or not for that slot: none; the rest still applies.
+  memcpy(bad, buf, n);
+  bad[n0] = 13;
+  bad[n0 + 1] = 2;   // a head accessory as the face one
+  bad[n0 + 2] = 0xEE;
+  TEST_ASSERT_TRUE(decodeFriendPacket(bad, n, q));
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.accHead);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.accFace);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.accNeck);
+  TEST_ASSERT_EQUAL_UINT8(sampleLook().custom, q.look.custom);
+  TEST_ASSERT_EQUAL_HEX16_ARRAY(sampleLook().rgb, q.look.rgb, kPetSlots);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)EyeShape::Big, q.look.eyes);
+  // An older firmware's packet (no pet, no look): a cat in its preset.
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, n0 - 1, q));
+  TEST_ASSERT_EQUAL_UINT8(0, q.pet);
+  assertSameLook(FriendLook(), q.look);
+}
+
+// A packet near its size cap: the pet goes first, then the accessories, and the colours (with
+// the eye shape) only when they fit whole.
+static void test_full_packet_drops_the_look_before_the_pet() {
+  FriendPacket p = packet(FriendPacket::Invite, "miblo-4f2a", "Tofu", kFriendRoaming, "miblo-b452");
+  strcpy(p.host, "miblo-cccc");
+  p.pet = (uint8_t)Pet::Dog;
+  uint8_t buf[kFriendPacketMax];
+  const size_t withPet = encodeFriendPacket(p, buf, sizeof(buf));
+  p.look = sampleLook();
+  const size_t whole = encodeFriendPacket(p, buf, sizeof(buf));
+  FriendPacket q;
+  for (size_t cap = withPet - 1; cap < whole; cap++) {
+    const size_t n = encodeFriendPacket(p, buf, cap);
+    const bool pet = cap >= withPet, acc = cap >= withPet + 3;
+    TEST_ASSERT_EQUAL_size_t(acc ? withPet + 3 : pet ? withPet : withPet - 1, n);
+    TEST_ASSERT_TRUE(decodeFriendPacket(buf, n, q));
+    TEST_ASSERT_EQUAL_UINT8(pet ? (uint8_t)Pet::Dog : 0, q.pet);
+    TEST_ASSERT_EQUAL_UINT8(acc ? 3 : 0, q.look.accHead);
+    TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+    TEST_ASSERT_EQUAL_UINT8(0, q.look.eyes);
+  }
+  TEST_ASSERT_EQUAL_size_t(whole, encodeFriendPacket(p, buf, whole));
+  // The biggest Invite real Miblos send (their ids, the longest name in bytes): the pet and the
+  // accessories still fit, the colours do not.
+  FriendPacket big = packet(FriendPacket::Invite, "miblo-4f2a", "", kFriendRoaming, "miblo-b452");
+  strcpy(big.host, "miblo-cccc");
+  for (int i = 0; i < 15; i++) strcat(big.name, "\xf0\x9f\x98\x80");
+  strcat(big.name, "abc");  // 18 characters, 63 bytes
+  big.pet = (uint8_t)Pet::Dog;
+  uint32_t every[kPetSlots];
+  for (uint32_t& c : every) c = 0x336699 + 1;  // every colour custom: 16 bytes, too many here
+  big.look = friendLook(every, 1, 3, 12, 21);
+  const size_t bn = encodeFriendPacket(big, buf, sizeof(buf));
+  TEST_ASSERT_TRUE(bn > 0);
+  TEST_ASSERT_TRUE(decodeFriendPacket(buf, bn, q));
+  TEST_ASSERT_EQUAL_STRING(big.name, q.name);
+  TEST_ASSERT_EQUAL_UINT8((uint8_t)Pet::Dog, q.pet);
+  TEST_ASSERT_EQUAL_UINT8(21, q.look.accNeck);
+  TEST_ASSERT_EQUAL_UINT8(0, q.look.custom);
+}
+
+// The host sees each guest's own look: the first guest's and the extra ones', each its own,
+// and they move along when the first guest leaves early.
+static void test_visit_shows_each_guests_look() {
+  FriendPlay a, b;
+  const FriendLook la = sampleLook();
+  FriendLook lb;
+  lb.accHead = 4;
+  a.setSelf("miblo-aaaa", "Tofu", 1, (uint8_t)Pet::Dog, la);
+  b.setSelf("miblo-bbbb", "Nina", 2, (uint8_t)Pet::Alien, lb);
+  Sim sim;
+  sim.add(a);
+  sim.add(b);
+  TEST_ASSERT_TRUE(sim.untilVisit(kFirstVisitMinMs + kFirstVisitSpanMs + 5000));
+  const bool aVisits = a.visit(sim.t).role == VisitRole::Visitor;
+  FriendPlay& host = aVisits ? b : a;
+  assertSameLook(aVisits ? la : lb, host.visit(sim.t).look);
+  // A group: each extra guest keeps its own look, also after the first one goes home.
+  FriendPlay h;
+  uint32_t t = 1000;
+  chosenAsHost(h, t);
+  h.receive(invite("miblo-aaaa", "miblo-cccc", "miblo-bbbb"), t, kIpA);
+  h.receive(invite("miblo-aaaa", "miblo-dddd", "miblo-bbbb"), t, kIpA);
+  FriendPacket ok = packet(FriendPacket::VisitOk, "miblo-aaaa", "Tofu", kFriendRoaming, "miblo-bbbb");
+  ok.look = la;
+  h.receive(ok, t, kIpA);
+  ok = packet(FriendPacket::VisitOk, "miblo-cccc", "Coco", kFriendRoaming, "miblo-bbbb");
+  ok.look = lb;
+  h.receive(ok, t, kIpC);
+  ok = packet(FriendPacket::VisitOk, "miblo-dddd", "Dodo", kFriendRoaming, "miblo-bbbb");
+  ok.look.accNeck = 17;
+  h.receive(ok, t, kIpD);
+  VisitView v = h.visit(t);
+  TEST_ASSERT_EQUAL_UINT8(2, v.extra);
+  assertSameLook(la, v.look);
+  assertSameLook(lb, v.extraLook[0]);
+  TEST_ASSERT_EQUAL_UINT8(17, v.extraLook[1].accNeck);
+  h.receive(packet(FriendPacket::Home, "miblo-aaaa", "Tofu", kFriendRoaming, "miblo-bbbb"), t + 10, kIpA);
+  v = h.visit(t + 10);
+  TEST_ASSERT_EQUAL_UINT8(1, v.extra);
+  assertSameLook(lb, v.look);
+  TEST_ASSERT_EQUAL_UINT8(17, v.extraLook[0].accNeck);
+}
+
+// A new look (colours or accessories changed in the settings) is announced like a new name.
+static void test_a_new_look_is_announced() {
+  FriendPlay f;
+  f.setSelf("miblo-aaaa", "Tofu", 0);
+  f.update(0, true, 0, 1);
+  drain(f);
+  f.update(5000, true, 0, 1);
+  FriendPacket p;
+  TEST_ASSERT_FALSE(f.nextPacket(p));
+  f.setSelf("miblo-aaaa", "Tofu", 0, 0, sampleLook());
+  f.update(10000, true, 0, 1);
+  TEST_ASSERT_TRUE(f.nextPacket(p));
+  TEST_ASSERT_EQUAL(FriendPacket::Beacon, p.type);
+  assertSameLook(sampleLook(), p.look);
+}
+
 int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_packet_round_trip);
   RUN_TEST(test_packet_carries_the_pet);
   RUN_TEST(test_visit_shows_the_guests_pet);
+  RUN_TEST(test_look_from_and_to_config_slots);
+  RUN_TEST(test_packet_carries_the_look);
+  RUN_TEST(test_bad_looks_are_dropped_safely);
+  RUN_TEST(test_full_packet_drops_the_look_before_the_pet);
+  RUN_TEST(test_accessory_ids_fit_their_slot);
+  RUN_TEST(test_visit_shows_each_guests_look);
+  RUN_TEST(test_a_new_look_is_announced);
   RUN_TEST(test_malformed_packets_are_rejected);
   RUN_TEST(test_beacons_on_schedule_and_on_change);
   RUN_TEST(test_friends_expire_and_own_packets_are_ignored);

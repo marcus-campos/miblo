@@ -10,6 +10,7 @@
 #include "miblo_focus.h"
 #include "miblo_mood.h"
 #include "miblo_occasions.h"
+#include "miblo_preview.h"
 #include "shots.h"
 
 namespace shots {
@@ -153,7 +154,7 @@ uint32_t anticAt(screens::RoamAntic a, uint32_t into) {
 // The owner's accessories (miblo::Wear): 71-wear-<items>-<pets>, five items down (one per row)
 // on six pets across; 71-wear-all, every pet in a head, face and neck item at once; 71-wear-mix,
 // with a special day's hat, the tie, focus headphones and the presets.
-void wear() {
+void wear(miblo::Lang L, const screens::Clock& clk) {
   const struct {
     const char* name;
     uint8_t ids[5];
@@ -209,11 +210,49 @@ void wear() {
     plain(0);
     save(s, "71-wear-mix");
   }
+  // A visit: our cat dressed up, a dog, an owl and a robot from other Miblos in their own items;
+  // then on Christmas, when our special days dress guests too (the Santa hat takes their heads).
+  for (int xmas = 0; xmas < 2; xmas++) {
+    plain(0);
+    const miblo::Outfit own = miblo::outfitWith(xmas ? Accessory::SantaHat : Accessory::None, 5, 11, 17);
+    screens::setMascotOutfit(screens::MascotOutfit{own.head, own.face, own.neck});
+    screens::setMascotAccessory((uint8_t)own.occasion);
+    screens::setGuestAccessory((uint8_t)own.occasion);
+    const uint32_t autoSlots[miblo::kPetSlots] = {};
+    miblo::VisitView v;
+    strcpy(v.name, "Nina");
+    v.role = miblo::VisitRole::Host;
+    v.ms = miblo::kVisitArriveMs + 1000;
+    v.mascot = 3;
+    v.pet = (uint8_t)miblo::Pet::Dog;
+    v.look = miblo::friendLook(autoSlots, 0, 1, 20, 21);
+    v.extra = 2;
+    v.extraMascot[0] = 1;
+    v.extraPet[0] = (uint8_t)miblo::Pet::Owl;
+    v.extraLook[0] = miblo::friendLook(autoSlots, 1, 10, 14, 19);
+    v.extraMascot[1] = 0;
+    v.extraPet[1] = (uint8_t)miblo::Pet::Robot;
+    v.extraLook[1] = miblo::friendLook(autoSlots, 0, 4, 15, 16);
+    Shot s;
+    screens::visit(L, snap, clk, v);
+    save(s, xmas ? "71-wear-visit-xmas" : "71-wear-visit");
+  }
+  screens::setGuestAccessory(0);
+  plain(0);
+  // The settings page's preview: a dog in custom colours and three items, two moments of it.
+  for (uint32_t ms : {1000u, 3000u}) {
+    MascotPaint p;
+    p.pet = (uint8_t)miblo::Pet::Dog;
+    p.slots[miblo::kSlotBody] = 0xC9A27E + 1;
+    Shot s;
+    screens::preview(p, screens::MascotOutfit{6, 11, 18}, ms, miblo::LookPreview::kShowMs);
+    save(s, ms == 1000 ? "71-wear-preview" : "71-wear-preview-2");
+  }
 }
 }  // namespace
 
 void renderPets(miblo::Lang L) {
-  if (L == miblo::Lang::En) wear();
+  if (L == miblo::Lang::En) wear(L, shots::clock());
   const screens::Clock clk = shots::clock();
   for (uint8_t pet = 0; pet < miblo::kPetKinds; pet++) {
     const std::string n = std::string("70-pet-") + kPetFiles[pet] + "-";

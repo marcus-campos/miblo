@@ -448,17 +448,18 @@ static void drawWearFace(MascotPen& d, int x, int g, uint8_t id, const PetAnchor
       drawGlasses(d, x, g, at, dark);
       d.rect(-2 + x, -1 + g, 4, 6, color::WHITE);
       break;
-    case miblo::Wear::Monocle: {  // a gold rim round the right eye, its chain down the cheek
+    case miblo::Wear::Monocle: {  // a rim round the right eye (wide enough for the big ones), a chain
       const int e = ex + x;
-      d.rect(e - 6, -5 + g, 12, 2, color::AMBER);
-      d.rect(e - 6, 15 + g, 12, 2, color::AMBER);
-      d.rect(e - 10, -1 + g, 2, 12, color::AMBER);
-      d.rect(e + 8, -1 + g, 2, 12, color::AMBER);
+      const uint16_t rim = dark ? color::AMBER : color::PUPIL;  // gold on a dark face
+      d.rect(e - 8, -7 + g, 16, 2, rim);
+      d.rect(e - 8, 19 + g, 16, 2, rim);
+      d.rect(e - 12, -3 + g, 2, 18, rim);
+      d.rect(e + 10, -3 + g, 2, 18, rim);
       for (int c = -1; c <= 1; c += 2) {  // the corners, rounding it off
-        d.rect(e + c * 7 - 1, -3 + g, 2, 2, color::AMBER);
-        d.rect(e + c * 7 - 1, 13 + g, 2, 2, color::AMBER);
+        d.rect(e + c * 9 - 1, -5 + g, 2, 2, rim);
+        d.rect(e + c * 9 - 1, 17 + g, 2, 2, rim);
       }
-      for (int i = 0; i < 4; i++) d.rect(e + 9 + i, 16 + 3 * i + g, 2, 2, color::AMBER);
+      for (int i = 0; i < 4; i++) d.rect(e + 11 + i, 20 + 3 * i + g, 2, 2, color::AMBER);
       break;
     }
     case miblo::Wear::Moustache: {  // a curled moustache under the nose
@@ -499,7 +500,7 @@ static void drawWearNeck(MascotPen& d, int x, int n, uint8_t id) {
     case miblo::Wear::Beads:  // a string of beads hanging in an arc
       for (int i = -4; i <= 4; i++) {
         const uint16_t c = i % 3 == 0 ? color::WHITE : (i & 1) ? color::CORAL : color::AMBER;
-        d.circle(i * 4 + x, 40 - i * i * 7 / 16 + n, 2, c);
+        d.circle(i * 4 + x, 43 - i * i * 7 / 16 + n, 2, c);
       }
       break;
     case miblo::Wear::Medal: {  // "shipped to prod": a gold medal with a tick, on a ribbon
@@ -565,9 +566,9 @@ static void drawMascot(MascotPen& d, const MascotLook& k, bool detail, bool desk
   if (k.extras & kHeadphones) drawHeadphones(d, x, b + def.at.phonesDy, def.at.phonesDx);
   else if (g_outfit.face == (uint8_t)miblo::Wear::Headset) {  // focus headphones take its place
     const int hb = b + def.at.phonesDy, s = -30 - def.at.phonesDx;  // the left cup's outer edge
-    drawHeadphones(d, x, hb, def.at.phonesDx, color::FAINT, color::GREEN);
-    d.rect(s + 4 + x, 11 + hb, 2, 9, color::FAINT);  // the mic boom, round to the mouth
-    d.rect(s + 4 + x, 19 + hb, 14, 2, color::FAINT);
+    drawHeadphones(d, x, hb, def.at.phonesDx, color::DIM, color::GREEN);  // lit cushions
+    d.rect(s + 4 + x, 11 + hb, 2, 9, color::DIM);  // the mic boom, round to the mouth
+    d.rect(s + 4 + x, 19 + hb, 14, 2, color::DIM);
     d.circle(s + 19 + x, 20 + hb, 2, color::GREEN);
   }
   if (mascotTie()) drawTie(d, x, b + def.at.neckDy);  // the meeting's tie over the owner's neck item
